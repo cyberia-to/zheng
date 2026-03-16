@@ -5,11 +5,12 @@ zheng (証 — proof/evidence in Japanese) provides the cryptographic machinery 
 ```
 COMPONENT         │ ROLE                          │ INSTANCE
 ──────────────────┼───────────────────────────────┼─────────────────────
-hash              │ Fiat-Shamir, Merkle trees     │ Hemera (Poseidon2)
-field             │ arithmetic substrate           │ Goldilocks (2⁶⁴ − 2³² + 1)
-VM                │ execution trace generation     │ nox (16 patterns + hint + 5 jets)
-IOP               │ constraint verification        │ SuperSpartan (CCS/AIR via sumcheck)
-PCS               │ polynomial commitment          │ WHIR (multilinear)
+hash              │ Fiat-Shamir, Merkle trees     │ hemera 
+field             │ arithmetic substrate          │ nebu
+VM                │ execution trace generation    │ nox
+IOP               │ constraint verification        │ superspartan
+core protocol     │ exponential sum → log rounds   │ sumcheck
+PCS               │ polynomial commitment          │ whir
 ```
 
 ## dependency graph
