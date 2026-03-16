@@ -53,6 +53,50 @@ VERIFIER(statement S, proof):
   4. check WHIR_verify(proof.commitment, r, proof.v, proof.π)
 ```
 
+## multilinear extension
+
+the trace matrix T (2^n rows × 2^m columns, m=4) is encoded as a single multilinear polynomial f over F^{n+m}. this is the unique polynomial of degree ≤ 1 in each variable that agrees with the trace on all binary inputs.
+
+### definition
+
+```
+for any binary vector (b₁,...,b_n, c₁,...,c_m) ∈ {0,1}^{n+m}:
+  f(b₁,...,b_n, c₁,...,c_m) = T[row(b₁...b_n), col(c₁...c_m)]
+
+where row(b₁...b_n) = Σ bᵢ × 2^{n-i}  (binary → integer)
+      col(c₁...c_m) = Σ cⱼ × 2^{m-j}
+```
+
+### evaluation at arbitrary point
+
+to evaluate f at an arbitrary field point r = (r₁,...,r_{n+m}):
+
+```
+f(r₁,...,r_{n+m}) = Σ_{b ∈ {0,1}^{n+m}} T[b] × eq(r, b)
+
+where eq(r, b) = ∏ᵢ (rᵢ × bᵢ + (1 - rᵢ) × (1 - bᵢ))
+```
+
+eq(r, b) is the multilinear Lagrange basis polynomial: it equals 1 when r = b (on binary inputs) and interpolates smoothly elsewhere. the sum runs over all 2^{n+m} trace entries.
+
+### streaming evaluation algorithm
+
+```
+EVAL_MLE(trace T, point r = (r₁,...,r_k)):   // k = n + m
+  table ← flatten(T)                          // 2^k entries
+  for i in 1..k:
+    half ← len(table) / 2
+    for j in 0..half:
+      table[j] ← table[2j] × (1 - rᵢ) + table[2j+1] × rᵢ
+    table ← table[0..half]
+  return table[0]
+
+cost: 2^k + 2^{k-1} + ... + 1 = 2^{k+1} - 1 ≈ 2N field operations
+memory: in-place, modifies table of shrinking size
+```
+
+this is the same algorithm the sumcheck prover uses internally: each round fixes one variable, halving the table. after k rounds, one value remains.
+
 ## instantiation in cyber
 
 | parameter | value |

@@ -76,6 +76,40 @@ accumulator = {
 
 the accumulator grows by a constant amount per fold. the decider proof at the end verifies the entire accumulated sequence.
 
+## folding algorithm
+
+the [[HyperNova]] folding protocol over [[CCS]]:
+
+### fold(accumulator, instance, witness)
+
+given running accumulator A = (E_acc, u_acc, w_acc, e_acc) and new CCS instance (E_new, u_new, w_new):
+
+1. compute cross-term T = cross_term(A, new_instance) — field operations over CCS matrices
+2. derive challenge β from transcript: absorb A.commitment, new.commitment, T; squeeze β
+3. fold instances: E_folded = E_acc + β × E_new
+4. fold witnesses: w_folded = w_acc + β × w_new
+5. fold error: e_folded = e_acc + β × T + β² × e_new
+6. update commitment: C_folded = hemera(w_folded)
+7. return new accumulator
+
+### decide(accumulator, params)
+
+prove that the accumulated CCS instance is satisfiable. this is a standard [[SuperSpartan]] + [[WHIR]] proof of the folded instance. cost: ~70,000 constraints (one verification worth).
+
+### cross-term computation
+
+for CCS with matrices M_1,...,M_t and sets S_1,...,S_q:
+
+```
+T = Σ_j c_j × Σ over all mixed products of (M_i · z_acc) and (M_i · z_new) from set S_j
+```
+
+cost: O(|S| × nnz) where nnz is total non-zeros across matrices.
+
+### soundness
+
+folding preserves CCS satisfiability. if either the accumulator or the new instance is unsatisfying, the error term e_folded will be non-zero with overwhelming probability over the choice of β.
+
 ### CCS compatibility
 
 [[HyperNova]] folds over [[CCS]] instances. since [[SuperSpartan]] already uses CCS, the folding scheme and the proof system share the same constraint language:
