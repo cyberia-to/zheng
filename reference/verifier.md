@@ -91,7 +91,7 @@ OUTPUT:
 
 | security level | verification time | operations |
 |---|---|---|
-| 100-bit | ~290 μs | ~2,000 hemera hashes + field ops |
+| 100-bit | ~290 μs | ~1,800 hemera hashes + field ops |
 | 128-bit | ~1.0 ms | ~2,700 hemera hashes + field ops |
 
 verification time is independent of the original computation size. a proof of a 300-constraint identity check and a proof of a million-constraint neural network inference verify in the same time.

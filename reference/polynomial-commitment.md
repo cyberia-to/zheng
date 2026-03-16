@@ -23,10 +23,10 @@ VERIFY:   WHIR_verify(C, z, v, proof) → accept/reject
 ```
 
 WHIR operates in two modes:
-- univariate: P(x) of degree ≤ d, used for [[EdgeSet]] membership proofs
-- multilinear: P(x₁, ..., x_k) with degree ≤ 1 per variable, used for [[stark]] trace commitments
+- univariate: P(x) of degree ≤ d, used for EdgeSet membership proofs
+- multilinear: P(x₁, ..., x_k) with degree ≤ 1 per variable, used for [[whirlaway]] trace commitments
 
-in the multilinear mode, WHIR commits the entire [[nox]] execution trace as a single polynomial. the [[SuperSpartan]] IOP reduces all AIR constraint checks to one evaluation at one random point, which WHIR opens. see [[stark]] for the full pipeline.
+in the multilinear mode, WHIR commits the entire [[nox]] execution trace as a single polynomial. the [[SuperSpartan]] IOP reduces all AIR constraint checks to one evaluation at one random point, which WHIR opens. see [[whirlaway]] for the full pipeline.
 
 ## why polynomial commitments
 
@@ -37,9 +37,9 @@ the [[cybergraph]] needs to prove membership ("this edge belongs to neuron N's e
 | membership proof | O(log n) hashes, ~9,600 constraints | O(log² n), ~1,000 constraints |
 | batch membership (N elements) | N × O(log n), ~9,600 × N | ~1,000 amortized (sublinear) |
 | state root update | O(log n) rehash | O(log n) update |
-| completeness proof | impossible (standard Merkle) | requires sorted polynomial + [[NMT]] |
+| completeness proof | impossible (standard Merkle) | requires sorted polynomial + NMT |
 
-the batch proof advantage is decisive for transaction verification: a single [[cyberlink]] touches 3 [[EdgeSets]], and a block contains thousands of cyberlinks. batched [[WHIR]] openings make this tractable.
+the batch proof advantage is decisive for transaction verification: a single [[cyberlink]] touches 3 EdgeSets, and a block contains thousands of cyberlinks. batched [[WHIR]] openings make this tractable.
 
 ## use in cyber
 
@@ -55,7 +55,7 @@ Level 2: EdgeSets (polynomial commitments via WHIR)
   → batched openings: sublinear cost for multi-edge proofs
 ```
 
-each NMT leaf contains an [[EdgeSet]] — a [[WHIR]] polynomial commitment to the set of edge hashes belonging to that namespace. the NMT provides completeness guarantees. the polynomial commitment provides efficient membership queries.
+each NMT leaf contains an EdgeSet — a [[WHIR]] polynomial commitment to the set of edge hashes belonging to that namespace. the NMT provides completeness guarantees. the polynomial commitment provides efficient membership queries.
 
 ## EdgeSet construction
 
@@ -77,4 +77,4 @@ EdgeSet for neuron N:
 
 [[cyber]] uses polynomial commitments everywhere rather than mixing hash-based structures with algebraic structures. one primitive means one security analysis, one implementation, one mental model. the same [[WHIR]]-based machinery that makes UTXO proofs cheap (~1,000 constraints) also handles graph completeness proofs.
 
-see [[WHIR]] for the low-degree testing protocol, [[stark]] for the multilinear stark pipeline, [[EdgeSet]] for edge membership proofs, [[NMT]] for structural completeness, [[BBG]] for the full graph architecture, [[LogUp]] for cross-index consistency
+see [[WHIR]] for the low-degree testing protocol, [[whirlaway]] for the proof architecture, [[BBG]] for the graph architecture, [[bbg-integration]] for EdgeSet/NMT/LogUp details
