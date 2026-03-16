@@ -66,6 +66,7 @@ start with vision, then landscape orients the design space. core protocols provi
 | recursion.md | recursive composition — [[IVC]], [[folding]], O(1) verification regardless of computation depth |
 | security.md | hash-based assumptions — post-quantum guarantees, concrete security levels, no trusted setup |
 | performance.md | prover costs, verifier costs, proof sizes — comparisons with [[Plonky3]], [[Binius]], [[Stwo]] |
+| bbg-integration.md | shared WHIR primitives between proofs and [[BBG]] state — EdgeSets, LogUp, batch verification |
 
 ## see also
 

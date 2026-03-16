@@ -52,7 +52,35 @@ the polynomial f is the unique multilinear extension of this table. it agrees wi
 
 ## AIR constraints from nox patterns
 
-each of [[nox]]'s 16 patterns contributes a transition constraint — a polynomial equation that must hold between consecutive rows. here are three examples spanning different degrees.
+each of [[nox]]'s 16 patterns contributes a transition constraint — a polynomial equation that must hold between consecutive rows.
+
+## full constraint table
+
+```
+PATTERN → CONSTRAINT                                        │ DEGREE │ CONSTRAINTS
+────────────────────────────────────────────────────────────┼────────┼────────────
+0  axis     navigation through subject tree                │ 1      │ ~depth
+1  quote    output = literal constant                       │ 1      │ 1
+2  compose  chain: eval x, eval y, eval result on x's output│ 1      │ 2
+3  cons     pair two sub-results                            │ 1      │ 2
+4  branch   selector × (next − yes) + (1−sel) × (next − no)│ 2      │ 2
+5  add      out = a + b mod p                               │ 1      │ 1
+6  sub      out = a − b mod p                               │ 1      │ 1
+7  mul      out = a × b mod p                               │ 2      │ 1
+8  inv      out × input = 1 mod p (Fermat verification)    │ 2      │ 1
+9  eq       (a − b) × inv = (a ≠ b), out = 1 − (a ≠ b)    │ 2      │ 1
+10 lt       range decomposition into bits                   │ 1      │ ~64
+11 xor      bit decomposition + XOR per bit                 │ 2      │ ~64
+12 and      bit decomposition + AND per bit                 │ 2      │ ~64
+13 not      bitwise complement                              │ 1      │ ~64
+14 shl      shift via multiplication by 2^n                 │ 2      │ ~64
+15 hash     Poseidon2 round function across rows            │ 7      │ ~300
+16 hint     constraint check (Layer 1 verification)         │ varies │ varies
+```
+
+[[SuperSpartan]] handles AIR constraints of any degree via [[CCS]]. high-degree constraints (pattern 15: degree 7) cost only field operations in the prover — no cryptographic cost increase over degree-1 constraints. this is the [[CCS]] advantage: the Poseidon2 rounds inside the hash pattern are free in the IOP layer.
+
+three examples spanning different degrees follow.
 
 # pattern 5: add (degree 1)
 

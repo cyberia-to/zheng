@@ -88,6 +88,36 @@ jets, the hemera sponge must be decomposed into individual field
 operations, inflating the circuit to 600,000 constraints. jets provide
 an 8.5x reduction.
 
+## hemera as the stark hash
+
+every hash operation inside a stark — Fiat-Shamir challenges, Merkle trees in [[WHIR]], commitment randomness — uses [[hemera]]. the choice of hash is the single largest factor in stark performance.
+
+| hash | constraints per call | stark overhead |
+|---|---|---|
+| SHA-256 | ~25,000 | baseline |
+| Keccak-256 | ~150,000 | 6× worse |
+| Poseidon (original) | ~4,000 | 6× cheaper |
+| hemera (Poseidon2) | ~1,200 | 20× cheaper |
+
+hemera's ~1,200 constraints per hash means Merkle verification at depth 32 costs ~38,400 constraints instead of ~800,000 with SHA-256. this 20× reduction is what makes recursive stark composition practical at 70,000 total constraints.
+
+the hash is also the field: hemera operates natively on [[Goldilocks]] field elements. no bit-packing, no field conversion, no endianness gymnastics. eight elements in, eight elements out. the output is directly usable in polynomial commitments, constraint evaluations, and [[nox]] arithmetic.
+
+## verifier cost breakdown
+
+the verifier's 70,000-constraint budget (with jets) breaks down into five components:
+
+| component | Layer 1 only | with jets | reduction | role |
+|---|---|---|---|---|
+| parse proof | ~1,000 | ~1,000 | 1× | deserialize proof bytes |
+| Fiat-Shamir challenges | ~30,000 | ~5,000 | 6× | hash transcript → random challenges |
+| Merkle verification | ~500,000 | ~50,000 | 10× | verify [[WHIR]] commitment tree paths |
+| constraint evaluation | ~10,000 | ~3,000 | 3× | evaluate AIR polynomials at challenge |
+| WHIR verification | ~50,000 | ~10,000 | 5× | FRI folding rounds + final check |
+| TOTAL | ~600,000 | ~70,000 | 8.5× | |
+
+Merkle verification dominates without jets (83% of cost). the merkle_verify jet reduces it 10×. this single jet is what makes recursion practical — without it, each recursion level would cost 600K constraints, limiting practical depth to 1-2 levels.
+
 ## comparison at 128-bit security
 
 | system | proof size | verify time | setup | post-quantum |

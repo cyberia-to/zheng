@@ -35,6 +35,19 @@ the constraint count is fixed regardless of what the original computation
 was — a trivial identity proof and a massive neural network inference
 both compress to the same verification cost at the next recursion level.
 
+## self-verification theorem
+
+the stark verifier requires four operations. all are [[nox]]-native:
+
+| verifier operation | nox patterns used | why it works |
+|---|---|---|
+| field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks]] is the native field |
+| hash computation | 15 (hash) / hash jet | [[hemera]] IS the nox hash |
+| [[sumcheck]] verification | 5, 7, 9 (field ops only) | sumcheck is pure arithmetic |
+| [[WHIR]] opening verification | 15 + 4 (conditionals), poly_eval / merkle_verify / fri_fold jets | Merkle paths + polynomial eval |
+
+no external primitive enters the verification loop. the verifier is closed under the same instruction set that produced the original proof. consequence: `verify(proof)` can itself be proven, and `verify(verify(proof))` too, to arbitrary depth.
+
 ## why recursion matters
 
 without recursion, verification cost grows linearly with the number of
@@ -109,6 +122,32 @@ one framework. folding over CCS means zheng can fold any constraint type
 that SuperSpartan can prove. the generality is free: it comes from the
 algebraic structure of CCS rather than from additional protocol
 complexity.
+
+## folding in practice
+
+consider the [[cybergraph]] state machine across an epoch:
+
+```
+epoch starts with state commitment S₀
+
+  block 1: insert 1000 cyberlinks
+    fold each insertion into accumulator
+    acc₁ = fold(fold(...fold(acc₀, link₁)..., link₁₀₀₀))
+    cost: 1000 field ops + 1000 hashes ≈ microseconds
+
+  block 2: insert 800 cyberlinks
+    acc₂ = fold(acc₁, block₂_insertions)
+
+  ...
+
+  block E: last block of epoch
+    acc_E = fold(acc_{E-1}, block_E_insertions)
+    π_epoch = stark(decider(acc_E))    ← one proof, ~70K constraints
+
+S₁ = apply(S₀, π_epoch)  — state transition is one proof verification
+```
+
+the epoch proof guarantees: every [[cyberlink]] insertion was valid (correct [[neuron]], sufficient stake, fresh nullifier), every state update was consistent (index updates, focus recomputation), and conservation laws held across every transaction. one proof. one verification. all of it.
 
 ## what recursion enables
 
