@@ -3,18 +3,13 @@ tags: computer science, cryptography
 ---
 # zheng reference
 
-precise definitions, parameters, APIs, and constraint costs for each component of the proof system. these pages answer "what exactly is X" — the spec you consult when implementing or auditing.
+precise definitions, parameters, APIs, and constraint costs for each component zheng implements. these pages answer "what exactly is X" — the spec you consult when implementing or auditing.
 
-for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/).
+for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/). for the FRI→STIR→WHIR evolution (historical context, not implemented) see [[fri-to-whir]].
 
-## protocols
+## what zheng implements
 
-- [[fri]] — Fast Reed-Solomon IOP. baseline low-degree test (2018)
-- [[stir]] — Shift To Improve Rate. fewer queries via rate improvement (2024)
-- [[whir]] — Weights Help Improving Rate. richest queries, sub-millisecond verification (2025)
-
-## building blocks
-
+- [[whir]] — Weights Help Improving Rate. multilinear PCS with sub-millisecond verification
 - [[sumcheck]] — interactive proof reducing exponential sums to one evaluation
 - [[superspartan]] — IOP for Customizable Constraint Systems (CCS) via sumcheck
 - [[polynomial-commitment]] — commit-then-open primitive, WHIR instantiation over Goldilocks
