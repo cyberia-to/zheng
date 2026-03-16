@@ -2,7 +2,7 @@
 tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
-alias: starks, STARK, STARKs, Scalable Transparent Arguments of Knowledge, multilinear stark, multilinear starks
+alias: starks, STARK, STARKs, Scalable Transparent Arguments of Knowledge, multilinear stark, multilinear starks, AIR, Algebraic Intermediate Representation
 ---
 # stark
 
