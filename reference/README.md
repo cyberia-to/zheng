@@ -16,6 +16,7 @@ for intuition, motivation, and learning paths see [docs/explanation](../docs/exp
 
 ## proof pipeline
 
+- [[whirlaway]] — Whirlaway architecture spec: SuperSpartan IOP + WHIR PCS composition, protocol, cost model
 - [[transcript]] — Fiat-Shamir transcript construction, domain separation, sponge protocol
 - [[constraints]] — AIR constraint format, pattern table, CCS encoding, constraint budgets
 - [[verifier]] — standalone verifier algorithm, cost breakdown, nox pattern decomposition

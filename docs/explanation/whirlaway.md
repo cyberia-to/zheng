@@ -98,6 +98,20 @@ the [[sumcheck protocol]] is algebraic: it uses only field operations, so the pr
 
 the combination gives zheng transparent setup, post-quantum security, sub-millisecond verification, and a linear-time prover. each property comes from a different layer of the architecture, and they compose cleanly because the layers are independent.
 
+## why WHIR
+
+[[WHIR]] (Weights Help Improving Rate) has a dual nature that makes it uniquely suited for Whirlaway. it is simultaneously an IOPP (interactive oracle proof of proximity) for constrained Reed-Solomon codes and a multilinear polynomial commitment scheme. this duality means one protocol handles both the proximity testing that STARKs need and the evaluation claims that SuperSpartan produces.
+
+the evolution from [[FRI]] to [[STIR]] to WHIR traces a line of increasing efficiency:
+
+- FRI (2018): the original proximity proof. each round halves the polynomial degree via random folding. verification requires checking many Merkle paths — 5,600 hashes at 128-bit security for a single opening.
+- STIR (2024): reinterprets FRI rounds as constraint-satisfaction over out-of-domain points. reduces proof size (160 KiB vs 306 KiB) by folding more aggressively, but verification time stays similar (~3.8 ms) because Merkle path checking dominates.
+- WHIR (2025): introduces weighted queries — instead of uniform random sampling, the verifier places higher weight on positions that carry more information. this improves the effective rate of the code being tested, requiring fewer queries for the same soundness. verification drops to ~1.0 ms at 128-bit security.
+
+the practical consequence: WHIR is the only polynomial commitment scheme that combines transparent setup (hash-only, no ceremony), post-quantum security (no discrete log assumptions), and sub-millisecond verification. KZG is faster to verify but requires a trusted ceremony and breaks under quantum attack. IPA needs no ceremony but verification takes ~10 ms. FRI and STIR are transparent and post-quantum but verify 4× slower.
+
+for [[cyber]], verification speed is the critical parameter. every recursive proof composition step runs the verifier as a [[nox]] program. WHIR's ~70,000 constraint verifier (with jets) makes recursion practical — with FRI's ~280,000 constraint verifier, each recursion level would take 4× longer, and proof aggregation for a 1000-transaction block would be prohibitively expensive.
+
 ## references
 
 - Habock, Levit, Papini. Whirlaway: a multilinear STARK. LambdaClass, 2025
