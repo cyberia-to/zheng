@@ -133,4 +133,4 @@ the Whirlaway verifier uses only:
 
 these are all [[nox]]-native operations. the verifier is a nox program. zheng can prove its own verification — enabling recursive proof composition at ~70,000 constraints per level (with jets).
 
-see [[verifier]] for the verification algorithm, [[api]] for the prover/verifier interface, [[recursion-spec]] for recursive composition, [[constraints]] for the AIR format, [[transcript]] for Fiat-Shamir construction
+see [[verifier]] for the verification algorithm, [[api]] for the prover/verifier interface, [[recursion]] for recursive composition, [[constraints]] for the AIR format, [[transcript]] for Fiat-Shamir construction

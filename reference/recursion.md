@@ -4,7 +4,7 @@ crystal-type: entity
 crystal-domain: computer science
 alias: recursive composition spec, proof recursion, IVC spec
 ---
-# recursion spec
+# recursion
 
 the recursive composition protocol for [[zheng]]. defines how proofs compose via tree aggregation, sequential folding ([[HyperNova]] over [[CCS]]), and DAG merging. specifies depth bounds, cost invariants, and the accumulator format.
 

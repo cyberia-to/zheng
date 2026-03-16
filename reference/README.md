@@ -20,5 +20,5 @@ for intuition, motivation, and learning paths see [docs/explanation](../docs/exp
 - [[transcript]] — Fiat-Shamir transcript construction, domain separation, sponge protocol
 - [[constraints]] — AIR constraint format, pattern table, CCS encoding, constraint budgets
 - [[verifier]] — standalone verifier algorithm, cost breakdown, nox pattern decomposition
-- [[recursion-spec]] — recursive composition protocol, tree/fold/DAG topologies, depth bounds
+- [[recursion]] — recursive composition protocol, tree/fold/DAG topologies, depth bounds
 - [[api]] — prover/verifier/fold interface, data types, usage patterns

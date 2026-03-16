@@ -161,4 +161,4 @@ for block in epoch.blocks() {
 let epoch_proof = zheng::decide(&acc, &params)?;
 ```
 
-see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion-spec]] for composition protocol, [[WHIR]] for the PCS
+see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion]] for composition protocol, [[WHIR]] for the PCS
