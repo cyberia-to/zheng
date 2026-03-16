@@ -21,13 +21,19 @@ witness:      z ∈ F^n   (z = (1, x, w) where x is public input, w is private w
 satisfiability: Σⱼ cⱼ · ∏_{i ∈ Sⱼ} Mᵢ · z = 0
 ```
 
-special cases:
+CCS generalizes R1CS, Plonkish, and AIR. zheng uses the AIR encoding: each matrix M selects a register value at the current row (t) or next row (t+1). for example, the constraint r5_{t+1} = r3_t + r4_t (pattern 5, add) becomes:
 
-| system | parameters | degree |
-|---|---|---|
-| R1CS | t=3, q=2, S₁={1,2}, S₂={3}, c₁=1, c₂=−1 | 2 |
-| Plonkish | selector matrices as M | custom |
-| AIR | shifted-row matrices as M | any |
+```
+M₁ selects r5 at row t+1:  M₁[t, :] · z = r5_{t+1}
+M₂ selects r3 at row t:    M₂[t, :] · z = r3_t
+M₃ selects r4 at row t:    M₃[t, :] · z = r4_t
+
+CCS terms: S₁={1}, S₂={2,3}, c₁=1, c₂=−1
+constraint: M₁·z − (M₂·z ∘ M₃·z) = 0  → but add is degree 1, so:
+            c₁·M₁·z + c₂·M₂·z + c₃·M₃·z = 0  with c₁=1, c₂=−1, c₃=−1
+```
+
+the "shifted-row" trick: M₁ reads row t+1 while M₂, M₃ read row t. this encodes transition constraints (current state → next state) as a single CCS satisfiability check over all rows simultaneously.
 
 ## protocol
 
