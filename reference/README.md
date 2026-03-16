@@ -14,11 +14,6 @@ for intuition, motivation, and learning paths see [docs/explanation](../docs/exp
 - [[superspartan]] — IOP for Customizable Constraint Systems ([[CCS]]) via sumcheck
 - [[polynomial-commitment]] — commit-then-open primitive, WHIR instantiation over Goldilocks
 
-## foundations
-
-- [[stark]] — Scalable Transparent Arguments of Knowledge. the proof system family zheng belongs to
-- [[CCS]] — Customizable Constraint Systems. the unified constraint framework powering SuperSpartan
-
 ## planned
 
 - transcript — Fiat-Shamir transcript construction and domain separation

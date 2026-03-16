@@ -9,7 +9,7 @@ these pages illuminate the design. for formal definitions, see reference/. for t
 ```
 why-zheng ─── the-name
     │
-landscape
+stark ─── CCS ─── landscape
     │
     ├── sumcheck ──────────────┐
     ├── polynomial-commitments │
@@ -23,10 +23,11 @@ landscape
         │
     ├── recursion
     ├── security
-    └── performance
+    ├── performance
+    └── bbg-integration
 ```
 
-start with vision, then landscape orients the design space. core protocols provide the cryptographic foundations. architecture shows how the pieces compose. powers describe what the composed system achieves.
+start with vision, then foundations and landscape orient the design space. core protocols provide the cryptographic primitives. architecture shows how the pieces compose. powers describe what the composed system achieves.
 
 ## pages
 
@@ -37,10 +38,12 @@ start with vision, then landscape orients the design space. core protocols provi
 | why-zheng.md | why a custom proof system — what [[Whirlaway]] enables and why existing systems fall short |
 | the-name.md | 証 etymology — proof as evidence, verification as witnessing |
 
-### landscape
+### foundations
 
 | page | topic |
 |------|-------|
+| stark.md | [[STARKs]] — arithmetization (AIR, R1CS, [[CCS]]), univariate vs multilinear, heritage |
+| CCS.md | [[CCS|Customizable Constraint Systems]] — why unified constraints matter for zheng and folding |
 | landscape.md | proof system taxonomy — trusted setup vs transparent, pre-quantum vs post-quantum, [[SNARKs]] vs [[STARKs]] vs [[multilinear STARKs]] |
 
 ### core protocols
