@@ -5,7 +5,7 @@ tags: computer science, cryptography
 
 precise definitions, parameters, APIs, and constraint costs for each component of the proof system. these pages answer "what exactly is X" — the spec you consult when implementing or auditing.
 
-for intuition, motivation, and learning paths see [docs/explanation](../explanation/).
+for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/).
 
 ## protocols
 
