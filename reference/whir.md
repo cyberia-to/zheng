@@ -44,7 +44,54 @@ WHIR_verify(C, r, v, proof):
   4. check that the accumulated evaluation equals v at point r
 ```
 
-each round halves the polynomial's variable count. after log(N) rounds, the polynomial is a constant — verifiable by direct comparison.
+the folding formula per round: given evaluations f(x) on the current domain and challenge α, split into even and odd parts:
+
+```
+f_folded(x) = (f(x) + f(-x)) / 2 + α × (f(x) - f(-x)) / (2x)
+```
+
+this halves the number of evaluation points each round. the even part `(f(x) + f(-x))/2` extracts the symmetric component; the odd part `(f(x) - f(-x))/(2x)` extracts the antisymmetric component. the challenge α linearly combines them into a single folded polynomial of half the degree.
+
+for multilinear polynomials: folding over variable x_j with challenge r_j gives:
+
+```
+f'(x_1, ..., x_{j-1}, x_{j+1}, ..., x_k) = f(..., x_j=0) × (1 - r_j) + f(..., x_j=1) × r_j
+```
+
+each round eliminates one variable, reducing a k-variate multilinear polynomial to a (k-1)-variate one.
+
+## Reed-Solomon domain
+
+the evaluation domain is a multiplicative coset of a 2-adic subgroup of the [[Goldilocks field]] (p = 2^64 - 2^32 + 1).
+
+rate ρ is the inverse of the blowup factor. ρ = 1/2 means the evaluation domain is 2× the polynomial degree; ρ = 1/4 means 4×. lower rate increases proof size but improves soundness per query.
+
+for a trace with 2^n rows and 2^4 columns (16 columns), the polynomial has 2^{n+4} evaluations. the Reed-Solomon evaluation domain size is 2^{n+4} / ρ. at ρ = 1/2 this gives a domain of size 2^{n+5}.
+
+domain generator: a primitive 2^k-th root of unity ω in Goldilocks. the Goldilocks field has multiplicative order p - 1 = 2^32 × (2^32 - 1), so primitive 2^k-th roots of unity exist for k up to 32. the subgroup ⟨ω⟩ = {ω^0, ω^1, ..., ω^{2^k - 1}} forms the base domain.
+
+coset shift: multiply the entire subgroup by a fixed non-unity element g ∈ F* to obtain the coset g⟨ω⟩ = {g, gω, gω², ...}. this avoids evaluating at zero and ensures the evaluation domain is disjoint from the polynomial's natural domain.
+
+## proof structure
+
+a WHIRProof contains:
+
+```
+WHIRProof {
+  rounds: [RoundData; log₂(N)]
+  final_value: F                          // constant polynomial value after all folds
+}
+
+RoundData {
+  commitment: hemera Merkle root           // commitment to folded evaluations
+  auth_paths: [MerklePath; num_queries]   // authentication paths for queried positions
+  leaf_values: [F; num_queries]           // evaluation values at queried positions
+}
+```
+
+query positions are derived deterministically from the Fiat-Shamir transcript: after absorbing each round commitment, the verifier squeezes query indices from the transcript. this makes the proof non-interactive.
+
+number of queries per round: security_bits / log₂(1/ρ). at 100-bit security with ρ = 1/2: 100 / log₂(2) = 100 queries per round. at ρ = 1/4: 100 / log₂(4) = 50 queries per round. lower rate reduces queries but increases evaluation domain size.
 
 ## parameters
 
