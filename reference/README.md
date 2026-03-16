@@ -11,8 +11,13 @@ for intuition, motivation, and learning paths see [docs/explanation](../docs/exp
 
 - [[whir]] — Weights Help Improving Rate. multilinear PCS with sub-millisecond verification
 - [[sumcheck]] — interactive proof reducing exponential sums to one evaluation
-- [[superspartan]] — IOP for Customizable Constraint Systems (CCS) via sumcheck
+- [[superspartan]] — IOP for Customizable Constraint Systems ([[CCS]]) via sumcheck
 - [[polynomial-commitment]] — commit-then-open primitive, WHIR instantiation over Goldilocks
+
+## foundations
+
+- [[stark]] — Scalable Transparent Arguments of Knowledge. the proof system family zheng belongs to
+- [[CCS]] — Customizable Constraint Systems. the unified constraint framework powering SuperSpartan
 
 ## planned
 

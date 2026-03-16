@@ -2,7 +2,7 @@
 tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
-alias: CCS, Customizable Constraint Systems
+alias: SuperSpartan IOP
 ---
 # SuperSpartan
 
