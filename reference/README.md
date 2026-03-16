@@ -14,10 +14,10 @@ for intuition, motivation, and learning paths see [docs/explanation](../docs/exp
 - [[superspartan]] — IOP for Customizable Constraint Systems ([[CCS]]) via sumcheck
 - [[polynomial-commitment]] — commit-then-open primitive, WHIR instantiation over Goldilocks
 
-## planned
+## proof pipeline
 
-- transcript — Fiat-Shamir transcript construction and domain separation
-- constraints — AIR constraint format and encoding rules
-- verifier — standalone verifier algorithm and circuit decomposition
-- recursion-spec — recursive composition protocol and depth bounds
-- api — prover/verifier interface and data formats
+- [[transcript]] — Fiat-Shamir transcript construction, domain separation, sponge protocol
+- [[constraints]] — AIR constraint format, pattern table, CCS encoding, constraint budgets
+- [[verifier]] — standalone verifier algorithm, cost breakdown, nox pattern decomposition
+- [[recursion-spec]] — recursive composition protocol, tree/fold/DAG topologies, depth bounds
+- [[api]] — prover/verifier/fold interface, data types, usage patterns
