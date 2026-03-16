@@ -1,0 +1,10 @@
+[package]
+name = "zheng"
+version = "0.1.0"
+edition = "2024"
+description = "proof system: SuperSpartan IOP + WHIR PCS + sumcheck"
+license = "Cyber"
+
+[dependencies]
+aurum = { path = "../aurum" }
+hemera = { path = "../hemera" }
