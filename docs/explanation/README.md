@@ -69,7 +69,7 @@ start with vision, then landscape orients the design space. core protocols provi
 
 ## see also
 
-- [[aurum]] — the [[Goldilocks field]] underlying all arithmetic
+- [[nebu]] — the [[Goldilocks field]] underlying all arithmetic
 - [[hemera]] — the hash primitive used in every Merkle tree and commitment
 - [[nox]] — the VM whose execution traces zheng proves
 - [[BBG]] — the state database whose integrity proofs zheng generates

@@ -1,28 +1,28 @@
+---
+tags: computer science, cryptography
+---
 # zheng reference
 
-formal specifications for the zheng proof system. each page defines one protocol component with enough precision for independent implementation.
+precise definitions, parameters, APIs, and constraint costs for each component of the proof system. these pages answer "what exactly is X" — the spec you consult when implementing or auditing.
 
-zheng is pre-implementation. specifications will be written alongside the code — each page moves from planned to draft to stable as the corresponding module solidifies. for design rationale behind these choices, see docs/explanation/.
+for intuition, motivation, and learning paths see [docs/explanation](../explanation/).
 
-## reading order
+## protocols
 
-read [[iop]] and [[sumcheck]] first — they define the core interactive oracle proof. then [[pcs]] and [[transcript]] provide the commitment and non-interactivity layers. [[constraints]] bridges [[nox]] traces into the proof system. [[verifier]] and [[recursion]] define what a completed proof looks like and how proofs compose. [[api]] is the surface that [[nox]] and [[BBG]] call.
+- [[fri]] — Fast Reed-Solomon IOP. baseline low-degree test (2018)
+- [[stir]] — Shift To Improve Rate. fewer queries via rate improvement (2024)
+- [[whir]] — Weights Help Improving Rate. richest queries, sub-millisecond verification (2025)
 
-## specification pages
+## building blocks
 
-| page | scope | status |
-|------|-------|--------|
-| iop.md | [[SuperSpartan]] interactive oracle proof specification — CCS instance format, round structure, verifier checks | planned |
-| pcs.md | [[WHIR]] polynomial commitment specification — commit, open, verify, Reed-Solomon proximity parameters | planned |
-| sumcheck.md | [[sumcheck protocol]] specification — round messages, verifier algorithm, degree bounds, batching | planned |
-| transcript.md | Fiat-Shamir transcript construction — absorb semantics, squeeze semantics, [[hemera]] sponge binding | planned |
-| constraints.md | [[AIR]] constraint definitions for [[nox]] patterns — transition constraints, boundary constraints, degree analysis | planned |
-| verifier.md | standalone verifier specification — inputs, outputs, acceptance criteria, error probabilities | planned |
-| recursion.md | recursive composition protocol — accumulation scheme, [[IVC]] chain structure, base case | planned |
-| api.md | public API surface — prove, verify, recursive_verify, constraint registration | planned |
+- [[sumcheck]] — interactive proof reducing exponential sums to one evaluation
+- [[superspartan]] — IOP for Customizable Constraint Systems (CCS) via sumcheck
+- [[polynomial-commitment]] — commit-then-open primitive, WHIR instantiation over Goldilocks
 
-## see also
+## planned
 
-- [[aurum]] reference — [[Goldilocks field]] arithmetic specification
-- [[hemera]] reference — hash primitive specification (the sponge zheng calls)
-- [[nox]] reference — VM instruction set (the traces zheng proves)
+- transcript — Fiat-Shamir transcript construction and domain separation
+- constraints — AIR constraint format and encoding rules
+- verifier — standalone verifier algorithm and circuit decomposition
+- recursion-spec — recursive composition protocol and depth bounds
+- api — prover/verifier interface and data formats

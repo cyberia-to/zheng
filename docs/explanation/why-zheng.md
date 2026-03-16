@@ -2,7 +2,7 @@
 
 the entire cyber stack exists for one purpose: turning computation into
 [[proofs]]. every layer beneath zheng was engineered with this moment in
-mind. [[aurum]] defines the field. [[hemera]] defines the hash. [[nox]]
+mind. [[nebu]] defines the field. [[hemera]] defines the hash. [[nox]]
 defines the virtual machine. zheng is the keystone that locks them
 together — the component that takes a nox execution trace and produces
 a cryptographic proof that the trace is correct.
@@ -100,7 +100,7 @@ between components where assumptions might silently diverge.
 
 ## the keystone
 
-[[aurum]] gives cyber its arithmetic. [[hemera]] gives cyber its memory
+[[nebu]] gives cyber its arithmetic. [[hemera]] gives cyber its memory
 integrity. [[nox]] gives cyber its programmability. zheng gives cyber
 something none of the others can provide alone: the ability to compress
 an entire computation into a short proof that anyone can verify in under
@@ -108,7 +108,7 @@ a millisecond, without trusting the prover, without trusting a ceremony,
 without trusting anything except mathematics.
 
 zheng is where computation becomes evidence. it is the reason the stack
-exists. every design choice in [[aurum]], every opcode in [[nox]], every
+exists. every design choice in [[nebu]], every opcode in [[nox]], every
 algebraic property of [[hemera]] was made so that this moment — the moment
 a trace becomes a proof — would be as fast, as small, and as secure as
 the laws of information theory allow.

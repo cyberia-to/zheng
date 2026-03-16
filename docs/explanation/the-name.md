@@ -23,8 +23,8 @@ settled.
 each layer of the cyber cryptographic stack carries a name that encodes
 its role:
 
-[[aurum]] — gold. the field. the base metal from which all arithmetic
-is forged. p = 2^64 - 2^32 + 1, the [[Goldilocks]] prime. aurum is
+[[nebu]] — gold. the field. the base metal from which all arithmetic
+is forged. p = 2^64 - 2^32 + 1, the [[Goldilocks]] prime. nebu is
 the substrate, ancient and elemental.
 
 [[hemera]] — the Greek goddess of day, of light. the hash function that

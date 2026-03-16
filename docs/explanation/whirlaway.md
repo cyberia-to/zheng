@@ -84,7 +84,7 @@ every operation the verifier performs is a [[nox]] primitive. the verifier IS a 
 
 Whirlaway was proposed by LambdaClass in early 2025 as a multilinear STARK architecture. the name reflects the composition: WHIR provides the polynomial commitment, SuperSpartan provides the IOP, and the sumcheck protocol is the engine driving both.
 
-zheng is [[cyber]]'s implementation. the specific choices — [[Goldilocks field]] arithmetic from [[aurum]], Poseidon2 hashing from [[hemera]], 16-pattern reduction machine from [[nox]] — are cyber's instantiation of the abstract Whirlaway template. other implementations might choose different fields, different hash functions, different VMs. the architecture remains the same.
+zheng is [[cyber]]'s implementation. the specific choices — [[Goldilocks field]] arithmetic from [[nebu]], Poseidon2 hashing from [[hemera]], 16-pattern reduction machine from [[nox]] — are cyber's instantiation of the abstract Whirlaway template. other implementations might choose different fields, different hash functions, different VMs. the architecture remains the same.
 
 ## what makes it work
 

@@ -564,7 +564,7 @@ sumcheck        core interactive proof protocol
 
 | repo | path | role |
 |------|------|------|
-| aurum | `~/git/aurum/` | Goldilocks field arithmetic |
+| nebu | `~/git/nebu/` | Goldilocks field arithmetic |
 | hemera | `~/git/hemera/` | hash function (Poseidon2) |
 | nox | `~/git/nox/` | VM (execution traces) |
 | zheng | `~/git/zheng/` | proof system (this repo) |

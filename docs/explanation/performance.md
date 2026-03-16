@@ -116,7 +116,7 @@ division.
 this eliminates the need for big-integer libraries. there is no
 [[Montgomery multiplication]] overhead, no multi-limb carries, no
 word-by-word schoolbook multiplication. every field operation is a
-handful of native CPU instructions. this is why [[aurum]] exists as a
+handful of native CPU instructions. this is why [[nebu]] exists as a
 standalone library — the field implementation is performance-critical
 and benefits from assembly-level optimization.
 
