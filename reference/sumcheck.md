@@ -38,6 +38,48 @@ rounds:   k (one per variable)
 
 for a [[nox]] execution trace with 2ⁿ steps and 2ᵐ registers, k = n + m. the sumcheck prover is linear in the trace size. the verifier's work is logarithmic.
 
+## round polynomial construction
+
+at each round the prover constructs a univariate polynomial that sums out one variable while keeping earlier variables pinned to verifier challenges.
+
+### general algorithm
+
+at round i, variables x₁, ..., x_{i-1} are fixed to challenges r₁, ..., r_{i-1}. the prover computes:
+
+```
+gᵢ(Xᵢ) = Σ_{x_{i+1}, ..., x_k ∈ {0,1}} f(r₁, ..., r_{i-1}, Xᵢ, x_{i+1}, ..., x_k)
+```
+
+gᵢ is a univariate polynomial of degree at most d, where d is the constraint degree of f. the prover determines gᵢ by evaluating it at d + 1 points: Xᵢ = 0, 1, 2, ..., d. these d + 1 evaluations uniquely determine a degree-d polynomial via interpolation.
+
+### SuperSpartan over CCS (degree d = 7, pattern 15)
+
+in [[SuperSpartan]] with CCS constraints of max degree d = 7:
+
+```
+each round polynomial gᵢ has degree ≤ 7
+prover sends 8 evaluations per round (d + 1 = 8 points determine a degree-7 poly)
+verifier checks: gᵢ(0) + gᵢ(1) = claimᵢ₋₁
+total prover work per round: O(2^{k-i}) evaluations of the constraint polynomial
+```
+
+across k rounds the verifier performs 8k field additions for consistency checks, plus one final PCS opening.
+
+### optimization: bookkeeping tables
+
+the prover maintains a table of partial sums that halves in size each round:
+
+```
+round 1: table has 2^k entries    → compute g₁ in O(2^k) work
+round 2: table has 2^{k-1} entries → compute g₂ in O(2^{k-1}) work
+  ...
+round i: table has 2^{k-i} entries → compute gᵢ in O(2^{k-i}) work
+  ...
+round k: table has 1 entry        → compute g_k in O(1) work
+```
+
+after computing gᵢ, the prover receives challenge rᵢ and folds the table: each pair of entries (one for xᵢ = 0, one for xᵢ = 1) is combined as (1 - rᵢ) · entry₀ + rᵢ · entry₁. total work across all k rounds: O(2^k) + O(2^{k-1}) + ... + O(1) = O(2^k) = O(N), linear in the summation domain size.
+
 ## role in cyber
 
 in the [[whirlaway|multilinear stark]] pipeline, sumcheck replaces the zerofier division step of classical univariate starks. [[SuperSpartan]] uses sumcheck to verify AIR constraints: the sum of constraint polynomials over all trace rows must be zero. sumcheck reduces this to evaluating the trace polynomial at one random point, which [[WHIR]] opens.
