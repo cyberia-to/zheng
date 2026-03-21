@@ -6,28 +6,27 @@ these pages illuminate the design. for formal definitions, see reference/. for t
 
 ## reading path
 
-```
-why-zheng ─── the-name
-    │
-stark ─── CCS ─── landscape
-    │
-    ├── sumcheck ──────────────┐
-    ├── polynomial-commitments │
-    └── fri-to-whir ───────────┤
-                               │
-    superspartan ──────────────┤
-                               │
-    whirlaway ─────────────────┘
-        │
-    trace-to-proof
-        │
-    ├── recursion
-    ├── security
-    ├── performance
-    └── bbg-integration
-```
+start with vision, then foundations orient the design space. core protocols provide the cryptographic primitives. architecture shows how the pieces compose. powers describe what the composed system achieves
 
-start with vision, then foundations and landscape orient the design space. core protocols provide the cryptographic primitives. architecture shows how the pieces compose. powers describe what the composed system achieves.
+### 1. vision
+
+[[zheng/docs/explanation/why-zheng|why-zheng]] → [[zheng/docs/explanation/the-name|the-name]]
+
+### 2. foundations
+
+[[zheng/docs/explanation/stark|stark]] → [[zheng/docs/explanation/CCS|CCS]] → [[zheng/docs/explanation/landscape|landscape]]
+
+### 3. core protocols
+
+[[zheng/docs/explanation/sumcheck|sumcheck]] + [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] + [[zheng/docs/explanation/fri-to-whir|fri-to-whir]]
+
+### 4. architecture
+
+[[zheng/docs/explanation/superspartan|superspartan]] + core protocols → [[zheng/docs/explanation/whirlaway|whirlaway]] → [[zheng/docs/explanation/trace-to-proof|trace-to-proof]]
+
+### 5. powers
+
+[[zheng/docs/explanation/recursion|recursion]] · [[zheng/docs/explanation/security|security]] · [[zheng/docs/explanation/performance|performance]] · [[zheng/docs/explanation/bbg-integration|bbg-integration]]
 
 ## pages
 
