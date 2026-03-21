@@ -33,26 +33,6 @@ these pages illuminate the design. for formal definitions, see reference/. for t
             [[zheng/docs/explanation/bbg-integration|bbg-integration]]
 ```
 
-### vision
-
-[[zheng/docs/explanation/why-zheng|why-zheng]] → [[zheng/docs/explanation/the-name|the-name]]
-
-### foundations
-
-[[zheng/docs/explanation/stark|stark]] → [[zheng/docs/explanation/CCS|CCS]] → [[zheng/docs/explanation/landscape|landscape]]
-
-### core protocols
-
-[[zheng/docs/explanation/sumcheck|sumcheck]] · [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] · [[zheng/docs/explanation/fri-to-whir|fri-to-whir]]
-
-### architecture
-
-[[zheng/docs/explanation/superspartan|superspartan]] → [[zheng/docs/explanation/whirlaway|whirlaway]] → [[zheng/docs/explanation/trace-to-proof|trace-to-proof]]
-
-### powers
-
-[[zheng/docs/explanation/recursion|recursion]] · [[zheng/docs/explanation/security|security]] · [[zheng/docs/explanation/performance|performance]] · [[zheng/docs/explanation/bbg-integration|bbg-integration]]
-
 ## pages
 
 ### vision
