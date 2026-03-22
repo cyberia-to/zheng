@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: recursive composition spec, proof recursion, IVC spec
+diffusion: 0.00010722364868599256
+springs: 0.002236585268266477
+heat: 0.0015539445110052553
+focus: 0.0010353763070239772
+gravity: 0
+density: 0.64
 ---
 # recursion
 

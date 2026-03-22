@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: Whirlaway, Whirlaway architecture, multilinear stark architecture
+diffusion: 0.00042890433139523105
+springs: 0.0002783187123873627
+heat: 0.00033591611256587824
+focus: 0.0003651310019269953
+gravity: 12
+density: 0.96
 ---
 # whirlaway
 

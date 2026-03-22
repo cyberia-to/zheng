@@ -3,6 +3,12 @@ tags: cyber, computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: polynomial commitments, polynomial commitment scheme, WHIR polynomial commitment, WHIR polynomial commitments, FRI polynomial commitment, FRI polynomial commitments
+diffusion: 0.0002813632881429418
+springs: 0.0010068991492176759
+heat: 0.0007856657208519698
+focus: 0.00059988453300716
+gravity: 5
+density: 1.89
 ---
 # polynomial commitment
 

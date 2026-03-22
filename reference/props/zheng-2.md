@@ -3,6 +3,12 @@ title: "zheng-2: dual-algebra proof architecture"
 status: draft
 date: 2026-03-18
 depends: [algebraic-extraction.md, folding-first.md, proof-carrying.md, gravity-commitment.md, tensor-compression.md, binius-pcs.md, brakedown-pcs.md, ring-aware-fhe.md, universal-accumulator.md, gpu-prover.md]
+diffusion: 0.00010722364868599256
+springs: 0.002289426463559174
+heat: 0.0015732806631330253
+focus: 0.0010550958960373398
+gravity: 0
+density: 0.07
 ---
 
 # zheng-2

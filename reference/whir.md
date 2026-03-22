@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: Weights Help Improving Rate
+diffusion: 0.00010722364868599256
+springs: 0.00037103751300073863
+heat: 0.0002945646617090688
+focus: 0.00022383601058502877
+gravity: 0
+density: 0.49
 ---
 # WHIR
 

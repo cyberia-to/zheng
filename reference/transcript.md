@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: Fiat-Shamir transcript, proof transcript
+diffusion: 0.00010722364868599256
+springs: 0.00041965751464741007
+heat: 0.0003266304655997323
+focus: 0.0002448351718571626
+gravity: 0
+density: 0.46
 ---
 # transcript
 

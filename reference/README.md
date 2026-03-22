@@ -1,5 +1,11 @@
 ---
 tags: computer science, cryptography
+diffusion: 0.00010722364868599256
+springs: 0.00007795330796863797
+heat: 0.00009023976773977348
+focus: 0.00009504577028154114
+gravity: 0
+density: 0.73
 ---
 # zheng reference
 

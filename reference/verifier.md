@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: zheng verifier, stark verifier
+diffusion: 0.00010722364868599256
+springs: 0.0004104490148476447
+heat: 0.00032077696545252516
+focus: 0.00024090192188779163
+gravity: 0
+density: 0.47
 ---
 # verifier
 

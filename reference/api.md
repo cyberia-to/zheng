@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: zheng API, prover API, verifier API
+diffusion: 0.00010722364868599256
+springs: 0.0004532788515682401
+heat: 0.000350448841959531
+focus: 0.00025968524820537114
+gravity: 0
+density: 0.65
 ---
 # api
 

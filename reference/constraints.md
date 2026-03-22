@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: AIR constraints, constraint encoding, zheng constraints
+diffusion: 0.00010722364868599256
+springs: 0.0013098562361246685
+heat: 0.0009331605005966113
+focus: 0.000633200795299711
+gravity: 0
+density: 0.23
 ---
 # constraints
 

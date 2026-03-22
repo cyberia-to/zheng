@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: Customizable Constraint Systems
+diffusion: 0.00010722364868599256
+springs: 0.001137044755452678
+heat: 0.0008200198827112012
+focus: 0.0005587292275210328
+gravity: 0
+density: 2.65
 ---
 # CCS
 

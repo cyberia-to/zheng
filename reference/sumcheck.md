@@ -3,6 +3,12 @@ tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
 alias: sumcheck protocol
+diffusion: 0.00024078878226632726
+springs: 0.00036111148333910204
+heat: 0.00035045605749663074
+focus: 0.0002988190476342166
+gravity: 10
+density: 0.81
 ---
 # sumcheck
 
