@@ -43,6 +43,20 @@ design proposals for zheng proof system evolution. [[zheng-2]] is the integrated
 |----------|--------|--------|
 | [[ring-aware-fhe]] | draft | native TFHE bootstrapping — ring-structured CCS + jets |
 
+## structural sync mapping
+
+zheng proposals serve layer 1 (validity) of [[structural sync|structural-sync]] — proving state transitions are correct. the proof system is the foundation that makes all other layers trustworthy.
+
+| category | proposals | structural sync role |
+|----------|-----------|---------------------|
+| proof size | algebraic-extraction, brakedown-pcs, gravity-commitment | cheaper layer 1 verification |
+| composition | folding-first, proof-carrying, universal-accumulator | compress layer 1 across time |
+| prover | tensor-compression, gpu-prover | faster layer 1 generation |
+| binary | binius-pcs | layer 1 for binary workloads |
+| domain | ring-aware-fhe | layer 1 for FHE verification |
+
+the universal accumulator is special: it folds ALL five structural sync layers into one ~200 byte object — not just layer 1 (validity) but also layer 2 (ordering verification), layer 3 (completeness), layer 4 (availability), and layer 5 (merge correctness).
+
 ## combined targets (all proposals)
 
 ```

@@ -137,6 +137,24 @@ extends [[proof-horizons]] Horizon 2 (folding-first composition):
 - the composition mechanism is the same (HyperNova over CCS)
 - the scope is broader — not just signal proofs but the entire verification stack
 
+## five-layer folding
+
+the universal accumulator folds all five [[structural sync|structural-sync]] layers into one object:
+
+```
+layer 1 (validity):      zheng proof per signal → folded into accumulator
+layer 2 (ordering):      hash chain + VDF verification → folded
+layer 3 (completeness):  NMT/polynomial update proof → folded
+layer 4 (availability):  DAS commitment proof → folded
+layer 5 (merge):         CRDT/foculus state transition → folded
+
+result: one ~200 byte accumulator proves ALL five properties for ALL history
+```
+
+this is the compression of structural sync: a light client downloading the accumulator and running one decider gets the full guarantee of verified eventual consistency (VEC) — convergence, completeness, availability — in one verification.
+
+the accumulator does not just prove "all proofs are valid." it proves "the entire sync protocol was executed correctly at every step since genesis."
+
 ## open questions
 
 1. **heterogeneous CCS efficiency**: folding instances with very different constraint counts (signal: ~13K, LogUp: ~5M, DAS: ~1K) may require padding or multi-sized accumulator slots. CycleFold addresses this but adds complexity
@@ -144,4 +162,4 @@ extends [[proof-horizons]] Horizon 2 (folding-first composition):
 3. **VDF chain verification**: VDF proofs are sequential by nature. folding them doesn't remove the sequentiality — it just proves the chain was verified. a reconnecting node still needs to trust the VDF chain or re-verify critical segments
 4. **accumulator size vs verification time trade-off**: a smaller accumulator (~200 bytes) may require a slightly more expensive decider. the optimal balance depends on light client profile (mobile vs desktop)
 
-see [[proof-horizons]] for folding-first composition, [[zheng-2]] for architecture, [[binius-pcs]] for cross-algebra folding
+see [[proof-horizons]] for folding-first composition, [[zheng-2]] for architecture, [[binius-pcs]] for cross-algebra folding, [[structural-sync]] for the five-layer sync model
