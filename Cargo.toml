@@ -1,3 +1,8 @@
+# ---
+# tags: zheng, config
+# crystal-type: source
+# crystal-domain: comp
+# ---
 [package]
 name = "zheng"
 version = "0.1.0"
