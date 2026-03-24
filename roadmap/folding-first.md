@@ -68,7 +68,7 @@ a nox<F_p> transaction activates sel_Fp rows. a nox<F₂> transaction activates 
 
 the decider proves the universal CCS instance. one proof regardless of how many algebras were involved.
 
-boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera-2 hash). negligible vs execution cost.
+boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera hash). negligible vs execution cost.
 
 ## extended by universal accumulator
 

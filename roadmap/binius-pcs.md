@@ -129,7 +129,7 @@ binary execution → binary proof (hemera Merkle + FS externally)
     fold into F_p accumulator
 ```
 
-hemera inside F₂ circuit: ~142K binary constraints per hash (simulating Goldilocks mul in bits). unacceptable for recursion. hemera inside F_p circuit: ~736 constraints (hemera-2). the recursion boundary is Goldilocks.
+hemera inside F₂ circuit: ~142K binary constraints per hash (simulating Goldilocks mul in bits). unacceptable for recursion. hemera inside F_p circuit: ~736 constraints (hemera). the recursion boundary is Goldilocks.
 
 ## kuro dependency
 

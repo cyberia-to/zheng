@@ -18,7 +18,7 @@ the next-generation proof architecture for [[cyber]]. two PCS backends (WHIR/Bra
 ## targets
 
 ```
-                        zheng-1 (Whirlaway)     zheng-2 + hemera-2      improvement     source
+                        zheng-1 (Whirlaway)     zheng-2 + hemera        improvement     source
 proof size (128-bit):   157 KiB                 1-5 KiB                 30-150×         algebraic-extraction → brakedown
 verification:           1.0 ms                  10-50 μs                20-100×         gravity-commitment
 recursive step:         70K constraints         30 field ops            2,300×          folding-first
@@ -123,7 +123,7 @@ hemera is the ONLY hash in the entire stack. both PCS backends use it:
 - **Binius**: hemera Merkle tree over packed binary evaluations (bytes in, bytes out — field-agnostic)
 - **Fiat-Shamir**: hemera sponge for all backends. challenges squeezed as bytes, interpreted as target field elements
 
-recursion boundary: binary proofs are NEVER verified inside binary circuits. verification crosses to Goldilocks where hemera is native (~736 constraints per permutation with hemera-2). the recursion topology:
+recursion boundary: binary proofs are NEVER verified inside binary circuits. verification crosses to Goldilocks where hemera is native (~736 constraints per permutation). the recursion topology:
 
 ```
 binary execution → binary proof (hemera external)
@@ -133,19 +133,19 @@ binary execution → binary proof (hemera external)
     fold into universal accumulator (Goldilocks)
 ```
 
-### hemera-2 contribution
+### hemera parameters
 
-hemera-2 (32-byte output, 24 rounds, x⁻¹ partial rounds):
+hemera (32-byte output, 24 rounds, x⁻¹ partial rounds):
 
 ```
-                        hemera-1        hemera-2        improvement
-rounds per hash:        72              24              3×
-constraints/perm:       ~1,200          ~736            1.6×
-fold steps per hash:    72              24              3×
-output size:            64 bytes        32 bytes        2×
-tree node cost:         2 permutations  1 permutation   2×
-MPC depth:              192             40              5.4×
-FHE noise:              192 sequential  40 sequential   5.4×
+                        before (x⁷, 64 rounds)  current (x⁻¹, 16 rounds)   improvement
+rounds per hash:        72                       24                          3×
+constraints/perm:       ~1,200                   ~736                        1.6×
+fold steps per hash:    72                       24                          3×
+output size:            64 bytes                 32 bytes                    2×
+tree node cost:         2 permutations           1 permutation               2×
+MPC depth:              192                      40                          5.4×
+FHE noise:              192 sequential           40 sequential               5.4×
 ```
 
 ## cross-algebra composition
@@ -173,7 +173,7 @@ one accumulator, all algebras
 decider: one proof, 10-50 μs verification
 ```
 
-boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera-2 hash). for 32-layer quantized neural net inference: 32 × 766 = ~24.5K F_p constraints. negligible vs millions of binary execution constraints.
+boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera hash). for 32-layer quantized neural net inference: 32 × 766 = ~24.5K F_p constraints. negligible vs millions of binary execution constraints.
 
 ## ring-aware FHE proving
 
@@ -193,7 +193,7 @@ ring-aware jets:
   noise_track:    running noise accumulator (check once at bootstrap boundary)
 ```
 
-hemera under FHE: hemera-2's reduced multiplicative depth (40 vs 192) means 5.4× less noise for homomorphic hash evaluation.
+hemera under FHE: hemera's reduced multiplicative depth with x⁻¹ S-box (40 vs 192) means 5.4× less noise for homomorphic hash evaluation.
 
 ## proposals (integrated)
 
@@ -297,4 +297,4 @@ phase 10: GPU-native pipeline                 (45-100× throughput)
 6. **tensor rank of real traces**: empirical validation on cyberlink, inference, and tri-kernel workloads
 7. **GPU Fiat-Shamir**: sequential hemera sponge on GPU — latency impact for long transcripts
 
-see [[hemera-2]] for hash upgrade, [[algebra-polymorphism]] for nox instantiation, [[goldilocks-fhe]] for FHE parameters
+see [[hemera]] for hash specification, [[algebra-polymorphism]] for nox instantiation, [[goldilocks-fhe]] for FHE parameters
