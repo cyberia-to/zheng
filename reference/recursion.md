@@ -117,7 +117,7 @@ one accumulator, all algebras
 decider: one proof, ~30 μs verification (Brakedown)
 ```
 
-boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera-2 hash). negligible vs execution cost.
+boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera hash). negligible vs execution cost.
 
 ## legacy: recursion mechanics (WHIR)
 
