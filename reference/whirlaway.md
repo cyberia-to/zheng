@@ -2,7 +2,7 @@
 tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
-alias: Whirlaway, Whirlaway architecture, multilinear stark architecture
+alias: zheng architecture, zheng-2, multilinear stark architecture, Whirlaway
 diffusion: 0.00042890433139523105
 springs: 0.0002783187123873627
 heat: 0.00033591611256587824
@@ -10,24 +10,52 @@ focus: 0.0003651310019269953
 gravity: 12
 density: 0.96
 ---
-# whirlaway
+# zheng
 
-the concrete multilinear [[stark]] architecture: [[SuperSpartan]] IOP + [[WHIR]] PCS. Habock, Levit, Papini (LambdaClass, 2025). [[zheng]] is [[cyber]]'s implementation.
+the proof architecture for [[cyber]]. [[SuperSpartan]] IOP + [[Brakedown]] PCS (Goldilocks) + [[Binius]] PCS (F₂) + [[HyperNova]] folding. two PCS backends over one field-generic IOP. [[hemera]] is the only hash. 14 [[nox]] languages map to 2 provers. cross-algebra composition via universal CCS folding.
+
+zheng-1 ("Whirlaway") used SuperSpartan + WHIR. zheng-2 replaces WHIR with Brakedown as the primary PCS and adds HyperNova folding for composition.
+
+## architecture
+
+```
+zheng-2
+├── IOP layer (field-generic, shared)
+│   ├── SuperSpartan          CCS constraint system
+│   ├── sumcheck              exponential sum reduction
+│   └── HyperNova             folding + composition
+│
+├── PCS layer (field-specific, two backends)
+│   ├── Brakedown (Goldilocks) expander-graph codes, Merkle-free (primary)
+│   ├── Binius (F₂ tower)     binary Reed-Solomon with packing
+│   └── WHIR (Goldilocks)     Reed-Solomon + Merkle (legacy, bootstrap)
+│
+├── hash layer
+│   └── hemera                one hash, universal
+│                             Fiat-Shamir for all PCS backends
+│                             Merkle only for Binius/WHIR (not Brakedown)
+│
+└── composition
+    └── HyperNova folding     ~30 field ops + 1 hemera hash per fold
+        └── decider           one SuperSpartan + sumcheck + Brakedown proof
+```
 
 ## composition
 
 ```
-Whirlaway = SuperSpartan (IOP for CCS) + WHIR (multilinear PCS)
+zheng = SuperSpartan (IOP for CCS)
+      + Brakedown (multilinear PCS, primary)
+      + HyperNova (folding composition)
 
 prover:
   1. execute program → trace matrix (2ⁿ × 2ᵐ)
-  2. commit trace as multilinear polynomial via WHIR_commit
+  2. commit trace as multilinear polynomial via Brakedown_commit
   3. run sumcheck with verifier (constraint verification via SuperSpartan)
-  4. open WHIR commitment at sumcheck output point via WHIR_open
+  4. open Brakedown commitment at sumcheck output point
 
 verifier:
   1. check sumcheck transcript (field arithmetic only)
-  2. check WHIR opening (one evaluation proof: WHIR_verify)
+  2. check Brakedown opening (matrix-vector consistency check)
   3. all constraints verified
 ```
 
@@ -39,24 +67,24 @@ SETUP: none (transparent)
 PROVER(trace T, constraints C):
   1. pad T to 2^n rows
   2. f ← multilinear_extension(T)        // f: F^{n+m} → F
-  3. C_f ← WHIR_commit(f)                // hemera Merkle root
-  4. transcript.absorb(C_f)
+  3. C_f ← Brakedown_commit(f)           // expander-graph encoding, O(N) field ops
+  4. transcript.absorb(hemera(C_f))       // one binding hash
   5. for round i = 1..n+m:               // SuperSpartan sumcheck
        g_i ← sum_{remaining vars} constraint_poly(f, ...)
        transcript.absorb(g_i)
        r_i ← transcript.squeeze()
   6. v ← f(r_1, ..., r_{n+m})
-  7. π ← WHIR_open(f, (r_1,...,r_{n+m}))
+  7. π ← Brakedown_open(f, (r_1,...,r_{n+m}))   // O(√N) field elements
   8. return (C_f, sumcheck_transcript, v, π)
 
 VERIFIER(statement S, proof):
-  1. transcript.absorb(S, proof.commitment)
+  1. transcript.absorb(S, hemera(proof.commitment))
   2. for round i = 1..n+m:
        check g_i(0) + g_i(1) = claim_{i-1}
        r_i ← transcript.squeeze()
        claim_i ← g_i(r_i)
   3. check claim_{n+m} = constraint_eval(proof.v, r, S)
-  4. check WHIR_verify(proof.commitment, r, proof.v, proof.π)
+  4. check Brakedown_verify(proof.commitment, r, proof.v, proof.π)
 ```
 
 ## multilinear extension
@@ -103,6 +131,36 @@ memory: in-place, modifies table of shrinking size
 
 this is the same algorithm the sumcheck prover uses internally: each round fixes one variable, halving the table. after k rounds, one value remains.
 
+## two PCS backends
+
+### Goldilocks path (primary)
+
+12 of 14 nox languages encode as F_p constraints and use Brakedown:
+
+| language | algebra | constraint type |
+|---|---|---|
+| Tri | F_{p^n} field tower | native field arithmetic |
+| Tok | UTXO conservation | field arithmetic + hemera membership |
+| Arc | category theory | tree traversal + hemera hashing |
+| Seq | partial order | structural comparisons |
+| Inf | Horn clauses | unification + resolution |
+| Bel | g on Delta^n | fixed-point Bayes |
+| Ren | G(p,q,r) shapes | fixed-point geometry |
+| Dif | (M, g) manifolds | discretized derivatives |
+| Sym | (M, omega) dynamics | Hamiltonian integration |
+| Wav | R_q convolution | NTT multiply (ring-aware jets) |
+| Ten | contraction (full-precision) | matrix multiply |
+| Rs | Z/2^n words (arithmetic-heavy) | word arithmetic + range checks |
+
+### binary path
+
+2 of 14 languages encode as F₂ constraints and use Binius:
+
+| language | algebra | constraint type |
+|---|---|---|
+| Bt | F₂ tower | native binary (XOR=add, AND=mul) |
+| Ten | contraction (quantized) | 1-4 bit matrix multiply |
+
 ## instantiation in cyber
 
 | parameter | value |
@@ -111,7 +169,10 @@ this is the same algorithm the sumcheck prover uses internally: each round fixes
 | hash | [[hemera]] (Poseidon2, 512-bit state, 256-bit capacity) |
 | VM | [[nox]] (16 patterns + hint + 5 jets) |
 | IOP | [[SuperSpartan]] over [[CCS]] |
-| PCS | [[WHIR]] (multilinear mode) |
+| PCS (primary) | [[Brakedown]] (multilinear, Merkle-free) |
+| PCS (binary) | [[Binius]] (F₂ tower) |
+| PCS (legacy) | [[WHIR]] (multilinear, Merkle-based) |
+| composition | [[HyperNova]] folding over CCS |
 | trace width | 16 registers (2^4 columns) |
 | trace depth | up to 2^32 rows |
 | constraint system | CCS encoding of AIR (see [[constraints]]) |
@@ -125,62 +186,67 @@ this is the same algorithm the sumcheck prover uses internally: each round fixes
 |---|---|---|
 | execute | O(N) nox steps | VM reduction |
 | encode | O(N) | multilinear extension (field ops) |
-| commit | O(N log N) | hemera Merkle tree construction |
+| commit | O(N) | Brakedown expander-graph encoding (field ops) |
 | sumcheck (SuperSpartan) | O(N) | field multiplications |
-| WHIR open | O(N log N) | hemera hashes + folding |
-| total | O(N log N) | WHIR commit/open dominates |
+| Brakedown open | O(N) | linear combination of encoded rows |
+| total | O(N) | field-op dominated (nebu) |
+
+with WHIR (legacy): commit O(N log N), open O(N log N), total O(N log N), hash-dominated (hemera).
 
 ### verifier
 
 | phase | cost | operations |
 |---|---|---|
 | sumcheck check | O(log N) | field arithmetic only |
-| WHIR verify | O(log² N) | hemera hashes + field ops |
-| total | O(log² N) | hash-dominated |
-| wall clock (128-bit) | ~1.0 ms | ~2,700 hemera calls |
-| wall clock (100-bit) | ~290 μs | ~1,800 hemera calls |
+| Brakedown verify | O(√N) | field arithmetic (matrix-vector check) |
+| total | O(√N) | field-dominated |
+| wall clock (128-bit) | ~30 μs | field ops only |
+
+with WHIR (legacy): verify O(log² N), ~1.0 ms at 128-bit, hash-dominated (~2,700 hemera calls).
 
 ### proof size
 
-| security | size | breakdown |
+| PCS | size (128-bit) | breakdown |
 |---|---|---|
-| 100-bit | ~60 KiB | sumcheck (~2 KiB) + WHIR opening (~58 KiB) |
-| 128-bit | ~157 KiB | sumcheck (~3 KiB) + WHIR opening (~154 KiB) |
+| Brakedown | ~8 KiB | sumcheck (~3 KiB) + Brakedown opening (~5 KiB) |
+| WHIR (legacy) | ~157 KiB | sumcheck (~3 KiB) + WHIR opening (~154 KiB) |
 
 proof size is constant regardless of original computation size.
 
 ## why this composition
 
-[[SuperSpartan]] is PCS-agnostic — it works with any polynomial commitment scheme. choosing [[WHIR]] as the PCS gives:
+[[SuperSpartan]] is PCS-agnostic — it works with any polynomial commitment scheme. choosing [[Brakedown]] as the primary PCS gives:
 
 | property | source |
 |---|---|
-| transparent setup | WHIR (hash-only, no ceremony) |
-| post-quantum security | WHIR (no discrete log) |
-| sub-millisecond verification | WHIR (weighted queries, rate improvement) |
+| transparent setup | Brakedown (no ceremony, no trusted setup) |
+| post-quantum security | Brakedown (no discrete log, no pairings) |
+| O(N) commitment | Brakedown (expander-graph encoding, no FFT) |
+| O(√N) verification | Brakedown (matrix-vector check, no Merkle) |
 | linear-time constraint proving | SuperSpartan (sumcheck, no FFT) |
 | any-degree AIR constraints | SuperSpartan ([[CCS]] generality) |
 | one commitment, one opening | multilinear encoding + sumcheck reduction |
+| HyperNova folding | ~30 field ops per recursive step |
 
-the alternative PCS choices and their tradeoffs:
+| PCS | setup | post-quantum | verification | verifier constraints |
+|---|---|---|---|---|
+| **Brakedown** | none | yes | ~30 μs | ~12K |
+| WHIR | none | yes | ~1.0 ms | ~70K |
+| KZG | trusted ceremony | no | ~2.4 ms | — |
+| FRI | none | yes | ~3.9 ms | — |
+| STIR | none | yes | ~3.8 ms | — |
 
-| PCS | setup | post-quantum | verification |
-|---|---|---|---|
-| KZG | trusted ceremony | no | ~2.4 ms |
-| IPA | none | no | ~10 ms |
-| [[FRI]] | none | yes | ~3.9 ms |
-| [[STIR]] | none | yes | ~3.8 ms |
-| WHIR | none | yes | ~1.0 ms |
-
-WHIR is the only PCS that combines transparent setup, post-quantum security, and sub-millisecond verification.
+Brakedown eliminates Merkle trees from the PCS. the 83% of WHIR's verifier constraints that were Merkle verification disappear entirely.
 
 ## recursive closure
 
-the Whirlaway verifier uses only:
+the zheng verifier uses only:
 - [[Goldilocks field]] arithmetic (nox patterns 5-8)
-- [[hemera]] hashing (nox pattern 15 / hash jet)
+- [[hemera]] hashing (nox pattern 15 / hash jet) — Fiat-Shamir only
 - conditional branching (nox pattern 4)
 
-these are all [[nox]]-native operations. the verifier is a nox program. zheng can prove its own verification — enabling recursive proof composition at ~70,000 constraints per level (with jets).
+these are all [[nox]]-native operations. the verifier is a nox program. zheng can prove its own verification. with Brakedown, the recursive verifier drops to ~12,000 constraints (from ~70,000 with WHIR) because Merkle path verification is eliminated.
+
+HyperNova folding further reduces recursive composition: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end.
 
 see [[verifier]] for the verification algorithm, [[api]] for the prover/verifier interface, [[recursion]] for recursive composition, [[constraints]] for the AIR format, [[transcript]] for Fiat-Shamir construction

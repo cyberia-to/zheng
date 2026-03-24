@@ -12,6 +12,8 @@ density: 0.49
 ---
 # WHIR
 
+> **NOTE**: WHIR is the legacy/bootstrap PCS for zheng-1 ("Whirlaway"). The target PCS for zheng-2 is [[Brakedown]] — expander-graph linear codes, Merkle-free, O(N) commitment, O(sqrt(N)) proof size. WHIR is retained for backward compatibility and as a fallback during the transition. See [[polynomial-commitment]] for the Brakedown specification.
+
 Weights Help Improving Rate. an interactive oracle proof of proximity for constrained Reed-Solomon codes that simultaneously serves as a multilinear polynomial commitment scheme. Arnon, Chiesa, Fenzi, Yogev (EUROCRYPT 2025). ePrint 2024/1586.
 
 ## protocol

@@ -14,6 +14,8 @@ density: 0.47
 
 the standalone verifier algorithm for [[zheng]]. accepts a proof and a public statement, returns accept or reject. the verifier is a [[nox]] program — it runs inside the same VM that produced the original trace, enabling recursive proof composition.
 
+with [[Brakedown]], the recursive verifier drops from ~70,000 to ~12,000 constraints. Brakedown's opening check replaces Merkle verification — the 83% of verifier cost that was hash-dominated disappears.
+
 ## algorithm
 
 ```
@@ -38,13 +40,16 @@ VERIFY(commitment C, statement S, proof π) → accept/reject:
      v = π.evaluation_value
      assert claimₖ = constraint_eval(v, r, S)
 
-  4. WHIR VERIFICATION
-     assert WHIR_verify(C, r, v, π.whir_opening)
+  4. PCS VERIFICATION
+     Brakedown: assert Brakedown_verify(C, r, v, π.pcs_opening)
+                (matrix-vector consistency check, O(√N) field ops)
+     WHIR:      assert WHIR_verify(C, r, v, π.whir_opening)
+                (Merkle path verification, O(log² N) hashes)
 
   return accept
 ```
 
-step 2 is pure field arithmetic. step 4 is hash operations (Merkle path verification). the split determines the cost structure.
+step 2 is pure field arithmetic. step 4 depends on the PCS backend: with Brakedown it is field arithmetic (matrix-vector product check); with WHIR it is hash operations (Merkle path verification). this split determines the cost structure — Brakedown eliminates the hash-dominated bottleneck.
 
 ## constraint evaluation
 
@@ -122,6 +127,21 @@ the sumcheck protocol (step 2) starts with `claim₀ = 0` because a valid trace 
 
 ## cost breakdown
 
+### with Brakedown (target)
+
+| component | constraints | notes |
+|---|---|---|
+| parse proof | ~1,000 | unchanged |
+| Fiat-Shamir challenges | ~3,000 | hemera sponge, fewer rounds (no Merkle commits) |
+| Brakedown opening check | ~4,000 | matrix-vector product, O(√N) field ops |
+| constraint evaluation | ~3,000 | unchanged |
+| sumcheck check | ~1,000 | field arithmetic only |
+| **total** | **~12,000** | field-op dominated, no hashing in PCS |
+
+Brakedown eliminates Merkle verification entirely. the 50K-constraint Merkle bottleneck becomes a 4K-constraint matrix-vector check.
+
+### with WHIR (legacy)
+
 | component | without jets | with jets | reduction |
 |---|---|---|---|
 | parse proof | ~1,000 | ~1,000 | 1× |
@@ -131,7 +151,7 @@ the sumcheck protocol (step 2) starts with `claim₀ = 0` because a valid trace 
 | WHIR verification | ~50,000 | ~10,000 | 5× |
 | total | ~600,000 | ~70,000 | 8.5× |
 
-Merkle verification dominates without jets (83%). the merkle_verify jet reduces it 10×. this single jet makes recursion practical.
+Merkle verification dominates WHIR without jets (83%). the merkle_verify jet reduces it 10×.
 
 ## nox pattern decomposition
 
@@ -140,11 +160,14 @@ every verifier operation maps to native [[nox]] patterns:
 | verifier operation | nox patterns | why native |
 |---|---|---|
 | field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks field]] is the native field |
-| hash computation | 15 (hash) / hash jet | [[hemera]] is the nox hash |
+| hash computation | 15 (hash) / hash jet | [[hemera]] is the nox hash (Fiat-Shamir only) |
 | [[sumcheck]] verification | 5, 7, 9 | pure field arithmetic |
-| [[WHIR]] opening verification | 15, 4, poly_eval/merkle_verify/fri_fold jets | Merkle paths + polynomial eval |
+| [[Brakedown]] opening verification | 5, 7 (matrix-vector product) | pure field arithmetic, no hashing |
+| [[WHIR]] opening verification (legacy) | 15, 4, poly_eval/merkle_verify/fri_fold jets | Merkle paths + polynomial eval |
 
 no external primitive enters the verification loop. the verifier is closed under the nox instruction set. consequence: verify(proof) can itself be proven, and verify(verify(proof)) too, to arbitrary depth.
+
+with Brakedown, the opening verification is entirely field arithmetic — no hash jets needed in the PCS check. hemera is used only for Fiat-Shamir transcript (squeezing challenges), reducing the hash dependency in the recursive verifier.
 
 ## input/output format
 
@@ -169,6 +192,14 @@ OUTPUT:
 
 ## verification time
 
+### Brakedown (target)
+
+| security level | verification time | operations |
+|---|---|---|
+| 128-bit | ~30 μs | O(√N) field ops + Fiat-Shamir hemera |
+
+### WHIR (legacy)
+
 | security level | verification time | operations |
 |---|---|---|
 | 100-bit | ~290 μs | ~1,800 hemera hashes + field ops |
@@ -181,11 +212,13 @@ verification time is independent of the original computation size. a proof of a 
 when the verifier runs as a nox program, its execution trace can be proven by zheng. the recursive proof attests that a previous proof was valid.
 
 ```
-proof_A = zheng.prove(computation)         // ~|C| constraints
-proof_B = zheng.prove(zheng.verify(proof_A))  // ~70K constraints (with jets)
-proof_C = zheng.prove(zheng.verify(proof_B))  // ~70K constraints (with jets)
+proof_A = zheng.prove(computation)            // ~|C| constraints
+proof_B = zheng.prove(zheng.verify(proof_A))  // ~12K constraints (Brakedown)
+proof_C = zheng.prove(zheng.verify(proof_B))  // ~12K constraints (Brakedown)
 ```
 
-each recursion level costs exactly ~70,000 constraints with jets, regardless of the original computation size. proof size remains constant: ~60-157 KiB.
+each recursion level costs ~12,000 constraints (Brakedown) / ~70,000 constraints (WHIR), regardless of the original computation size. proof size remains constant: ~8 KiB (Brakedown) / ~60-157 KiB (WHIR).
 
-see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[WHIR]] for the opening verification, [[constraints]] for the AIR format, [[nox]] for the VM
+with HyperNova folding, recursive composition drops further: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end. see [[recursion]] for folding-first composition.
+
+see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[Brakedown]] for the PCS opening verification, [[WHIR]] for the legacy PCS, [[constraints]] for the AIR format, [[nox]] for the VM
