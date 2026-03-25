@@ -79,7 +79,7 @@ the security argument carries over: if the prover cannot predict the hash output
 
 [[SuperSpartan]] uses sumcheck to verify [[AIR]] constraints over [[nox]] execution traces. the core idea: instead of checking that every row of the trace satisfies every constraint, SuperSpartan encodes the constraints as a multivariate polynomial and uses sumcheck to reduce the check to a single random evaluation.
 
-the constraint polynomial C(x) vanishes on the trace if and only if the trace is valid. sumcheck proves that the sum of C over all trace rows is zero. after k rounds, the verifier needs just one evaluation of C at a random point — which [[WHIR]] provides via a [[polynomial commitment]] opening.
+the constraint polynomial C(x) vanishes on the trace if and only if the trace is valid. sumcheck proves that the sum of C over all trace rows is zero. after k rounds, the verifier needs just one evaluation of C at a random point — which Brakedown provides via a [[polynomial commitment]] opening.
 
 one sumcheck, one commitment opening, one proof.
 
@@ -97,6 +97,6 @@ recursive composition becomes possible precisely because the verification algori
 
 ## the sumcheck is the proof system
 
-many modern proof systems — [[Spartan]], [[SuperSpartan]], [[Lasso]], [[Jolt]] — are built almost entirely from sumcheck instances composed together. the polynomial commitment scheme handles the final evaluation, but sumcheck does the structural work. in zheng, the sumcheck protocol carries the full weight of constraint verification. [[WHIR]] seals the proof with a single opening. everything between the trace and the opening is sumcheck.
+many modern proof systems — [[Spartan]], [[SuperSpartan]], [[Lasso]], [[Jolt]] — are built almost entirely from sumcheck instances composed together. the polynomial commitment scheme handles the final evaluation, but sumcheck does the structural work. in zheng, the sumcheck protocol carries the full weight of constraint verification. Brakedown seals the proof with a single opening. everything between the trace and the opening is sumcheck.
 
 this is why understanding sumcheck means understanding [[zheng]]. the rest is engineering around it.

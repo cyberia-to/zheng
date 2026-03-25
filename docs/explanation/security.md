@@ -14,8 +14,8 @@ its internal state is 512 bits (eight field elements). its capacity is
 construction with c bits of capacity is bounded by 2^(c/2), giving
 hemera a classical security level of 128 bits.
 
-zheng uses hemera for three purposes: Merkle tree construction in
-[[WHIR]], Fiat-Shamir challenge derivation in the [[sumcheck protocol]],
+zheng uses hemera for three purposes: commitment construction in
+Brakedown, Fiat-Shamir challenge derivation in the [[sumcheck protocol]],
 and witness commitment. in every case, the security argument reduces to
 the same property: an adversary cannot find hemera collisions.
 
@@ -92,7 +92,7 @@ another.
 
 the risk: if hemera breaks, everything breaks. a practical algebraic
 attack on [[Poseidon2]] over Goldilocks — one that finds collisions
-faster than the birthday bound — would compromise WHIR commitments,
+faster than the birthday bound — would compromise Brakedown commitments,
 Fiat-Shamir challenges, and witness hiding simultaneously. the proof
 system would lose soundness entirely.
 

@@ -1,6 +1,8 @@
-# from FRI to WHIR
+> **NOTE:** this document describes the historical evolution from FRI to STIR to WHIR. zheng has evolved to use recursive Brakedown instead of WHIR. see reference/ for the current architecture.
 
-the hash-based [[polynomial commitment schemes]] used in [[zheng]] have a lineage. [[FRI]] came first, establishing the paradigm. [[STIR]] refined it. [[WHIR]] perfected it. each generation learned from the last, and each achieved something the previous could not. this is the story of that evolution.
+# from FRI to WHIR (legacy)
+
+the hash-based [[polynomial commitment schemes]] used in [[zheng]] have a lineage. [[FRI]] came first, establishing the paradigm. [[STIR]] refined it. [[WHIR (legacy)]] refined it further. each generation learned from the last, and each achieved something the previous could not. this is the story of that evolution.
 
 ## FRI: the foundation
 
@@ -75,7 +77,7 @@ WHIR      157 KiB       1.0 ms         128-bit
 
 proof size drops by half from FRI to STIR, and stabilizes at WHIR. verification time drops by nearly 4x from STIR to WHIR. that 1.0 ms verification is faster than [[KZG]] pairing checks — and WHIR achieves this with no trusted setup and post-quantum security.
 
-WHIR verification at 1.0 ms is fast enough to run inside a [[nox]] program. this is what enables recursive proof composition in [[zheng]]: the WHIR verifier fits inside the prover, and the overhead is manageable. each recursive step adds roughly one millisecond of verification work to prove.
+WHIR (legacy) verification at 1.0 ms was fast enough to run inside a [[nox]] program. this is what enabled recursive proof composition in [[zheng]]: the verifier fits inside the prover, and the overhead is manageable. each recursive step adds roughly one millisecond of verification work to prove.
 
 ## the dual nature
 
@@ -103,12 +105,12 @@ verify(commitment, point, value, proof) → bool
 
 [[SuperSpartan]] calls commit and open. the [[sumcheck protocol]] runs between them. neither layer knows or cares whether FRI, STIR, or WHIR implements the commitment. the interface is a clean abstraction boundary.
 
-this means [[cyber]] can upgrade its PCS without changing any layer above. when a future generation improves on WHIR — smaller proofs, faster verification, tighter security bounds — the upgrade is a swap at the commitment layer. the IOP, the constraint system, the VM trace encoding, the recursive verifier: all unchanged.
+this means [[cyber]] can upgrade its PCS without changing any layer above. when a future generation improves on the current PCS — smaller proofs, faster verification, tighter security bounds — the upgrade is a swap at the commitment layer. the IOP, the constraint system, the VM trace encoding, the recursive verifier: all unchanged.
 
 ## why this lineage matters for zheng
 
 the FRI-STIR-WHIR progression is a story of three insights compounding. FRI discovered that hash-based folding can prove proximity. STIR discovered that increasing the rate across rounds tightens proofs. WHIR discovered that weighting queries with sumcheck structure fuses proximity and evaluation into one protocol.
 
-[[zheng]] builds on the final insight. the [[Whirlaway]] architecture — [[SuperSpartan]] IOP plus WHIR PCS plus [[sumcheck protocol]] — achieves transparent, post-quantum proofs with sub-millisecond verification. the prover runs in quasi-linear time over the [[Goldilocks field]]. the verifier checks a proof in one millisecond using only [[Hemera]] hashes and field arithmetic.
+[[zheng]] builds on these insights. the polynomial proof system — [[SuperSpartan]] IOP plus recursive Brakedown PCS plus [[sumcheck protocol]] — achieves transparent, post-quantum proofs with sub-millisecond verification. the prover runs in quasi-linear time over the [[Goldilocks field]]. the verifier checks a proof in one millisecond using only [[Hemera]] hashes and field arithmetic.
 
-each generation of PCS made this architecture more viable. FRI made it possible. STIR made it compact. WHIR made it fast enough to recurse. and recursion is what turns a proof system into a foundation for [[planetary superintelligence]].
+each generation of PCS made this architecture more viable. FRI made it possible. STIR made it compact. WHIR (legacy) made it fast enough to recurse. recursive Brakedown made it Merkle-free. and recursion is what turns a proof system into a foundation for [[planetary superintelligence]].

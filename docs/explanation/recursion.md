@@ -44,7 +44,7 @@ the stark verifier requires four operations. all are [[nox]]-native:
 | field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks]] is the native field |
 | hash computation | 15 (hash) / hash jet | [[hemera]] IS the nox hash |
 | [[sumcheck]] verification | 5, 7, 9 (field ops only) | sumcheck is pure arithmetic |
-| [[WHIR]] opening verification | 15 + 4 (conditionals), poly_eval / merkle_verify / fri_fold jets | Merkle paths + polynomial eval |
+| Brakedown opening verification | 15 + 4 (conditionals), poly_eval / merkle_verify / fri_fold jets | commitment paths + polynomial eval |
 
 no external primitive enters the verification loop. the verifier is closed under the same instruction set that produced the original proof. consequence: `verify(proof)` can itself be proven, and `verify(verify(proof))` too, to arbitrary depth.
 

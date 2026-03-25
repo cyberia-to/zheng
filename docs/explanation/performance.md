@@ -46,12 +46,12 @@ multilinear polynomials over univariate ones — the prover avoids the
 O(N log N) bottleneck that FRI-based systems face in polynomial
 evaluation.
 
-the [[WHIR]] commitment constructs a Merkle tree over the polynomial
+the Brakedown commitment constructs the polynomial commitment over the
 evaluations, costing O(N log N) hemera hashes. this dominates the total
 prover time for large traces. each hemera call processes [[Goldilocks]]
 field elements natively, so the constant factor is small.
 
-total prover cost: O(N log N), dominated by WHIR's Merkle construction,
+total prover cost: O(N log N), dominated by Brakedown's commitment construction,
 with the linear-time SuperSpartan IOP as the smaller term.
 
 ## constraint costs for common operations
@@ -90,7 +90,7 @@ an 8.5x reduction.
 
 ## hemera as the stark hash
 
-every hash operation inside a stark — Fiat-Shamir challenges, Merkle trees in [[WHIR]], commitment randomness — uses [[hemera]]. the choice of hash is the single largest factor in stark performance.
+every hash operation inside a stark — Fiat-Shamir challenges, commitments in Brakedown, commitment randomness — uses [[hemera]]. the choice of hash is the single largest factor in stark performance.
 
 | hash | constraints per call | stark overhead |
 |---|---|---|
@@ -111,9 +111,9 @@ the verifier's 70,000-constraint budget (with jets) breaks down into five compon
 |---|---|---|---|---|
 | parse proof | ~1,000 | ~1,000 | 1× | deserialize proof bytes |
 | Fiat-Shamir challenges | ~30,000 | ~5,000 | 6× | hash transcript → random challenges |
-| Merkle verification | ~500,000 | ~50,000 | 10× | verify [[WHIR]] commitment tree paths |
+| Merkle verification | ~500,000 | ~50,000 | 10× | verify Brakedown commitment tree paths |
 | constraint evaluation | ~10,000 | ~3,000 | 3× | evaluate AIR polynomials at challenge |
-| WHIR verification | ~50,000 | ~10,000 | 5× | FRI folding rounds + final check |
+| Brakedown verification | ~50,000 | ~10,000 | 5× | folding rounds + final check |
 | TOTAL | ~600,000 | ~70,000 | 8.5× | |
 
 Merkle verification dominates without jets (83% of cost). the merkle_verify jet reduces it 10×. this single jet is what makes recursion practical — without it, each recursion level would cost 600K constraints, limiting practical depth to 1-2 levels.
@@ -125,7 +125,7 @@ Merkle verification dominates without jets (83% of cost). the merkle_verify jet 
 | [[Groth16]] | 128 bytes | ~1.5 ms | trusted (per-circuit) | no |
 | [[PLONK]] | ~400 bytes | ~5 ms | universal ceremony | no |
 | univariate [[STARK]] (FRI) | ~200 KiB | 10-50 ms | transparent | yes |
-| zheng ([[Whirlaway]]) | ~157 KiB | ~1.0 ms | transparent | yes |
+| zheng (SuperSpartan + recursive Brakedown) | ~157 KiB | ~1.0 ms | transparent | yes |
 
 Groth16 wins on proof size by three orders of magnitude. PLONK wins on
 proof size by two. both lose on trust assumptions and quantum resistance.

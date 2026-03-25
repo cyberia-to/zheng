@@ -20,7 +20,7 @@ these transition constraints form an AIR instance. [[SuperSpartan]] encodes them
 
 classical STARKs verify constraints through a division argument. the constraint polynomial C(x) must vanish on every trace row, so the prover computes a quotient Q(x) = C(x) / Z(x), where Z is the vanishing polynomial over the trace domain. the prover then commits to Q and proves it has low degree. this works, but the division step requires NTT/FFT, and the quotient polynomial inherits the degree blowup from high-degree constraints.
 
-[[SuperSpartan]] takes a different path. instead of dividing by the vanishing polynomial, it uses [[sumcheck]] to directly verify that the constraint polynomial sums to zero over all trace rows. the claim is simple: the sum of C evaluated at every row in the boolean hypercube equals zero. the [[sumcheck protocol]] reduces this claim — which ranges over 2^n rows — to checking C at a single random point. [[WHIR]] then opens the trace commitment at that point.
+[[SuperSpartan]] takes a different path. instead of dividing by the vanishing polynomial, it uses [[sumcheck]] to directly verify that the constraint polynomial sums to zero over all trace rows. the claim is simple: the sum of C evaluated at every row in the boolean hypercube equals zero. the [[sumcheck protocol]] reduces this claim — which ranges over 2^n rows — to checking C at a single random point. Brakedown then opens the trace commitment at that point.
 
 the prover never computes a quotient polynomial. there is no zerofier, no division, no degree blowup from the division step.
 
@@ -28,9 +28,9 @@ the prover never computes a quotient polynomial. there is no zerofier, no divisi
 
 the [[SuperSpartan]] prover performs only field operations during constraint verification. each sumcheck round requires evaluating the constraint polynomial at a few points and sending a univariate polynomial to the verifier. the total prover work is O(2^n) field multiplications and additions, where 2^n is the trace length.
 
-critically, there is no NTT or FFT in the IOP layer. NTT cost appears only inside [[WHIR]] when the prover commits to the trace polynomial and generates evaluation proofs. the constraint verification itself — the part that scales with the number of patterns and the degree of each constraint — uses pure field arithmetic.
+critically, there is no NTT or FFT in the IOP layer. NTT cost appears only inside Brakedown when the prover commits to the trace polynomial and generates evaluation proofs. the constraint verification itself — the part that scales with the number of patterns and the degree of each constraint — uses pure field arithmetic.
 
-this separation matters. adding more patterns to [[nox]] or increasing their degree affects only the field arithmetic cost of the sumcheck, which is cheap. the cryptographic cost (hashing, Merkle trees, evaluation proofs) stays in [[WHIR]] and does not grow with constraint complexity.
+this separation matters. adding more patterns to [[nox]] or increasing their degree affects only the field arithmetic cost of the sumcheck, which is cheap. the cryptographic cost (hashing, evaluation proofs) stays in Brakedown and does not grow with constraint complexity.
 
 ## high-degree constraints are free
 
@@ -44,9 +44,9 @@ this is why [[nox]] can afford a hash pattern with degree-7 transition constrain
 
 [[SuperSpartan]] works with any polynomial commitment scheme. the IOP reduces constraint satisfaction to a single polynomial evaluation claim: "the trace polynomial f, evaluated at random point r, equals value v." any PCS that can commit to f and prove this evaluation completes the proof system.
 
-plugging in [[WHIR]] as the PCS gives the Whirlaway architecture. plugging in a different PCS — KZG, Dory, Brakedown, Ligero — would give a different instantiation with different tradeoffs. the IOP stays the same.
+plugging in recursive Brakedown as the PCS gives the zheng architecture. plugging in a different PCS — KZG, Dory, Ligero — would give a different instantiation with different tradeoffs. the IOP stays the same.
 
-for [[cyber]], [[WHIR]] is the right choice: transparent setup, post-quantum security, sub-millisecond verification, and hash-only assumptions that align with [[hemera]]. but the PCS-agnostic design means zheng can swap commitment schemes without rewriting the constraint system or the sumcheck protocol.
+for [[cyber]], recursive Brakedown is the right choice: transparent setup, post-quantum security, sub-millisecond verification, and hash-only assumptions that align with [[hemera]]. but the PCS-agnostic design means zheng can swap commitment schemes without rewriting the constraint system or the sumcheck protocol.
 
 ## the composition
 
@@ -59,23 +59,23 @@ nox execution trace (2^n rows × 16 columns)
     encode as multilinear polynomial f
          │
          ▼
-    WHIR_commit(f) → commitment C
+    Brakedown_commit(f) → commitment C
          │
          ▼
     SuperSpartan sumcheck: verify AIR constraints
     reduces to: "f(r) = v"
          │
          ▼
-    WHIR_open(f, r) → evaluation proof π
+    Brakedown_open(f, r) → evaluation proof π
          │
          ▼
-    verifier checks: sumcheck transcript + WHIR_verify(C, r, v, π)
+    verifier checks: sumcheck transcript + Brakedown_verify(C, r, v, π)
 ```
 
-[[SuperSpartan]] occupies the middle of this pipeline. it takes the committed trace and produces a single evaluation claim. everything above it ([[nox]] execution, trace encoding, [[WHIR]] commitment) is input preparation. everything below it ([[WHIR]] opening, verification) is the PCS. the IOP is the bridge between computation and cryptography.
+[[SuperSpartan]] occupies the middle of this pipeline. it takes the committed trace and produces a single evaluation claim. everything above it ([[nox]] execution, trace encoding, Brakedown commitment) is input preparation. everything below it (Brakedown opening, verification) is the PCS. the IOP is the bridge between computation and cryptography.
 
 ## references
 
 - Setty, Thaler, Wahby. Customizable Constraint Systems for Succinct Arguments. ePrint 2023/552
 - the original Spartan paper: Setty. Spartan: Efficient and General-Purpose zkSNARKs without Trusted Setup. CRYPTO 2020
-- see [[sumcheck]] for the core protocol, [[WHIR]] for the PCS, [[whirlaway]] for the full architecture
+- see [[sumcheck]] for the core protocol, [[polynomial-commitments]] for the PCS, [[whirlaway]] for the historical architecture

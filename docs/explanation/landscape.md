@@ -59,17 +59,17 @@ for on-chain verification where every byte costs gas, this matters.
 
 ## multilinear STARKs
 
-[[Whirlaway]] represents the current frontier. it replaces FRI with
-[[WHIR]], a hash-based polynomial commitment scheme for [[multilinear
+zheng represents the current frontier. it uses recursive Brakedown,
+a hash-based polynomial commitment scheme for [[multilinear
 polynomials]]. the interactive oracle proof is [[SuperSpartan]], which
 encodes constraints using the [[sumcheck protocol]] rather than
 univariate polynomial division. this is where zheng lives.
 
 the shift from univariate to multilinear changes the economics. sumcheck
 requires no NTT and no FFT — the prover runs in linear time over the
-trace. WHIR achieves sub-millisecond verification while remaining
-purely hash-based. the proofs are transparent and post-quantum, like
-FRI-based STARKs, but verification speed competes with pairing-based
+trace. recursive Brakedown achieves sub-millisecond verification while
+remaining purely hash-based. the proofs are transparent and post-quantum,
+like FRI-based STARKs, but verification speed competes with pairing-based
 schemes.
 
 ## the tradeoff map
@@ -79,7 +79,7 @@ schemes.
 | [[Groth16]] | trusted (per-circuit) | no | 128 bytes | ~1.5 ms | O(N log N) |
 | [[PLONK]] | universal ceremony | no | ~400 bytes | ~5 ms | O(N log N) |
 | univariate [[STARK]] (FRI) | transparent | yes | ~200 KiB | 10-50 ms | O(N log N) |
-| [[Whirlaway]] (zheng) | transparent | yes | ~157 KiB | ~1.0 ms | O(N log N) |
+| zheng (SuperSpartan + recursive Brakedown) | transparent | yes | ~157 KiB | ~1.0 ms | O(N log N) |
 
 ## where the tradeoffs converge
 
@@ -91,9 +91,9 @@ the trust requirement without eliminating it.
 
 hash-based systems — all flavors of STARKs — trade larger proofs for
 transparency and post-quantum security. FRI-based STARKs proved this
-tradeoff viable. WHIR sharpens it: the same hash-based security model,
-but verification drops from tens of milliseconds to under one
-millisecond.
+tradeoff viable. recursive Brakedown sharpens it: the same hash-based
+security model, but verification drops from tens of milliseconds to
+under one millisecond.
 
 zheng occupies the corner of the landscape labeled "transparent setup,
 post-quantum, fastest verification among hash-based systems." the cost

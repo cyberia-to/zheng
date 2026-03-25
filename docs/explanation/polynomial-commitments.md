@@ -42,11 +42,11 @@ FRI-based  none        hash collision    yes             O(log²d) — polylogar
 
 [[IPA]] (inner product argument) eliminates the trusted setup but pays with a slow verifier — linear in the polynomial degree. fine for small polynomials, impractical for large execution traces.
 
-FRI-based schemes ([[FRI]], [[STIR]], [[WHIR]]) need only collision-resistant hash functions. no trusted setup, no pairings, no quantum vulnerability. the verifier is polylogarithmic — fast enough for recursive composition. the tradeoff is larger proof sizes compared to KZG, though recent advances have narrowed the gap dramatically.
+FRI-based schemes ([[FRI]], [[STIR]], [[WHIR (legacy)]]) and Brakedown need only collision-resistant hash functions. no trusted setup, no pairings, no quantum vulnerability. the verifier is polylogarithmic — fast enough for recursive composition. the tradeoff is larger proof sizes compared to KZG, though recent advances have narrowed the gap dramatically.
 
-## WHIR in zheng
+## Brakedown in zheng
 
-[[zheng]] uses [[WHIR]], the latest and fastest member of the FRI family. WHIR acts simultaneously as an interactive oracle proof of proximity (IOPP) and a polynomial commitment scheme. there is no separate PCS layer — WHIR plays both roles.
+[[zheng]] uses recursive Brakedown as its polynomial commitment scheme. Brakedown is Merkle-free, eliminating the Merkle tree overhead that dominated earlier FRI-family schemes.
 
 the pipeline:
 
@@ -55,33 +55,31 @@ nox execution trace
     ↓
 encode as multilinear polynomial f over Goldilocks
     ↓
-WHIR.commit(f) → Merkle root C
+Brakedown.commit(f) → commitment C
     ↓
 SuperSpartan sumcheck reduces all constraints
     to one evaluation query: f(r₁, ..., rₖ) = ?
     ↓
-WHIR.open(f, r) → (y, π)
+Brakedown.open(f, r) → (y, π)
     ↓
-verifier checks: WHIR.verify(C, r, y, π)
+verifier checks: Brakedown.verify(C, r, y, π)
 ```
 
-one commitment. one opening. one proof. the [[sumcheck protocol]] inside [[SuperSpartan]] does the structural work of reducing a million constraint checks to a single evaluation. WHIR handles just that one evaluation — but handles it with full soundness, no trusted setup, and post-quantum security.
+one commitment. one opening. one proof. the [[sumcheck protocol]] inside [[SuperSpartan]] does the structural work of reducing a million constraint checks to a single evaluation. Brakedown handles just that one evaluation — but handles it with full soundness, no trusted setup, and post-quantum security.
 
-## the dual nature of WHIR
+## the PCS as unified primitive
 
-most proof systems separate two concerns: proximity testing (is the committed function close to a low-degree polynomial?) and evaluation proving (does the polynomial evaluate to y at point r?). FRI was originally designed as a proximity test, and separate machinery was needed to turn it into a full commitment scheme.
+Brakedown unifies proximity testing (is the committed function close to a low-degree polynomial?) and evaluation proving (does the polynomial evaluate to y at point r?) into a single protocol. [[zheng]] needs exactly one cryptographic primitive for commitments.
 
-WHIR unifies both. the same protocol that tests proximity also proves evaluations. this dual nature simplifies the architecture — [[zheng]] needs exactly one cryptographic primitive for commitments, and that primitive is WHIR.
-
-the proximity test ensures the prover actually committed to a low-degree polynomial (not arbitrary noise). the evaluation proof ensures the opened value matches the commitment. both guarantees come from the same sequence of folding rounds and consistency checks.
+the proximity test ensures the prover actually committed to a low-degree polynomial (not arbitrary noise). the evaluation proof ensures the opened value matches the commitment. both guarantees come from the same protocol.
 
 ## the commitment as interface
 
 from the perspective of the rest of the [[zheng]] stack, the polynomial commitment scheme is an interface with three methods: commit, open, verify. [[SuperSpartan]] calls commit once at the start and open once at the end. the [[sumcheck protocol]] runs in between, oblivious to which PCS sits underneath.
 
-this abstraction is deliberate. when the PCS improves — from [[FRI]] to [[STIR]] to [[WHIR]] — everything above stays the same. the IOP layer, the constraint system, the VM trace format, the recursive verifier: none of them change. only the implementation behind commit/open/verify changes, and proof sizes shrink, and verification gets faster.
+this abstraction is deliberate. when the PCS improves — from [[FRI]] to [[STIR]] to [[WHIR (legacy)]] to recursive Brakedown — everything above stays the same. the IOP layer, the constraint system, the VM trace format, the recursive verifier: none of them change. only the implementation behind commit/open/verify changes, and proof sizes shrink, and verification gets faster.
 
-the commitment scheme is the trust anchor because it is the only component that touches the real world — the only place where computational hardness assumptions enter. everything else in the proof system is information-theoretic, secured by the mathematics of polynomials and probability. the PCS is where cryptography meets algebra, and WHIR sits at that junction.
+the commitment scheme is the trust anchor because it is the only component that touches the real world — the only place where computational hardness assumptions enter. everything else in the proof system is information-theoretic, secured by the mathematics of polynomials and probability. the PCS is where cryptography meets algebra, and Brakedown sits at that junction.
 
 ## what the verifier trusts
 
@@ -91,7 +89,7 @@ when a verifier accepts a [[zheng]] proof, the chain of trust is:
 "the nox trace is valid"
     ← SuperSpartan reduced all constraints to one evaluation
     ← sumcheck proved the reduction honestly (Schwartz-Zippel)
-    ← WHIR proved the evaluation matches the commitment (collision resistance of Hemera)
+    ← Brakedown proved the evaluation matches the commitment (collision resistance of Hemera)
 ```
 
 the only cryptographic assumption is that [[Hemera]] ([[Poseidon2]] over [[Goldilocks]]) is collision-resistant. everything else — the sumcheck soundness, the constraint reduction, the Schwartz-Zippel bound — is pure mathematics. the polynomial commitment scheme concentrates the trust into one clean assumption. that assumption is post-quantum, requires no ceremony, and rests on decades of hash function analysis.

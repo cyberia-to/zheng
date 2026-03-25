@@ -48,7 +48,7 @@ for any binary assignment (b₁, ..., b_n, c₁, ..., c₄):
 f(b₁, ..., b_n, c₁, ..., c₄) = trace[row(b₁...b_n)][col(c₁...c₄)]
 ```
 
-the polynomial f is the unique multilinear extension of this table. it agrees with the trace on all 2^{n+4} binary inputs and interpolates smoothly over the full [[Goldilocks field]]. this is the polynomial that [[WHIR]] commits to.
+the polynomial f is the unique multilinear extension of this table. it agrees with the trace on all 2^{n+4} binary inputs and interpolates smoothly over the full [[Goldilocks field]]. this is the polynomial that Brakedown commits to.
 
 ## AIR constraints from nox patterns
 
@@ -120,7 +120,7 @@ the input boundary fixes row 0: the initial registers must match the program's i
 
 the output boundary fixes the last active row: the result register must contain the program's output, and the status register must indicate clean halting.
 
-boundary constraints are point evaluations. they assert that f, evaluated at specific binary coordinates, equals specific field elements. [[WHIR]] proves these directly as evaluation claims.
+boundary constraints are point evaluations. they assert that f, evaluated at specific binary coordinates, equals specific field elements. Brakedown proves these directly as evaluation claims.
 
 ## the combined constraint polynomial
 
@@ -132,7 +132,7 @@ C(t) = Σ_{p=0}^{15} selector_p(r0_t) × C_p(t)
 
 where selector_p(r0_t) equals 1 when r0_t = p and 0 otherwise. the selector is a polynomial in r0_t constructed via Lagrange interpolation over the 16 pattern values.
 
-if the trace is valid — every pattern was executed correctly — then C(t) = 0 for every row t. the [[sumcheck protocol]] verifies this: the sum of C over all 2^n rows equals zero. [[SuperSpartan]] orchestrates this sumcheck, reducing the exponential sum to a single evaluation point, which [[WHIR]] opens.
+if the trace is valid — every pattern was executed correctly — then C(t) = 0 for every row t. the [[sumcheck protocol]] verifies this: the sum of C over all 2^n rows equals zero. [[SuperSpartan]] orchestrates this sumcheck, reducing the exponential sum to a single evaluation point, which Brakedown opens.
 
 ## focus accounting
 
@@ -161,7 +161,7 @@ row  r0   r3   r4   r5   r6    r7   r14     description
 
 the AIR constraint for row 0: r0 = 5 (add pattern), so C₅ applies. check: r5₁ = 8 = 3 + 5 = r3₀ + r4₀. the constraint is satisfied. focus: r7₀ = 9 = 10 - 1 = r6₀ - cost(5). satisfied.
 
-this 2-row trace is padded to 2^1 = 2 rows (already a power of two). the multilinear polynomial f has 1 + 4 = 5 variables. [[WHIR]] commits to f. [[SuperSpartan]] runs the sumcheck over 2 rows. the verifier checks the sumcheck transcript and one [[WHIR]] evaluation proof. the entire proof attests that 3 + 5 = 8 — with cryptographic certainty, without revealing the trace.
+this 2-row trace is padded to 2^1 = 2 rows (already a power of two). the multilinear polynomial f has 1 + 4 = 5 variables. Brakedown commits to f. [[SuperSpartan]] runs the sumcheck over 2 rows. the verifier checks the sumcheck transcript and one Brakedown evaluation proof. the entire proof attests that 3 + 5 = 8 — with cryptographic certainty, without revealing the trace.
 
 ## from trace to trust
 
@@ -171,9 +171,9 @@ the pipeline recapitulates:
 nox program → execution → trace table (2^n × 16)
     → pad to power of two
     → encode as multilinear polynomial f
-    → WHIR_commit(f) → commitment C
+    → Brakedown_commit(f) → commitment C
     → SuperSpartan sumcheck over AIR constraints → point r
-    → WHIR_open(f, r) → proof π
+    → Brakedown_open(f, r) → proof π
     → verifier checks transcript + evaluation proof
 ```
 
@@ -181,7 +181,7 @@ the trace is the witness. the polynomial is its algebraic encoding. the commitme
 
 ## references
 
-- see [[whirlaway]] for how the architecture composes
+- see [[whirlaway]] for the historical architecture
 - see [[superspartan]] for the IOP that verifies constraints
 - see [[nox]] for the VM specification and pattern definitions
-- see [[hemera]] for the Poseidon2 hash used in pattern 15 and in [[WHIR]] commitments
+- see [[hemera]] for the Poseidon2 hash used in pattern 15 and in Brakedown commitments

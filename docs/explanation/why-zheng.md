@@ -31,10 +31,9 @@ the hash function inside the proof protocol is the same [[hemera]] hash
 that nox calls as a native opcode. there is no impedance mismatch, no
 encoding overhead, no second field to reason about.
 
-## the Whirlaway architecture
+## the zheng architecture
 
-zheng implements [[Whirlaway]], the state of the art in proof system
-design as of 2025. the architecture combines three components that
+zheng is a polynomial proof system combining three components that
 reinforce each other:
 
 [[SuperSpartan]] is the interactive oracle proof. it encodes the entire
@@ -44,15 +43,15 @@ because [[sumcheck]] requires no NTT, no FFT, no expensive polynomial
 multiplication. just field additions and multiplications, streaming
 through the trace.
 
-[[WHIR]] is the polynomial commitment scheme. it replaces [[KZG]] and
-[[FRI]] with a hash-based construction that achieves sub-millisecond
+recursive Brakedown is the polynomial commitment scheme. it replaces [[KZG]]
+and [[FRI]] with a hash-based construction that achieves sub-millisecond
 verification. no elliptic curve pairings, no trusted setup ceremony, no
 structured reference string that could be compromised. the security
 rests entirely on the collision resistance of [[hemera]], which means
 the same hash function that secures nox's memory also secures the proofs.
 
 the [[sumcheck protocol]] is the connective tissue. it reduces claims
-about multilinear polynomials to single-point evaluations, which WHIR
+about multilinear polynomials to single-point evaluations, which Brakedown
 then commits to. the reduction is tight — no blowup factors, no
 auxiliary polynomials, no overhead beyond what information theory demands.
 
@@ -60,7 +59,7 @@ this combination yields four properties simultaneously:
 
 - transparent setup (no ceremony, no toxic waste)
 - post-quantum security (hash-based, no pairings to break)
-- sub-millisecond verification (WHIR beats KZG on speed)
+- sub-millisecond verification (Brakedown beats KZG on speed)
 - linear-time proving (sumcheck streams through the trace)
 
 ## recursion demands nativity
@@ -89,7 +88,7 @@ step back and look at the full cryptographic stack:
 
 - one prime: p = 2^64 - 2^32 + 1 ([[Goldilocks]])
 - one hash: [[hemera]] (Poseidon2 over Goldilocks)
-- one proof system: zheng (Whirlaway over hemera over Goldilocks)
+- one proof system: zheng (SuperSpartan + recursive Brakedown over hemera over Goldilocks)
 
 this is the entire cryptographic surface. one security parameter governs
 the field. one algebraic structure governs the hash. one protocol governs

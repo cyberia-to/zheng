@@ -1,8 +1,8 @@
 # zheng explanations
 
-conceptual documentation — why zheng works the way it does, how proof systems compose, and what makes [[Whirlaway]] the right architecture for [[cyber]].
+zheng is a polynomial proof system. these documents explain the concepts, design decisions, and historical context.
 
-these pages illuminate the design. for formal definitions, see reference/. for the hash primitive, see [[hemera]]. for the VM whose traces we prove, see [[nox]].
+for formal definitions, see reference/. for the hash primitive, see [[hemera]]. for the VM whose traces we prove, see [[nox]].
 
 ## reading path
 
@@ -45,7 +45,7 @@ these pages illuminate the design. for formal definitions, see reference/. for t
 
 | page | topic |
 |------|-------|
-| [[zheng/docs/explanation/why-zheng|why-zheng]] | why a custom proof system — what [[Whirlaway]] enables and why existing systems fall short |
+| [[zheng/docs/explanation/why-zheng|why-zheng]] | why a custom proof system — what zheng enables and why existing systems fall short |
 | [[zheng/docs/explanation/the-name|the-name]] | 証 etymology — proof as evidence, verification as witnessing |
 
 ### foundations
@@ -62,14 +62,14 @@ these pages illuminate the design. for formal definitions, see reference/. for t
 |------|-------|
 | [[zheng/docs/explanation/sumcheck|sumcheck]] | the heart of the system — reducing exponential verification to logarithmic via the [[sumcheck protocol]] |
 | [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] | the trust anchor — commit to data, prove evaluations, bind the prover to a single polynomial |
-| [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR]], each generation's insight and what it unlocks |
+| [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR (legacy)]], each generation's insight and what it unlocks |
 
 ### architecture
 
 | page | topic |
 |------|-------|
 | [[zheng/docs/explanation/superspartan|superspartan]] | [[CCS]] as universal constraint system — why [[AIR]] matters for [[nox]] and how [[SuperSpartan]] unifies them |
-| [[zheng/docs/explanation/whirlaway|whirlaway]] | how the pieces compose — [[sumcheck protocol]], [[WHIR]], and [[SuperSpartan]] into one proof system |
+| [[zheng/docs/explanation/whirlaway|whirlaway]] | historical architecture — how [[sumcheck protocol]], [[WHIR (legacy)]], and [[SuperSpartan]] composed into the original proof system |
 | [[zheng/docs/explanation/trace-to-proof|trace-to-proof]] | from [[nox]] execution trace to zheng proof — the concrete pipeline |
 
 ### powers
@@ -79,7 +79,7 @@ these pages illuminate the design. for formal definitions, see reference/. for t
 | [[zheng/docs/explanation/recursion|recursion]] | recursive composition — [[IVC]], [[folding]], O(1) verification regardless of computation depth |
 | [[zheng/docs/explanation/security|security]] | hash-based assumptions — post-quantum guarantees, concrete security levels, no trusted setup |
 | [[zheng/docs/explanation/performance|performance]] | prover costs, verifier costs, proof sizes — comparisons with [[Plonky3]], [[Binius]], [[Stwo]] |
-| [[zheng/docs/explanation/bbg-integration|bbg-integration]] | shared WHIR primitives between proofs and [[BBG]] state — EdgeSets, LogUp, batch verification |
+| [[zheng/docs/explanation/bbg-integration|bbg-integration]] | shared Brakedown primitives between proofs and [[BBG]] state — EdgeSets, LogUp, batch verification |
 
 ## see also
 

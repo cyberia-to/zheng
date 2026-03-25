@@ -10,7 +10,9 @@ focus: 0.00022383601058502877
 gravity: 0
 density: 0.49
 ---
-# WHIR
+> **NOTE:** this document describes the historical WHIR (legacy) PCS. zheng has evolved to use recursive Brakedown instead of WHIR. see reference/ for the current architecture.
+
+# WHIR (legacy)
 
 WHIR (Weights Help Improving Rate) was the bootstrap PCS for zheng before [[Brakedown]] replaced it. this page documents the historical PCS for reference. the active PCS specification is [[polynomial-commitment]].
 
@@ -21,17 +23,17 @@ Weights Help Improving Rate. an interactive oracle proof of proximity for constr
 WHIR provides three operations:
 
 ```
-WHIR_commit(f) → C
+Brakedown_commit(f) → C
   input:  multilinear polynomial f(x₁, ..., x_k) over Goldilocks
   output: commitment C (hemera Merkle root over evaluation table)
   cost:   O(2^k log 2^k) hemera hashes
 
-WHIR_open(f, r) → (v, π)
+Brakedown_open(f, r) → (v, π)
   input:  polynomial f, evaluation point r ∈ F^k
   output: value v = f(r), proximity proof π
   cost:   O(2^k) field ops + O(log² 2^k) hemera hashes
 
-WHIR_verify(C, r, v, π) → accept/reject
+Brakedown_verify(C, r, v, π) → accept/reject
   input:  commitment C, point r, claimed value v, proof π
   output: accept if f(r) = v and f is close to a degree-bounded polynomial
   cost:   O(log² 2^k) hemera hashes + field ops
@@ -40,7 +42,7 @@ WHIR_verify(C, r, v, π) → accept/reject
 ## verification algorithm
 
 ```
-WHIR_verify(C, r, v, proof):
+Brakedown_verify(C, r, v, proof):
   1. init transcript T from C
   2. for each folding round i = 1..log(N):
      a. absorb prover's round message into T
@@ -146,7 +148,7 @@ at 100-bit security:
 
 ## verification circuit decomposition
 
-inside [[nox]], WHIR_verify decomposes into two jets:
+inside [[nox]], Brakedown_verify decomposes into two jets:
 
 ```
 merkle_verify(root, leaf, path, index)
@@ -156,7 +158,7 @@ fri_fold(poly_layer, challenge)        // nox jet
   N/2 constraints per folding round
 ```
 
-full WHIR_verify:
+full Brakedown_verify:
 
 ```
 1. Fiat-Shamir: derive challenges from transcript
@@ -212,8 +214,8 @@ vs full re-commit: O(N log N) hashes
 
 domain sizing strategy: start at 2^10, double when 75% full. amortized O(1) per insertion.
 
-### composed WHIR_VERIFY jet
+### composed Brakedown_verify jet
 
 a single jet combining merkle_verify + fri_fold + Fiat-Shamir could reduce verification to ~100K constraints (from ~292K). trades ISA complexity for recursion depth. current two-jet decomposition suffices for depths up to ~10.
 
-see [[polynomial-commitment]] for the commitment abstraction, [[sumcheck]] for the weight polynomial mechanism, [[verifier]] for the full zheng verification algorithm, [[whirlaway]] for the architecture
+see [[polynomial-commitment]] for the commitment abstraction, [[sumcheck]] for the weight polynomial mechanism, [[verifier]] for the full zheng verification algorithm, [[whirlaway]] for the historical architecture
