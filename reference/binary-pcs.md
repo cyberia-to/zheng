@@ -2,13 +2,13 @@
 tags: cyber, computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
-alias: Binius PCS, binary PCS, F2 tower PCS
+alias: binary PCS, F2 tower PCS, Binius PCS
 ---
-# binius
+# binary PCS
 
-the F₂ tower PCS backend for [[zheng]]. binary-native polynomial commitment over F₂ → F₂² → F₂⁴ → ... → F₂¹²⁸. bitwise operations (XOR, AND, NOT, SHL, LT) cost 1 constraint each — 32-64x cheaper than encoding them in Goldilocks where bit decomposition forces 32-64 STARK constraints per operation.
+the F₂ tower PCS backend for [[zheng]]. binary-native polynomial commitment over [[kuro]]'s tower: F₂ → F₂² → F₂⁴ → ... → F₂¹²⁸. bitwise operations (XOR, AND, NOT, SHL, LT) cost 1 constraint each — 32-64× cheaper than encoding them in [[Goldilocks field|Goldilocks]] where bit decomposition forces 32-64 constraints per operation.
 
-the IOP layer (SuperSpartan + sumcheck + HyperNova) stays field-generic. only the polynomial commitment scheme changes. hemera remains the only hash — used externally for Merkle commitment and Fiat-Shamir, never proved inside binary circuits.
+implements the [[pcs|PCS]] trait for F₂ tower fields. the IOP layer ([[SuperSpartan]] + [[sumcheck]] + [[HyperNova]]) stays field-generic. only the polynomial commitment scheme changes. [[hemera]] remains the only hash — used externally for commitment binding and Fiat-Shamir, never proved inside binary circuits.
 
 ## architecture
 

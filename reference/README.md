@@ -9,23 +9,24 @@ density: 0.73
 ---
 # zheng: polynomial proof system
 
-one PCS: recursive [[Brakedown]] (Goldilocks, expander-graph codes, Merkle-free, O(N) commit).
+one PCS: two backends behind one trait — [[expander-pcs|expander PCS]] (Goldilocks, Merkle-free) + [[binary-pcs|binary PCS]] (F₂ tower via [[kuro]]).
 one IOP: [[SuperSpartan]] + [[sumcheck]] (CCS constraints, O(N) prover, O(log N) verifier).
 one folding: [[HyperNova]] (CCS-native, ~30 field ops per fold, one decider at the end).
 one hash: [[hemera]] (~3 calls per proof — binding, Fiat-Shamir seed, domain separation).
-one field: [[Goldilocks field]] (p = 2^64 - 2^32 + 1, 4-5 cycle multiply via [[nebu]]).
+one field: [[Goldilocks field]] (p = 2^64 - 2^32 + 1, 4-5 cycle multiply via [[nebu]]). binary: F₂ tower via [[kuro]].
 
 five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 
 ## spec pages
 
-- [[polynomial-commitment]] — recursive Brakedown PCS: O(N) commit, O(log N + lambda) proof, O(lambda log log N) verify
+- [[pcs]] — generic PCS interface: commit, open, verify (the trait)
+- [[expander-pcs]] — Goldilocks backend: expander-graph codes, recursive opening, Merkle-free
+- [[binary-pcs]] — F₂ backend: binary tower PCS for bitwise workloads (via [[kuro]])
 - [[sumcheck]] — the engine: O(N) prover reduces exponential sum to one evaluation
-- [[superspartan]] — CCS IOP via sumcheck: any-degree AIR constraints, one PCS opening
+- [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one PCS opening
 - [[recursion]] — HyperNova folding + proof-carrying computation
-- [[accumulator]] — universal accumulator: fold all 5 structural sync layers ([[bbg]])
-- [[binius]] — F2 tower PCS for binary workloads (2 of 14 nox languages)
-- [[tensor]] — tensor compression for O(sqrt(N)) memory in Brakedown opening
+- [[accumulator]] — universal accumulator: fold all 5 structural sync layers
+- [[tensor]] — tensor compression for O(√N) prover memory
 - [[verifier]] — ~89-825 constraint decider (CCS jet + batch + algebraic FS)
 - [[constraints]] — CCS format, pattern table, state operations
 - [[transcript]] — Fiat-Shamir via hemera (~3 calls)
@@ -40,9 +41,9 @@ zheng
 │   ├── sumcheck              exponential sum reduction
 │   └── HyperNova             folding + composition
 │
-├── PCS layer
-│   ├── Brakedown (Goldilocks) expander-graph codes, Merkle-free
-│   └── Binius (F₂ tower)     binary Reed-Solomon with packing
+├── PCS layer (one trait, two backends)
+│   ├── expander PCS (Goldilocks)  expander-graph codes, Merkle-free
+│   └── binary PCS (F₂ tower)     binary Reed-Solomon via kuro
 │
 ├── hash layer
 │   └── hemera                ~3 calls total
