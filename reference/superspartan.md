@@ -93,7 +93,7 @@ constraint degree affects only field operation count in the prover (step 6), not
 | parameter | value |
 |---|---|
 | field | [[Goldilocks field]] (p = 2^64 − 2^32 + 1) |
-| PCS | [[WHIR]] (multilinear mode) |
+| PCS | [[Brakedown]] (multilinear mode) |
 | m | 2^n trace rows (up to 2^32) |
 | n | 16 registers (2^4 columns) |
 | t | number of constraint matrices (pattern-dependent) |
@@ -108,6 +108,6 @@ the CCS matrices are sparse: each [[nox]] pattern touches at most 6 registers pe
 |---|---|
 | IOP soundness error | O(max_degree · log(m) / |F|) per sumcheck |
 | with Goldilocks (|F| ≈ 2^64) | negligible for practical trace sizes |
-| composition with WHIR | total soundness = IOP error + PCS soundness error |
+| composition with Brakedown | total soundness = IOP error + PCS soundness error |
 
-see [[sumcheck]] for the core protocol, [[whir]] for the PCS, [[constraints]] for CCS encoding of nox patterns, [[CCS]] for the constraint framework, [[whirlaway]] for the full architecture
+see [[sumcheck]] for the core protocol, [[polynomial-commitment]] for the PCS, [[constraints]] for CCS encoding of nox patterns, [[CCS]] for the constraint framework, [[zheng]] for the full architecture

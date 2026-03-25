@@ -89,7 +89,7 @@ if r14_t = HALTED: r_k_{t+1} = r_k_t  for all k
 | status | r14 | last active | HALTED |
 | focus | r7 | last active | 0 (or insufficient for next pattern) |
 
-boundary constraints are point evaluations of the trace polynomial at specific binary coordinates. [[WHIR]] proves these directly as evaluation claims.
+boundary constraints are point evaluations of the trace polynomial at specific binary coordinates. [[Brakedown]] proves these directly as evaluation claims.
 
 ## CCS encoding
 
@@ -520,7 +520,8 @@ total per Poseidon2 round: 4 × w degree-2 constraints (S-box decomposition) + w
 | anonymous [[cyberlink]] | 15, 4, 9 | ~13,000 |
 | delivery (per hop) | 15, 7, 4 | ~60,000 |
 | private transfer (BBG) | 15, 7, 9 | ~50,000 |
-| recursive verification (jets) | 15, 5, 7, 4 | ~70,000 |
-| recursive verification (no jets) | 15 dominates | ~600,000 |
+| recursive verification (generic) | 15, 5, 7, 4 | ~8,000 |
+| recursive verification (CCS jet + batch) | 5, 7 | ~825 |
+| recursive verification (+ algebraic FS) | 5, 7 | ~89 |
 
 see [[SuperSpartan]] for the IOP that verifies constraints, [[sumcheck]] for the reduction mechanism, [[nox]] for pattern definitions, [[transcript]] for Fiat-Shamir challenge derivation

@@ -14,12 +14,12 @@ density: 0.47
 
 the standalone verifier algorithm for [[zheng]]. accepts a proof and a public statement, returns accept or reject. the verifier is a [[nox]] program — it runs inside the same VM that produced the original trace, enabling recursive proof composition.
 
-with recursive [[Brakedown]], the recursive verifier drops from ~70,000 to ~8,000 constraints. Brakedown's recursive opening check replaces Merkle verification — the 83% of verifier cost that was hash-dominated disappears. proof size drops to ~2 KiB (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + PCS opening ~1.3 KiB).
+recursive [[Brakedown]] opening check is pure field arithmetic. no Merkle verification, no hash-dominated bottleneck. proof size: ~2 KiB (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + PCS opening ~1.3 KiB).
 
 ## algorithm
 
 ```
-VERIFY(commitment C, statement S, proof π) → accept/reject:
+VERIFY(commitment C, statement S, proof pi) -> accept/reject:
 
   1. INIT TRANSCRIPT
      T = transcript_init(DOMAIN_SEP)
@@ -27,29 +27,27 @@ VERIFY(commitment C, statement S, proof π) → accept/reject:
      T.absorb(C)
 
   2. SUMCHECK VERIFICATION (k rounds, k = n + 4)
-     claim₀ = 0  (constraints must sum to zero)
+     claim_0 = 0  (constraints must sum to zero)
      for i in 1..k:
-       gᵢ = π.sumcheck_polynomials[i]
-       assert gᵢ(0) + gᵢ(1) = claim_{i-1}
-       T.absorb(gᵢ)
-       rᵢ = T.squeeze()
-       claimᵢ = gᵢ(rᵢ)
+       g_i = pi.sumcheck_polynomials[i]
+       assert g_i(0) + g_i(1) = claim_{i-1}
+       T.absorb(g_i)
+       r_i = T.squeeze()
+       claim_i = g_i(r_i)
 
   3. EVALUATION CHECK
-     r = (r₁, ..., r_k)
-     v = π.evaluation_value
-     assert claimₖ = constraint_eval(v, r, S)
+     r = (r_1, ..., r_k)
+     v = pi.evaluation_value
+     assert claim_k = constraint_eval(v, r, S)
 
   4. PCS VERIFICATION
-     Brakedown: assert Brakedown_verify(C, r, v, π.pcs_opening)
-                (recursive tensor check, O(λ log log N) field ops)
-     WHIR:      assert WHIR_verify(C, r, v, π.whir_opening)
-                (Merkle path verification, O(log² N) hashes)
+     assert Brakedown_verify(C, r, v, pi.pcs_opening)
+     (recursive tensor check, O(lambda log log N) field ops)
 
   return accept
 ```
 
-step 2 is pure field arithmetic. step 4 depends on the PCS backend: with Brakedown it is field arithmetic (matrix-vector product check); with WHIR it is hash operations (Merkle path verification). this split determines the cost structure — Brakedown eliminates the hash-dominated bottleneck.
+step 2 is pure field arithmetic. step 4 is pure field arithmetic (matrix-vector product check via recursive Brakedown). the entire verification loop is field-op dominated.
 
 ## constraint evaluation
 
@@ -67,7 +65,7 @@ the trace table has 16 registers per row:
 | r5 | result |
 | r6 | focus_before (focus counter entering this step) |
 | r7 | focus_after (focus counter leaving this step) |
-| r8–r13 | auxiliary (pattern-specific intermediate values) |
+| r8-r13 | auxiliary (pattern-specific intermediate values) |
 | r14 | status (0 = running, 1 = halted, 2 = error) |
 | r15 | step (row index, starting from 0) |
 
@@ -75,10 +73,10 @@ the prover commits to the multilinear extension of each register column. `v` is 
 
 ### selector polynomials
 
-each pattern p ∈ {0, 1, ..., 16} has a Lagrange selector polynomial:
+each pattern p in {0, 1, ..., 16} has a Lagrange selector polynomial:
 
 ```
-selector_p(x) = Π_{q ≠ p} (x - q) / (p - q)
+selector_p(x) = product_{q != p} (x - q) / (p - q)
 ```
 
 evaluated at `v[0]` (the pattern tag register at point r), `selector_p(v[0])` is 1 when the pattern tag equals p and 0 otherwise. this demultiplexes the single constraint evaluation into the correct pattern.
@@ -88,8 +86,8 @@ evaluated at `v[0]` (the pattern tag register at point r), `selector_p(v[0])` is
 each pattern p defines a constraint polynomial `C_p` over the register values. for example:
 
 - pattern 5 (add): `C_5(v) = v[3] + v[4] - v[5]` (inputs sum to result)
-- pattern 7 (mul): `C_7(v) = v[3] × v[4] - v[5]` (inputs multiply to result)
-- pattern 8 (inv): `C_8(v) = v[3] × v[5] - 1` (input times result is one)
+- pattern 7 (mul): `C_7(v) = v[3] * v[4] - v[5]` (inputs multiply to result)
+- pattern 8 (inv): `C_8(v) = v[3] * v[5] - 1` (input times result is one)
 - pattern 15 (hash): `C_15(v) = hemera(v[3], v[4]) - v[5]` (hash of inputs equals result)
 
 all 17 patterns contribute, but the selector zeroes out every pattern except the active one.
@@ -97,17 +95,17 @@ all 17 patterns contribute, but the selector zeroes out every pattern except the
 ### the formula
 
 ```
-constraint_eval(v, r, S) = eq(r_row, r) × Σ_{p=0}^{16} selector_p(v[0]) × C_p(v)
+constraint_eval(v, r, S) = eq(r_row, r) * sum_{p=0}^{16} selector_p(v[0]) * C_p(v)
 ```
 
 where:
 
 - `r_row` is the row-dimension component of r (the first n variables, where 2^n is the number of trace rows)
-- `eq(r_row, r)` is the multilinear equality polynomial: `eq(a, b) = Π_i (a_i × b_i + (1 - a_i)(1 - b_i))`, which ties the sumcheck reduction to the specific evaluation point
+- `eq(r_row, r)` is the multilinear equality polynomial: `eq(a, b) = product_i (a_i * b_i + (1 - a_i)(1 - b_i))`, which ties the sumcheck reduction to the specific evaluation point
 - the sum over p combines all 17 pattern constraints, weighted by selectors
 - `C_p(v)` evaluates pattern p's constraint using the register values at r
 
-the sumcheck protocol reduces the claim "the constraint polynomial sums to zero over the boolean hypercube" to a single evaluation at a random point. `constraint_eval` computes that single evaluation. if the prover is honest, every row satisfies its pattern constraint, the sum is zero, and this evaluation matches `claimₖ`.
+the sumcheck protocol reduces the claim "the constraint polynomial sums to zero over the boolean hypercube" to a single evaluation at a random point. `constraint_eval` computes that single evaluation. if the prover is honest, every row satisfies its pattern constraint, the sum is zero, and this evaluation matches `claim_k`.
 
 ### boundary constraints
 
@@ -117,41 +115,36 @@ boundary constraints enforce the public statement S at specific trace positions.
 - at the final row: `f_14(1, 1, ..., 1) = 1` (status is halted)
 - program hash: the commitment to the opcode column must match `S.program_hash`
 - input/output: `f_3(0, ..., 0) = S.input_hash` and `f_5(last_row) = S.output_hash`
-- focus bound: `f_6(0, ..., 0) - f_7(last_row) ≤ S.focus_bound`
+- focus bound: `f_6(0, ..., 0) - f_7(last_row) <= S.focus_bound`
 
-boundary constraints are folded into the same sumcheck by adding them as additional terms with their own random combiners (drawn from the transcript). at the evaluation point r, the verifier checks these using the same register evaluations v: since multilinear extensions are unique, `f_j(binary_point)` can be reconstructed from `f_j(r)` via the commitment (WHIR opening at the binary coordinate), or the prover supplies these boundary evaluations separately and the verifier includes them in the WHIR batch check of step 4.
+boundary constraints are folded into the same sumcheck by adding them as additional terms with their own random combiners (drawn from the transcript).
 
 ### relationship to sumcheck
 
-the sumcheck protocol (step 2) starts with `claim₀ = 0` because a valid trace satisfies all constraints on every row, so the constraint polynomial sums to zero over the hypercube. after k rounds of interaction, the verifier holds a random point r and a final claim `claimₖ`. step 3 asserts `claimₖ = constraint_eval(v, r, S)`: the reduced claim equals the actual constraint evaluation at r. step 4 then verifies (via WHIR) that v is the correct evaluation of the committed polynomials at r. together, steps 3 and 4 complete the sumcheck verification — step 3 checks algebraic consistency, step 4 checks that the prover did not lie about v.
+the sumcheck protocol (step 2) starts with `claim_0 = 0` because a valid trace satisfies all constraints on every row, so the constraint polynomial sums to zero over the hypercube. after k rounds of interaction, the verifier holds a random point r and a final claim `claim_k`. step 3 asserts `claim_k = constraint_eval(v, r, S)`: the reduced claim equals the actual constraint evaluation at r. step 4 then verifies (via Brakedown) that v is the correct evaluation of the committed polynomials at r. together, steps 3 and 4 complete the sumcheck verification — step 3 checks algebraic consistency, step 4 checks that the prover did not lie about v.
 
 ## cost breakdown
 
-### with Brakedown (target)
+the verifier uses recursive Brakedown. three cost tiers depending on optimization level:
+
+| configuration | constraints | description |
+|---|---|---|
+| generic (no jets) | ~8,000 | field arithmetic only, no optimizations |
+| CCS jet + batch opening | ~825 | batched Brakedown verification, CCS-aware jet |
+| + algebraic Fiat-Shamir | ~89 | hemera challenges replaced by algebraic FS |
+
+the ~825 tier is the practical target. breakdown:
 
 | component | constraints | notes |
 |---|---|---|
-| parse proof | ~1,000 | unchanged |
-| Fiat-Shamir challenges | ~3,000 | hemera sponge, fewer rounds (no Merkle commits) |
-| Brakedown recursive opening check | ~2,000 | O(λ log log N) field ops, log log N recursion levels |
-| constraint evaluation | ~2,000 | unchanged |
-| sumcheck check | ~1,000 | field arithmetic only |
-| **total** | **~8,000** | field-op dominated, no hashing in PCS |
+| parse proof | ~100 | structured deserialization |
+| Fiat-Shamir challenges | ~300 | hemera sponge, ~3 calls total |
+| Brakedown recursive opening check | ~200 | O(lambda log log N) field ops, log log N recursion levels |
+| constraint evaluation | ~150 | selector polynomials + pattern constraints |
+| sumcheck check | ~75 | field arithmetic only |
+| **total** | **~825** | field-op dominated, no hashing in PCS |
 
-recursive Brakedown eliminates Merkle verification entirely. the 50K-constraint Merkle bottleneck becomes a 2K-constraint recursive tensor check.
-
-### with WHIR (legacy)
-
-| component | without jets | with jets | reduction |
-|---|---|---|---|
-| parse proof | ~1,000 | ~1,000 | 1× |
-| Fiat-Shamir challenges | ~30,000 | ~5,000 | 6× |
-| Merkle verification | ~500,000 | ~50,000 | 10× |
-| constraint evaluation | ~10,000 | ~3,000 | 3× |
-| WHIR verification | ~50,000 | ~10,000 | 5× |
-| total | ~600,000 | ~70,000 | 8.5× |
-
-Merkle verification dominates WHIR without jets (83%). the merkle_verify jet reduces it 10×.
+the ~89 tier replaces hemera-based Fiat-Shamir with algebraic challenges derived from the field structure. all verification becomes pure field arithmetic.
 
 ## nox pattern decomposition
 
@@ -160,14 +153,13 @@ every verifier operation maps to native [[nox]] patterns:
 | verifier operation | nox patterns | why native |
 |---|---|---|
 | field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks field]] is the native field |
-| hash computation | 15 (hash) / hash jet | [[hemera]] is the nox hash (Fiat-Shamir only) |
+| hash computation | 15 (hash) / hash jet | [[hemera]] — Fiat-Shamir only, ~3 calls |
 | [[sumcheck]] verification | 5, 7, 9 | pure field arithmetic |
 | [[Brakedown]] opening verification | 5, 7 (matrix-vector product) | pure field arithmetic, no hashing |
-| [[WHIR]] opening verification (legacy) | 15, 4, poly_eval/merkle_verify/fri_fold jets | Merkle paths + polynomial eval |
 
 no external primitive enters the verification loop. the verifier is closed under the nox instruction set. consequence: verify(proof) can itself be proven, and verify(verify(proof)) too, to arbitrary depth.
 
-with Brakedown, the opening verification is entirely field arithmetic — no hash jets needed in the PCS check. hemera is used only for Fiat-Shamir transcript (squeezing challenges), reducing the hash dependency in the recursive verifier.
+Brakedown opening verification is entirely field arithmetic — no hash jets needed in the PCS check. hemera is used only for Fiat-Shamir transcript (squeezing challenges), reducing the hash dependency in the recursive verifier.
 
 ## input/output format
 
@@ -184,7 +176,7 @@ INPUTS (public):
 PROOF:
   sumcheck_polynomials: Vec<Vec<GoldilocksElement>>,
   evaluation_value:     GoldilocksElement,
-  whir_opening:         WHIRProof,
+  pcs_opening:          BrakedownProof,
 
 OUTPUT:
   accept / reject
@@ -192,18 +184,9 @@ OUTPUT:
 
 ## verification time
 
-### Brakedown (target)
-
 | security level | verification time | operations |
 |---|---|---|
-| 128-bit | ~5 μs | O(λ log log N) field ops + Fiat-Shamir hemera |
-
-### WHIR (legacy)
-
-| security level | verification time | operations |
-|---|---|---|
-| 100-bit | ~290 μs | ~1,800 hemera hashes + field ops |
-| 128-bit | ~1.0 ms | ~2,700 hemera hashes + field ops |
+| 128-bit | ~5 us | O(lambda log log N) field ops + ~3 hemera calls |
 
 verification time is independent of the original computation size. a proof of a 300-constraint identity check and a proof of a million-constraint neural network inference verify in the same time.
 
@@ -213,12 +196,12 @@ when the verifier runs as a nox program, its execution trace can be proven by zh
 
 ```
 proof_A = zheng.prove(computation)            // ~|C| constraints
-proof_B = zheng.prove(zheng.verify(proof_A))  // ~8K constraints (Brakedown)
-proof_C = zheng.prove(zheng.verify(proof_B))  // ~8K constraints (Brakedown)
+proof_B = zheng.prove(zheng.verify(proof_A))  // ~825 constraints
+proof_C = zheng.prove(zheng.verify(proof_B))  // ~825 constraints
 ```
 
-each recursion level costs ~8,000 constraints (Brakedown) / ~70,000 constraints (WHIR), regardless of the original computation size. proof size remains constant: ~2 KiB (Brakedown) / ~60-157 KiB (WHIR).
+each recursion level costs ~825 constraints, regardless of the original computation size. proof size remains constant: ~2 KiB.
 
 with HyperNova folding, recursive composition drops further: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end. see [[recursion]] for folding-first composition.
 
-see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[Brakedown]] for the PCS opening verification, [[WHIR]] for the legacy PCS, [[constraints]] for the AIR format, [[nox]] for the VM
+see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[Brakedown]] for the PCS opening verification, [[constraints]] for the AIR format, [[nox]] for the VM

@@ -12,7 +12,7 @@ density: 0.81
 ---
 # sumcheck
 
-an interactive proof protocol that reduces verifying a sum over exponentially many terms to checking a single evaluation. Lund, Fortnow, Karloff, Nisan (1992). the engine inside [[whirlaway|multilinear starks]] and [[SuperSpartan]].
+an interactive proof protocol that reduces verifying a sum over exponentially many terms to checking a single evaluation. Lund, Fortnow, Karloff, Nisan (1992). the engine inside [[zheng]] and [[SuperSpartan]].
 
 ## the protocol
 
@@ -88,8 +88,8 @@ after computing gᵢ, the prover receives challenge rᵢ and folds the table: ea
 
 ## role in cyber
 
-in the [[whirlaway|multilinear stark]] pipeline, sumcheck replaces the zerofier division step of classical univariate starks. [[SuperSpartan]] uses sumcheck to verify AIR constraints: the sum of constraint polynomials over all trace rows must be zero. sumcheck reduces this to evaluating the trace polynomial at one random point, which [[WHIR]] opens.
+in the [[zheng]] pipeline, sumcheck replaces the zerofier division step of classical univariate starks. [[SuperSpartan]] uses sumcheck to verify AIR constraints: the sum of constraint polynomials over all trace rows must be zero. sumcheck reduces this to evaluating the trace polynomial at one random point, which [[Brakedown]] opens.
 
 sumcheck also appears in LogUp lookup arguments for cross-index consistency in the [[cybergraph]] (see [[bbg-integration]]).
 
-see [[whirlaway]] for the full proof pipeline, [[SuperSpartan]] for the IOP, [[WHIR]] for the polynomial commitment scheme
+see [[zheng]] for the full proof pipeline, [[SuperSpartan]] for the IOP, [[polynomial-commitment]] for the PCS
