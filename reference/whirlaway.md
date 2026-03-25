@@ -198,9 +198,9 @@ with WHIR (legacy): commit O(N log N), open O(N log N), total O(N log N), hash-d
 | phase | cost | operations |
 |---|---|---|
 | sumcheck check | O(log N) | field arithmetic only |
-| Brakedown verify | O(√N) | field arithmetic (matrix-vector check) |
-| total | O(√N) | field-dominated |
-| wall clock (128-bit) | ~30 μs | field ops only |
+| Brakedown verify | O(λ log log N) | field arithmetic (recursive tensor check) |
+| total | O(λ log log N) | field-dominated |
+| wall clock (128-bit) | ~5 μs | field ops only |
 
 with WHIR (legacy): verify O(log² N), ~1.0 ms at 128-bit, hash-dominated (~2,700 hemera calls).
 
@@ -208,7 +208,7 @@ with WHIR (legacy): verify O(log² N), ~1.0 ms at 128-bit, hash-dominated (~2,70
 
 | PCS | size (128-bit) | breakdown |
 |---|---|---|
-| Brakedown | ~8 KiB | sumcheck (~3 KiB) + Brakedown opening (~5 KiB) |
+| Brakedown | ~2 KiB | sumcheck (~0.5 KiB) + evaluation (~0.3 KiB) + Brakedown opening (~1.3 KiB) |
 | WHIR (legacy) | ~157 KiB | sumcheck (~3 KiB) + WHIR opening (~154 KiB) |
 
 proof size is constant regardless of original computation size.
@@ -222,7 +222,7 @@ proof size is constant regardless of original computation size.
 | transparent setup | Brakedown (no ceremony, no trusted setup) |
 | post-quantum security | Brakedown (no discrete log, no pairings) |
 | O(N) commitment | Brakedown (expander-graph encoding, no FFT) |
-| O(√N) verification | Brakedown (matrix-vector check, no Merkle) |
+| O(λ log log N) verification | Brakedown (recursive tensor check, no Merkle) |
 | linear-time constraint proving | SuperSpartan (sumcheck, no FFT) |
 | any-degree AIR constraints | SuperSpartan ([[CCS]] generality) |
 | one commitment, one opening | multilinear encoding + sumcheck reduction |
@@ -230,7 +230,7 @@ proof size is constant regardless of original computation size.
 
 | PCS | setup | post-quantum | verification | verifier constraints |
 |---|---|---|---|---|
-| **Brakedown** | none | yes | ~30 μs | ~12K |
+| **Brakedown** | none | yes | ~5 μs | ~8K |
 | WHIR | none | yes | ~1.0 ms | ~70K |
 | KZG | trusted ceremony | no | ~2.4 ms | — |
 | FRI | none | yes | ~3.9 ms | — |
@@ -245,7 +245,7 @@ the zheng verifier uses only:
 - [[hemera]] hashing (nox pattern 15 / hash jet) — Fiat-Shamir only
 - conditional branching (nox pattern 4)
 
-these are all [[nox]]-native operations. the verifier is a nox program. zheng can prove its own verification. with Brakedown, the recursive verifier drops to ~12,000 constraints (from ~70,000 with WHIR) because Merkle path verification is eliminated.
+these are all [[nox]]-native operations. the verifier is a nox program. zheng can prove its own verification. with recursive Brakedown, the recursive verifier drops to ~8,000 constraints (from ~70,000 with WHIR) because Merkle path verification is eliminated and the opening check compresses to O(λ log log N) field ops.
 
 HyperNova folding further reduces recursive composition: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end.
 

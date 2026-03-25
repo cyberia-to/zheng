@@ -14,7 +14,7 @@ density: 0.47
 
 the standalone verifier algorithm for [[zheng]]. accepts a proof and a public statement, returns accept or reject. the verifier is a [[nox]] program — it runs inside the same VM that produced the original trace, enabling recursive proof composition.
 
-with [[Brakedown]], the recursive verifier drops from ~70,000 to ~12,000 constraints. Brakedown's opening check replaces Merkle verification — the 83% of verifier cost that was hash-dominated disappears.
+with recursive [[Brakedown]], the recursive verifier drops from ~70,000 to ~8,000 constraints. Brakedown's recursive opening check replaces Merkle verification — the 83% of verifier cost that was hash-dominated disappears. proof size drops to ~2 KiB (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + PCS opening ~1.3 KiB).
 
 ## algorithm
 
@@ -42,7 +42,7 @@ VERIFY(commitment C, statement S, proof π) → accept/reject:
 
   4. PCS VERIFICATION
      Brakedown: assert Brakedown_verify(C, r, v, π.pcs_opening)
-                (matrix-vector consistency check, O(√N) field ops)
+                (recursive tensor check, O(λ log log N) field ops)
      WHIR:      assert WHIR_verify(C, r, v, π.whir_opening)
                 (Merkle path verification, O(log² N) hashes)
 
@@ -133,12 +133,12 @@ the sumcheck protocol (step 2) starts with `claim₀ = 0` because a valid trace 
 |---|---|---|
 | parse proof | ~1,000 | unchanged |
 | Fiat-Shamir challenges | ~3,000 | hemera sponge, fewer rounds (no Merkle commits) |
-| Brakedown opening check | ~4,000 | matrix-vector product, O(√N) field ops |
-| constraint evaluation | ~3,000 | unchanged |
+| Brakedown recursive opening check | ~2,000 | O(λ log log N) field ops, log log N recursion levels |
+| constraint evaluation | ~2,000 | unchanged |
 | sumcheck check | ~1,000 | field arithmetic only |
-| **total** | **~12,000** | field-op dominated, no hashing in PCS |
+| **total** | **~8,000** | field-op dominated, no hashing in PCS |
 
-Brakedown eliminates Merkle verification entirely. the 50K-constraint Merkle bottleneck becomes a 4K-constraint matrix-vector check.
+recursive Brakedown eliminates Merkle verification entirely. the 50K-constraint Merkle bottleneck becomes a 2K-constraint recursive tensor check.
 
 ### with WHIR (legacy)
 
@@ -196,7 +196,7 @@ OUTPUT:
 
 | security level | verification time | operations |
 |---|---|---|
-| 128-bit | ~30 μs | O(√N) field ops + Fiat-Shamir hemera |
+| 128-bit | ~5 μs | O(λ log log N) field ops + Fiat-Shamir hemera |
 
 ### WHIR (legacy)
 
@@ -213,11 +213,11 @@ when the verifier runs as a nox program, its execution trace can be proven by zh
 
 ```
 proof_A = zheng.prove(computation)            // ~|C| constraints
-proof_B = zheng.prove(zheng.verify(proof_A))  // ~12K constraints (Brakedown)
-proof_C = zheng.prove(zheng.verify(proof_B))  // ~12K constraints (Brakedown)
+proof_B = zheng.prove(zheng.verify(proof_A))  // ~8K constraints (Brakedown)
+proof_C = zheng.prove(zheng.verify(proof_B))  // ~8K constraints (Brakedown)
 ```
 
-each recursion level costs ~12,000 constraints (Brakedown) / ~70,000 constraints (WHIR), regardless of the original computation size. proof size remains constant: ~8 KiB (Brakedown) / ~60-157 KiB (WHIR).
+each recursion level costs ~8,000 constraints (Brakedown) / ~70,000 constraints (WHIR), regardless of the original computation size. proof size remains constant: ~2 KiB (Brakedown) / ~60-157 KiB (WHIR).
 
 with HyperNova folding, recursive composition drops further: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end. see [[recursion]] for folding-first composition.
 

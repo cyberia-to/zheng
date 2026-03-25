@@ -91,7 +91,7 @@ zheng::decide(
 ) → Result<Proof, ProveError>
 ```
 
-produces a final stark proof from the accumulated folds. runs SuperSpartan + sumcheck + Brakedown verification on the folded CCS instance. cost: ~12,000 constraints (Brakedown) / ~70,000 constraints (WHIR legacy). called ONCE at the end of a folding sequence (e.g., end of epoch).
+produces a final stark proof from the accumulated folds. runs SuperSpartan + sumcheck + Brakedown verification on the folded CCS instance. cost: ~8,000 constraints (Brakedown) / ~70,000 constraints (WHIR legacy). called ONCE at the end of a folding sequence (e.g., end of epoch).
 
 ## fold_row (proof-carrying)
 
@@ -120,12 +120,12 @@ Proof {
 }
 
 enum PCSOpening {
-  Brakedown(BrakedownProof),   // O(√N) field elements, ~5 KiB
+  Brakedown(BrakedownProof),   // O(log N + λ) field elements, ~1.3 KiB (recursive)
   WHIR(WHIRProof),             // Merkle paths + folding data, ~154 KiB
 }
 ```
 
-size with Brakedown: ~8 KiB at 128-bit security. size with WHIR: ~60 KiB at 100-bit / ~157 KiB at 128-bit. constant regardless of original computation size.
+size with Brakedown: ~2 KiB at 128-bit security (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + PCS opening ~1.3 KiB). size with WHIR: ~60 KiB at 100-bit / ~157 KiB at 128-bit. constant regardless of original computation size.
 
 ### Statement
 
@@ -182,7 +182,7 @@ for tx in block.transactions() {
   let (instance, witness) = tx.to_ccs();
   acc = zheng::fold(&acc, &instance, &witness)?;  // ~30 field ops each
 }
-let block_proof = zheng::decide(&acc, &params)?;   // ~12K constraints, once
+let block_proof = zheng::decide(&acc, &params)?;   // ~8K constraints, once
 ```
 
 ### epoch composition (fold)

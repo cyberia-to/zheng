@@ -12,7 +12,7 @@ density: 0.64
 ---
 # recursion
 
-the recursive composition protocol for [[zheng]]. [[HyperNova]] folding over [[CCS]] is the primary composition mechanism at every level: transaction, block, epoch. per-step folding cost: ~30 field ops + 1 [[hemera]] hash. the decider runs ONCE at the end. with [[Brakedown]], the decider verifier is ~12,000 constraints (down from ~70,000 with WHIR).
+the recursive composition protocol for [[zheng]]. [[HyperNova]] folding over [[CCS]] is the primary composition mechanism at every level: transaction, block, epoch. per-step folding cost: ~30 field ops + 1 [[hemera]] hash. the decider runs ONCE at the end. with recursive [[Brakedown]], the decider verifier is ~8,000 constraints (down from ~70,000 with WHIR).
 
 tree aggregation and DAG merging remain available for specific topologies. proof-carrying computation folds during [[nox]] execution itself.
 
@@ -23,7 +23,7 @@ fold(accumulator, instance) → accumulator'
   cost: ~30 field operations + 1 hemera hash
 
 decide(accumulator) → proof
-  cost: ~12,000 constraints (Brakedown) / ~70,000 constraints (WHIR legacy)
+  cost: ~8,000 constraints (Brakedown) / ~70,000 constraints (WHIR legacy)
 ```
 
 for N independent proofs:
@@ -31,8 +31,8 @@ for N independent proofs:
 ```
 1000 transactions in a block:
   fold: 1000 steps × ~30 field ops = 30K field operations (trivial)
-  decider: 1 × ~12K constraints (Brakedown)
-  total: ~12K constraints + 30K field ops
+  decider: 1 × ~8K constraints (Brakedown)
+  total: ~8K constraints + 30K field ops
 
 vs tree aggregation (legacy):
   10 levels × 2 verifications × 70K constraints = 1.4M constraints
@@ -46,8 +46,8 @@ reduction: ~100×
 folding-first:
   block 1 → fold → block 2 → fold → ... → block 1000 → fold → decider
   1000 folds × 30 field ops = 30K field ops
-  1 decider = ~12K constraints (Brakedown)
-  total: ~12K constraints + negligible folding cost
+  1 decider = ~8K constraints (Brakedown)
+  total: ~8K constraints + negligible folding cost
 
 vs full recursion (legacy):
   1000 blocks/epoch × 70K constraints/recursive verify = 70M constraints
@@ -80,7 +80,7 @@ at the end: the accumulator IS the proof (after one decider call).
 proof-carrying:
   compute: N reduce() calls                    → result + accumulator
   fold:    N × ~30 field ops per fold          → accumulator
-  decider: 1 × ~12K constraints (Brakedown)   → proof
+  decider: 1 × ~8K constraints (Brakedown)   → proof
   total:   ~N + 30N + 12K = ~31N operations
 
 vs separate proving (legacy):
@@ -95,7 +95,7 @@ for N = 2^20: proof-carrying = ~31M ops, separate = ~20M ops. comparable, but pr
 
 - **memoization is proof-verified**: `(H(object), H(formula)) → (H(result), acc)` — the cache entry IS a proof
 - **network propagation carries proofs**: a neuron computes a cyberlink and gossips it with the proof attached
-- **verification is always O(1)**: the receiver runs the decider (~12K constraints) regardless of original computation size
+- **verification is always O(1)**: the receiver runs the decider (~8K constraints) regardless of original computation size
 - **no proving infrastructure**: no proving queues, no prover-verifier asymmetry. every device is a prover
 
 ## cross-algebra folding
@@ -114,7 +114,7 @@ fold(acc', binary_instance)     → acc''   (~30 F_p ops + 1 hemera)
 fold(acc'', ring_instance)      → acc'''  (~30 F_p ops + 1 hemera)
 
 one accumulator, all algebras
-decider: one proof, ~30 μs verification (Brakedown)
+decider: one proof, ~5 μs verification (Brakedown)
 ```
 
 boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera hash). negligible vs execution cost.
@@ -123,16 +123,16 @@ boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hem
 
 ```
 Level 0: prove computation C       → proof π₀   (constraint count = |C|)
-Level 1: prove verify(π₀)          → proof π₁   (~70K constraints with WHIR, ~12K with Brakedown)
+Level 1: prove verify(π₀)          → proof π₁   (~70K constraints with WHIR, ~8K with Brakedown)
 Level 2: prove verify(π₁)          → proof π₂   (same)
   ...
 Level k: proof π_k                              (constant size)
 ```
 
 invariants (Brakedown):
-- constraint count per recursion level: ~12,000 (with jets)
-- proof size: constant across levels (~8 KiB at 128-bit)
-- verification time: constant (~30 μs)
+- constraint count per recursion level: ~8,000 (with jets)
+- proof size: constant across levels (~2 KiB at 128-bit)
+- verification time: constant (~5 μs)
 
 invariants (WHIR legacy):
 - constraint count per recursion level: ~70,000 (with jets), ~600,000 (without)
@@ -170,8 +170,8 @@ pair verification at each node: prove(verify(π_left) AND verify(π_right)). con
 | metric | folding (Brakedown) | folding (WHIR legacy) | full recursion (legacy) |
 |---|---|---|---|
 | cost per step | ~30 field ops + 1 hash | ~30 field ops + 1 hash | ~70K constraints |
-| decider cost | ~12K constraints | ~70K constraints | N/A |
-| total for N=1000 | 30K ops + 12K constraints | 30K ops + 70K constraints | 70M constraints |
+| decider cost | ~8K constraints | ~70K constraints | N/A |
+| total for N=1000 | 30K ops + 8K constraints | 30K ops + 70K constraints | 70M constraints |
 
 ### accumulator format
 
@@ -204,7 +204,7 @@ given running accumulator A = (E_acc, u_acc, w_acc, e_acc) and new CCS instance 
 
 ### decide(accumulator, params)
 
-prove that the accumulated CCS instance is satisfiable. this is a standard [[SuperSpartan]] + [[Brakedown]] proof of the folded instance. cost: ~12,000 constraints (Brakedown) / ~70,000 constraints (WHIR legacy).
+prove that the accumulated CCS instance is satisfiable. this is a standard [[SuperSpartan]] + [[Brakedown]] proof of the folded instance. cost: ~8,000 constraints (Brakedown) / ~70,000 constraints (WHIR legacy).
 
 ### cross-term computation
 
@@ -264,13 +264,13 @@ each fold sees the transition constraint between consecutive rows. row_{t} appea
 | scenario | depth | total prover cost (Brakedown) |
 |---|---|---|
 | single transaction | 0 | |C| constraints |
-| block (1000 txns, fold) | 1 | 1000 × 30 ops + 12K decider |
-| block (1000 txns, tree) | ~10 | O(1000) × 12K + 10 × 24K |
-| epoch (1000 blocks, fold) | 1 | 1000 × 30 ops + 12K decider |
+| block (1000 txns, fold) | 1 | 1000 × 30 ops + 8K decider |
+| block (1000 txns, tree) | ~10 | O(1000) × 8K + 10 × 16K |
+| epoch (1000 blocks, fold) | 1 | 1000 × 30 ops + 8K decider |
 | epoch + block combined | 2 | block fold + epoch fold + 2 deciders |
 | cross-epoch query | 1 | one recursive verification of epoch proof |
 
-practical depth limit: unbounded in theory. with folding, each step adds ~30 field ops. the decider runs once at ~12K constraints. for latency-sensitive applications, folding is always preferred over tree aggregation.
+practical depth limit: unbounded in theory. with folding, each step adds ~30 field ops. the decider runs once at ~8K constraints. for latency-sensitive applications, folding is always preferred over tree aggregation.
 
 ## security of recursive composition
 

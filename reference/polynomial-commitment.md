@@ -12,7 +12,7 @@ density: 1.89
 ---
 # polynomial commitment
 
-a cryptographic primitive that allows a prover to commit to a polynomial and later prove evaluations at specific points. in [[cyber]], the primary PCS is [[Brakedown]] over the [[Goldilocks field]] — expander-graph linear codes, O(N) commitment, O(sqrt(N)) proof size, zero Merkle trees. one [[hemera]] call for the binding hash. no trusted setup, no pairing-based curves.
+a cryptographic primitive that allows a prover to commit to a polynomial and later prove evaluations at specific points. in [[cyber]], the primary PCS is [[Brakedown]] over the [[Goldilocks field]] — expander-graph linear codes, O(N) commitment, O(log N + λ) proof size via recursive opening, zero Merkle trees. one [[hemera]] call for the binding hash. no trusted setup, no pairing-based curves.
 
 zheng-2 supports two PCS backends over one field-generic IOP ([[SuperSpartan]] + [[sumcheck]] + [[HyperNova]]):
 - **Brakedown** (Goldilocks) — target PCS. Merkle-free, field-op dominated
@@ -29,11 +29,13 @@ COMMIT:   C = Brakedown_commit(P)
 
 OPEN:     proof = Brakedown_open(P, r)
           prove that P(r) = v for evaluation point r
-          proof = linear combination of encoded rows (O(√N) field elements)
+          recursive: commit the √N opening elements with Brakedown, recurse
+          log log N levels until opening fits in λ elements
+          proof size: O(log N + λ) field elements ≈ ~1.3 KiB at N=2²⁰
 
 VERIFY:   Brakedown_verify(C, r, v, proof) → accept/reject
-          check matrix-vector product consistency
-          cost: O(√N) field operations
+          check matrix-vector product consistency at each recursion level
+          cost: O(λ log log N) field operations ≈ ~660 field ops ≈ ~5 μs
 ```
 
 in multilinear mode, Brakedown commits the entire [[nox]] execution trace as a single polynomial. the [[SuperSpartan]] IOP reduces all AIR constraint checks to one evaluation at one random point, which Brakedown opens. see [[zheng]] for the full pipeline.
@@ -62,7 +64,7 @@ Brakedown requires:
 
 the expander graph needs left-degree d ≈ 20-30 for 128-bit security over Goldilocks (|F| ≈ 2^64). each encoding step is d field multiplications per element. total encoding: d × N ≈ 25N field muls. at 5 cycles per mul: ~125N cycles. for N = 2^20: ~130M cycles ≈ ~40 ms on a single core.
 
-## Brakedown opening
+## Brakedown opening (recursive)
 
 to prove f(r) = y for evaluation point r:
 
@@ -72,11 +74,37 @@ open(f, r):
      (k = log N, each tᵢ ∈ F²)
   2. prover computes q = Σᵢ tᵢ · row_i(encoded matrix)
      (one linear combination of encoded rows)
-  3. prover sends q (√N field elements)
-  4. verifier checks: q is consistent with commitment
-     and q evaluates to y at the tensor point
+  3. instead of sending q (√N field elements), commit q with Brakedown
+  4. recurse: open the commitment to q at the verifier's challenge point
+  5. recurse until the opening vector fits in λ elements (security parameter)
 
-proof size: O(√N) field elements = O(√N × 8) bytes
+  recursion depth: log log N levels
+  at each level: one Brakedown commitment + one tensor reduction
+  final level: send ≤ λ field elements directly
+
+proof size: O(log N + λ) field elements ≈ ~1.3 KiB at N=2²⁰
+```
+
+### recursive open/verify protocol
+
+```
+RECURSIVE_OPEN(C₀, f, r):
+  level 0: q₀ = tensor_reduce(f, r)           // √N elements
+            C₁ = Brakedown_commit(q₀)          // commit the opening
+  level 1: q₁ = tensor_reduce(q₀, r₁)         // N^{1/4} elements
+            C₂ = Brakedown_commit(q₁)
+  ...
+  level d: q_d has ≤ λ elements               // d = log log N
+            send q_d directly
+
+  proof = (C₁, C₂, ..., C_d, q_d)
+
+RECURSIVE_VERIFY(C₀, r, v, proof):
+  for level i = 0..d-1:
+    rᵢ = transcript.squeeze()                  // Fiat-Shamir challenge
+    check Cᵢ₊₁ consistent with tensor reduction at rᵢ
+  check q_d evaluates to v at the composed point
+  cost: O(λ) field ops per level × log log N levels = O(λ log log N)
 ```
 
 ## concrete numbers
@@ -85,10 +113,10 @@ for N = 2^20 (typical nox trace):
 
 | metric | WHIR (legacy) | Brakedown (target) |
 |---|---|---|
-| proof size | 157 KiB | ~8 KiB |
+| proof size | 157 KiB | ~2 KiB (sumcheck ~0.5 KiB + eval ~0.3 KiB + PCS opening ~1.3 KiB) |
 | commit time | O(N log N) hashes | O(N) field ops |
-| verify time | ~1 ms (hash-dominated) | ~30 μs (field-dominated) |
-| verifier constraints | ~70K (with jets) | ~12K |
+| verify time | ~1 ms (hash-dominated) | ~5 μs (field-dominated) |
+| verifier constraints | ~70K (with jets) | ~8K |
 | prover bottleneck | hemera hashing | nebu field arithmetic |
 
 ## stack impact
@@ -97,7 +125,7 @@ for N = 2^20 (typical nox trace):
 
 **nebu** becomes the proving bottleneck. the expander-graph encoding is sparse matrix-vector multiply over Goldilocks — exactly nebu's strength. SIMD vectorization of nebu field ops becomes the highest-leverage optimization.
 
-**recursive verification** drops from ~70K constraints to ~12K. proof-carrying computation becomes nearly free — the fold overhead per step is ~30 field ops + 1 hemera hash.
+**recursive verification** drops from ~70K constraints to ~8K. proof-carrying computation becomes nearly free — the fold overhead per step is ~30 field ops + 1 hemera hash.
 
 ## why polynomial commitments
 
@@ -105,7 +133,7 @@ the [[cybergraph]] needs to prove membership ("this edge belongs to neuron N's e
 
 | operation | Merkle tree | polynomial commitment |
 |---|---|---|
-| membership proof | O(log n) hashes, ~9,600 constraints | O(√n), ~500 constraints |
+| membership proof | O(log n) hashes, ~9,600 constraints | O(log n + λ), ~500 constraints |
 | batch membership (N elements) | N × O(log n), ~9,600 × N | amortized sublinear |
 | state root update | O(log n) rehash | O(1) update |
 | completeness proof | impossible (standard Merkle) | requires sorted polynomial + NMT |
@@ -148,13 +176,13 @@ EdgeSet for neuron N:
 
 | PCS | setup | post-quantum | proof size (128-bit) | verification | verifier constraints |
 |---|---|---|---|---|---|
-| **Brakedown** | none | yes | ~8 KiB | ~30 μs | ~12K |
+| **Brakedown** | none | yes | ~2 KiB | ~5 μs | ~8K |
 | WHIR | none | yes | ~157 KiB | ~1.0 ms | ~70K |
 | Binius (F₂) | none | yes | varies | varies | N/A (external) |
 | KZG | trusted | no | 48 bytes | ~2.4 ms | — |
 | FRI | none | yes | 306 KiB | ~3.9 ms | — |
 
-Brakedown eliminates Merkle trees from the PCS entirely. WHIR's 157 KiB proof was 77% Merkle auth paths (121 KiB) and its 70K verifier constraints were 83% Merkle verification (58K constraints). Brakedown removes both.
+Brakedown eliminates Merkle trees from the PCS entirely. WHIR's 157 KiB proof was 77% Merkle auth paths (121 KiB) and its 70K verifier constraints were 83% Merkle verification (58K constraints). recursive Brakedown removes both and compresses the O(√N) opening to O(log N + λ) via log log N levels of self-commitment.
 
 ## one primitive, one security analysis
 
