@@ -67,7 +67,7 @@ verifier checks: Brakedown.verify(C, r, y, π)
 
 one commitment. one opening. one proof. the [[sumcheck protocol]] inside [[SuperSpartan]] does the structural work of reducing a million constraint checks to a single evaluation. Brakedown handles just that one evaluation — but handles it with full soundness, no trusted setup, and post-quantum security.
 
-## the PCS as unified primitive
+## the lens as unified primitive
 
 Brakedown unifies proximity testing (is the committed function close to a low-degree polynomial?) and evaluation proving (does the polynomial evaluate to y at point r?) into a single protocol. [[zheng]] needs exactly one cryptographic primitive for commitments.
 
@@ -75,11 +75,11 @@ the proximity test ensures the prover actually committed to a low-degree polynom
 
 ## the commitment as interface
 
-from the perspective of the rest of the [[zheng]] stack, the polynomial commitment scheme is an interface with three methods: commit, open, verify. [[SuperSpartan]] calls commit once at the start and open once at the end. the [[sumcheck protocol]] runs in between, oblivious to which PCS sits underneath.
+from the perspective of the rest of the [[zheng]] stack, a polynomial commitment scheme (PCS) — called a lens in zheng — is an interface with three methods: commit, open, verify. [[SuperSpartan]] calls commit once at the start and open once at the end. the [[sumcheck protocol]] runs in between, oblivious to which lens sits underneath.
 
-this abstraction is deliberate. when the PCS improves — from [[FRI]] to [[STIR]] to [[WHIR (legacy)]] to recursive Brakedown — everything above stays the same. the IOP layer, the constraint system, the VM trace format, the recursive verifier: none of them change. only the implementation behind commit/open/verify changes, and proof sizes shrink, and verification gets faster.
+this abstraction is deliberate. when the lens improves — from [[FRI]] to [[STIR]] to [[WHIR (legacy)]] to recursive Brakedown — everything above stays the same. the IOP layer, the constraint system, the VM trace format, the recursive verifier: none of them change. only the implementation behind commit/open/verify changes, and proof sizes shrink, and verification gets faster.
 
-the commitment scheme is the trust anchor because it is the only component that touches the real world — the only place where computational hardness assumptions enter. everything else in the proof system is information-theoretic, secured by the mathematics of polynomials and probability. the PCS is where cryptography meets algebra, and Brakedown sits at that junction.
+the commitment scheme is the trust anchor because it is the only component that touches the real world — the only place where computational hardness assumptions enter. everything else in the proof system is information-theoretic, secured by the mathematics of polynomials and probability. the lens is where cryptography meets algebra, and Brakedown sits at that junction.
 
 ## what the verifier trusts
 

@@ -27,7 +27,7 @@ TFHE bootstrapping refreshes ciphertext noise. four phases, each with a differen
 | key switching | matrix × vector over F_p | F_p (matrix) | Ten |
 | modulus switching | rescale coefficients | F_p (field) | Tri |
 
-bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate PCS backend (WHIR or Binius). HyperNova folds across boundaries.
+bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (WHIR or Binius). HyperNova folds across boundaries.
 
 ## where generic proving wastes work
 
@@ -100,7 +100,7 @@ fhe_bootstrap jets:
 
   gadget_decomp(ct, base, levels):
     recognize binary decomposition of coefficients
-    delegate to Binius PCS for binary sub-trace
+    delegate to Binius lens for binary sub-trace
     cost: O(N × levels) binary constraints (1 each in F₂)
 
   noise_track(noise_bound, operation):

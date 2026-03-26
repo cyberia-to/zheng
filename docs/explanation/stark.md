@@ -94,7 +94,7 @@ the prover requires FFT/NTT for interpolation — O(N log N) per column. the ver
 
 ### multilinear starks (modern, 2023–2025)
 
-the entire execution trace becomes one multilinear polynomial. constraints are verified via the [[sumcheck]] protocol. Brakedown (as a multilinear PCS) opens the commitment at the single point that sumcheck reduces to.
+the entire execution trace becomes one multilinear polynomial. constraints are verified via the [[sumcheck]] protocol. Brakedown (as the multilinear lens) opens the commitment at the single point that sumcheck reduces to.
 
 ```
 pipeline:
@@ -132,9 +132,9 @@ example: f(x,y,z) = 3xy + 2xz + yz + x + 5
 2023  SuperSpartan (Setty et al.)       CCS generalization, handles AIR natively
 2024  STIR (Arnon et al.)               improved FRI: rate increases per round
 2024  Circle starks (StarkWare)         starks over Mersenne31 field
-2025  WHIR (legacy) (Arnon et al.)       sub-millisecond verification, multilinear PCS
+2025  WHIR (legacy) (Arnon et al.)       sub-millisecond verification, multilinear lens
 2025  Whirlaway (LambdaClass)           SuperSpartan + WHIR (legacy) = multilinear stark
       zheng                             SuperSpartan + recursive Brakedown = current architecture
 ```
 
-see [[zheng]] for the concrete implementation in [[cyber]], [[polynomial-commitments]] for the PCS, [[SuperSpartan]] for the IOP, [[sumcheck]] for the core protocol, [[fri-to-whir]] for the PCS heritage, [[cryptography]] for the broader field
+see [[zheng]] for the concrete implementation in [[cyber]], [[polynomial-commitments]] for the lens, [[SuperSpartan]] for the IOP, [[sumcheck]] for the core protocol, [[fri-to-whir]] for the lens heritage, [[cryptography]] for the broader field

@@ -136,9 +136,9 @@ nebu and zheng GPU kernels should follow the same WGSL approach for portability.
 
 ## relation to other proposals
 
-- **Brakedown PCS**: sparse matrix multiply is harder to GPU-parallelize than NTT (irregular memory access). if Brakedown replaces WHIR, GPU prover design shifts from NTT-heavy to SpMV-heavy. both are well-studied GPU workloads
+- **Brakedown lens**: sparse matrix multiply is harder to GPU-parallelize than NTT (irregular memory access). if Brakedown replaces WHIR, GPU prover design shifts from NTT-heavy to SpMV-heavy. both are well-studied GPU workloads
 - **proof-carrying computation**: if proving is incremental (fold per step), the GPU pipeline changes from batch-prove to streaming-fold. GPU is less advantageous for sequential folding — CPU may be faster for per-step O(1) folds
-- **Binius PCS**: binary operations are 128× more data-parallel on GPU (128 F₂ elements per word). binary proving on GPU is extremely efficient — the packing advantage multiplies the GPU parallelism advantage
+- **Binius lens**: binary operations are 128× more data-parallel on GPU (128 F₂ elements per word). binary proving on GPU is extremely efficient — the packing advantage multiplies the GPU parallelism advantage
 
 ## open questions
 

@@ -10,11 +10,11 @@ focus: 0.00022383601058502877
 gravity: 0
 density: 0.49
 ---
-> **NOTE:** this document describes the historical WHIR (legacy) PCS. zheng has evolved to use recursive Brakedown instead of WHIR. see reference/ for the current architecture.
+> **NOTE:** this document describes the historical WHIR (legacy) lens. zheng has evolved to use recursive Brakedown instead of WHIR. see reference/ for the current architecture.
 
 # WHIR (legacy)
 
-WHIR (Weights Help Improving Rate) was the bootstrap PCS for zheng before [[Brakedown]] replaced it. this page documents the historical PCS for reference. the active PCS specification is [[polynomial-commitment]].
+WHIR (Weights Help Improving Rate) was the bootstrap lens for zheng before [[Brakedown]] replaced it. this page documents the historical lens for reference. the active lens specification is [[polynomial-commitment]].
 
 Weights Help Improving Rate. an interactive oracle proof of proximity for constrained Reed-Solomon codes that simultaneously serves as a multilinear polynomial commitment scheme. Arnon, Chiesa, Fenzi, Yogev (EUROCRYPT 2025). ePrint 2024/1586.
 
@@ -142,7 +142,7 @@ at 100-bit security:
 |---|---|
 | trusted setup | none (transparent) |
 | post-quantum | yes (hash-only security) |
-| dual nature | IOPP (proximity test) + multilinear PCS |
+| dual nature | IOPP (proximity test) + multilinear lens |
 | field | any with large multiplicative subgroup |
 | soundness | mutual correlated agreement |
 

@@ -40,13 +40,13 @@ in [[SuperSpartan]], high degree affects only the number of field operations per
 
 this is why [[nox]] can afford a hash pattern with degree-7 transition constraints. the Poseidon2 round function has high algebraic degree, and in a classical STARK this would be expensive to prove. in [[SuperSpartan]], the cost is a few extra field multiplications per sumcheck round.
 
-## PCS-agnostic design
+## lens-agnostic design
 
-[[SuperSpartan]] works with any polynomial commitment scheme. the IOP reduces constraint satisfaction to a single polynomial evaluation claim: "the trace polynomial f, evaluated at random point r, equals value v." any PCS that can commit to f and prove this evaluation completes the proof system.
+[[SuperSpartan]] works with any polynomial commitment scheme (PCS), called a lens in zheng. the IOP reduces constraint satisfaction to a single polynomial evaluation claim: "the trace polynomial f, evaluated at random point r, equals value v." any lens that can commit to f and prove this evaluation completes the proof system.
 
-plugging in recursive Brakedown as the PCS gives the zheng architecture. plugging in a different PCS — KZG, Dory, Ligero — would give a different instantiation with different tradeoffs. the IOP stays the same.
+plugging in recursive Brakedown as the lens gives the zheng architecture. plugging in a different lens — KZG, Dory, Ligero — would give a different instantiation with different tradeoffs. the IOP stays the same.
 
-for [[cyber]], recursive Brakedown is the right choice: transparent setup, post-quantum security, sub-millisecond verification, and hash-only assumptions that align with [[hemera]]. but the PCS-agnostic design means zheng can swap commitment schemes without rewriting the constraint system or the sumcheck protocol.
+for [[cyber]], recursive Brakedown is the right choice: transparent setup, post-quantum security, sub-millisecond verification, and hash-only assumptions that align with [[hemera]]. but the lens-agnostic design means zheng can swap commitment schemes without rewriting the constraint system or the sumcheck protocol.
 
 ## the composition
 
@@ -72,10 +72,10 @@ nox execution trace (2^n rows × 16 columns)
     verifier checks: sumcheck transcript + Brakedown_verify(C, r, v, π)
 ```
 
-[[SuperSpartan]] occupies the middle of this pipeline. it takes the committed trace and produces a single evaluation claim. everything above it ([[nox]] execution, trace encoding, Brakedown commitment) is input preparation. everything below it (Brakedown opening, verification) is the PCS. the IOP is the bridge between computation and cryptography.
+[[SuperSpartan]] occupies the middle of this pipeline. it takes the committed trace and produces a single evaluation claim. everything above it ([[nox]] execution, trace encoding, Brakedown commitment) is input preparation. everything below it (Brakedown opening, verification) is the lens. the IOP is the bridge between computation and cryptography.
 
 ## references
 
 - Setty, Thaler, Wahby. Customizable Constraint Systems for Succinct Arguments. ePrint 2023/552
 - the original Spartan paper: Setty. Spartan: Efficient and General-Purpose zkSNARKs without Trusted Setup. CRYPTO 2020
-- see [[sumcheck]] for the core protocol, [[polynomial-commitments]] for the PCS, [[whirlaway]] for the historical architecture
+- see [[sumcheck]] for the core protocol, [[polynomial-commitments]] for the lens, [[whirlaway]] for the historical architecture
