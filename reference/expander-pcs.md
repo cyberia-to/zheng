@@ -6,4 +6,4 @@ alias: expander PCS, Brakedown, recursive Brakedown, linear-code PCS
 ---
 # expander PCS
 
-migrated to [[lens/reference/brakedown]]
+migrated to [[lens/reference/nebu]]

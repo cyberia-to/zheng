@@ -6,4 +6,4 @@ alias: binary PCS, F2 tower PCS, Binius PCS
 ---
 # binary PCS
 
-migrated to [[lens/reference/binius]]
+migrated to [[lens/reference/kuro]]
