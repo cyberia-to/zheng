@@ -6,4 +6,4 @@ alias: ring PCS, R_q PCS, jali PCS, ring-aware PCS
 ---
 # ring PCS
 
-migrated to [[lens/reference/jali]]
+migrated to [[lens/reference/ring]]

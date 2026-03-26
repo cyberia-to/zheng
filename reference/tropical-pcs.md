@@ -6,4 +6,4 @@ alias: tropical PCS, semiring PCS, trop PCS
 ---
 # tropical PCS
 
-migrated to [[lens/reference/trop]]
+migrated to [[lens/reference/tropical]]

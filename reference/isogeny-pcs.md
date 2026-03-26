@@ -6,4 +6,4 @@ alias: isogeny PCS, F_q PCS, genies PCS
 ---
 # isogeny PCS
 
-migrated to [[lens/reference/genies]]
+migrated to [[lens/reference/isogeny]]
