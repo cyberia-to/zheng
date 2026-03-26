@@ -61,15 +61,15 @@ at one microsecond per constraint.
 
 | operation | constraints | proving time |
 |---|---|---|
-| identity proof (hemera preimage) | ~300 | ~0.3 ms |
+| identity proof (hemera preimage) | ~736 | ~0.7 ms |
 | anonymous [[cyberlink]] | ~13,000 | ~13 ms |
 | delivery proof per hop | ~60,000 | ~60 ms |
 | recursive verification (with jets) | ~70,000 | ~70 ms |
 | recursive verification (no jets) | ~600,000 | ~600 ms |
 
 the identity proof is the lightest operation: prove knowledge of a
-hemera preimage without revealing it. 300 constraints, proved in a
-third of a millisecond. this is the primitive that enables anonymous
+hemera preimage without revealing it. 736 constraints, proved in under
+a millisecond. this is the primitive that enables anonymous
 identity in [[cyber]].
 
 the anonymous cyberlink is the core operation of the knowledge graph:
@@ -97,9 +97,9 @@ every hash operation inside a stark — Fiat-Shamir challenges, commitments in B
 | SHA-256 | ~25,000 | baseline |
 | Keccak-256 | ~150,000 | 6× worse |
 | Poseidon (original) | ~4,000 | 6× cheaper |
-| hemera (Poseidon2) | ~1,200 | 20× cheaper |
+| hemera (Poseidon2) | ~736 | 34× cheaper |
 
-hemera's ~1,200 constraints per hash means Merkle verification at depth 32 costs ~38,400 constraints instead of ~800,000 with SHA-256. this 20× reduction is what makes recursive stark composition practical at 70,000 total constraints.
+hemera's ~736 constraints per hash means Merkle verification at depth 32 costs ~23,552 constraints instead of ~800,000 with SHA-256. this 34× reduction is what makes recursive stark composition practical at 70,000 total constraints.
 
 the hash is also the field: hemera operates natively on [[Goldilocks]] field elements. no bit-packing, no field conversion, no endianness gymnastics. eight elements in, eight elements out. the output is directly usable in polynomial commitments, constraint evaluations, and [[nox]] arithmetic.
 

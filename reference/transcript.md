@@ -32,7 +32,7 @@ squeeze(n_challenges):
   return challenges
 ```
 
-the transcript is a sponge: absorb prover messages, squeeze verifier challenges. [[hemera]]'s sponge construction (Poseidon2 with 512-bit state, 256-bit capacity) provides 128-bit security against transcript manipulation.
+the transcript is a sponge: absorb prover messages, squeeze verifier challenges. [[hemera]]'s sponge construction (Poseidon2 with 1024-bit state, 512-bit capacity) provides 256-bit security against transcript manipulation.
 
 ## domain separation
 
@@ -54,7 +54,7 @@ a serialized proof contains the full sequence of prover messages. the verifier r
 
 ```
 proof = [
-  commitment: [u8; 64],           // Brakedown commitment (hemera digest)
+  commitment: [u8; 32],           // Brakedown commitment (hemera digest)
   sumcheck_polynomials: [         // one per round
     [GoldilocksElement; deg+1],   // coefficients of univariate g_i
   ],
@@ -79,11 +79,11 @@ GoldilocksElement := u64_le(v)    // 8 bytes, v < 2^64 - 2^32 + 1
 
 ### commitment
 
-64 bytes. a [[hemera]] digest consists of 8 GoldilocksElements concatenated in order, each encoded as 8 bytes LE.
+32 bytes. a [[hemera]] digest consists of 4 GoldilocksElements concatenated in order, each encoded as 8 bytes LE.
 
 ```
-Commitment := GoldilocksElement[0] || GoldilocksElement[1] || ... || GoldilocksElement[7]
-           // 8 * 8 = 64 bytes
+Commitment := GoldilocksElement[0] || GoldilocksElement[1] || ... || GoldilocksElement[3]
+           // 4 * 8 = 32 bytes
 ```
 
 ### sumcheck polynomial (per round)
@@ -116,7 +116,7 @@ the Brakedown opening proof encodes recursive tensor reductions:
 BrakedownProof :=
   num_levels: u8                        // log log N recursion levels
   for each level:
-    commitment: Commitment              // 64 bytes (Brakedown commitment of opening vector)
+    commitment: Commitment              // 32 bytes (Brakedown commitment of opening vector)
     tensor_response: [GoldilocksElement] // tensor reduction at this level
   final_elements: [GoldilocksElement; lambda]  // <= lambda direct field elements
 ```
@@ -127,7 +127,7 @@ the number of recursion levels and tensor dimensions are determined by the Brake
 
 ```
 Proof :=
-  commitment: Commitment               // 64 bytes
+  commitment: Commitment               // 32 bytes
   num_rounds: u16_le                   // 2 bytes
   sumcheck_polys: SumcheckPoly[num_rounds]
   evaluation: EvaluationValue          // 8 bytes
@@ -139,7 +139,7 @@ the prover writes fields in this exact order. the verifier reads them sequential
 ### proof size
 
 for N = 2^20 (typical nox trace), 128-bit security:
-- commitment: 64 bytes
+- commitment: 32 bytes
 - num_rounds: 2 bytes
 - sumcheck_polys: ~660 bytes (20 rounds * ~33 bytes each)
 - evaluation: 8 bytes
@@ -154,9 +154,9 @@ proof size is constant regardless of original computation size.
 |---|---|
 | hash function | [[hemera]] (Poseidon2 over [[Goldilocks field]]) |
 | hemera calls | ~3 per proof |
-| state size | 512 bits (8 field elements) |
-| capacity | 256 bits (4 field elements) |
-| security | 128-bit classical, 85+ bit post-quantum |
+| state size | 1024 bits (16 field elements) |
+| capacity | 512 bits (8 field elements) |
+| security | 256-bit classical, 170+ bit post-quantum |
 | challenge type | native [[Goldilocks field]] elements (no truncation) |
 | domain separation | per-phase prefix absorb |
 

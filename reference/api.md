@@ -111,7 +111,7 @@ produces a final proof from the accumulated folds. runs SuperSpartan + sumcheck 
 
 ```
 Proof {
-  commitment:            [u8; 64],
+  commitment:            [u8; 32],
   sumcheck_polynomials:  Vec<Vec<GoldilocksElement>>,
   evaluation_value:      GoldilocksElement,
   pcs_opening:           BrakedownProof,
@@ -124,9 +124,9 @@ size: ~2 KiB at 128-bit security (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + Lens
 
 ```
 Statement {
-  program_hash:  [u8; 64],       // hemera hash of the nox program
-  input_hash:    [u8; 64],       // hemera hash of public inputs
-  output_hash:   [u8; 64],       // hemera hash of public outputs
+  program_hash:  [u8; 32],       // hemera hash of the nox program
+  input_hash:    [u8; 32],       // hemera hash of public inputs
+  output_hash:   [u8; 32],       // hemera hash of public outputs
   focus_bound:   u64,            // maximum focus consumed
 }
 ```
@@ -151,7 +151,7 @@ enum LensBackend {
 ```
 Accumulator {
   committed_instance:  CCSInstance,
-  witness_commitment:  [u8; 64],
+  witness_commitment:  [u8; 32],
   error_term:          GoldilocksElement,
   step_count:          u64,
 }

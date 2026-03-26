@@ -152,7 +152,7 @@ inside [[nox]], Brakedown_verify decomposes into two jets:
 
 ```
 merkle_verify(root, leaf, path, index)
-  d × 300 constraints per depth-d path
+  d × 736 constraints per depth-d path
 
 fri_fold(poly_layer, challenge)        // nox jet
   N/2 constraints per folding round

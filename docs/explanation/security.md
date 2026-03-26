@@ -9,10 +9,10 @@ zheng is secure. the analysis begins and ends there.
 ## one assumption
 
 [[hemera]] is [[Poseidon2]] instantiated over the [[Goldilocks field]].
-its internal state is 512 bits (eight field elements). its capacity is
-256 bits (four field elements). the collision resistance of a sponge
+its internal state is 1024 bits (sixteen field elements). its capacity is
+512 bits (eight field elements). the collision resistance of a sponge
 construction with c bits of capacity is bounded by 2^(c/2), giving
-hemera a classical security level of 128 bits.
+hemera a classical security level of 256 bits.
 
 zheng uses hemera for three purposes: commitment construction in
 Brakedown, Fiat-Shamir challenge derivation in the [[sumcheck protocol]],
@@ -34,19 +34,19 @@ pairing-based proof system will break.
 
 zheng faces a different quantum threat: Grover's algorithm, which
 provides a quadratic speedup for brute-force search. Grover reduces the
-cost of finding a hemera collision from 2^128 classical hash evaluations
-to approximately 2^64 quantum operations — but this applies to preimage
+cost of finding a hemera collision from 2^256 classical hash evaluations
+to approximately 2^128 quantum operations — but this applies to preimage
 search. for collision finding, the quantum advantage is smaller: the
-birthday bound drops from 2^128 to roughly 2^85 using quantum collision
-algorithms. hemera's 256-bit capacity provides 128-bit security
-classically, which translates to at least 85-bit security against known
-quantum collision algorithms. the full 512-bit state provides additional
+birthday bound drops from 2^256 to roughly 2^170 using quantum collision
+algorithms. hemera's 512-bit capacity provides 256-bit security
+classically, which translates to at least 170-bit security against known
+quantum collision algorithms. the full 1024-bit state provides additional
 margin.
 
-at 128-bit classical security, an adversary performing 10^18 hash
+at 256-bit classical security, an adversary performing 10^18 hash
 evaluations per second — a generous estimate for any foreseeable
-hardware — would need approximately 10^20 seconds to find a collision.
-that is roughly 3 × 10^12 years, about 200 times the current age of
+hardware — would need approximately 10^58 seconds to find a collision.
+that is roughly 3 × 10^50 years, incomprehensibly beyond the current age of
 the universe.
 
 ## Fiat-Shamir soundness

@@ -138,7 +138,7 @@ the ~825 tier is the practical target. breakdown:
 | component | constraints | notes |
 |---|---|---|
 | parse proof | ~100 | structured deserialization |
-| Fiat-Shamir challenges | ~300 | hemera sponge, ~3 calls total |
+| Fiat-Shamir challenges | ~736 | hemera sponge, ~3 calls total |
 | Brakedown recursive opening check | ~200 | O(lambda log log N) field ops, log log N recursion levels |
 | constraint evaluation | ~150 | selector polynomials + pattern constraints |
 | sumcheck check | ~75 | field arithmetic only |
@@ -165,11 +165,11 @@ Brakedown opening verification is entirely field arithmetic — no hash jets nee
 
 ```
 INPUTS (public):
-  commitment:  [u8; 64]              // hemera digest
+  commitment:  [u8; 32]              // hemera digest
   statement:   Statement {
-    program_hash: [u8; 64],           // hash of the nox program
-    input_hash:   [u8; 64],           // hash of public inputs
-    output_hash:  [u8; 64],           // hash of public outputs
+    program_hash: [u8; 32],           // hash of the nox program
+    input_hash:   [u8; 32],           // hash of public inputs
+    output_hash:  [u8; 32],           // hash of public outputs
     focus_bound:  u64,                // maximum focus consumed
   }
 
