@@ -12,17 +12,17 @@ density: 0.73
 one IOP: [[SuperSpartan]] + [[sumcheck]] (CCS constraints, O(N) prover, O(log N) verifier).
 one folding: [[HyperNova]] (CCS-native, ~30 field ops per fold, one decider at the end).
 one hash: [[hemera]] (~3 calls per proof — binding, Fiat-Shamir seed, domain separation).
-five PCS backends: one trait, five algebras.
+five [[lens|lenses]]: one trait, five algebras — each algebra sees through its own optic.
 five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 
 ## spec pages
 
-- [[pcs]] — generic PCS interface: commit, open, verify (the trait)
-- [[expander-pcs]] — PCS₁: Goldilocks backend via expander-graph codes, Merkle-free ([[nebu]])
-- [[binary-pcs]] — PCS₂: F₂ tower backend via binary Reed-Solomon ([[kuro]])
-- [[ring-pcs]] — PCS₃: R_q ring-aware backend, NTT batching, automorphism exploitation ([[jali]])
-- [[isogeny-pcs]] — PCS₄: F_q backend via Brakedown over isogeny field ([[genies]])
-- [[tropical-pcs]] — PCS₅: (min,+) witness-verify via structured delegation to PCS₁ ([[trop]])
+- [[pcs]] — the [[lens]] trait: commit, open, verify
+- [[expander-pcs]] — Brakedown lens ([[nebu]]: F_p, Merkle-free expander codes)
+- [[binary-pcs]] — Binius lens ([[kuro]]: F₂ tower, binary Reed-Solomon)
+- [[ring-pcs]] — Ring-aware lens ([[jali]]: R_q, NTT batching, automorphisms)
+- [[isogeny-pcs]] — Isogeny lens ([[genies]]: F_q, Brakedown over isogeny field)
+- [[tropical-pcs]] — Tropical lens ([[trop]]: (min,+), witness-verify via Brakedown)
 - [[sumcheck]] — the engine: O(N) prover reduces exponential sum to one evaluation
 - [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one PCS opening
 - [[recursion]] — HyperNova folding + proof-carrying computation + cross-algebra
@@ -42,12 +42,12 @@ zheng
 │   ├── sumcheck              exponential sum reduction
 │   └── HyperNova             folding + composition
 │
-├── PCS layer (one trait, five backends)
-│   ├── PCS₁: Brakedown       (nebu, F_p)       expander-graph codes, Merkle-free
-│   ├── PCS₂: Binius          (kuro, F₂)        binary Reed-Solomon
-│   ├── PCS₃: Ring-aware      (jali, R_q)       NTT batch, automorphisms, noise tracking
-│   ├── PCS₄: Isogeny         (genies, F_q)     Brakedown over isogeny field
-│   └── PCS₅: Tropical        (trop, min+)      witness-verify, delegates to PCS₁
+├── lens layer (one trait, five lenses)
+│   ├── Brakedown lens        (nebu, F_p)       expander-graph codes, Merkle-free
+│   ├── Binius lens           (kuro, F₂)        binary Reed-Solomon
+│   ├── Ring-aware lens       (jali, R_q)       NTT batch, automorphisms, noise tracking
+│   ├── Isogeny lens          (genies, F_q)     Brakedown over isogeny field
+│   └── Tropical lens         (trop, min+)      witness-verify, delegates to Brakedown
 │
 ├── hash layer
 │   └── hemera                ~3 calls total
@@ -66,15 +66,15 @@ zheng
                               covers ALL algebras, runs once in F_p
 ```
 
-## five PCS backends
+## five lenses
 
-| PCS | algebra | repo | commitment | verification | primary workloads |
-|-----|---------|------|-----------|-------------|-------------------|
-| PCS₁ | F_p | [[nebu]] | expander-graph linear code | ~660 F_p ops, ~5 μs | proofs, hashing, state |
-| PCS₂ | F₂ | [[kuro]] | binary Reed-Solomon | ~660 F₂ ops | quantized inference, SpMV |
-| PCS₃ | R_q | [[jali]] | ring-aware Brakedown + NTT batch | ring-structured | FHE bootstrapping, lattice KEM |
-| PCS₄ | F_q | [[genies]] | Brakedown over F_q | ~660 F_q ops | stealth, VDF, blind signatures |
-| PCS₅ | min,+ | [[trop]] | delegates to PCS₁ | F_p dual certificate | shortest path, assignment, Viterbi |
+| lens | algebra | repo | commitment | verification | primary workloads |
+|------|---------|------|-----------|-------------|-------------------|
+| Brakedown | F_p | [[nebu]] | expander-graph linear code | ~660 F_p ops, ~5 μs | proofs, hashing, state |
+| Binius | F₂ | [[kuro]] | binary Reed-Solomon | ~660 F₂ ops | quantized inference, SpMV |
+| Ring-aware | R_q | [[jali]] | NTT-batched Brakedown | ring-structured | FHE bootstrapping, lattice KEM |
+| Isogeny | F_q | [[genies]] | Brakedown over F_q | ~660 F_q ops | stealth, VDF, blind signatures |
+| Tropical | min,+ | [[trop]] | witness-verify via Brakedown | F_p dual certificate | shortest path, assignment, Viterbi |
 
 ## five operations
 
