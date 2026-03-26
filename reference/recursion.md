@@ -193,4 +193,4 @@ the critical requirement: the [[verifier]] must be faithfully encoded as [[nox]]
 2. **universal CCS overhead**: padding smaller instances to match universal CCS dimensions wastes constraints. CycleFold addresses this but adds protocol complexity
 3. **cross-algebra soundness**: does folding F_p and F_2 instances into the same accumulator preserve HyperNova security guarantees?
 
-see [[verifier]] for the standalone verification algorithm, [[constraints]] for the AIR format, [[transcript]] for Fiat-Shamir in recursive proofs, [[sumcheck]] for the core protocol, [[Brakedown]] for the PCS
+see [[verifier]] for the standalone verification algorithm, [[constraints]] for the AIR format, [[transcript]] for Fiat-Shamir in recursive proofs, [[sumcheck]] for the core protocol, [[lens]] for polynomial commitment

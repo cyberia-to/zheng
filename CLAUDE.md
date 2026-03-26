@@ -568,9 +568,12 @@ sumcheck        core interactive proof protocol
 | hemera | `~/git/hemera/` | hash function (Poseidon2) |
 | nox | `~/git/nox/` | VM (execution traces) |
 | zheng | `~/git/zheng/` | proof system (this repo) |
+| lens | `~/git/lens/` | polynomial commitment (5 lenses) |
 | mudra | `~/git/mudra/` | crypto primitives (KEM, dCTIDH, TFHE, threshold) |
 | bbg | `~/git/bbg/` | authenticated state (Big Badass Graph) |
 | cyber | `~/git/cyber/` | knowledge graph (parent subgraph) |
+
+lens was extracted from zheng. the Lens trait (commit/open/verify) and all five lens specs (Brakedown, Binius, Ring-aware, Isogeny, Tropical) now live in ~/git/lens/. zheng depends on lens for polynomial commitment.
 
 ## do not touch zones
 

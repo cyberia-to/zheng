@@ -32,7 +32,7 @@ executes the [[nox]] program with the given input and focus bound. produces the 
 | program | NoxProgram | compiled nox program (pattern sequence) |
 | input | [GoldilocksElement] | public input values for registers r3, r4 at row 0 |
 | focus | u64 | maximum focus budget for execution |
-| params | ProofParams | security level, PCS configuration |
+| params | ProofParams | security level, Lens configuration |
 
 returns:
 - `(Proof, Accumulator)` on success
@@ -74,7 +74,7 @@ returns:
 - `Ok(())` on valid proof
 - `VerifyError::SumcheckFailed(round)` if sumcheck consistency check fails
 - `VerifyError::EvaluationMismatch` if claimed evaluation disagrees with constraints
-- `VerifyError::PCSFailed` if Brakedown opening verification rejects
+- `VerifyError::LensFailed` if Brakedown opening verification rejects
 
 ## fold
 
@@ -118,7 +118,7 @@ Proof {
 }
 ```
 
-size: ~2 KiB at 128-bit security (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + PCS opening ~1.3 KiB). constant regardless of original computation size.
+size: ~2 KiB at 128-bit security (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + Lens opening ~1.3 KiB). constant regardless of original computation size.
 
 ### Statement
 
@@ -136,11 +136,11 @@ Statement {
 ```
 ProofParams {
   security_level:  SecurityLevel,    // Sec100 or Sec128
-  pcs_backend:     PCSBackend,       // Brakedown (default) or Binius
+  lens_backend:    LensBackend,      // Brakedown (default) or Binius
   max_trace_log:   u32,             // log_2 of maximum trace rows (default: 20)
 }
 
-enum PCSBackend {
+enum LensBackend {
   Brakedown,   // primary: expander-graph codes, Merkle-free (Goldilocks)
   Binius,      // binary: F_2 tower (2 of 14 nox languages)
 }
@@ -205,4 +205,4 @@ for step in computation.steps() {
 let proof = zheng::decide(&acc, &params)?;
 ```
 
-see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion]] for composition protocol, [[Brakedown]] for the PCS
+see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion]] for composition protocol, [[lens]] for polynomial commitment

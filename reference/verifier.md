@@ -14,7 +14,7 @@ density: 0.47
 
 the standalone verifier algorithm for [[zheng]]. accepts a proof and a public statement, returns accept or reject. the verifier is a [[nox]] program — it runs inside the same VM that produced the original trace, enabling recursive proof composition.
 
-recursive [[Brakedown]] opening check is pure field arithmetic. no Merkle verification, no hash-dominated bottleneck. proof size: ~2 KiB (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + PCS opening ~1.3 KiB).
+recursive [[Brakedown]] opening check is pure field arithmetic. no Merkle verification, no hash-dominated bottleneck. proof size: ~2 KiB (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + Lens opening ~1.3 KiB).
 
 ## algorithm
 
@@ -40,7 +40,7 @@ VERIFY(commitment C, statement S, proof pi) -> accept/reject:
      v = pi.evaluation_value
      assert claim_k = constraint_eval(v, r, S)
 
-  4. PCS VERIFICATION
+  4. LENS VERIFICATION
      assert Brakedown_verify(C, r, v, pi.pcs_opening)
      (recursive tensor check, O(lambda log log N) field ops)
 
@@ -142,7 +142,7 @@ the ~825 tier is the practical target. breakdown:
 | Brakedown recursive opening check | ~200 | O(lambda log log N) field ops, log log N recursion levels |
 | constraint evaluation | ~150 | selector polynomials + pattern constraints |
 | sumcheck check | ~75 | field arithmetic only |
-| **total** | **~825** | field-op dominated, no hashing in PCS |
+| **total** | **~825** | field-op dominated, no hashing in Lens |
 
 the ~89 tier replaces hemera-based Fiat-Shamir with algebraic challenges derived from the field structure. all verification becomes pure field arithmetic.
 
@@ -155,11 +155,11 @@ every verifier operation maps to native [[nox]] patterns:
 | field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks field]] is the native field |
 | hash computation | 15 (hash) / hash jet | [[hemera]] — Fiat-Shamir only, ~3 calls |
 | [[sumcheck]] verification | 5, 7, 9 | pure field arithmetic |
-| [[Brakedown]] opening verification | 5, 7 (matrix-vector product) | pure field arithmetic, no hashing |
+| [[Brakedown]] Lens opening verification | 5, 7 (matrix-vector product) | pure field arithmetic, no hashing |
 
 no external primitive enters the verification loop. the verifier is closed under the nox instruction set. consequence: verify(proof) can itself be proven, and verify(verify(proof)) too, to arbitrary depth.
 
-Brakedown opening verification is entirely field arithmetic — no hash jets needed in the PCS check. hemera is used only for Fiat-Shamir transcript (squeezing challenges), reducing the hash dependency in the recursive verifier.
+Brakedown opening verification is entirely field arithmetic — no hash jets needed in the Lens check. hemera is used only for Fiat-Shamir transcript (squeezing challenges), reducing the hash dependency in the recursive verifier.
 
 ## input/output format
 
@@ -204,4 +204,4 @@ each recursion level costs ~825 constraints, regardless of the original computat
 
 with HyperNova folding, recursive composition drops further: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end. see [[recursion]] for folding-first composition.
 
-see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[Brakedown]] for the PCS opening verification, [[constraints]] for the AIR format, [[nox]] for the VM
+see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[Brakedown]] for the Lens opening verification, [[constraints]] for the AIR format, [[nox]] for the VM

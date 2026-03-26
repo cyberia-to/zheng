@@ -17,14 +17,9 @@ five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 
 ## spec pages
 
-- [[pcs]] — the [[lens]] trait: commit, open, verify
-- [[expander-pcs]] — Brakedown lens ([[nebu]]: F_p, Merkle-free expander codes)
-- [[binary-pcs]] — Binius lens ([[kuro]]: F₂ tower, binary Reed-Solomon)
-- [[ring-pcs]] — Ring-aware lens ([[jali]]: R_q, NTT batching, automorphisms)
-- [[isogeny-pcs]] — Isogeny lens ([[genies]]: F_q, Brakedown over isogeny field)
-- [[tropical-pcs]] — Tropical lens ([[trop]]: (min,+), witness-verify via Brakedown)
+- [[lens]] — polynomial commitment (separate repo: ~/git/lens/)
 - [[sumcheck]] — the engine: O(N) prover reduces exponential sum to one evaluation
-- [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one PCS opening
+- [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one Lens opening
 - [[recursion]] — HyperNova folding + proof-carrying computation + cross-algebra
 - [[accumulator]] — universal accumulator: fold all 5 structural sync layers
 - [[tensor]] — tensor compression for O(√N) prover memory
@@ -42,7 +37,7 @@ zheng
 │   ├── sumcheck              exponential sum reduction
 │   └── HyperNova             folding + composition
 │
-├── lens layer (one trait, five lenses)
+├── lens layer (external: ~/git/lens/)
 │   ├── Brakedown lens        (nebu, F_p)       expander-graph codes, Merkle-free
 │   ├── Binius lens           (kuro, F₂)        binary Reed-Solomon
 │   ├── Ring-aware lens       (jali, R_q)       NTT batch, automorphisms, noise tracking
@@ -68,6 +63,8 @@ zheng
 
 ## five lenses
 
+specs live in [[lens]] repo (~/git/lens/).
+
 | lens | algebra | repo | commitment | verification | primary workloads |
 |------|---------|------|-----------|-------------|-------------------|
 | Brakedown | F_p | [[nebu]] | expander-graph linear code | ~660 F_p ops, ~5 μs | proofs, hashing, state |
@@ -80,15 +77,15 @@ zheng
 
 | operation | what it does | cost |
 |-----------|-------------|------|
-| **commit** | encode trace as multilinear polynomial via PCS backend | O(N) field ops |
+| **commit** | encode trace as multilinear polynomial via Lens backend | O(N) field ops |
 | **open** | prove evaluation at sumcheck output point | O(N) field ops, proof ~1.3 KiB |
-| **verify** | check sumcheck transcript + PCS opening | O(λ log log N) field ops, ~5 μs |
+| **verify** | check sumcheck transcript + Lens opening | O(λ log log N) field ops, ~5 μs |
 | **fold** | absorb one CCS instance into running accumulator | ~30 field ops + 1 hemera hash |
 | **decide** | produce final proof from accumulated folds | ~825 constraints (CCS jet + batch + algebraic FS) |
 
 ## cross-algebra composition
 
-any nox program can mix algebras. each sub-trace proves via its native PCS. HyperNova folds all into one F_p accumulator. one decider, one proof, regardless of how many algebras participated.
+any nox program can mix algebras. each sub-trace proves via its native Lens. HyperNova folds all into one F_p accumulator. one decider, one proof, regardless of how many algebras participated.
 
 boundary cost: ~766 F_p constraints per algebra crossing. at 5 algebras max: ~3,830 overhead for a fully heterogeneous computation. negligible vs execution cost.
 

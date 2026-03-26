@@ -125,4 +125,4 @@ one accumulator, both algebras. the decider runs in F_p (hemera-native).
 3. **VDF chain verification**: VDF proofs are sequential by nature. folding them doesn't remove the sequentiality — it just proves the chain was verified. a reconnecting node still needs to trust the VDF chain or re-verify critical segments
 4. **accumulator size vs verification time trade-off**: a smaller accumulator (~200 bytes) may require a slightly more expensive decider. the optimal balance depends on light client profile (mobile vs desktop)
 
-see [[recursion]] for HyperNova folding protocol, [[binius]] for cross-algebra folding, [[polynomial-commitment]] for the PCS
+see [[recursion]] for HyperNova folding protocol, [[binius]] for cross-algebra folding, [[lens]] for polynomial commitment
