@@ -573,7 +573,7 @@ sumcheck        core interactive proof protocol
 | bbg | `~/git/bbg/` | authenticated state (Big Badass Graph) |
 | cyber | `~/git/cyber/` | knowledge graph (parent subgraph) |
 
-lens was extracted from zheng. the Lens trait (commit/open/verify) and all five lens specs (Brakedown, Binius, Ring-aware, Isogeny, Tropical) now live in ~/git/lens/. zheng depends on lens for polynomial commitment.
+lens was extracted from zheng. the Lens trait (commit/open/verify) and all five lens specs (Brakedown, Binius, Ikat, Isogeny, Tropical) now live in ~/git/lens/. zheng depends on lens for polynomial commitment.
 
 ## do not touch zones
 

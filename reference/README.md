@@ -40,7 +40,7 @@ zheng
 ├── lens layer (external: ~/git/lens/)
 │   ├── Brakedown lens        (nebu, F_p)       expander-graph codes, Merkle-free
 │   ├── Binius lens           (kuro, F₂)        binary Reed-Solomon
-│   ├── Ring-aware lens       (jali, R_q)       NTT batch, automorphisms, noise tracking
+│   ├── Ikat lens       (jali, R_q)       NTT batch, automorphisms, noise tracking
 │   ├── Isogeny lens          (genies, F_q)     Brakedown over isogeny field
 │   └── Tropical lens         (trop, min+)      witness-verify, delegates to Brakedown
 │
@@ -69,7 +69,7 @@ specs live in [[lens]] repo (~/git/lens/).
 |------|---------|------|-----------|-------------|-------------------|
 | Brakedown | F_p | [[nebu]] | expander-graph linear code | ~660 F_p ops, ~5 μs | proofs, hashing, state |
 | Binius | F₂ | [[kuro]] | binary Reed-Solomon | ~660 F₂ ops | quantized inference, SpMV |
-| Ring-aware | R_q | [[jali]] | NTT-batched Brakedown | ring-structured | FHE bootstrapping, lattice KEM |
+| Ikat | R_q | [[jali]] | NTT-batched Brakedown | ring-structured | FHE bootstrapping, lattice KEM |
 | Isogeny | F_q | [[genies]] | Brakedown over F_q | ~660 F_q ops | stealth, VDF, blind signatures |
 | Tropical | min,+ | [[trop]] | witness-verify via Brakedown | F_p dual certificate | shortest path, assignment, Viterbi |
 
