@@ -2,7 +2,7 @@
 tags: computer science, cryptography
 crystal-type: entity
 crystal-domain: computer science
-alias: zheng verifier, stark verifier
+alias: zheng verifier, verification algorithm
 ---
 # verifier
 

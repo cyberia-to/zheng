@@ -16,8 +16,9 @@ five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 - [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one Lens opening
 - [[recursion]] — HyperNova folding + proof-carrying computation + cross-algebra
 - [[accumulator]] — universal accumulator: fold all 5 structural sync layers
+- [[decider]] — decide(acc) → proof: ~825 constraints, O(1) cost regardless of N
 - [[tensor]] — tensor compression for O(√N) prover memory
-- [[verifier]] — ~89-825 constraint decider (CCS jet + batch + algebraic FS)
+- [[verifier]] — standalone verification algorithm: sumcheck + Brakedown opening
 - [[constraints]] — CCS format, pattern table, state operations
 - [[transcript]] — Fiat-Shamir via hemera (~3 calls)
 - [[api]] — commit/open/verify/fold/decide entry points
