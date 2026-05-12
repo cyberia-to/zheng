@@ -8,24 +8,46 @@ alias: zheng API, prover API, verifier API
 
 five entry points: **commit**, **open**, **verify**, **fold**, **decide**.
 
+## execution model (two phases)
+
+zheng proofs require two separate steps:
+
+**phase 1 — execution (nox):** run the computation and collect the trace.
+
+```rust
+use nox::{reduce, Order, NounId, NullCalls, VecTrace};
+
+let mut order = Order::<65536>::new();
+// ... build object and formula nouns ...
+let mut tracer = VecTrace::default();
+let outcome = reduce(&mut order, object, formula, budget, &NullCalls, &mut tracer);
+// tracer.0 now contains one TraceRow per reduce() call
+```
+
+**phase 2 — proving (zheng):** encode the trace and produce a proof.
+
+```rust
+let (proof, acc) = zheng::commit(&tracer.0, &statement, &params)?;
+```
+
+nox produces the trace; zheng consumes it. the two phases are independent — run nox with any `CallProvider`, pass the resulting `&[TraceRow]` to zheng.
+
 ## commit
 
 ```
 zheng::commit(
-  program:    &NoxProgram,
-  input:      &[GoldilocksElement],
-  focus:      u64,
+  trace:      &[nox::TraceRow],
+  statement:  &Statement,
   params:     &ProofParams,
 ) -> Result<(Proof, Accumulator), CommitError>
 ```
 
-executes the [[nox]] program with the given input and focus bound. produces the execution trace, encodes it as a multilinear polynomial, commits via [[Brakedown]], runs [[SuperSpartan]] sumcheck. returns a proof and an accumulator ready for folding.
+encodes the trace as a multilinear polynomial over the 16-column register layout, commits via [[Brakedown]], runs [[SuperSpartan]] sumcheck. returns a proof and an accumulator ready for folding.
 
 | parameter | type | description |
 |---|---|---|
-| program | NoxProgram | compiled nox program (pattern sequence) |
-| input | [GoldilocksElement] | public input values for registers r3, r4 at row 0 |
-| focus | u64 | maximum focus budget for execution |
+| trace | &[nox::TraceRow] | execution trace produced by nox::reduce with VecTrace |
+| statement | &Statement | object\_hash, formula\_hash, result\_hash, budget |
 | params | ProofParams | security level, Lens configuration |
 
 returns:

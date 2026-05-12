@@ -19,10 +19,10 @@ C_p(t) = polynomial_expression(registers_at_row_t, registers_at_row_{t+1})
 the combined constraint over all patterns:
 
 ```
-C(t) = Σ_{p=0}^{16} selector_p(r0_t) × C_p(t)
+C(t) = Σ_{p=0}^{17} selector_p(r0_t) × C_p(t)
 ```
 
-where selector_p(r0_t) = 1 when r0_t = p, 0 otherwise. constructed via Lagrange interpolation over the 17 pattern values.
+where selector_p(r0_t) = 1 when r0_t = p, 0 otherwise. constructed via Lagrange interpolation over the 18 pattern values.
 
 ## pattern constraint table
 
@@ -45,6 +45,7 @@ where selector_p(r0_t) = 1 when r0_t = p, 0 otherwise. constructed via Lagrange 
 | 14 | shl | shift via multiplication by 2^n | 2 | ~64 |
 | 15 | hash | Poseidon2 round: state_{t+1} = MDS × (state_t)^7 | 7 | ~736 |
 | 16 | hint | external constraint check (Layer 1 verification) | varies | varies |
+| 17 | look | NMT inclusion proof: r6 = BBG[r4] under root r5 | 1 | ~3 |
 
 ## universal constraints
 
@@ -505,6 +506,31 @@ CCS decomposition for MDS (q = w+1 terms, degree 1):
 round constants are added by adjusting the c coefficient of the constant-1 wire (z index 32).
 
 total per Poseidon2 round: 4 × w degree-2 constraints (S-box decomposition) + w degree-1 constraints (MDS). for w = 8: 32 + 8 = 40 constraints per round. a full Poseidon2 permutation with 8 rounds uses ~320 constraints.
+
+### look pattern (17)
+
+#### pattern 17: look (BBG state read)
+
+polynomial constraint:
+
+look performs a deterministic authenticated read from BBG state. the prover supplies the value and an NMT inclusion proof; the constraint verifies the proof inline.
+
+three sub-constraints:
+
+```
+C_17_key:   r4_t − evaluate(key_formula, object_t) = 0     (key matches formula evaluation)
+C_17_value: r6_t − bbg_lookup(r4_t, r5_t) = 0             (value is consistent with key and root)
+C_17_proof: NMT_open(r5_t, r4_t, r6_t, r7_t, r10_t, r11_t) = 1  (NMT inclusion proof holds)
+```
+
+where r5_t is the BBG sub-root commitment, r7_t/r10_t/r11_t are the NMT proof elements (provided deterministically by the prover).
+
+CCS decomposition (degree 1, 3 constraints):
+- C_17_key: degree 1, links r4_t to the key formula sub-expression result
+- C_17_value: degree 1, linear lookup constraint against committed state
+- C_17_proof: degree 1, NMT opening verification (field arithmetic, no hash inside the constraint)
+
+total: ~3 constraints per look invocation. the NMT proof elements in r7_t, r10_t, r11_t are deterministic witnesses — the same key always maps to the same proof path under the same BBG root.
 
 ## constraint budget by proof type
 
