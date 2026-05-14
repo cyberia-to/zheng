@@ -21,7 +21,7 @@ TFHE bootstrapping refreshes ciphertext noise. four phases, each with a differen
 | key switching | matrix × vector over F_p | F_p (matrix) | Ten |
 | modulus switching | rescale coefficients | F_p (field) | Tri |
 
-bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (WHIR or Binius). HyperNova folds across boundaries.
+bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (Brakedown or Binius). HyperNova folds across boundaries.
 
 ## where generic proving wastes work
 
@@ -109,15 +109,15 @@ fhe_bootstrap jets:
 step 1: gadget_decomp(ct)          → Bt (F₂, Binius)
          fold into accumulator       ~766 F_p constraints
 
-step 2: blind_rotation(decomposed)  → Wav (F_p, WHIR, ring-aware)
+step 2: blind_rotation(decomposed)  → Wav (F_p, Brakedown, ring-aware)
          ntt_batch jet               ~n × N constraints (batched)
          fold into accumulator       ~766 F_p constraints
 
-step 3: key_switch(rotated, ks)     → Ten (F_p, WHIR)
+step 3: key_switch(rotated, ks)     → Ten (F_p, Brakedown)
          key_switch jet              ~k × log(N) constraints
          fold into accumulator       ~766 F_p constraints
 
-step 4: mod_switch(switched)        → Tri (F_p, WHIR)
+step 4: mod_switch(switched)        → Tri (F_p, Brakedown)
          ~N constraints              (coefficient rescaling)
          fold into accumulator       ~766 F_p constraints
 

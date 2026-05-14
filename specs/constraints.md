@@ -43,9 +43,9 @@ where selector_p(r0_t) = 1 when r0_t = p, 0 otherwise. constructed via Lagrange 
 | 12 | and | bit decomposition + AND per bit | 2 | ~64 |
 | 13 | not | bitwise complement | 1 | ~64 |
 | 14 | shl | shift via multiplication by 2^n | 2 | ~64 |
-| 15 | hash | Poseidon2 round: state_{t+1} = MDS × (state_t)^7 | 7 | ~736 |
+| 15 | hash | Poseidon2 round: state_{t+1} = MDS × (state_t)^7 (300 rows) | 7 | ~736 |
 | 16 | hint | external constraint check (Layer 1 verification) | varies | varies |
-| 17 | look | NMT/Lens opening: r6 = BBG[r4] under root r5 — constraint design deferred to BBG integration | TBD | TBD |
+| 17 | look | Lens.verify(r5, eval(r4), r6, proof): 2 inline wiring constraints + Brakedown verification via folded CCS sub-instance | 1 (inline) | 2 inline; ~825 folded |
 
 ## universal constraints
 
@@ -458,6 +458,41 @@ CCS decomposition for the base constraint (q = 2 terms, degree 1):
 - M_1: selects r14_t (z index 14)
 - S_0 = {0}, c_0 = 1
 - S_1 = {1}, c_1 = −1
+
+#### pattern 17: look
+
+polynomial constraint:
+
+look reads an authenticated value from BBG state. the BBG commitment root is:
+
+```
+BBG_root = Hemera(Lens.commit(BBG_poly) || Lens.commit(A) || Lens.commit(N))
+```
+
+where `BBG_poly(index, key, t)` is the authenticated state polynomial committed via Brakedown (Lens). a look row proves: `BBG_poly(eval(r4)) = r6` under `BBG_root = r5`.
+
+two inline constraints bind the row to the folded sub-proof:
+
+```
+C_17a(t) = r5_t − BBG_root_instance = 0      (root binding: r5 equals the instance BBG_root)
+C_17b(t) = eval_point_t − f(r4_t) = 0        (key binding: evaluation point derived from key r4)
+```
+
+both are degree 1. the actual Brakedown opening — `Lens.verify(r5, eval(r4), r6, proof)` — is a separate CCS instance, folded in via HyperNova (identical mechanism to pattern 16 hint). the folded sub-proof carries ~825 constraints (CCS jet + batch Brakedown).
+
+CCS decomposition for C_17a (q = 2 terms, degree 1):
+- M_0: selects r5_t (z index 5)
+- M_1: selects BBG_root from instance constants (z index 32, with coefficient = BBG_root)
+- S_0 = {0}, c_0 = 1
+- S_1 = {1}, c_1 = −1
+
+```
+1·(M_0·z) + (−1)·(M_1·z) = 0
+```
+
+CCS decomposition for C_17b (degree 1): same shape as C_17a, selecting the evaluation point auxiliary register and the derived function of r4. the exact derivation of `eval(r4)` (how the BBG lookup key maps to a polynomial evaluation point) is specified in bbg/specs/indexes.md.
+
+the folded Brakedown sub-instance is not part of the main CCS trace — it is a separate CCS proof composed via HyperNova. constraint count for the folded sub-instance: ~825 (CCS jet + batch Brakedown, from verifier.md).
 
 ### hash pattern (15)
 

@@ -28,7 +28,7 @@ gravity encoding:
   sort rows by priority (π rank)
   encode top-k rows in first k coefficients of lower-degree polynomial
   remaining rows in higher-degree extension
-  opening lower-degree part: fewer WHIR/Brakedown rounds
+  opening lower-degree part: fewer Brakedown rounds
 ```
 
 ### layered commitment

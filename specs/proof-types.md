@@ -39,7 +39,7 @@ execution             │ correct execution          │ nox program ran correct
 data structures       │ Merkle inclusion           │ element exists in tree                   │ ~9,600
                       │ polynomial inclusion       │ element exists in committed polynomial   │ ~1,000
                       │ non-membership             │ element is absent from set               │ ~3,000
-                      │ WHIR low-degree            │ committed polynomial has bounded degree  │ ~10,000
+                      │ Brakedown low-degree        │ committed polynomial has bounded degree  │ ~10,000
 ──────────────────────┼───────────────────────────┼─────────────────────────────────────────┼────────────
 storage &             │ storage                    │ content bytes exist on specific node     │ ~5,000
 availability          │ size                       │ claimed content size matches actual bytes │ ~2,000
@@ -60,7 +60,7 @@ every proof in the table is a [[stark]]. no SNARKs, no trusted setup, no curves.
 
 ## the proof system
 
-[[cyber]] uses multilinear [[starks]] via the Whirlaway architecture: [[SuperSpartan]] IOP + [[WHIR]] as the multilinear polynomial commitment scheme. no trusted setup, [[Hemera]]-only security (post-quantum), native [[Goldilocks field]] arithmetic.
+[[cyber]] uses multilinear [[starks]] via the Whirlaway architecture: [[SuperSpartan]] IOP + [[Brakedown]] as the multilinear polynomial commitment scheme. no trusted setup, [[Hemera]]-only security (post-quantum), native [[Goldilocks field]] arithmetic.
 
 ```
 Property          │ SNARK         │ stark (multilinear)
@@ -79,11 +79,11 @@ Verifier          │ O(1) pairing  │ O(log² N) hash
 ```
 nox execution → trace (2ⁿ steps × registers)
   → encode as ONE multilinear polynomial f(x₁, ..., x_{n+m})
-  → WHIR_commit(f) = C
+  → Brakedown_commit(f) = C
   → SuperSpartan sumcheck: verify AIR constraints hold for all rows
   → reduces to: evaluate f at ONE random point r
-  → WHIR_open(f, r) = (v, π)
-  → verifier: check sumcheck transcript + WHIR_verify(C, r, v, π)
+  → Brakedown_open(f, r) = (v, π)
+  → verifier: check sumcheck transcript + Brakedown_verify(C, r, v, π)
 ```
 
 the [[nox]] VM's sixteen reduction patterns map to AIR transition constraints — each pattern becomes a polynomial equation relating register state before and after a reduction step. [[SuperSpartan]] handles AIR natively via CCS (Customizable Constraint Systems), with linear-time prover and logarithmic-time verifier.
@@ -99,7 +99,7 @@ stark verification requires:
   1. Field arithmetic (patterns 5, 7, 8)
   2. Hash computation (pattern 15)
   3. Sumcheck verification (patterns 5, 7, 9 — field ops only)
-  4. WHIR opening verification (pattern 15 + conditionals + poly_eval)
+  4. Brakedown opening verification (pattern 15 + conditionals + poly_eval)
 
 All are nox-native. QED.
 
@@ -120,7 +120,7 @@ stark VERIFIER COMPONENTS       │ Layer 1 only │ With Layer 3 jets
 2. Fiat-Shamir challenges       │    ~30,000   │    ~5,000  (hash jet)
 3. Merkle verification          │   ~500,000   │   ~50,000  (merkle_verify jet)
 4. Constraint evaluation        │    ~10,000   │    ~3,000  (poly_eval jet)
-5. WHIR verification            │    ~50,000   │   ~10,000  (fri_fold + ntt jets)
+5. Brakedown verification        │    ~50,000   │   ~10,000  (fri_fold + ntt jets)
 ────────────────────────────────┼──────────────┼──────────────────
 TOTAL                           │   ~600,000   │   ~70,000
 
@@ -160,8 +160,8 @@ see [[cyber/identity]] for the full specification.
 
 a [[neuron]] proves it is valid, has sufficient [[stake]], and has not double-linked — without revealing which neuron it is. the circuit (~13,000 constraints) covers:
 
-1. identity: `Hemera(secret) ∈ neuron_set` (~1,000 via WHIR membership)
-2. stake: `stake(Hemera(secret)) ≥ weight` (~1,000 via WHIR lookup)
+1. identity: `Hemera(secret) ∈ neuron_set` (~1,000 via Brakedown evaluation)
+2. stake: `stake(Hemera(secret)) ≥ weight` (~1,000 via Brakedown evaluation)
 3. nullifier: `nullifier == Hemera(secret ∥ source ∥ target)` (~736)
 4. freshness: `nullifier ∉ spent_set` (~3,000 via SWBF check)
 
@@ -213,7 +213,7 @@ state root update            │ ~9,600       │ ~1,000
 completeness (nothing hidden)│ impossible   │ ~10,000
 ```
 
-polynomial commitments use [[WHIR]] as a multilinear PCS. WHIR proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[stark|multilinear stark]] pipeline itself.
+polynomial commitments use [[Brakedown]] as a multilinear PCS. Brakedown proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[stark|multilinear stark]] pipeline itself.
 
 ## storage and availability proofs
 
@@ -340,7 +340,7 @@ see [[proof_of_location]] for the full specification.
 │  IOP               SuperSpartan (CCS/AIR via sumcheck)  │
 │                     linear-time prover, log-time verifier│
 ├─────────────────────────────────────────────────────────┤
-│  PCS               WHIR (multilinear polynomial commit)  │
+│  PCS               Brakedown (multilinear polynomial commit)  │
 │                     290 μs verify, ~157 KiB proofs       │
 ├─────────────────────────────────────────────────────────┤
 │  primitives         Hemera (hash), nox (VM),             │
@@ -348,6 +348,6 @@ see [[proof_of_location]] for the full specification.
 └─────────────────────────────────────────────────────────┘
 ```
 
-one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit trace via [[WHIR]], verify constraints via [[sumcheck]], produce a [[stark]].
+one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit trace via [[Brakedown]], verify constraints via [[sumcheck]], produce a [[stark]].
 
 see [[cyber/identity]] for authentication and anonymity, [[cyber/communication]] for delivery proofs, [[proof_of_location]] for anchor-free geolocation, [[BBG]] for polynomial commitment architecture, [[trident]] for verifiable AI, [[cybics]] for proof by simulation, [[cyber/security]] for formal guarantees
