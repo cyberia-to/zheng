@@ -541,7 +541,7 @@ all files that have it — it is not decoration.
 ## what zheng is
 
 zheng (証 — proof/evidence) is the proof system for cyber. it implements the
-Whirlaway architecture: SuperSpartan IOP + WHIR PCS + sumcheck protocol. zero
+SuperSpartan IOP + Brakedown PCS + sumcheck protocol. zero
 trusted setup. post-quantum. sub-millisecond verification.
 
 ## components
@@ -551,7 +551,7 @@ SuperSpartan    IOP for CCS (Customizable Constraint Systems)
                 handles AIR constraints of any degree via sumcheck
                 one commitment, one opening per proof
 
-WHIR            multilinear polynomial commitment scheme
+Brakedown        multilinear polynomial commitment scheme (expander-graph codes)
                 fastest PCS verification (290 μs – 1.0 ms)
                 transparent, post-quantum
 
