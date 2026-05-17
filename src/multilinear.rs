@@ -63,7 +63,7 @@ pub fn linear_ext(v0: Goldilocks, v1: Goldilocks, t: Goldilocks) -> Goldilocks {
 pub fn evals_to_coeffs(evals: &[Goldilocks]) -> Vec<Goldilocks> {
     let d = evals.len() - 1;
     let mut coeffs = vec![Goldilocks::ZERO; d + 1];
-    for i in 0..=d {
+    for (i, &eval_i) in evals.iter().enumerate() {
         // compute L_i(t) = Π_{j≠i} (t-j)/(i-j) as polynomial in t
         let mut li = vec![Goldilocks::ONE]; // polynomial 1
         let mut denom = Goldilocks::ONE;
@@ -75,23 +75,22 @@ pub fn evals_to_coeffs(evals: &[Goldilocks]) -> Vec<Goldilocks> {
             let mut new_li = vec![Goldilocks::ZERO; li.len() + 1];
             let j_field = Goldilocks::new(j as u64);
             for k in 0..li.len() {
-                new_li[k + 1] = new_li[k + 1] + li[k];
-                new_li[k] = new_li[k] - j_field * li[k];
+                new_li[k + 1] += li[k];
+                new_li[k] -= j_field * li[k];
             }
             li = new_li;
             // accumulate denominator: (i - j)
             let diff = if i > j {
                 Goldilocks::new((i - j) as u64)
             } else {
-                // negative: -(j-i) = p-(j-i)
                 Goldilocks::ZERO - Goldilocks::new((j - i) as u64)
             };
-            denom = denom * diff;
+            denom *= diff;
         }
         let denom_inv = denom.inv();
-        let scale = evals[i] * denom_inv;
+        let scale = eval_i * denom_inv;
         for k in 0..=d {
-            coeffs[k] = coeffs[k] + scale * li[k];
+            coeffs[k] += scale * li[k];
         }
     }
     coeffs

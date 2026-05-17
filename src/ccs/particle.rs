@@ -226,8 +226,8 @@ pub fn build_hash_steps_from_trace(
 
         // Convert rate to hemera's Goldilocks type for StepSponge.
         let mut rate_h = [HGold::ZERO; 8];
-        for j in 0..8 {
-            rate_h[j] = HGold::new(ha.rate[j].canonicalize().as_u64());
+        for (j, r) in ha.rate.iter().enumerate() {
+            rate_h[j] = HGold::new(r.canonicalize().as_u64());
         }
 
         // Replay the full permutation to get all 16-element states at each round.
@@ -250,10 +250,8 @@ pub fn build_hash_steps_from_trace(
 
             let mut cap_k  = [Goldilocks::ZERO; 8];
             let mut cap_k1 = [Goldilocks::ZERO; 8];
-            for j in 0..8 {
-                cap_k[j]  = state_k[8 + j];
-                cap_k1[j] = state_k1[8 + j];
-            }
+            cap_k.copy_from_slice(&state_k[8..16]);
+            cap_k1.copy_from_slice(&state_k1[8..16]);
 
             let (instance, y) = if (3..19).contains(&k) {
                 let pr = k - 3;
