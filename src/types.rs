@@ -60,6 +60,16 @@ pub struct Proof {
     pub pcs_opening: Opening,
 }
 
+/// Proof for a complete nox trace, grouped by CCS structure.
+///
+/// Each group covers all trace steps with the same constraint structure
+/// folded into one accumulator, finalized with a single Spartan proof.
+/// One group per distinct pattern type appearing in the trace.
+#[derive(Clone, Debug)]
+pub struct TraceProof {
+    pub groups: Vec<(Proof, Accumulator)>,
+}
+
 /// public statement: what the proof attests to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Statement {
@@ -121,7 +131,7 @@ pub enum LensBackend {
 // ── CCS ──────────────────────────────────────────────────────────
 
 /// a sparse matrix over Goldilocks in compressed sparse row format.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SparseMatrix {
     pub rows: usize,
     pub cols: usize,
@@ -153,7 +163,7 @@ impl SparseMatrix {
 /// a CCS instance.
 ///
 /// satisfiability: Σ_j c_j · ∏_{i ∈ S_j} (M_i · z) = 0.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CCSInstance {
     /// M_1, …, M_t — constraint matrices.
     pub matrices: Vec<SparseMatrix>,
@@ -216,6 +226,8 @@ pub enum CommitError {
     ExecutionFailed(nox::ErrorKind),
     FocusExhausted,
     TraceOverflow,
+    /// Statement input_hash, output_hash, or focus_bound does not match the trace.
+    StatementMismatch,
 }
 
 #[derive(Debug)]

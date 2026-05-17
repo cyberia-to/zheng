@@ -5,9 +5,9 @@
 // ---
 //! SuperSpartan prover: commit witness, inner sumcheck, PCS open.
 //!
-//! For m=1 CCS instances (single constraint row), the outer sumcheck is
-//! trivial. The inner sumcheck (6 rounds over the 64-element witness) reduces
-//! û_i claims to a single PCS evaluation.
+//! The inner sumcheck (6 rounds over the 64-element witness) reduces
+//! û_i = Σ_row M_i[row] · z claims to a single PCS evaluation.
+//! Multi-row matrices are handled by summing row contributions into û_i.
 
 use nebu::Goldilocks;
 
@@ -19,19 +19,16 @@ use crate::sumcheck::prover::SumcheckProver;
 use crate::transcript::Transcript;
 use crate::types::{CCSInstance, CCSWitness, Proof, SparseMatrix};
 
-/// Compute M_i · z for a 1-row matrix and z vector.
+/// Compute Σ_row M[row] · z (sum of row dot products over all matrix rows).
 fn matrix_dot(m: &SparseMatrix, z: &[Goldilocks]) -> Goldilocks {
-    m.entries
-        .first()
-        .map(|row| {
-            row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
-                acc + coeff * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
-            })
+    m.entries.iter().fold(Goldilocks::ZERO, |sum, row| {
+        sum + row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
+            acc + coeff * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
         })
-        .unwrap_or(Goldilocks::ZERO)
+    })
 }
 
-/// SuperSpartan prover for m=1 CCS instances.
+/// SuperSpartan prover for CCS instances (any number of constraint rows).
 pub struct SpartanProver;
 
 impl SpartanProver {
@@ -53,7 +50,7 @@ impl SpartanProver {
         let commitment = Brakedown::commit(&z_poly);
         transcript.absorb_commitment(&commitment);
 
-        // ── 3. Compute û_i = M_i · z for each matrix (m=1 case) ─────────────
+        // ── 3. Compute û_i = Σ_row M_i[row] · z for each matrix ─────────────
         let matrix_evals: Vec<Goldilocks> = instance
             .matrices
             .iter()
@@ -68,11 +65,11 @@ impl SpartanProver {
         // ── 4. Squeeze γ for batched inner sumcheck ──────────────────────────
         let gamma = transcript.squeeze_challenge();
 
-        // ── 5. Build batched weight vector: w[x] = Σ_i γ^i · M_i[0, x] ─────
+        // ── 5. Build batched weight vector: w[x] = Σ_i γ^i · Σ_row M_i[row, x] ─────
         let mut w_combined = vec![Goldilocks::ZERO; z_padded.len()];
         let mut gamma_pow = Goldilocks::ONE;
         for matrix in &instance.matrices {
-            if let Some(row) = matrix.entries.first() {
+            for row in &matrix.entries {
                 for &(col, coeff) in row {
                     if col < w_combined.len() {
                         w_combined[col] = w_combined[col] + gamma_pow * coeff;
@@ -136,8 +133,6 @@ mod tests {
     use crate::ccs::{reg_t, reg_t1, CONST_IDX, Z_LEN};
     use crate::spartan::verifier::SpartanVerifier;
     use crate::transcript::Transcript;
-    use crate::types::Statement;
-
     fn make_z(vals: &[(usize, u64)]) -> Vec<Goldilocks> {
         let mut z = vec![Goldilocks::ZERO; Z_LEN];
         z[CONST_IDX] = Goldilocks::ONE;
@@ -145,15 +140,6 @@ mod tests {
             z[idx] = Goldilocks::new(v);
         }
         z
-    }
-
-    fn dummy_statement() -> Statement {
-        Statement {
-            program_hash: [0u8; 32],
-            input_hash: [0u8; 32],
-            output_hash: [0u8; 32],
-            focus_bound: 0,
-        }
     }
 
     #[test]
@@ -167,7 +153,7 @@ mod tests {
         let proof = SpartanProver::prove(&instance, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        let result = SpartanVerifier::verify(&instance, &dummy_statement(), &proof, &mut vt);
+        let result = SpartanVerifier::verify(&instance, &proof, Goldilocks::ZERO, &mut vt);
         assert!(result.is_ok(), "verify failed: {result:?}");
     }
 
@@ -182,6 +168,6 @@ mod tests {
         let proof = SpartanProver::prove(&instance, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        assert!(SpartanVerifier::verify(&instance, &dummy_statement(), &proof, &mut vt).is_ok());
+        assert!(SpartanVerifier::verify(&instance, &proof, Goldilocks::ZERO, &mut vt).is_ok());
     }
 }

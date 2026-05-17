@@ -14,17 +14,18 @@ use nebu::{field::P, Goldilocks};
 
 use lens::Commitment;
 
-use crate::types::SumcheckPoly;
+use crate::types::{Statement, SumcheckPoly};
 
 // ── domain separators ─────────────────────────────────────────────
 // absorbed before the corresponding phase message. unique per phase.
 
-const DOM_INIT: &[u8]     = b"\x01zheng-transcript-v1";
-const DOM_COMMIT: &[u8]   = b"\x02commit";
-const DOM_SUMCHECK: u8    = 0x03;
-const DOM_EVAL: &[u8]     = b"\x04eval";
-const DOM_PCS_OPEN: &[u8] = b"\x05pcs-open";
-const DOM_RECURSE: &[u8]  = b"\x06recurse";
+const DOM_INIT: &[u8]      = b"\x01zheng-transcript-v1";
+const DOM_COMMIT: &[u8]    = b"\x02commit";
+const DOM_SUMCHECK: u8     = 0x03;
+const DOM_EVAL: &[u8]      = b"\x04eval";
+const DOM_PCS_OPEN: &[u8]  = b"\x05pcs-open";
+const DOM_RECURSE: &[u8]   = b"\x06recurse";
+const DOM_STATEMENT: &[u8] = b"\x07statement";
 
 // ── transcript ───────────────────────────────────────────────────
 
@@ -111,6 +112,18 @@ impl Transcript {
     /// Absorb a domain separator before the PCS opening phase.
     pub fn absorb_pcs_open_domain(&mut self) {
         self.absorb(DOM_PCS_OPEN);
+    }
+
+    /// Absorb a Statement into the transcript (domain-separated).
+    ///
+    /// Must be called at the same point in both prover and verifier transcripts
+    /// to bind the proof to a specific program/input/output identity.
+    pub fn absorb_statement(&mut self, s: &Statement) {
+        self.absorb(DOM_STATEMENT);
+        self.absorb(&s.program_hash);
+        self.absorb(&s.input_hash);
+        self.absorb(&s.output_hash);
+        self.absorb(&s.focus_bound.to_le_bytes());
     }
 }
 

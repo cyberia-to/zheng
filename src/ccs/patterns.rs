@@ -121,38 +121,31 @@ fn pattern_cons() -> CCSInstance {
 }
 
 // ── pattern 4: branch ────────────────────────────────────────────────────────
-// C_4: sel*(r5_{t+1} - yes) + (1-sel)*(r5_{t+1} - no) = 0
-// = r5_{t+1} - no + sel*(no - yes) = 0  (degree 2 via sel*r5)
-// Using sub-constraint: sel*(next - yes) = 0 AND (1-sel)*(next - no) = 0.
-// Simplified linear form: r5_{t+1} = r4_t * sel + r6_t * (1 - sel).
-// Here sel = r8_t (bool auxiliary), yes = r4_t, no = r6_t.
+// C_4: r5_{t+1} - r6_t + r8_t*(r6_t - r4_t) = 0
+// decomposed: r5_{t+1} - r6_t + r8_t*r6_t - r8_t*r4_t = 0
+// sel = r8_t, yes = r4_t, no = r6_t
 fn pattern_branch() -> CCSInstance {
-    // C_4a: r5_{t+1} - r6_t + r8_t*(r6_t - r4_t) = 0
-    // decompose: r5_{t+1} - r6_t + r8_t*r6_t - r8_t*r4_t = 0
-    let m_r5_t1 = select_matrix(reg_t1(5));
-    let m_r6_t  = select_matrix(reg_t(6));
-    let m_r8_t  = select_matrix(reg_t(8)); // selector auxiliary
-    let m_r4_t  = select_matrix(reg_t(4));
-
-    // Need two extra matrices for the products r8*r6 and r8*r4
-    let m_r8_t_dup  = select_matrix(reg_t(8));
-    let m_r6_t_dup  = select_matrix(reg_t(6));
-    let m_r8_t_dup2 = select_matrix(reg_t(8));
-    let m_r4_t_dup  = select_matrix(reg_t(4));
+    // 6 matrices needed: r5_{t+1}, r6_t, r8_t×r6_t (two copies), r8_t×r4_t (two copies)
+    let m_r5_t1    = select_matrix(reg_t1(5));
+    let m_r6_t     = select_matrix(reg_t(6));
+    let m_r8_t_a   = select_matrix(reg_t(8));
+    let m_r6_t_dup = select_matrix(reg_t(6));
+    let m_r8_t_b   = select_matrix(reg_t(8));
+    let m_r4_t     = select_matrix(reg_t(4));
 
     CCSInstance {
-        matrices: vec![m_r5_t1, m_r6_t, m_r8_t, m_r6_t_dup, m_r8_t_dup, m_r4_t, m_r8_t_dup2, m_r4_t_dup],
+        matrices: vec![m_r5_t1, m_r6_t, m_r8_t_a, m_r6_t_dup, m_r8_t_b, m_r4_t],
         multisets: vec![
-            vec![0],    // r5_{t+1}
+            vec![0],    // +r5_{t+1}
             vec![1],    // -r6_t
-            vec![2, 3], // +r8_t * r6_t
-            vec![4, 5], // -r8_t * r4_t (wait, wrong indices, fix below)
+            vec![2, 3], // +r8_t * r6_t  (matrices[2] × matrices[3])
+            vec![4, 5], // -r8_t * r4_t  (matrices[4] × matrices[5])
         ],
         coeffs: vec![
-            Goldilocks::ONE,  // +r5_{t+1}
-            neg_one(),        // -r6_t
-            Goldilocks::ONE,  // +r8_t * r6_t  (matrices 2,3)
-            neg_one(),        // -r8_t * r4_t  (matrices 4,5)
+            Goldilocks::ONE,
+            neg_one(),
+            Goldilocks::ONE,
+            neg_one(),
         ],
         num_rows: 1,
         num_cols: Z_LEN,
@@ -268,72 +261,121 @@ fn pattern_eq() -> CCSInstance {
     }
 }
 
-// Pattern 0 (axis): constraint is Lens.verify(r4, r6, r7) via folded CCS sub-instance.
-// Inline wiring constraints require BBG/lens integration — deferred.
-// See lens/.claude/plans/pattern0-axis-folded-opening.md
+// ── pattern 0: axis ──────────────────────────────────────────────────────────
+// Single-row; cost 1. Lens opening verified via axis_acc (separate fold).
+// Inline constraint: budget decrement r9 = r8 - 1.
+// Commitment binding (r11-r14) is checked by the axis_acc, not here.
 fn pattern_axis() -> CCSInstance {
-    trivial_ccs()
+    let m_r9 = select_matrix(reg_t(9));   // z[9]  = budget_out
+    let m_r8 = select_matrix(reg_t(8));   // z[8]  = budget_in
+    let m_c  = select_matrix(CONST_IDX); // z[32] = 1
+    build_ccs(
+        vec![m_r9, m_r8, m_c],
+        vec![
+            (vec![0], Goldilocks::ONE), // +r9
+            (vec![1], neg_one()),       // -r8
+            (vec![2], Goldilocks::ONE), // +1  → r9 - r8 + 1 = 0 ↔ r9 = r8 - 1
+        ],
+    )
 }
 
 // ── pattern 10: lt ───────────────────────────────────────────────────────────
-// r6 = result (0 if r4 < r5, else 1), r11 = borrow/sign bit.
-// C_10: r6 + r11 - 1 = 0  (result = 1 - borrow)
-// Full 64-bit range decomposition requires per-bit witnesses in nox trace.
-// See nox/.claude/plans/pattern-bit-decomp.md
+// 64-row block; per-row r10 = a_k ∈ {0,1}.
+// C_10: a_k * (a_k - 1) = 0  →  a_k² - a_k = 0
 fn pattern_lt() -> CCSInstance {
-    let m_r6    = select_matrix(reg_t(6));   // z[6]
-    let m_r11   = select_matrix(reg_t(11));  // z[11]
-    let m_const = select_matrix(CONST_IDX);  // z[32]
+    let m_ak = select_matrix(reg_t(10)); // z[10]
     build_ccs(
-        vec![m_r6, m_r11, m_const],
+        vec![m_ak],
         vec![
-            (vec![0], Goldilocks::ONE),  // +r6
-            (vec![1], Goldilocks::ONE),  // +r11
-            (vec![2], neg_one()),        // -1
+            (vec![0, 0], Goldilocks::ONE), // +a_k²
+            (vec![0],    neg_one()),       // -a_k
         ],
     )
 }
 
-// Pattern 11 (xor): bit-by-bit XOR (c_k = a_k + b_k - 2*a_k*b_k) requires per-bit
-// witnesses not present in single-row trace. See nox/.claude/plans/pattern-bit-decomp.md
+// ── pattern 11: xor ──────────────────────────────────────────────────────────
+// 32-row block; per-row r10=a_k, r11=b_k, r12=c_k.
+// C_11: a_k + b_k - 2·a_k·b_k - c_k = 0  (XOR gadget)
 fn pattern_xor() -> CCSInstance {
-    trivial_ccs()
+    let m_ak = select_matrix(reg_t(10));
+    let m_bk = select_matrix(reg_t(11));
+    let m_ck = select_matrix(reg_t(12));
+    let neg_two = Goldilocks::ZERO - Goldilocks::new(2);
+    build_ccs(
+        vec![m_ak, m_bk, m_ck],
+        vec![
+            (vec![0],    Goldilocks::ONE), // +a_k
+            (vec![1],    Goldilocks::ONE), // +b_k
+            (vec![0, 1], neg_two),         // -2·a_k·b_k
+            (vec![2],    neg_one()),       // -c_k
+        ],
+    )
 }
 
-// Pattern 12 (and): bit-by-bit AND (c_k = a_k * b_k) requires per-bit witnesses.
-// See nox/.claude/plans/pattern-bit-decomp.md
+// ── pattern 12: and ──────────────────────────────────────────────────────────
+// 32-row block; per-row r10=a_k, r11=b_k, r12=c_k.
+// C_12: a_k·b_k - c_k = 0  (AND gadget)
 fn pattern_and() -> CCSInstance {
-    trivial_ccs()
+    let m_ak = select_matrix(reg_t(10));
+    let m_bk = select_matrix(reg_t(11));
+    let m_ck = select_matrix(reg_t(12));
+    build_ccs(
+        vec![m_ak, m_bk, m_ck],
+        vec![
+            (vec![0, 1], Goldilocks::ONE), // +a_k·b_k
+            (vec![2],    neg_one()),       // -c_k
+        ],
+    )
 }
 
 // ── pattern 13: not ──────────────────────────────────────────────────────────
-// r6 = NOT r4 = (2^32 - 1) - r4
-// C_13: r6 + r4 - (2^32 - 1) = 0
+// 32-row block; per-row r10=a_k, r12=c_k, r11=0 (unused).
+// C_13: a_k + c_k - 1 = 0  (NOT bit gadget: c_k = 1 - a_k)
 fn pattern_not() -> CCSInstance {
-    let m_r6    = select_matrix(reg_t(6));   // z[6]
-    let m_r4    = select_matrix(reg_t(4));   // z[4]
+    let m_ak    = select_matrix(reg_t(10));  // z[10]
+    let m_ck    = select_matrix(reg_t(12));  // z[12]
     let m_const = select_matrix(CONST_IDX);  // z[32]
-    let neg_word_mask = Goldilocks::ZERO - Goldilocks::new(4294967295u64);
     build_ccs(
-        vec![m_r6, m_r4, m_const],
+        vec![m_ak, m_ck, m_const],
         vec![
-            (vec![0], Goldilocks::ONE),  // +r6
-            (vec![1], Goldilocks::ONE),  // +r4
-            (vec![2], neg_word_mask),    // -(2^32 - 1)
+            (vec![0], Goldilocks::ONE), // +a_k
+            (vec![1], Goldilocks::ONE), // +c_k
+            (vec![2], neg_one()),       // -1
         ],
     )
 }
 
-// Pattern 14 (shl): r6 = r4 * 2^r5 requires 2^r5 as auxiliary (variable shift).
-// See nox/.claude/plans/pattern-bit-decomp.md
+// ── pattern 14: shl ──────────────────────────────────────────────────────────
+// 32-row block; per-row r11=src_bit, r12=c_k (output bit).
+// C_14: c_k - src_bit = 0
 fn pattern_shl() -> CCSInstance {
-    trivial_ccs()
+    let m_ck  = select_matrix(reg_t(12)); // z[12]
+    let m_src = select_matrix(reg_t(11)); // z[11]
+    build_ccs(
+        vec![m_ck, m_src],
+        vec![
+            (vec![0], Goldilocks::ONE), // +c_k
+            (vec![1], neg_one()),       // -src_bit
+        ],
+    )
 }
 
-// Pattern 15 (hash): Poseidon2 round constraints require ~300-row multi-row trace.
-// nox currently emits a summary row. See nox/.claude/plans/pattern15-multi-row-hash-trace.md
+// ── pattern 15: hash ─────────────────────────────────────────────────────────
+// 25-row block (24 round rows + 1 squeeze); r14 = round index (0..24).
+// C_15: r14_{t+1} - r14_t - 1 = 0  (round counter increments by 1)
+// Applied only to intra-block pairs (both rows tag=15) via build_ccs_from_trace.
 fn pattern_hash() -> CCSInstance {
-    trivial_ccs()
+    let m_r14_t1 = select_matrix(reg_t1(14)); // z[30]
+    let m_r14_t  = select_matrix(reg_t(14));  // z[14]
+    let m_const  = select_matrix(CONST_IDX);  // z[32]
+    build_ccs(
+        vec![m_r14_t1, m_r14_t, m_const],
+        vec![
+            (vec![0], Goldilocks::ONE), // +r14_{t+1}
+            (vec![1], neg_one()),       // -r14_t
+            (vec![2], neg_one()),       // -1
+        ],
+    )
 }
 
 // ── pattern 16: call ─────────────────────────────────────────────────────────
@@ -370,6 +412,16 @@ mod tests {
             z[idx] = Goldilocks::new(v);
         }
         z
+    }
+
+    #[test]
+    fn pattern_axis_budget_decrement() {
+        // r8=10, r9=9: 9 - 10 + 1 = 0 ✓
+        let z = make_z(&[(reg_t(8), 10), (reg_t(9), 9)]);
+        assert!(pattern_axis().is_satisfied_by(&CCSWitness { z }));
+        // r8=10, r9=8: 8 - 10 + 1 = -1 ≠ 0 ✗
+        let z = make_z(&[(reg_t(8), 10), (reg_t(9), 8)]);
+        assert!(!pattern_axis().is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]
@@ -411,28 +463,79 @@ mod tests {
     }
 
     #[test]
-    fn pattern_lt_result_consistency() {
-        // borrow=1 → result=0 (r4 < r5)
-        let z = make_z(&[(reg_t(6), 0), (reg_t(11), 1)]);
+    fn pattern_lt_bit_validity_accepts_bits() {
+        // a_k=0: 0*(0-1)=0 ✓
+        let z = make_z(&[(reg_t(10), 0)]);
         assert!(pattern_lt().is_satisfied_by(&CCSWitness { z }));
-        // borrow=0 → result=1 (r4 >= r5)
-        let z = make_z(&[(reg_t(6), 1), (reg_t(11), 0)]);
+        // a_k=1: 1*(1-1)=0 ✓
+        let z = make_z(&[(reg_t(10), 1)]);
         assert!(pattern_lt().is_satisfied_by(&CCSWitness { z }));
-        // borrow=1 but result=1 → violation
-        let z = make_z(&[(reg_t(6), 1), (reg_t(11), 1)]);
+    }
+
+    #[test]
+    fn pattern_lt_bit_validity_rejects_non_bit() {
+        // a_k=2: 2*(2-1)=2 ≠ 0 ✗
+        let z = make_z(&[(reg_t(10), 2)]);
         assert!(!pattern_lt().is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]
-    fn pattern_not_bitwise_complement() {
-        // NOT 5 = 0xFFFFFFFA = 4294967290
-        let input = 5u64;
-        let expected = 4294967295u64 - input; // = 4294967290
-        let z = make_z(&[(reg_t(4), input), (reg_t(6), expected)]);
+    fn pattern_xor_gadget_satisfying() {
+        // 1 XOR 0 = 1: 1+0-0-1=0 ✓
+        let z = make_z(&[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 1)]);
+        assert!(pattern_xor().is_satisfied_by(&CCSWitness { z }));
+        // 1 XOR 1 = 0: 1+1-2-0=0 ✓
+        let z = make_z(&[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 0)]);
+        assert!(pattern_xor().is_satisfied_by(&CCSWitness { z }));
+        // 1 XOR 0 ≠ 0: 1+0-0-0=1 ✗
+        let z = make_z(&[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 0)]);
+        assert!(!pattern_xor().is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_and_gadget_satisfying() {
+        // 1 AND 1 = 1: 1-1=0 ✓
+        let z = make_z(&[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 1)]);
+        assert!(pattern_and().is_satisfied_by(&CCSWitness { z }));
+        // 1 AND 0 = 0: 0-0=0 ✓
+        let z = make_z(&[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 0)]);
+        assert!(pattern_and().is_satisfied_by(&CCSWitness { z }));
+        // 1 AND 1 ≠ 0: 1-0=1 ✗
+        let z = make_z(&[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 0)]);
+        assert!(!pattern_and().is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_not_bit_gadget() {
+        // a_k=0, c_k=1: 0+1-1=0 ✓
+        let z = make_z(&[(reg_t(10), 0), (reg_t(12), 1)]);
         assert!(pattern_not().is_satisfied_by(&CCSWitness { z }));
-        // wrong complement → violation
-        let z = make_z(&[(reg_t(4), input), (reg_t(6), expected + 1)]);
+        // a_k=1, c_k=0: 1+0-1=0 ✓
+        let z = make_z(&[(reg_t(10), 1), (reg_t(12), 0)]);
+        assert!(pattern_not().is_satisfied_by(&CCSWitness { z }));
+        // a_k=1, c_k=1: 1+1-1=1 ✗
+        let z = make_z(&[(reg_t(10), 1), (reg_t(12), 1)]);
         assert!(!pattern_not().is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_shl_src_bit_propagation() {
+        // src_bit=1, c_k=1: 1-1=0 ✓
+        let z = make_z(&[(reg_t(11), 1), (reg_t(12), 1)]);
+        assert!(pattern_shl().is_satisfied_by(&CCSWitness { z }));
+        // src_bit=0, c_k=1: 1-0=1 ✗
+        let z = make_z(&[(reg_t(11), 0), (reg_t(12), 1)]);
+        assert!(!pattern_shl().is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_hash_round_counter_increments() {
+        // r14_t=5, r14_{t+1}=6: 6-5-1=0 ✓
+        let z = make_z(&[(reg_t(14), 5), (reg_t1(14), 6)]);
+        assert!(pattern_hash().is_satisfied_by(&CCSWitness { z }));
+        // r14_t=5, r14_{t+1}=7: 7-5-1=1 ✗
+        let z = make_z(&[(reg_t(14), 5), (reg_t1(14), 7)]);
+        assert!(!pattern_hash().is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]

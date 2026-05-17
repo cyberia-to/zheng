@@ -17,10 +17,20 @@ use crate::multilinear::pad_to_power_of_two;
 use crate::transcript::Transcript;
 use crate::types::{Accumulator, CCSInstance, CCSWitness, FoldError};
 
+/// Compute M_idx · z by summing dot products over all matrix rows.
+fn eval_matrix(instance: &CCSInstance, m_idx: usize, z: &[Goldilocks]) -> Goldilocks {
+    instance.matrices[m_idx].entries.iter().fold(Goldilocks::ZERO, |sum, row| {
+        sum + row.iter().fold(Goldilocks::ZERO, |acc, &(col, c)| {
+            acc + c * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
+        })
+    })
+}
+
 /// Compute the HyperNova cross-term T.
 ///
 /// For each degree-2 CCS term (S_j with |S_j| = 2), T accumulates the
-/// bilinear cross contribution between acc and new witness:
+/// bilinear cross contribution between acc and new witness, summed over all
+/// matrix rows:
 ///   T_j = c_j · ((M_i · w_acc) · (M_k · w_new) + (M_i · w_new) · (M_k · w_acc))
 ///
 /// Degree-1 terms have no cross term.
@@ -33,32 +43,20 @@ fn cross_term(instance: &CCSInstance, w_acc: &[Goldilocks], w_new: &[Goldilocks]
             if multiset.len() < 2 {
                 return t;
             }
-            // For |S_j| = 2: S_j = {i, k}
             let i = multiset[0];
             let k = multiset[1];
-            let eval_vec = |m_idx: usize, w: &[Goldilocks]| -> Goldilocks {
-                instance.matrices[m_idx]
-                    .entries
-                    .first()
-                    .map(|row| {
-                        row.iter().fold(Goldilocks::ZERO, |acc, &(col, c)| {
-                            acc + c * w.get(col).copied().unwrap_or(Goldilocks::ZERO)
-                        })
-                    })
-                    .unwrap_or(Goldilocks::ZERO)
-            };
-            let mi_acc = eval_vec(i, w_acc);
-            let mk_acc = eval_vec(k, w_acc);
-            let mi_new = eval_vec(i, w_new);
-            let mk_new = eval_vec(k, w_new);
+            let mi_acc = eval_matrix(instance, i, w_acc);
+            let mk_acc = eval_matrix(instance, k, w_acc);
+            let mi_new = eval_matrix(instance, i, w_new);
+            let mk_new = eval_matrix(instance, k, w_new);
             let cross = mi_acc * mk_new + mi_new * mk_acc;
             t + coeff * cross
         })
 }
 
-/// Compute the CCS error term for a given witness.
+/// Compute the CCS error term for a given witness, summing over all matrix rows.
 ///
-/// e = Σ_j c_j · Π_{i ∈ S_j} (M_i · z)
+/// e = Σ_j c_j · Π_{i ∈ S_j} (Σ_row M_i[row] · z)
 /// For a satisfying witness, e = 0.
 fn error_term(instance: &CCSInstance, z: &[Goldilocks]) -> Goldilocks {
     instance
@@ -67,16 +65,7 @@ fn error_term(instance: &CCSInstance, z: &[Goldilocks]) -> Goldilocks {
         .zip(instance.coeffs.iter())
         .fold(Goldilocks::ZERO, |acc, (multiset, &coeff)| {
             let product = multiset.iter().fold(Goldilocks::ONE, |p, &idx| {
-                let mv = instance.matrices[idx]
-                    .entries
-                    .first()
-                    .map(|row| {
-                        row.iter().fold(Goldilocks::ZERO, |a, &(col, c)| {
-                            a + c * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
-                        })
-                    })
-                    .unwrap_or(Goldilocks::ZERO);
-                p * mv
+                p * eval_matrix(instance, idx, z)
             });
             acc + coeff * product
         })
@@ -118,7 +107,7 @@ pub fn fold_step(
 
     // ── HyperNova fold ───────────────────────────────────────────────────────
 
-    // 1. Compute cross-term T.
+    // 1. Compute cross-term T for Fiat-Shamir binding.
     let t = cross_term(instance, w_acc, &z_new);
 
     // 2. Derive beta from transcript.
@@ -128,20 +117,19 @@ pub fn fold_step(
     transcript.absorb(&t.as_u64().to_le_bytes());
     let beta = transcript.squeeze_challenge();
 
-    // 3. e_new for the new instance.
-    let e_new = error_term(instance, &z_new);
-
-    // 4. Fold witnesses: w_folded = w_acc + beta · w_new
+    // 3. Fold witnesses: w_folded = w_acc + beta · w_new
     let mut w_folded = w_acc.clone();
     for (wf, &wn) in w_folded.iter_mut().zip(z_new.iter()) {
         *wf = *wf + beta * wn;
     }
 
-    // 5. Fold error: e_folded = e_acc + beta · T + beta² · e_new
-    let beta_sq = beta * beta;
-    let e_folded = acc.error_term + beta * t + beta_sq * e_new;
+    // 4. Fold error: evaluate constraint on the folded witness directly.
+    //    For degree-1 constraints: error_term(w_acc + β·w_new) = e_acc + β·e_new.
+    //    For degree-2: the bilinear cross-term makes the formula non-trivial;
+    //    computing directly is always correct.
+    let e_folded = error_term(instance, &w_folded);
 
-    // 6. Update commitment.
+    // 5. Update commitment.
     let c_folded = Brakedown::commit_raw(&w_folded);
 
     acc.folded_witness = CCSWitness { z: w_folded };

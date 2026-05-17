@@ -19,8 +19,9 @@ pub use transcript::Transcript;
 pub use types::{
     Accumulator, CCSInstance, CCSWitness, CommitError, DecideError, FoldError,
     LensBackend, OpenError, Proof, ProofParams, SecurityLevel, SparseMatrix,
-    Statement, SumcheckPoly, VerifyError,
+    Statement, SumcheckPoly, TraceProof, VerifyError,
 };
+pub use crate::ccs::{AxisOpening, HashAux};
 
 use nebu::Goldilocks;
 use nox::VecTrace;
@@ -28,47 +29,123 @@ use nox::VecTrace;
 use lens::brakedown::Brakedown;
 use lens::{Commitment, Lens, MultilinearPoly, Opening};
 
-use crate::ccs::build_ccs_from_trace;
+use crate::ccs::{build_axis_steps_from_trace, build_ccs_from_trace, build_hash_steps_from_trace};
 use crate::folding::{decide as run_decide, fold_step};
 use crate::spartan::verifier::SpartanVerifier;
 
 // ── five entry points ─────────────────────────────────────────────────────────
 
-/// Prove a nox execution trace.
-///
-/// Folds all trace steps into a HyperNova accumulator, then runs the decider
-/// to produce a proof. Returns the proof and the final accumulator state.
-pub fn commit(
-    trace: &VecTrace,
-    params: &ProofParams,
-) -> Result<(Proof, Accumulator), CommitError> {
-    let steps = build_ccs_from_trace(&trace.0);
-    if steps.is_empty() {
-        return Err(CommitError::TraceOverflow);
+/// Compute the hemera hash of a trace row's 16 registers as a 32-byte digest.
+fn hash_row(row: &nox::TraceRow) -> [u8; 32] {
+    let mut bytes = Vec::with_capacity(128);
+    for &v in row.r().iter() {
+        bytes.extend_from_slice(&v.to_le_bytes());
     }
+    *hemera::hash(&bytes).as_bytes()
+}
 
-    // Use the first step's CCS structure to initialize the accumulator.
-    let first_instance = steps[0].0.clone();
+/// Initialize a blank accumulator for a given CCS instance structure.
+fn blank_acc(instance: &CCSInstance) -> Accumulator {
     let init_z = vec![Goldilocks::ZERO; 64];
-    let mut acc = Accumulator {
-        committed_instance: first_instance,
+    Accumulator {
+        committed_instance: instance.clone(),
         folded_witness: CCSWitness { z: init_z.clone() },
         witness_commitment: Brakedown::commit_raw(&init_z),
         error_term: Goldilocks::ZERO,
         step_count: 0,
-    };
+    }
+}
 
-    let mut transcript = Transcript::new();
+/// Prove a nox execution trace.
+///
+/// Groups trace steps by CCS structure (one group per distinct pattern type),
+/// folds each group into its own HyperNova accumulator, and runs the decider
+/// on each accumulator. Returns a TraceProof containing one (Proof, Accumulator)
+/// per group.
+///
+/// `hash_aux` provides prover hints for Poseidon2 hash blocks (one per block).
+/// `axis_openings` provides Brakedown opening proofs for axis reads (one per axis row).
+/// Pass empty slices for traces without hash or axis operations.
+pub fn commit(
+    trace: &VecTrace,
+    hash_aux: &[HashAux],
+    axis_openings: &[AxisOpening],
+    statement: &Statement,
+    params: &ProofParams,
+) -> Result<TraceProof, CommitError> {
+    // Statement binding.
+    if statement.focus_bound > 0 && trace.0.len() as u64 > statement.focus_bound {
+        return Err(CommitError::FocusExhausted);
+    }
+    if statement.input_hash != [0u8; 32] {
+        if let Some(first) = trace.0.first() {
+            if hash_row(first) != statement.input_hash {
+                return Err(CommitError::StatementMismatch);
+            }
+        }
+    }
+    if statement.output_hash != [0u8; 32] {
+        if let Some(last) = trace.0.last() {
+            if hash_row(last) != statement.output_hash {
+                return Err(CommitError::StatementMismatch);
+            }
+        }
+    }
 
-    for (instance, witness) in &steps {
-        fold_step(&mut acc, instance, witness, &mut transcript)
+    // Build all step sequences and chain them.
+    let main_steps = build_ccs_from_trace(&trace.0);
+    let hash_steps = build_hash_steps_from_trace(&trace.0, hash_aux);
+    let axis_steps = build_axis_steps_from_trace(&trace.0, axis_openings);
+
+    let all_steps: Vec<(CCSInstance, CCSWitness)> = main_steps
+        .into_iter()
+        .chain(hash_steps)
+        .chain(axis_steps)
+        .collect();
+
+    if all_steps.is_empty() {
+        return Err(CommitError::TraceOverflow);
+    }
+
+    let mut groups: Vec<(Proof, Accumulator)> = Vec::new();
+
+    // Sequential grouping: start a new group whenever the CCS instance changes.
+    // Full equality is required because instances with the same structural shape
+    // (matrix count, dimensions) but different matrix coefficients (e.g. distinct
+    // Poseidon2 partial-round constants) must not fold together — their error_term
+    // is computed against the current instance's matrices while the verifier checks
+    // against committed_instance, which only holds the first instance in the group.
+    let mut cur_instance: Option<CCSInstance> = None;
+    let mut cur_acc: Option<Accumulator> = None;
+    let mut cur_transcript = Transcript::new();
+
+    for (instance, witness) in &all_steps {
+        let same = cur_instance.as_ref().map_or(false, |ci| ci == instance);
+
+        if !same {
+            // Finalize previous group.
+            if let Some(acc) = cur_acc.take() {
+                let proof = run_decide(&acc, statement, params)
+                    .map_err(|_| CommitError::TraceOverflow)?;
+                groups.push((proof, acc));
+            }
+            cur_instance = Some(instance.clone());
+            cur_acc = Some(blank_acc(instance));
+            cur_transcript = Transcript::new();
+        }
+
+        fold_step(cur_acc.as_mut().unwrap(), instance, witness, &mut cur_transcript)
             .map_err(|_| CommitError::TraceOverflow)?;
     }
 
-    let proof = run_decide(&acc, params)
-        .map_err(|_| CommitError::TraceOverflow)?;
+    // Finalize last group.
+    if let Some(acc) = cur_acc.take() {
+        let proof = run_decide(&acc, statement, params)
+            .map_err(|_| CommitError::TraceOverflow)?;
+        groups.push((proof, acc));
+    }
 
-    Ok((proof, acc))
+    Ok(TraceProof { groups })
 }
 
 /// Commit a polynomial and open it at an evaluation point.
@@ -123,15 +200,27 @@ pub fn verify_eval(
 
 /// Verify a zheng proof against a public statement.
 ///
-/// The proof must have been produced by `decide()` for the same CCS instance.
+/// Checks each CCS-structure group in the TraceProof independently.
+/// All groups must verify for the overall proof to be valid.
 pub fn verify(
-    proof: &Proof,
-    instance: &CCSInstance,
+    proof: &TraceProof,
     statement: &Statement,
     _params: &ProofParams,
 ) -> Result<(), VerifyError> {
-    let mut transcript = Transcript::new_recursive();
-    SpartanVerifier::verify(instance, statement, proof, &mut transcript)
+    for (group_proof, acc) in &proof.groups {
+        let mut transcript = Transcript::new_recursive();
+        transcript.absorb_statement(statement);
+        transcript.absorb(acc.witness_commitment.as_bytes());
+        transcript.absorb(&acc.error_term.as_u64().to_le_bytes());
+        transcript.absorb(&acc.step_count.to_le_bytes());
+        SpartanVerifier::verify(
+            &acc.committed_instance,
+            group_proof,
+            acc.error_term,
+            &mut transcript,
+        )?;
+    }
+    Ok(())
 }
 
 /// Fold one trace step into an accumulator.
@@ -149,17 +238,118 @@ pub fn fold(
 
 /// Run the SuperSpartan decider on an accumulated HyperNova state.
 ///
-/// Produces the final proof from the accumulated CCS instance and witness.
+/// Produces the final proof from the accumulated CCS instance and witness,
+/// bound to the given statement via Fiat-Shamir.
 pub fn decide(
     acc: &Accumulator,
+    statement: &Statement,
     params: &ProofParams,
 ) -> Result<Proof, DecideError> {
-    run_decide(acc, params)
+    run_decide(acc, statement, params)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nox::{NullCalls, Order, Tag, VecTrace};
+    use lens::brakedown::Brakedown;
+    use lens::{Lens, MultilinearPoly, Transcript as LensTranscript};
+
+    fn malformed_trace() -> VecTrace {
+        // Two rows with tag=255 (unknown) → trivial_ccs (no constraints).
+        // Used to test the full commit→verify pipeline without constraint logic.
+        let mut order = Order::<1024>::new();
+        let obj     = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
+        let tag_255 = order.atom(Goldilocks::new(255), Tag::Field).unwrap();
+        let body    = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
+        let formula = order.cell(tag_255, body).unwrap();
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
+        nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
+        trace
+    }
+
+    fn zero_statement() -> Statement {
+        Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0 }
+    }
+
+    #[test]
+    fn commit_verify_roundtrip() {
+        let trace = malformed_trace();
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let trace_proof = commit(&trace, &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&trace_proof, &stmt, &params).is_ok());
+    }
+
+    // ── helpers for manual CCS witness construction ───────────────────────────
+
+    fn make_z_33(vals: &[(usize, u64)]) -> CCSWitness {
+        use crate::ccs::{CONST_IDX, Z_LEN};
+        let mut z = vec![Goldilocks::ZERO; Z_LEN];
+        z[CONST_IDX] = Goldilocks::ONE;
+        for &(idx, v) in vals { z[idx] = Goldilocks::new(v); }
+        CCSWitness { z }
+    }
+
+    #[test]
+    fn fold_add_multi_step_commit_verify() {
+        use crate::ccs::{reg_t, reg_t1};
+        use crate::ccs::patterns::build_step_ccs;
+        use crate::folding::fold::fold_step;
+        use crate::folding::decide::decide as run_decide;
+
+        let instance = build_step_ccs(5); // add: r5_{t+1} - r3_t - r4_t = 0
+        let witnesses = [
+            make_z_33(&[(reg_t(3), 3), (reg_t(4), 4),  (reg_t1(5), 7)]),
+            make_z_33(&[(reg_t(3), 10),(reg_t(4), 20), (reg_t1(5), 30)]),
+            make_z_33(&[(reg_t(3), 1), (reg_t(4), 1),  (reg_t1(5), 2)]),
+        ];
+        for w in &witnesses { assert!(instance.is_satisfied_by(w)); }
+
+        let mut acc = blank_acc(&instance);
+        let mut transcript = Transcript::new();
+        for w in &witnesses {
+            fold_step(&mut acc, &instance, w, &mut transcript).unwrap();
+        }
+        assert_eq!(acc.step_count, 3);
+        assert_eq!(acc.error_term, Goldilocks::ZERO); // degree-1: stays 0
+
+        let stmt = zero_statement();
+        let proof = run_decide(&acc, &stmt, &ProofParams::default()).unwrap();
+        let trace_proof = TraceProof { groups: vec![(proof, acc)] };
+        assert!(verify(&trace_proof, &stmt, &ProofParams::default()).is_ok());
+    }
+
+    #[test]
+    fn fold_mul_multi_step_commit_verify() {
+        use crate::ccs::{reg_t, reg_t1};
+        use crate::ccs::patterns::build_step_ccs;
+        use crate::folding::fold::fold_step;
+        use crate::folding::decide::decide as run_decide;
+
+        let instance = build_step_ccs(7); // mul: r5_{t+1} - r3_t * r4_t = 0
+        let witnesses = [
+            make_z_33(&[(reg_t(3), 6), (reg_t(4), 7),  (reg_t1(5), 42)]),
+            make_z_33(&[(reg_t(3), 2), (reg_t(4), 5),  (reg_t1(5), 10)]),
+            make_z_33(&[(reg_t(3), 3), (reg_t(4), 3),  (reg_t1(5), 9)]),
+        ];
+        for w in &witnesses { assert!(instance.is_satisfied_by(w)); }
+
+        let mut acc = blank_acc(&instance);
+        let mut transcript = Transcript::new();
+        for w in &witnesses {
+            fold_step(&mut acc, &instance, w, &mut transcript).unwrap();
+        }
+        assert_eq!(acc.step_count, 3);
+        // degree-2 multi-fold: e_acc = error_term(w_folded) ≠ 0 in general;
+        // Spartan proves/verifies against this accumulated error.
+
+        let stmt = zero_statement();
+        let proof = run_decide(&acc, &stmt, &ProofParams::default()).unwrap();
+        let trace_proof = TraceProof { groups: vec![(proof, acc)] };
+        assert!(verify(&trace_proof, &stmt, &ProofParams::default()).is_ok());
+    }
 
     fn make_poly(values: &[u64]) -> Vec<Goldilocks> {
         values.iter().map(|&v| Goldilocks::new(v)).collect()
@@ -246,5 +436,136 @@ mod tests {
         let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
         let params = ProofParams::default();
         assert!(open(&poly, &point, &params).is_err());
+    }
+
+    // ── end-to-end tests ─────────────────────────────────────────────────────
+
+    /// Build a real Brakedown opening for a small 2-variable polynomial.
+    fn make_axis_opening() -> AxisOpening {
+        let evals: Vec<Goldilocks> = (1u64..=4).map(Goldilocks::new).collect();
+        let poly = MultilinearPoly::new(evals);
+        let commitment = Brakedown::commit(&poly);
+        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
+        let value = Goldilocks::new(1);
+        let opening = {
+            let mut lt = LensTranscript::new(b"e2e-axis-open");
+            Brakedown::open(&poly, &point, &mut lt)
+        };
+        AxisOpening { commitment, point, value, opening }
+    }
+
+    /// E2E: trace with Poseidon2 hash operation → hash_aux drives particle CCS.
+    ///
+    /// formula = [15, [1, s]] hashes subject s, producing 25 rows (tag=15)
+    /// plus 1 quote row (tag=1) — 26 total.  HashAux supplies the rate (the
+    /// structural digest of s) so build_hash_steps_from_trace can replay the
+    /// sponge and recover capacity elements.
+    #[test]
+    fn e2e_hash_accumulator_roundtrip() {
+        let mut order = Order::<1024>::new();
+        let s = order.atom(Goldilocks::new(42), Tag::Field).unwrap();
+        let tag1  = order.atom(Goldilocks::new(1),  Tag::Field).unwrap();
+        let tag15 = order.atom(Goldilocks::new(15), Tag::Field).unwrap();
+        let quote_f = order.cell(tag1, s).unwrap();
+        let hash_f  = order.cell(tag15, quote_f).unwrap();
+
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, s, hash_f, 100, &NullCalls, &mut trace);
+        // 1 quote row + 24 round rows + 1 squeeze row
+        assert_eq!(trace.0.len(), 26);
+
+        // Rate = structural digest of s (4 Goldilocks elements), zero-padded to 8.
+        let in_digest = *order.digest(s).unwrap();
+        let rate = [
+            in_digest[0], in_digest[1], in_digest[2], in_digest[3],
+            Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO,
+        ];
+        let hash_aux = HashAux { rate };
+
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let trace_proof = commit(&trace, &[hash_aux], &[], &stmt, &params).unwrap();
+        assert!(verify(&trace_proof, &stmt, &params).is_ok());
+    }
+
+    /// E2E: trace with two axis operations → axis verifier steps fold into
+    /// separate accumulator group.  Statement input/output hashes are computed
+    /// from real trace rows and embedded in the statement, exercising all three
+    /// new commit() features simultaneously.
+    #[test]
+    fn e2e_axis_accumulator_and_statement_binding_roundtrip() {
+        // Two axis identity operations: axis(s, 1) = s, cost 1 each.
+        let mut order = Order::<1024>::new();
+        let s = order.atom(Goldilocks::new(7), Tag::Field).unwrap();
+        let tag0 = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
+        let addr1 = order.atom(Goldilocks::new(1), Tag::Field).unwrap();
+        let axis_f = order.cell(tag0, addr1).unwrap();
+
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);
+        nox::reduce(&mut order, s, axis_f,  99, &NullCalls, &mut trace);
+        // Two axis rows; consecutive pair satisfies pattern_axis budget-decrement constraint.
+        assert_eq!(trace.0.len(), 2);
+
+        // One Brakedown opening per axis row (both use the same polynomial for simplicity).
+        let ao1 = make_axis_opening();
+        let ao2 = make_axis_opening();
+
+        // Statement binding: real hashes from first and last trace rows.
+        let input_hash  = super::hash_row(&trace.0[0]);
+        let output_hash = super::hash_row(&trace.0[trace.0.len() - 1]);
+        let stmt = Statement {
+            program_hash: [0u8; 32],
+            input_hash,
+            output_hash,
+            focus_bound: 10,
+        };
+        let params = ProofParams::default();
+
+        let trace_proof = commit(&trace, &[], &[ao1, ao2], &stmt, &params).unwrap();
+        assert!(verify(&trace_proof, &stmt, &params).is_ok());
+    }
+
+    /// E2E: commit() rejects a statement whose input_hash does not match the
+    /// hash of the first trace row.
+    #[test]
+    fn e2e_statement_binding_rejects_wrong_input_hash() {
+        let mut order = Order::<1024>::new();
+        let s    = order.atom(Goldilocks::new(7), Tag::Field).unwrap();
+        let tag0 = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
+        let addr = order.atom(Goldilocks::new(1), Tag::Field).unwrap();
+        let axis_f = order.cell(tag0, addr).unwrap();
+
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);
+        nox::reduce(&mut order, s, axis_f,  99, &NullCalls, &mut trace);
+
+        let mut wrong_hash = [0u8; 32];
+        wrong_hash[0] = 0xff;
+
+        let stmt = Statement {
+            program_hash: [0u8; 32],
+            input_hash: wrong_hash,
+            output_hash: [0u8; 32],
+            focus_bound: 0,
+        };
+        let params = ProofParams::default();
+        let err = commit(&trace, &[], &[make_axis_opening(), make_axis_opening()], &stmt, &params);
+        assert!(matches!(err, Err(CommitError::StatementMismatch)));
+    }
+
+    /// E2E: commit() rejects when trace length exceeds statement focus_bound.
+    #[test]
+    fn e2e_statement_binding_rejects_focus_exceeded() {
+        let trace = malformed_trace();   // 2 rows
+        let stmt = Statement {
+            program_hash: [0u8; 32],
+            input_hash: [0u8; 32],
+            output_hash: [0u8; 32],
+            focus_bound: 1,              // trace has 2 rows > 1
+        };
+        let params = ProofParams::default();
+        let err = commit(&trace, &[], &[], &stmt, &params);
+        assert!(matches!(err, Err(CommitError::FocusExhausted)));
     }
 }

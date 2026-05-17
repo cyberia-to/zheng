@@ -12,22 +12,20 @@ use lens::{Lens, Transcript as LensTranscript};
 
 use crate::sumcheck::verifier::SumcheckVerifier;
 use crate::transcript::Transcript;
-use crate::types::{CCSInstance, Proof, Statement, VerifyError};
+use crate::types::{CCSInstance, Proof, VerifyError};
 
-/// SuperSpartan verifier for m=1 CCS instances.
+/// SuperSpartan verifier for CCS instances (any number of constraint rows).
 pub struct SpartanVerifier;
 
 impl SpartanVerifier {
     /// Verify that `proof` attests to a satisfying witness for `instance`.
     ///
-    /// `_statement` is currently unused. Boundary constraint enforcement
-    /// (first/last row NounId checks, status, focus bound) requires adding
-    /// boundary evaluation claims to `Proof` and folding them into the sumcheck.
-    /// See zheng/specs/verifier.md "boundary constraints" section.
+    /// The transcript must already have the statement and accumulator public
+    /// data absorbed before this call (done by `lib.rs::verify()`).
     pub fn verify(
         instance: &CCSInstance,
-        _statement: &Statement,
         proof: &Proof,
+        expected_error: Goldilocks,
         transcript: &mut Transcript,
     ) -> Result<(), VerifyError> {
         // ── 1. Absorb commitment ─────────────────────────────────────────────
@@ -41,7 +39,7 @@ impl SpartanVerifier {
             transcript.absorb_eval(e);
         }
 
-        // ── 3. Check CCS constraint: Σ_j c_j · Π_{i ∈ S_j} û_i = 0 ─────────
+        // ── 3. Check CCS constraint: Σ_j c_j · Π_{i ∈ S_j} û_i = expected_error ─
         let constraint_val = instance
             .multisets
             .iter()
@@ -52,7 +50,7 @@ impl SpartanVerifier {
                 });
                 acc + coeff * product
             });
-        if constraint_val != Goldilocks::ZERO {
+        if constraint_val != expected_error {
             return Err(VerifyError::EvaluationMismatch);
         }
 
@@ -92,7 +90,7 @@ impl SpartanVerifier {
             let mut w_combined = vec![Goldilocks::ZERO; z_size];
             let mut gp = Goldilocks::ONE;
             for matrix in &instance.matrices {
-                if let Some(row) = matrix.entries.first() {
+                for row in &matrix.entries {
                     for &(col, coeff) in row {
                         if col < z_size {
                             w_combined[col] = w_combined[col] + gp * coeff;

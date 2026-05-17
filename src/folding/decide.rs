@@ -7,7 +7,7 @@
 
 use crate::spartan::prover::SpartanProver;
 use crate::transcript::Transcript;
-use crate::types::{Accumulator, DecideError, Proof, ProofParams};
+use crate::types::{Accumulator, DecideError, Proof, ProofParams, Statement};
 
 /// Run the SuperSpartan decider on the accumulated CCS.
 ///
@@ -16,6 +16,7 @@ use crate::types::{Accumulator, DecideError, Proof, ProofParams};
 /// N fold operations into one verifiable proof.
 pub fn decide(
     acc: &Accumulator,
+    statement: &Statement,
     _params: &ProofParams,
 ) -> Result<Proof, DecideError> {
     if acc.step_count == 0 {
@@ -24,7 +25,9 @@ pub fn decide(
 
     let mut transcript = Transcript::new_recursive();
 
-    // Absorb the accumulator's public data before proving.
+    // Bind the proof to the statement and accumulator public data.
+    // Verifier must absorb in identical order.
+    transcript.absorb_statement(statement);
     transcript.absorb(acc.witness_commitment.as_bytes());
     transcript.absorb(&acc.error_term.as_u64().to_le_bytes());
     transcript.absorb(&acc.step_count.to_le_bytes());
@@ -73,7 +76,8 @@ mod tests {
     fn decide_empty_accumulator_errors() {
         let instance = build_step_ccs(5);
         let acc = zero_accumulator(&instance);
-        assert!(decide(&acc, &ProofParams::default()).is_err());
+        let stmt = Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0 };
+        assert!(decide(&acc, &stmt, &ProofParams::default()).is_err());
     }
 
     #[test]
@@ -84,19 +88,20 @@ mod tests {
         let mut t = Transcript::new();
         fold_step(&mut acc, &instance, &witness, &mut t).unwrap();
 
-        let proof = decide(&acc, &ProofParams::default()).unwrap();
-
-        // Verify the proof against the folded instance.
-        let mut vt = Transcript::new_recursive();
-        vt.absorb(acc.witness_commitment.as_bytes());
-        vt.absorb(&acc.error_term.as_u64().to_le_bytes());
-        vt.absorb(&acc.step_count.to_le_bytes());
         let stmt = Statement {
             program_hash: [0u8; 32],
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 0,
         };
-        assert!(SpartanVerifier::verify(&acc.committed_instance, &stmt, &proof, &mut vt).is_ok());
+        let proof = decide(&acc, &stmt, &ProofParams::default()).unwrap();
+
+        // Reconstruct the verifier transcript in identical order to decide().
+        let mut vt = Transcript::new_recursive();
+        vt.absorb_statement(&stmt);
+        vt.absorb(acc.witness_commitment.as_bytes());
+        vt.absorb(&acc.error_term.as_u64().to_le_bytes());
+        vt.absorb(&acc.step_count.to_le_bytes());
+        assert!(SpartanVerifier::verify(&acc.committed_instance, &proof, acc.error_term, &mut vt).is_ok());
     }
 }
