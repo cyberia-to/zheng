@@ -30,7 +30,7 @@ pub fn eq_evals(r: &[Goldilocks]) -> Vec<Goldilocks> {
 /// table[m] ← (1-r)·table[m] + r·table[m+half], then truncate to half.
 pub fn fold_inplace(table: &mut Vec<Goldilocks>, r: Goldilocks) {
     let sz = table.len();
-    debug_assert!(sz >= 2 && sz.is_power_of_two(), "table must be power-of-2 size ≥ 2");
+    assert!(sz >= 2 && sz.is_power_of_two(), "table must be power-of-2 size ≥ 2");
     let half = sz / 2;
     let one_minus_r = Goldilocks::ONE - r;
     for m in 0..half {
@@ -61,6 +61,9 @@ pub fn linear_ext(v0: Goldilocks, v1: Goldilocks, t: Goldilocks) -> Goldilocks {
 ///
 /// Returns coefficients in ascending monomial order.
 pub fn evals_to_coeffs(evals: &[Goldilocks]) -> Vec<Goldilocks> {
+    if evals.is_empty() {
+        return vec![];
+    }
     let d = evals.len() - 1;
     let mut coeffs = vec![Goldilocks::ZERO; d + 1];
     for (i, &eval_i) in evals.iter().enumerate() {

@@ -50,9 +50,11 @@ impl SumcheckPoly {
 pub struct Proof {
     /// hemera binding of the trace multilinear polynomial.
     pub commitment: Commitment,
-    /// claimed û_i = M_i · z for each matrix M_i in the CCS instance.
+    /// claimed û_i(ρ_x) = MLE of (M_i · z) evaluated at outer row challenge ρ_x.
     pub matrix_evals: Vec<Goldilocks>,
-    /// one univariate polynomial per sumcheck round.
+    /// outer sumcheck round polynomials (log m rounds). empty for single-row CCS (m=1).
+    pub outer_sumcheck_polys: Vec<SumcheckPoly>,
+    /// inner sumcheck round polynomials (log n rounds over the witness dimension).
     pub sumcheck_polys: Vec<SumcheckPoly>,
     /// evaluation of the committed polynomial at the sumcheck output point.
     pub eval_value: Goldilocks,
@@ -153,7 +155,7 @@ impl SparseMatrix {
         let mut out = vec![Goldilocks::ZERO; self.rows];
         for (i, row) in self.entries.iter().enumerate() {
             for &(j, c) in row {
-                out[i] = out[i] + c * z[j];
+                out[i] += c * z.get(j).copied().unwrap_or(Goldilocks::ZERO);
             }
         }
         out
@@ -187,11 +189,11 @@ impl CCSInstance {
             for &idx in multiset {
                 let mv = self.matrices[idx].mul_vec(z);
                 for (p, m) in product.iter_mut().zip(mv.iter()) {
-                    *p = *p * *m;
+                    *p *= *m;
                 }
             }
             for (s, p) in sum.iter_mut().zip(product.iter()) {
-                *s = *s + coeff * *p;
+                *s += coeff * *p;
             }
         }
         sum.iter().all(|&v| v == Goldilocks::ZERO)
@@ -208,14 +210,17 @@ pub struct CCSWitness {
 
 /// HyperNova running accumulator.
 ///
-/// constant size (~200 bytes serialized) regardless of fold count.
+/// error_evals[r] = Σ_j c_j · ∏_{i ∈ S_j} (M_i[row r] · z_folded) for each row r.
+/// For satisfying witnesses all entries are 0. Grows by num_rows scalars per fold group
+/// but is otherwise O(1) in the number of folds.
 #[derive(Clone, Debug)]
 pub struct Accumulator {
     pub committed_instance: CCSInstance,
     /// prover's folded witness (ignored by verifier).
     pub folded_witness: CCSWitness,
     pub witness_commitment: Commitment,
-    pub error_term: Goldilocks,
+    /// per-row constraint evaluation; length = committed_instance.num_rows.
+    pub error_evals: Vec<Goldilocks>,
     pub step_count: u64,
 }
 
@@ -228,6 +233,7 @@ pub enum CommitError {
     TraceOverflow,
     /// Statement input_hash, output_hash, or focus_bound does not match the trace.
     StatementMismatch,
+    DecideFailed(DecideError),
 }
 
 #[derive(Debug)]
@@ -254,4 +260,21 @@ pub enum DecideError {
     EmptyAccumulator,
     SumcheckFailed { round: usize },
     LensFailed,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mul_vec_oob_column_returns_zero() {
+        let mut m = SparseMatrix::new(1, 10);
+        m.set(0, 5, Goldilocks::ONE); // column 5 is in-range for a 10-col matrix
+        m.set(0, 9, Goldilocks::new(2)); // column 9 — in range
+        // z only has 4 elements; columns 5 and 9 are out of range → should not panic
+        let z = vec![Goldilocks::ONE; 4];
+        let result = m.mul_vec(&z);
+        // both column accesses OOB → zero contribution
+        assert_eq!(result[0], Goldilocks::ZERO);
+    }
 }

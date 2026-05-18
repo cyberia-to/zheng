@@ -25,11 +25,11 @@ pub fn constraint_eval(instance: &CCSInstance, witness: &CCSWitness) -> Vec<Gold
         for &idx in multiset {
             let mv = instance.matrices[idx].mul_vec(z);
             for (p, m) in product.iter_mut().zip(mv.iter()) {
-                *p = *p * *m;
+                *p *= *m;
             }
         }
         for (s, p) in sum.iter_mut().zip(product.iter()) {
-            *s = *s + coeff * *p;
+            *s += coeff * *p;
         }
     }
     sum

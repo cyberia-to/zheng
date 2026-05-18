@@ -3,30 +3,21 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! SuperSpartan prover: commit witness, inner sumcheck, PCS open.
+//! SuperSpartan prover: commit witness, outer sumcheck (log m rounds),
+//! inner sumcheck (log n rounds), PCS open.
 //!
-//! The inner sumcheck (6 rounds over the 64-element witness) reduces
-//! û_i = Σ_row M_i[row] · z claims to a single PCS evaluation.
-//! Multi-row matrices are handled by summing row contributions into û_i.
+//! For m=1 (all current single-row patterns), log m = 0 and the outer
+//! sumcheck runs 0 rounds — identical to the previous single-row behavior.
 
 use nebu::Goldilocks;
 
 use lens::brakedown::Brakedown;
 use lens::{Lens, MultilinearPoly, Transcript as LensTranscript};
 
-use crate::multilinear::pad_to_power_of_two;
-use crate::sumcheck::prover::SumcheckProver;
+use crate::multilinear::{eq_evals, pad_to_power_of_two};
+use crate::sumcheck::prover::{OuterSumcheckProver, SumcheckProver};
 use crate::transcript::Transcript;
-use crate::types::{CCSInstance, CCSWitness, Proof, SparseMatrix};
-
-/// Compute Σ_row M[row] · z (sum of row dot products over all matrix rows).
-fn matrix_dot(m: &SparseMatrix, z: &[Goldilocks]) -> Goldilocks {
-    m.entries.iter().fold(Goldilocks::ZERO, |sum, row| {
-        sum + row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
-            acc + coeff * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
-        })
-    })
-}
+use crate::types::{CCSInstance, CCSWitness, Proof};
 
 /// SuperSpartan prover for CCS instances (any number of constraint rows).
 pub struct SpartanProver;
@@ -40,62 +31,84 @@ impl SpartanProver {
         witness: &CCSWitness,
         transcript: &mut Transcript,
     ) -> Proof {
-        // ── 1. Pad z to power-of-2 size for PCS ─────────────────────────────
+        // ── 1. Pad z to power-of-2 size for PCS ─────────────────────────────────
         let mut z_padded = witness.z.clone();
         pad_to_power_of_two(&mut z_padded, 64);
-        let num_vars = z_padded.len().trailing_zeros() as usize;
+        let num_vars = z_padded.len().trailing_zeros() as usize; // log n
 
-        // ── 2. Commit to z ───────────────────────────────────────────────────
+        // ── 2. Commit to z ───────────────────────────────────────────────────────
         let z_poly = MultilinearPoly::new(z_padded.clone());
         let commitment = Brakedown::commit(&z_poly);
         transcript.absorb_commitment(&commitment);
 
-        // ── 3. Compute û_i = Σ_row M_i[row] · z for each matrix ─────────────
-        let matrix_evals: Vec<Goldilocks> = instance
-            .matrices
-            .iter()
-            .map(|m| matrix_dot(m, &witness.z))
-            .collect();
+        // ── 3. Per-row matrix-vector products ────────────────────────────────────
+        // row_mv[i][r] = M_i[row r] · z  for all matrices i and rows r
+        let m = instance.num_rows;
+        let log_m = m.trailing_zeros() as usize; // 0 for m=1, 4 for m=16
 
-        // Absorb all claimed evaluations into transcript.
+        let row_mv: Vec<Vec<Goldilocks>> = instance.matrices.iter().map(|matrix| {
+            (0..m).map(|r| {
+                matrix.entries.get(r).map_or(Goldilocks::ZERO, |row| {
+                    row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
+                        acc + coeff * z_padded.get(col).copied().unwrap_or(Goldilocks::ZERO)
+                    })
+                })
+            }).collect::<Vec<Goldilocks>>()
+        }).collect();
+
+        // ── 4. Outer sumcheck: Σ_x eq(τ,x)·G(x) ────────────────────────────────
+        // τ has log m components; empty for m=1 → 0 rounds, trivial output.
+        // OuterSumcheckProver tracks each f_i table separately and evaluates
+        // G at degree+2 points per round for correct polynomial interpolation.
+        let tau: Vec<Goldilocks> = transcript.squeeze_challenges(log_m);
+        let eq_tau = eq_evals(&tau);
+
+        let mut outer_prover = OuterSumcheckProver::new(
+            eq_tau,
+            row_mv,
+            instance.multisets.clone(),
+            instance.coeffs.clone(),
+        );
+        let mut rho_x: Vec<Goldilocks> = Vec::with_capacity(log_m);
+        let outer_sumcheck_polys = outer_prover.prove_all(|poly| {
+            transcript.absorb_sumcheck_poly(rho_x.len(), poly);
+            let r = transcript.squeeze_challenge();
+            rho_x.push(r);
+            r
+        });
+
+        // ── 5. û_i(ρ_x) from folded f_tables — exact MLE via bookkeeping ────────
+        // After log_m folds, f_tables[i][0] = û_i(ρ_x). No separate evaluation needed.
+        let matrix_evals = outer_prover.matrix_evals();
+
         for &e in &matrix_evals {
             transcript.absorb_eval(e);
         }
 
-        // ── 4. Squeeze γ for batched inner sumcheck ──────────────────────────
+        // ── 6. Squeeze γ for batched inner sumcheck ──────────────────────────────
         let gamma = transcript.squeeze_challenge();
 
-        // ── 5. Build batched weight vector: w[x] = Σ_i γ^i · Σ_row M_i[row, x] ─────
+        // ── 7. Build w_combined: Σ_i γ^i · M̃_i(ρ_x, ·) ─────────────────────────
+        // w_combined[col] = Σ_i γ^i · Σ_r eq(ρ_x,r) · M_i[r][col]
+        // For m=1: eq_rox=[1], reduces to Σ_i γ^i · M_i[0][col].
+        let eq_rox = eq_evals(&rho_x);
         let mut w_combined = vec![Goldilocks::ZERO; z_padded.len()];
         let mut gamma_pow = Goldilocks::ONE;
         for matrix in &instance.matrices {
-            for row in &matrix.entries {
+            for (r, row) in matrix.entries.iter().enumerate() {
+                let weight = gamma_pow * eq_rox.get(r).copied().unwrap_or(Goldilocks::ZERO);
                 for &(col, coeff) in row {
                     if col < w_combined.len() {
-                        w_combined[col] = w_combined[col] + gamma_pow * coeff;
+                        w_combined[col] += weight * coeff;
                     }
                 }
             }
-            gamma_pow = gamma_pow * gamma;
+            gamma_pow *= gamma;
         }
 
-        // ── 6. Batched claim: Σ_i γ^i · û_i ─────────────────────────────────
-        // (computed for consistency; the prover's SumcheckProver derives it from
-        // w_combined dot z_padded, which equals the batched claim by construction)
-        let _batched_claim = {
-            let mut c = Goldilocks::ZERO;
-            let mut gp = Goldilocks::ONE;
-            for &e in &matrix_evals {
-                c = c + gp * e;
-                gp = gp * gamma;
-            }
-            c
-        };
-
-        // ── 7. Inner sumcheck (6 rounds) ─────────────────────────────────────
+        // ── 8. Inner sumcheck (log n rounds) ─────────────────────────────────────
         let mut prover = SumcheckProver::new(w_combined, z_padded.clone());
-        let mut eval_point = Vec::with_capacity(num_vars);
-
+        let mut eval_point: Vec<Goldilocks> = Vec::with_capacity(num_vars);
         let sumcheck_polys = prover.prove_all(|poly| {
             transcript.absorb_sumcheck_poly(eval_point.len(), poly);
             let r = transcript.squeeze_challenge();
@@ -103,14 +116,13 @@ impl SpartanProver {
             r
         });
 
-        // ── 8. Collect PCS evaluation value ──────────────────────────────────
+        // ── 9. PCS evaluation value ───────────────────────────────────────────────
         let (_w_fin, f_fin) = prover.final_claim();
         let eval_value = f_fin;
         transcript.absorb_eval(eval_value);
 
-        // ── 9. PCS open via Brakedown ─────────────────────────────────────────
-        // Brakedown uses tensor_reduce (LSB-first convention), while the sumcheck
-        // fold_inplace uses MSB-first. Reverse the eval_point to reconcile.
+        // ── 10. PCS open via Brakedown ────────────────────────────────────────────
+        // Brakedown uses LSB-first; sumcheck MSB-first. Reverse to reconcile.
         let pcs_point: Vec<Goldilocks> = eval_point.iter().copied().rev().collect();
         let seed = transcript.squeeze_hash();
         let mut lt = LensTranscript::new(&seed);
@@ -119,6 +131,7 @@ impl SpartanProver {
         Proof {
             commitment,
             matrix_evals,
+            outer_sumcheck_polys,
             sumcheck_polys,
             eval_value,
             pcs_opening,
@@ -153,7 +166,7 @@ mod tests {
         let proof = SpartanProver::prove(&instance, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        let result = SpartanVerifier::verify(&instance, &proof, Goldilocks::ZERO, &mut vt);
+        let result = SpartanVerifier::verify(&instance, &proof, &[Goldilocks::ZERO], &mut vt);
         assert!(result.is_ok(), "verify failed: {result:?}");
     }
 
@@ -168,6 +181,6 @@ mod tests {
         let proof = SpartanProver::prove(&instance, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        assert!(SpartanVerifier::verify(&instance, &proof, Goldilocks::ZERO, &mut vt).is_ok());
+        assert!(SpartanVerifier::verify(&instance, &proof, &[Goldilocks::ZERO], &mut vt).is_ok());
     }
 }

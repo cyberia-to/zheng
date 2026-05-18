@@ -166,7 +166,7 @@ pub fn encode_fields(elems: &[Goldilocks]) -> Vec<u8> {
 /// Returns None if slice length is not a multiple of 8, or any element
 /// is non-canonical.
 pub fn decode_fields(bytes: &[u8]) -> Option<Vec<Goldilocks>> {
-    if bytes.len() % 8 != 0 {
+    if !bytes.len().is_multiple_of(8) {
         return None;
     }
     bytes.chunks_exact(8).map(decode_field).collect()

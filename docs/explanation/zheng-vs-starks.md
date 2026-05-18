@@ -44,7 +44,7 @@ final proof              one STARK proof verifiable in 10-50 μs
 
 ### 2.1 What the trace IS
 
-a [[nox]] program is a sequence of reduce() calls. each call dispatches one of 17 [[nox patterns|patterns]] (axis, quote, compose, cons, branch, add, sub, mul, inv, eq, lt, xor, and, not, shl, hash, hint). each pattern produces one or more rows in the execution trace.
+a [[nox]] program is a sequence of reduce() calls. each call dispatches one of 18 [[nox patterns|patterns]] (axis, quote, compose, cons, branch, add, sub, mul, inv, eq, lt, xor, and, not, shl, hash, call, look). each pattern produces one or more rows in the execution trace.
 
 the trace is a matrix T with 16 columns (registers r0–r15) and N rows:
 

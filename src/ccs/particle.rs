@@ -35,7 +35,7 @@ use nox::TraceRow;
 use hemera::constants::ROUND_CONSTANTS;
 use hemera::field::{Goldilocks as HGold, MATRIX_DIAG_16};
 
-use crate::types::{CCSInstance, CCSWitness, SparseMatrix};
+use crate::types::{CCSInstance, CCSWitness, CommitError, SparseMatrix};
 
 /// Length of the extended hash witness (standard 33 + 8 cap_k + 8 cap_k1 + 1 y).
 pub const Z_LEN_HASH: usize = 50;
@@ -199,10 +199,13 @@ pub fn hash_witness(
 ///
 /// `aux` must have one entry per hash block in trace order.
 /// Produces 24 pairs per hash block (one per consecutive intra-block pair).
+///
+/// Returns `Err(CommitError::TraceOverflow)` if `aux` has fewer entries than
+/// hash blocks in the trace.
 pub fn build_hash_steps_from_trace(
     trace: &[TraceRow],
     aux: &[HashAux],
-) -> Vec<(CCSInstance, CCSWitness)> {
+) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
     let mut steps = Vec::new();
     let mut aux_idx = 0;
     let mut i = 0;
@@ -221,7 +224,7 @@ pub fn build_hash_steps_from_trace(
             continue;
         }
 
-        let ha = &aux[aux_idx];
+        let ha = aux.get(aux_idx).ok_or(CommitError::TraceOverflow)?;
         aux_idx += 1;
 
         // Convert rate to hemera's Goldilocks type for StepSponge.
@@ -266,7 +269,7 @@ pub fn build_hash_steps_from_trace(
             steps.push((instance, witness));
         }
     }
-    steps
+    Ok(steps)
 }
 
 #[cfg(test)]
@@ -370,7 +373,7 @@ mod tests {
 
     #[test]
     fn build_hash_steps_empty_trace() {
-        let steps = build_hash_steps_from_trace(&[], &[]);
+        let steps = build_hash_steps_from_trace(&[], &[]).unwrap();
         assert!(steps.is_empty());
     }
 
@@ -404,7 +407,7 @@ mod tests {
         let proof = SpartanProver::prove(&ccs, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        assert!(SpartanVerifier::verify(&ccs, &proof, Goldilocks::ZERO, &mut vt).is_ok(),
+        assert!(SpartanVerifier::verify(&ccs, &proof, &[Goldilocks::ZERO; 16], &mut vt).is_ok(),
             "Spartan verify failed for partial round k={k}");
     }
 }

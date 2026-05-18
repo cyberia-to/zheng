@@ -20,7 +20,7 @@ use nox::TraceRow;
 
 use lens::{Commitment, Opening};
 
-use crate::types::{CCSInstance, CCSWitness};
+use crate::types::{CCSInstance, CCSWitness, CommitError};
 
 /// All data the prover supplies to verify one axis opening outside the main fold.
 pub struct AxisOpening {
@@ -32,6 +32,24 @@ pub struct AxisOpening {
     pub value: Goldilocks,
     /// Brakedown tensor opening proof.
     pub opening: Opening,
+}
+
+/// All data the prover supplies to verify one BBG look opening (pattern 17).
+///
+/// Identical structure to `AxisOpening`; kept separate so callers cannot
+/// confuse axis (noun-tree) and look (BBG dimension) proofs.
+pub struct LookOpening {
+    /// Brakedown commitment to the BBG dimension polynomial.
+    pub commitment: Commitment,
+    /// Evaluation point: Goldilocks elements derived from the BBG dimension key.
+    pub point: Vec<Goldilocks>,
+    /// Claimed polynomial value at that point.
+    pub value: Goldilocks,
+    /// Brakedown tensor opening proof.
+    pub opening: Opening,
+    /// Four 64-bit limbs of the BBG root = H(commit(BBG_poly) ‖ A ‖ N).
+    /// Limb i matches trace register: r[4]=limb0, r[11]=limb1, r[12]=limb2, r[13]=limb3.
+    pub bbg_root: [Goldilocks; 4],
 }
 
 /// z-index of register r at row t.
@@ -79,8 +97,8 @@ pub fn build_ccs_from_trace(trace: &[TraceRow]) -> Vec<(CCSInstance, CCSWitness)
     }
     trace.windows(2)
         .map(|w| {
-            let tag_t  = w[0].r()[0] as u8;
-            let tag_t1 = w[1].r()[0] as u8;
+            let tag_t  = u8::try_from(w[0].r()[0]).unwrap_or(255);
+            let tag_t1 = u8::try_from(w[1].r()[0]).unwrap_or(255);
             let instance = if is_multi_row(tag_t) && tag_t != tag_t1 {
                 patterns::trivial_ccs()
             } else {
@@ -104,21 +122,53 @@ fn is_multi_row(tag: u8) -> bool {
 /// rows in the trace). Returns a flat Vec of (CCSInstance, CCSWitness) pairs
 /// with VZ_LEN=3, ready to fold into a separate axis accumulator.
 ///
-/// Panics if `openings` has fewer entries than axis rows in the trace.
+/// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
+/// than axis rows in the trace.
 pub fn build_axis_steps_from_trace(
     trace: &[TraceRow],
     openings: &[AxisOpening],
-) -> Vec<(CCSInstance, CCSWitness)> {
+) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
     let mut steps = Vec::new();
     let mut opening_idx = 0;
     for row in trace {
         if row.r()[0] == 0 {
-            let ao = &openings[opening_idx];
+            let ao = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
             steps.extend(verifier_steps(&ao.commitment, &ao.point, ao.value, &ao.opening));
             opening_idx += 1;
         }
     }
-    steps
+    Ok(steps)
+}
+
+/// Build the verifier_steps() sequence for every look row in the trace.
+///
+/// Scans the trace for rows with tag 17 (look). For each, calls verifier_steps()
+/// using the matching entry in `openings` (parallel slice, same order as look
+/// rows in the trace). Returns a flat Vec of (CCSInstance, CCSWitness) pairs
+/// with VZ_LEN=3, ready to fold into a separate look accumulator.
+///
+/// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
+/// than look rows in the trace.
+pub fn build_look_steps_from_trace(
+    trace: &[TraceRow],
+    openings: &[LookOpening],
+) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
+    let mut steps = Vec::new();
+    let mut opening_idx = 0;
+    for row in trace {
+        if row.r()[0] == 17 {
+            let lo = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            steps.extend(verifier_steps(&lo.commitment, &lo.point, lo.value, &lo.opening));
+            // bind the 4 BBG root limbs to what nox recorded in the trace
+            steps.push(eq_step(lo.bbg_root[0], Goldilocks::new(row.r()[4])));
+            steps.push(eq_step(lo.bbg_root[1], Goldilocks::new(row.r()[11])));
+            steps.push(eq_step(lo.bbg_root[2], Goldilocks::new(row.r()[12])));
+            steps.push(eq_step(lo.bbg_root[3], Goldilocks::new(row.r()[13])));
+            // TODO(pattern-15): H(lo.commitment || A_commit || N_commit) == lo.bbg_root
+            opening_idx += 1;
+        }
+    }
+    Ok(steps)
 }
 
 /// Reconstruct the Lens evaluation point from an axis address stored in r[5].
@@ -196,7 +246,7 @@ mod tests {
     #[test]
     fn build_axis_steps_from_trace_empty_trace() {
         // Empty trace → no axis rows → empty axis steps.
-        let steps = build_axis_steps_from_trace(&[], &[]);
+        let steps = build_axis_steps_from_trace(&[], &[]).unwrap();
         assert!(steps.is_empty());
     }
 
@@ -225,7 +275,7 @@ mod tests {
         // but we only provided 1 opening — openings[1] would panic.
         // Use a single-row trace to test the 1-opening case.
         let trace_one = vec![TraceRow::default()];
-        let steps = build_axis_steps_from_trace(&trace_one, &openings);
+        let steps = build_axis_steps_from_trace(&trace_one, &openings).unwrap();
         // verifier_steps for a 2-var opening: 4 binding + 40 stubs + 1 final = 45
         assert_eq!(steps.len(), 4 + 2 * 20 + 1);
     }

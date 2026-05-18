@@ -9,7 +9,7 @@ when [[nox]] runs a program, it produces a table. each row is one reduction step
 ```
 register  name            role
 ────────────────────────────────────────────────────
-r0        pattern         which of the 16 patterns fired
+r0        pattern         which of the 18 patterns fired
 r1        object_hash     hash of the object being reduced
 r2        formula_hash    hash of the formula being applied
 r3        operand_a       first operand
@@ -52,7 +52,7 @@ the polynomial f is the unique multilinear extension of this table. it agrees wi
 
 ## AIR constraints from nox patterns
 
-each of [[nox]]'s 16 patterns contributes a transition constraint — a polynomial equation that must hold between consecutive rows.
+each of [[nox]]'s 18 patterns contributes a transition constraint — a polynomial equation that must hold between consecutive rows.
 
 ## full constraint table
 
@@ -75,7 +75,8 @@ PATTERN → CONSTRAINT                                        │ DEGREE │ CON
 13 not      bitwise complement                              │ 1      │ ~64
 14 shl      shift via multiplication by 2^n                 │ 2      │ ~64
 15 hash     Poseidon2 round function across rows            │ 7      │ ~736
-16 hint     constraint check (Layer 1 verification)         │ varies │ varies
+16 call     inject + dispatch (Layer 1 check verification)  │ varies │ varies
+17 look     BBG polynomial evaluation + opening proof       │ 1      │ 1
 ```
 
 [[SuperSpartan]] handles AIR constraints of any degree via [[CCS]]. high-degree constraints (pattern 15: degree 7) cost only field operations in the prover — no cryptographic cost increase over degree-1 constraints. this is the [[CCS]] advantage: the Poseidon2 rounds inside the hash pattern are free in the IOP layer.
@@ -124,13 +125,13 @@ boundary constraints are point evaluations. they assert that f, evaluated at spe
 
 ## the combined constraint polynomial
 
-the 16 pattern constraints must be combined into a single polynomial. the pattern selector handles this: at each row, only one pattern is active (the value in r0). the combined constraint is:
+the 18 pattern constraints must be combined into a single polynomial. the pattern selector handles this: at each row, only one pattern is active (the value in r0). the combined constraint is:
 
 ```
-C(t) = Σ_{p=0}^{15} selector_p(r0_t) × C_p(t)
+C(t) = Σ_{p=0}^{17} selector_p(r0_t) × C_p(t)
 ```
 
-where selector_p(r0_t) equals 1 when r0_t = p and 0 otherwise. the selector is a polynomial in r0_t constructed via Lagrange interpolation over the 16 pattern values.
+where selector_p(r0_t) equals 1 when r0_t = p and 0 otherwise. the selector is a polynomial in r0_t constructed via Lagrange interpolation over the 18 pattern values.
 
 if the trace is valid — every pattern was executed correctly — then C(t) = 0 for every row t. the [[sumcheck protocol]] verifies this: the sum of C over all 2^n rows equals zero. [[SuperSpartan]] orchestrates this sumcheck, reducing the exponential sum to a single evaluation point, which Brakedown opens.
 

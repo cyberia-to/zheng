@@ -17,58 +17,57 @@ use crate::multilinear::pad_to_power_of_two;
 use crate::transcript::Transcript;
 use crate::types::{Accumulator, CCSInstance, CCSWitness, FoldError};
 
-/// Compute M_idx · z by summing dot products over all matrix rows.
-fn eval_matrix(instance: &CCSInstance, m_idx: usize, z: &[Goldilocks]) -> Goldilocks {
-    instance.matrices[m_idx].entries.iter().fold(Goldilocks::ZERO, |sum, row| {
-        sum + row.iter().fold(Goldilocks::ZERO, |acc, &(col, c)| {
+/// Compute M[row r] · z — the dot product for a single row.
+fn row_dot(matrix: &crate::types::SparseMatrix, r: usize, z: &[Goldilocks]) -> Goldilocks {
+    matrix.entries.get(r).map_or(Goldilocks::ZERO, |row| {
+        row.iter().fold(Goldilocks::ZERO, |acc, &(col, c)| {
             acc + c * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
         })
     })
 }
 
-/// Compute the HyperNova cross-term T.
+/// Compute the HyperNova cross-term vector T (one entry per row).
 ///
-/// For each degree-2 CCS term (S_j with |S_j| = 2), T accumulates the
-/// bilinear cross contribution between acc and new witness, summed over all
-/// matrix rows:
-///   T_j = c_j · ((M_i · w_acc) · (M_k · w_new) + (M_i · w_new) · (M_k · w_acc))
+/// For each degree-2 term and each row r:
+///   T[r] = c · ((M_i[r]·w_acc)·(M_k[r]·w_new) + (M_i[r]·w_new)·(M_k[r]·w_acc))
 ///
-/// Degree-1 terms have no cross term.
-fn cross_term(instance: &CCSInstance, w_acc: &[Goldilocks], w_new: &[Goldilocks]) -> Goldilocks {
-    instance
-        .multisets
-        .iter()
-        .zip(instance.coeffs.iter())
-        .fold(Goldilocks::ZERO, |t, (multiset, &coeff)| {
-            if multiset.len() < 2 {
-                return t;
-            }
-            let i = multiset[0];
-            let k = multiset[1];
-            let mi_acc = eval_matrix(instance, i, w_acc);
-            let mk_acc = eval_matrix(instance, k, w_acc);
-            let mi_new = eval_matrix(instance, i, w_new);
-            let mk_new = eval_matrix(instance, k, w_new);
-            let cross = mi_acc * mk_new + mi_new * mk_acc;
-            t + coeff * cross
-        })
+/// Row-by-row computation ensures only diagonal contributions appear (r=s terms).
+fn cross_term(instance: &CCSInstance, w_acc: &[Goldilocks], w_new: &[Goldilocks]) -> Vec<Goldilocks> {
+    let m = instance.num_rows;
+    let mut t = vec![Goldilocks::ZERO; m];
+    for (multiset, &coeff) in instance.multisets.iter().zip(instance.coeffs.iter()) {
+        if multiset.len() < 2 {
+            continue;
+        }
+        let i = multiset[0];
+        let k = multiset[1];
+        for (r, t_r) in t.iter_mut().enumerate() {
+            let mi_acc_r = row_dot(&instance.matrices[i], r, w_acc);
+            let mk_acc_r = row_dot(&instance.matrices[k], r, w_acc);
+            let mi_new_r = row_dot(&instance.matrices[i], r, w_new);
+            let mk_new_r = row_dot(&instance.matrices[k], r, w_new);
+            *t_r += coeff * (mi_acc_r * mk_new_r + mi_new_r * mk_acc_r);
+        }
+    }
+    t
 }
 
-/// Compute the CCS error term for a given witness, summing over all matrix rows.
+/// Compute the per-row CCS error vector from a witness.
 ///
-/// e = Σ_j c_j · Π_{i ∈ S_j} (Σ_row M_i[row] · z)
-/// For a satisfying witness, e = 0.
-fn error_term(instance: &CCSInstance, z: &[Goldilocks]) -> Goldilocks {
-    instance
-        .multisets
-        .iter()
-        .zip(instance.coeffs.iter())
-        .fold(Goldilocks::ZERO, |acc, (multiset, &coeff)| {
+/// error_evals[r] = Σ_j c_j · ∏_{i ∈ S_j} (M_i[row r] · z)
+/// For a satisfying witness, all entries are 0.
+fn error_evals(instance: &CCSInstance, z: &[Goldilocks]) -> Vec<Goldilocks> {
+    let m = instance.num_rows;
+    let mut e = vec![Goldilocks::ZERO; m];
+    for (multiset, &coeff) in instance.multisets.iter().zip(instance.coeffs.iter()) {
+        for (r, e_r) in e.iter_mut().enumerate() {
             let product = multiset.iter().fold(Goldilocks::ONE, |p, &idx| {
-                p * eval_matrix(instance, idx, z)
+                p * row_dot(&instance.matrices[idx], r, z)
             });
-            acc + coeff * product
-        })
+            *e_r += coeff * product;
+        }
+    }
+    e
 }
 
 /// Fold one CCS step into the accumulator.
@@ -90,13 +89,13 @@ pub fn fold_step(
         acc.committed_instance = instance.clone();
         acc.folded_witness = CCSWitness { z: z_new.clone() };
         acc.witness_commitment = Brakedown::commit_raw(&z_new);
-        acc.error_term = error_term(instance, &z_new);
+        acc.error_evals = error_evals(instance, &z_new);
         acc.step_count = 1;
         return Ok(());
     }
 
-    // Verify the instance structure matches the accumulator.
-    if acc.committed_instance.matrices.len() != instance.matrices.len() {
+    // Verify the instance matches the accumulator exactly.
+    if acc.committed_instance != *instance {
         return Err(FoldError::InstanceMismatch);
     }
 
@@ -114,27 +113,26 @@ pub fn fold_step(
     transcript.absorb(acc.witness_commitment.as_bytes());
     let new_commitment = Brakedown::commit_raw(&z_new);
     transcript.absorb(new_commitment.as_bytes());
-    transcript.absorb(&t.as_u64().to_le_bytes());
+    for &t_r in &t {
+        transcript.absorb(&t_r.as_u64().to_le_bytes());
+    }
     let beta = transcript.squeeze_challenge();
 
     // 3. Fold witnesses: w_folded = w_acc + beta · w_new
     let mut w_folded = w_acc.clone();
     for (wf, &wn) in w_folded.iter_mut().zip(z_new.iter()) {
-        *wf = *wf + beta * wn;
+        *wf += beta * wn;
     }
 
     // 4. Fold error: evaluate constraint on the folded witness directly.
-    //    For degree-1 constraints: error_term(w_acc + β·w_new) = e_acc + β·e_new.
-    //    For degree-2: the bilinear cross-term makes the formula non-trivial;
-    //    computing directly is always correct.
-    let e_folded = error_term(instance, &w_folded);
+    let e_folded = error_evals(instance, &w_folded);
 
     // 5. Update commitment.
     let c_folded = Brakedown::commit_raw(&w_folded);
 
     acc.folded_witness = CCSWitness { z: w_folded };
     acc.witness_commitment = c_folded;
-    acc.error_term = e_folded;
+    acc.error_evals = e_folded;
     acc.step_count += 1;
 
     Ok(())
@@ -152,7 +150,7 @@ mod tests {
             committed_instance: instance.clone(),
             folded_witness: CCSWitness { z: z.clone() },
             witness_commitment: Brakedown::commit_raw(&z),
-            error_term: Goldilocks::ZERO,
+            error_evals: vec![Goldilocks::ZERO; instance.num_rows],
             step_count: 0,
         }
     }
@@ -174,8 +172,8 @@ mod tests {
         let mut transcript = Transcript::new();
         fold_step(&mut acc, &instance, &witness, &mut transcript).unwrap();
         assert_eq!(acc.step_count, 1);
-        // Error should be 0 for satisfying witness.
-        assert_eq!(acc.error_term, Goldilocks::ZERO);
+        // Error should be [0] for satisfying witness (all rows zero).
+        assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO));
     }
 
     #[test]
@@ -188,5 +186,23 @@ mod tests {
         fold_step(&mut acc, &instance, &w1, &mut t).unwrap();
         fold_step(&mut acc, &instance, &w2, &mut t).unwrap();
         assert_eq!(acc.step_count, 2);
+    }
+
+    #[test]
+    fn fold_step_is_deterministic() {
+        let instance = build_step_ccs(5);
+        let witness = make_witness(5, 3, 8);
+
+        let mut acc1 = zero_accumulator(&instance);
+        let mut t1 = Transcript::new();
+        fold_step(&mut acc1, &instance, &witness, &mut t1).unwrap();
+
+        let mut acc2 = zero_accumulator(&instance);
+        let mut t2 = Transcript::new();
+        fold_step(&mut acc2, &instance, &witness, &mut t2).unwrap();
+
+        assert_eq!(acc1.step_count, acc2.step_count);
+        assert!(acc1.error_evals.iter().zip(acc2.error_evals.iter()).all(|(a, b)| a.as_u64() == b.as_u64()));
+        assert!(acc1.folded_witness.z.iter().zip(acc2.folded_witness.z.iter()).all(|(a, b)| a.as_u64() == b.as_u64()));
     }
 }

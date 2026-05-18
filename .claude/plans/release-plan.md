@@ -184,7 +184,7 @@ optimization levers in order of impact:
 
 - tensor prover (O(√N) memory) — specs/tensor.md
 - cross-algebra folding (sel_Fp / sel_F2) — needs binius patterns in nox first
-- pattern 16 full hint elaboration — Layer 1 interface not yet defined
+- pattern 16 (call) full elaboration — Layer 1 interface not yet defined
 - GPU prover — roadmap/gpu-prover.md
 - gravity-commitment — roadmap/gravity-commitment.md
 

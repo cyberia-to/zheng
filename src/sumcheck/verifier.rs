@@ -81,7 +81,7 @@ mod tests {
     use crate::sumcheck::prover::SumcheckProver;
 
     #[test]
-    fn consistency_check_rejects_wrong_sum() {
+    fn consistency_check_accepts_correct_sum() {
         let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1);
         let mut transcript = Transcript::new();
 
@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn consistency_check_accepts_correct_sum() {
+    fn consistency_check_rejects_wrong_sum() {
         let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1);
         let mut transcript = Transcript::new();
 

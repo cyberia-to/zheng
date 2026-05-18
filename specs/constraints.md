@@ -44,7 +44,7 @@ where selector_p(r0_t) = 1 when r0_t = p, 0 otherwise. constructed via Lagrange 
 | 13 | not | bitwise complement | 1 | ~64 |
 | 14 | shl | shift via multiplication by 2^n | 2 | ~64 |
 | 15 | hash | Poseidon2 round: state_{t+1} = MDS × (state_t)^7 (300 rows) | 7 | ~736 |
-| 16 | hint | external constraint check (Layer 1 verification) | varies | varies |
+| 16 | call | external constraint check (Layer 1 verification) | varies | varies |
 | 17 | look | Lens.verify(r5, eval(r4), r6, proof): 2 inline wiring constraints + Brakedown verification via folded CCS sub-instance | 1 (inline) | 2 inline; ~825 folded |
 
 ## universal constraints
@@ -441,11 +441,11 @@ an additional boolean constraint enforces r8_t ∈ {0, 1}:
 C_4_bool: r8_t × (r8_t − 1) = 0
 ```
 
-#### pattern 16: hint
+#### pattern 16: call
 
 polynomial constraint:
 
-hint injects externally computed values into the trace. the constraint structure varies by hint type. the prover supplies a value in r5_{t+1} along with a proof that the external verifier (Layer 1) accepted it. the minimal constraint:
+call injects externally computed values into the trace. the constraint structure varies by call type. the prover supplies a value in r5_{t+1} along with a proof that the external verifier (Layer 1) accepted it. the minimal constraint:
 
 ```
 C_16(t) = r14_{t+1} − r14_t = 0   (status unchanged through hint)
@@ -478,7 +478,7 @@ C_17a(t) = r5_t − BBG_root_instance = 0      (root binding: r5 equals the inst
 C_17b(t) = eval_point_t − f(r4_t) = 0        (key binding: evaluation point derived from key r4)
 ```
 
-both are degree 1. the actual Brakedown opening — `Lens.verify(r5, eval(r4), r6, proof)` — is a separate CCS instance, folded in via HyperNova (identical mechanism to pattern 16 hint). the folded sub-proof carries ~825 constraints (CCS jet + batch Brakedown).
+both are degree 1. the actual Brakedown opening — `Lens.verify(r5, eval(r4), r6, proof)` — is a separate CCS instance, folded in via HyperNova (identical mechanism to pattern 16 call). the folded sub-proof carries ~825 constraints (CCS jet + batch Brakedown).
 
 CCS decomposition for C_17a (q = 2 terms, degree 1):
 - M_0: selects r5_t (z index 5)

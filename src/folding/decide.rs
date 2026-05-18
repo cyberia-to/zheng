@@ -29,7 +29,9 @@ pub fn decide(
     // Verifier must absorb in identical order.
     transcript.absorb_statement(statement);
     transcript.absorb(acc.witness_commitment.as_bytes());
-    transcript.absorb(&acc.error_term.as_u64().to_le_bytes());
+    for &e in &acc.error_evals {
+        transcript.absorb(&e.as_u64().to_le_bytes());
+    }
     transcript.absorb(&acc.step_count.to_le_bytes());
 
     let proof = SpartanProver::prove(
@@ -67,7 +69,7 @@ mod tests {
             committed_instance: instance.clone(),
             folded_witness: CCSWitness { z: z.clone() },
             witness_commitment: Brakedown::commit_raw(&z),
-            error_term: Goldilocks::ZERO,
+            error_evals: vec![Goldilocks::ZERO; instance.num_rows],
             step_count: 0,
         }
     }
@@ -100,8 +102,10 @@ mod tests {
         let mut vt = Transcript::new_recursive();
         vt.absorb_statement(&stmt);
         vt.absorb(acc.witness_commitment.as_bytes());
-        vt.absorb(&acc.error_term.as_u64().to_le_bytes());
+        for &e in &acc.error_evals {
+            vt.absorb(&e.as_u64().to_le_bytes());
+        }
         vt.absorb(&acc.step_count.to_le_bytes());
-        assert!(SpartanVerifier::verify(&acc.committed_instance, &proof, acc.error_term, &mut vt).is_ok());
+        assert!(SpartanVerifier::verify(&acc.committed_instance, &proof, &acc.error_evals, &mut vt).is_ok());
     }
 }

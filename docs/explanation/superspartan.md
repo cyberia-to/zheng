@@ -12,7 +12,7 @@ a proof system that handles CCS handles all of them simultaneously. zheng proves
 
 ## what matters for cyber: AIR
 
-for [[cyber]] specifically, AIR is the relevant arithmetization. [[nox]] is a reduction machine with 16 deterministic patterns. each pattern defines a transition constraint: given the register values at row t, what must be true at row t+1. pattern 5 (add) says the result register equals the sum of two operand registers. pattern 7 (mul) says the result is the product. pattern 15 (hash) says consecutive rows satisfy the round equations of [[hemera]] (Poseidon2).
+for [[cyber]] specifically, AIR is the relevant arithmetization. [[nox]] is a reduction machine with 18 patterns (16 deterministic compute + call + look). each pattern defines a transition constraint: given the register values at row t, what must be true at row t+1. pattern 5 (add) says the result register equals the sum of two operand registers. pattern 7 (mul) says the result is the product. pattern 15 (hash) says consecutive rows satisfy the round equations of [[hemera]] (Poseidon2).
 
 these transition constraints form an AIR instance. [[SuperSpartan]] encodes them as a CCS instance and verifies them all via [[sumcheck]].
 

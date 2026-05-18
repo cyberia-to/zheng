@@ -60,7 +60,7 @@ the prover evaluates f over a suitable domain and constructs a Merkle tree using
 
 # prove
 
-[[SuperSpartan]] takes over. each of [[nox]]'s 16 patterns contributes a transition constraint. the constraint polynomial combines them all, weighted by pattern selectors so that only the active pattern's constraint applies at each row. the claim: this combined constraint sums to zero over all 2^n rows.
+[[SuperSpartan]] takes over. each of [[nox]]'s 18 patterns contributes a transition constraint. the constraint polynomial combines them all, weighted by pattern selectors so that only the active pattern's constraint applies at each row. the claim: this combined constraint sums to zero over all 2^n rows.
 
 the [[sumcheck protocol]] reduces this claim across n rounds. each round, the prover sends a univariate polynomial and the verifier responds with a random challenge. after n rounds, the exponential sum has been reduced to a single evaluation: "f at random point r equals value v." this is where the IOP ends and the PCS begins.
 
@@ -86,7 +86,7 @@ every operation the verifier performs is a [[nox]] primitive. the verifier IS a 
 
 Whirlaway was proposed by LambdaClass in early 2025 as a multilinear STARK architecture. the name reflects the composition: WHIR (legacy) provided the polynomial commitment, SuperSpartan provided the IOP, and the sumcheck protocol was the engine driving both.
 
-zheng is [[cyber]]'s implementation. the specific choices — [[Goldilocks field]] arithmetic from [[nebu]], Poseidon2 hashing from [[hemera]], 16-pattern reduction machine from [[nox]] — are cyber's instantiation of the abstract Whirlaway template. other implementations might choose different fields, different hash functions, different VMs. the architecture remains the same.
+zheng is [[cyber]]'s implementation. the specific choices — [[Goldilocks field]] arithmetic from [[nebu]], Poseidon2 hashing from [[hemera]], 18-pattern reduction machine from [[nox]] — are cyber's instantiation of the abstract Whirlaway template. other implementations might choose different fields, different hash functions, different VMs. the architecture remains the same.
 
 ## what makes it work
 
