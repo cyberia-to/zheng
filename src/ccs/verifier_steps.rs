@@ -13,8 +13,11 @@
 //!
 //! Steps for a `num_vars`-variable opening:
 //!   (a) 4 commitment-binding eq steps: round_commitments[0][k] == commitment[k]
-//!   (b) num_vars × 20 trivial eq(0,0) stubs (Fiat-Shamir, pending pattern 15)
-//!   (c) 1 final-value eq step: final_poly[0] == value
+//!   (b) 1 final-value eq step: final_poly[0] == value
+//!
+//! Fiat-Shamir transcript steps (num_vars × 20 × 24 Poseidon2 CCS pairs) are
+//! produced separately by `ccs::transcript::build_transcript_steps` and folded
+//! into the hash accumulator.
 
 use nebu::Goldilocks;
 
@@ -24,9 +27,6 @@ use crate::types::{CCSInstance, CCSWitness, SparseMatrix};
 
 /// Z-vector for verifier steps: [a, b, 1].
 const VZ_LEN: usize = 3;
-
-/// Fiat-Shamir query count per round, matching lens/brakedown NUM_QUERIES.
-const QUERIES_PER_ROUND: usize = 20;
 
 fn neg_one() -> Goldilocks {
     Goldilocks::ZERO - Goldilocks::ONE
@@ -60,7 +60,7 @@ pub fn eq_step(a: Goldilocks, b: Goldilocks) -> (CCSInstance, CCSWitness) {
 /// Returns empty vec if `opening` is not `Opening::Tensor`.
 pub fn verifier_steps(
     commitment: &Commitment,
-    point: &[Goldilocks],
+    _point: &[Goldilocks],
     value: Goldilocks,
     opening: &Opening,
 ) -> Vec<(CCSInstance, CCSWitness)> {
@@ -68,9 +68,7 @@ pub fn verifier_steps(
         return vec![];
     };
 
-    let num_vars = point.len();
-    let mut steps: Vec<(CCSInstance, CCSWitness)> =
-        Vec::with_capacity(5 + num_vars * QUERIES_PER_ROUND);
+    let mut steps: Vec<(CCSInstance, CCSWitness)> = Vec::with_capacity(5);
 
     // ── (a) Commitment binding ────────────────────────────────────────────────
     // Verify round_commitments[0] == commitment across all 4 × 8-byte limbs.
@@ -82,14 +80,7 @@ pub fn verifier_steps(
         }
     }
 
-    // ── (b) Fiat-Shamir transcript stubs ─────────────────────────────────────
-    // One trivially-satisfied step per (round, query) pair.
-    // Replaced by hemera hash constraint instances once pattern 15 is ready.
-    for _ in 0..(num_vars * QUERIES_PER_ROUND) {
-        steps.push(eq_step(Goldilocks::ZERO, Goldilocks::ZERO));
-    }
-
-    // ── (c) Final value check ─────────────────────────────────────────────────
+    // ── (b) Final value check ─────────────────────────────────────────────────
     // Verify the last round's residual polynomial evaluates to `value`.
     let finals = de_goldilocks(final_poly);
     if let Some(&fp) = finals.first() {
@@ -172,7 +163,7 @@ mod tests {
 
     #[test]
     fn step_count_two_vars() {
-        // 4 binding + 2*20 stubs + 1 final = 45
+        // 4 binding + 1 final = 5
         let poly = gold_poly(&[1, 2, 3, 4]);
         let commitment = Brakedown::commit(&poly);
         let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
@@ -180,12 +171,12 @@ mod tests {
         let opening = open_poly(&poly, &point);
 
         let steps = verifier_steps(&commitment, &point, value, &opening);
-        assert_eq!(steps.len(), 4 + 2 * QUERIES_PER_ROUND + 1);
+        assert_eq!(steps.len(), 5);
     }
 
     #[test]
     fn step_count_four_vars() {
-        // 4 binding + 4*20 stubs + 1 final = 85
+        // 4 binding + 1 final = 5, regardless of num_vars
         let poly = gold_poly(&(0u64..16).collect::<Vec<_>>());
         let commitment = Brakedown::commit(&poly);
         let point = vec![
@@ -196,7 +187,7 @@ mod tests {
         let opening = open_poly(&poly, &point);
 
         let steps = verifier_steps(&commitment, &point, value, &opening);
-        assert_eq!(steps.len(), 4 + 4 * QUERIES_PER_ROUND + 1);
+        assert_eq!(steps.len(), 5);
     }
 
     #[test]

@@ -24,7 +24,10 @@ pub use types::{
     LensBackend, OpenError, Proof, ProofParams, SecurityLevel, SparseMatrix,
     Statement, SumcheckPoly, TraceProof, VerifyError,
 };
-pub use crate::ccs::{AxisOpening, HashAux, LookOpening};
+pub use crate::ccs::{
+    build_axis_transcript_steps, build_look_transcript_steps,
+    look_openings_from_provider, AxisOpening, HashAux, LookOpening,
+};
 
 use nebu::Goldilocks;
 use nox::VecTrace;
@@ -33,8 +36,8 @@ use lens::brakedown::Brakedown;
 use lens::{Commitment, Lens, MultilinearPoly, Opening};
 
 use crate::ccs::{
-    build_axis_steps_from_trace, build_ccs_from_trace, build_hash_steps_from_trace,
-    build_look_steps_from_trace,
+    build_axis_steps_from_trace, build_ccs_from_trace,
+    build_hash_steps_from_trace, build_look_steps_from_trace,
 };
 use crate::folding::{decide as run_decide, fold_step};
 use crate::spartan::verifier::SpartanVerifier;
@@ -97,16 +100,20 @@ pub fn commit(
             }
 
     // Build all step sequences and chain them.
-    let main_steps = build_ccs_from_trace(&trace.0);
-    let hash_steps = build_hash_steps_from_trace(&trace.0, hash_aux)?;
-    let axis_steps = build_axis_steps_from_trace(&trace.0, axis_openings)?;
-    let look_steps = build_look_steps_from_trace(&trace.0, look_openings)?;
+    let main_steps          = build_ccs_from_trace(&trace.0);
+    let hash_steps          = build_hash_steps_from_trace(&trace.0, hash_aux)?;
+    let axis_steps          = build_axis_steps_from_trace(&trace.0, axis_openings)?;
+    let axis_transcript     = build_axis_transcript_steps(&trace.0, axis_openings)?;
+    let look_steps          = build_look_steps_from_trace(&trace.0, look_openings)?;
+    let look_transcript     = build_look_transcript_steps(&trace.0, look_openings)?;
 
     let all_steps: Vec<(CCSInstance, CCSWitness)> = main_steps
         .into_iter()
         .chain(hash_steps)
         .chain(axis_steps)
+        .chain(axis_transcript)
         .chain(look_steps)
+        .chain(look_transcript)
         .collect();
 
     if all_steps.is_empty() {
@@ -462,7 +469,7 @@ mod tests {
             let mut lt = LensTranscript::new(b"e2e-axis-open");
             Brakedown::open(&poly, &point, &mut lt)
         };
-        AxisOpening { commitment, point, value, opening }
+        AxisOpening { commitment, point, value, opening, transcript_seed: b"e2e-axis-open".to_vec() }
     }
 
     /// E2E: trace with Poseidon2 hash operation → hash_aux drives particle CCS.

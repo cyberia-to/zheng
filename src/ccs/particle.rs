@@ -40,10 +40,10 @@ use crate::types::{CCSInstance, CCSWitness, CommitError, SparseMatrix};
 /// Length of the extended hash witness (standard 33 + 8 cap_k + 8 cap_k1 + 1 y).
 pub const Z_LEN_HASH: usize = 50;
 
-const IDX_CONST: usize = 32;
-const IDX_CAP_K: usize = 33;   // state_k[8..15]  at z[33..40]
-const IDX_CAP_K1: usize = 41;  // state_{k+1}[8..15] at z[41..48]
-const IDX_Y: usize = 49;       // y = inv(state_k[0] + rc)
+pub(crate) const IDX_CONST: usize = 32;
+pub(crate) const IDX_CAP_K: usize = 33;
+pub(crate) const IDX_CAP_K1: usize = 41;
+pub(crate) const IDX_Y: usize = 49;
 
 /// Prover-supplied auxiliary data for one Poseidon2 hash block.
 ///
@@ -55,7 +55,7 @@ pub struct HashAux {
 }
 
 /// z-index of state_k[i] in the extended witness.
-fn sk(i: usize) -> usize {
+pub(crate) fn sk(i: usize) -> usize {
     match i {
         0 => 4,  1 => 5,  2 => 6,  3 => 7,
         4 => 10, 5 => 11, 6 => 12, 7 => 13,
@@ -64,7 +64,7 @@ fn sk(i: usize) -> usize {
 }
 
 /// z-index of state_{k+1}[i] in the extended witness.
-fn sk1(i: usize) -> usize {
+pub(crate) fn sk1(i: usize) -> usize {
     match i {
         0 => 20, 1 => 21, 2 => 22, 3 => 23,
         4 => 26, 5 => 27, 6 => 28, 7 => 29,
