@@ -1,1 +1,0 @@
-<Result<Vec<(CCSInstance, CCSWitness)>, CommitError> as IntoIterator>::Item == (CCSInstance, CCSWitness)
