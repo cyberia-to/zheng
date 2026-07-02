@@ -1,6 +1,11 @@
 # finishing minimal zheng: canonical structure + CLI
 
-status: draft (awaiting sign-off)
+status: DONE (both parts implemented, all tests green).
+part 1 — canonical rs/ + cli/ workspace, 5 downstream path deps updated, nox
+Reduction API adaptation. part 2 — `zheng` CLI (run/demo/eval/pack/prove/help)
+emitting a tape chunk stream; `demo hash` and `eval` prove+verify green; general
+`run` reports precise opening-data needs (axis/hash/look) since real formulas
+touch the axis pattern — that aux derivation stays deferred (see specs/cli.md).
 
 two tasks to close out "minimal zheng": (1) refactor the repo to the canonical
 `rs/` + `cli/` workspace layout used by every sibling; (2) design and build a

@@ -25,4 +25,22 @@ zheng (proofs) ← this repo
 bbg (state)
 ```
 
+## layout
+
+```
+rs/    the library crate (package `zheng`)
+cli/   the `zheng` binary — command-line face (see specs/cli.md)
+```
+
+build the workspace with `cargo build`; run the CLI with `cargo run -p zheng-cli -- <command>`.
+
+```
+zheng demo hash    prove + verify a Poseidon2 hash program
+zheng eval         commit / open / verify a polynomial (Brakedown PCS)
+zheng run -e '…'   prove + verify a nox formula
+zheng pack / prove program capsule → proof
+```
+
+the CLI emits a [[tape]] chunk stream on stdout (with a human summary on stderr).
+
 see [[stark]] for the general theory, [[cyber/proofs]] for the full proof taxonomy
