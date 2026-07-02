@@ -10,8 +10,10 @@
 
 mod capsule;
 mod formula;
+mod style;
 mod tape_out;
 
+use std::io::IsTerminal;
 use std::time::Instant;
 
 use nebu::Goldilocks;
@@ -318,22 +320,8 @@ fn take(args: &[String], i: &mut usize, flag: &str) -> Result<String, String> {
 // ── help ─────────────────────────────────────────────────────────────────────
 
 fn print_help() {
-    eprint!(
-        "zheng — proof system CLI\n\
-         \n\
-         usage: zheng <command> [args]\n\
-         \n\
-         commands:\n\
-         \x20 run   -e '<formula>' [--object N] [--budget B]   prove + verify a formula\n\
-         \x20 demo  hash                                       prove the Poseidon2 hash program\n\
-         \x20 eval                                             commit/open/verify a polynomial\n\
-         \x20 pack  -e '<formula>' [--object N] [--budget B] -o <file>   write a program capsule\n\
-         \x20 prove <file>                                     prove a program capsule\n\
-         \x20 help                                             this message\n\
-         \n\
-         output: a tape chunk stream on stdout, human summary on stderr.\n\
-         exit:   0 verified, 1 prover/verifier error, 2 usage error.\n"
-    );
+    let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    print!("{}", style::help(color));
 }
 
 fn usage_hint() {

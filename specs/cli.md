@@ -15,15 +15,14 @@ entry points from a shell and emits results as a [[tape]] chunk stream.
 zheng <command> [args]
 ```
 
-output convention:
-- **stdout** — a [[tape]] chunk stream (TAPE — Typed Annotated Payload Exchange).
-  every run ends with a `render::STATUS` chunk carrying the process exit code.
-  this is the machine / cyb-terminal channel.
-- **stderr** — a human-readable summary of the same result.
+output convention — one channel (stdout), two renderings of the same data:
+- **interactive** (stdout is a terminal) — styled ANSI: a gradient banner for
+  `help`, a titled table with colored status for reports. matches the rune /
+  hemera aesthetic. suppressed by `NO_COLOR`.
+- **piped** (stdout is not a terminal) — a [[tape]] chunk stream (TAPE — Typed
+  Annotated Payload Exchange); every run ends with a `render::STATUS` chunk
+  carrying the exit code. `zheng ... | <tape reader>` is always well-formed.
 - **exit code** — `0` proof verified, `1` prover/verifier error, `2` usage error.
-
-nothing is written to stdout except tape frames, so `zheng ... | <tape reader>`
-is always well-formed.
 
 ## commands
 
