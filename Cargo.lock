@@ -203,3 +203,13 @@ dependencies = [
  "cyber-lens",
  "nox",
 ]
+
+[[package]]
+name = "zheng-cli"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "cyber-hemera",
+ "nox",
+ "zheng",
+]

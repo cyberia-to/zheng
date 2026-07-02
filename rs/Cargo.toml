@@ -1,0 +1,17 @@
+# ---
+# tags: zheng, config
+# crystal-type: source
+# crystal-domain: comp
+# ---
+[package]
+name = "zheng"
+version = "0.1.0"
+edition = "2024"
+description = "proof system: SuperSpartan IOP + Brakedown PCS + sumcheck"
+license = "Cyber"
+
+[dependencies]
+nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
+hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
+nox = { path = "../../nox/rs", features = ["brakedown"] }
+lens = { package = "cyber-lens", path = "../../lens/src" }

@@ -269,18 +269,18 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nox::{NullCalls, Order, Tag, VecTrace};
+    use nox::{NullCalls, Reduction, VecTrace};
     use lens::brakedown::Brakedown;
     use lens::{Lens, MultilinearPoly, Transcript as LensTranscript};
 
     fn malformed_trace() -> VecTrace {
         // Two rows with tag=255 (unknown) → trivial_ccs (no constraints).
         // Used to test the full commit→verify pipeline without constraint logic.
-        let mut order = Order::<1024>::new();
-        let obj     = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
-        let tag_255 = order.atom(Goldilocks::new(255), Tag::Field).unwrap();
-        let body    = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
-        let formula = order.cell(tag_255, body).unwrap();
+        let mut order = Reduction::<1024>::new();
+        let obj     = order.atom(Goldilocks::new(0)).unwrap();
+        let tag_255 = order.atom(Goldilocks::new(255)).unwrap();
+        let body    = order.atom(Goldilocks::new(0)).unwrap();
+        let formula = order.pair(tag_255, body).unwrap();
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
         nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
@@ -480,12 +480,12 @@ mod tests {
     /// sponge and recover capacity elements.
     #[test]
     fn e2e_hash_accumulator_roundtrip() {
-        let mut order = Order::<1024>::new();
-        let s = order.atom(Goldilocks::new(42), Tag::Field).unwrap();
-        let tag1  = order.atom(Goldilocks::new(1),  Tag::Field).unwrap();
-        let tag15 = order.atom(Goldilocks::new(15), Tag::Field).unwrap();
-        let quote_f = order.cell(tag1, s).unwrap();
-        let hash_f  = order.cell(tag15, quote_f).unwrap();
+        let mut order = Reduction::<1024>::new();
+        let s = order.atom(Goldilocks::new(42)).unwrap();
+        let tag1  = order.atom(Goldilocks::new(1)).unwrap();
+        let tag15 = order.atom(Goldilocks::new(15)).unwrap();
+        let quote_f = order.pair(tag1, s).unwrap();
+        let hash_f  = order.pair(tag15, quote_f).unwrap();
 
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, s, hash_f, 100, &NullCalls, &mut trace);
@@ -513,11 +513,11 @@ mod tests {
     #[test]
     fn e2e_axis_accumulator_and_statement_binding_roundtrip() {
         // Two axis identity operations: axis(s, 1) = s, cost 1 each.
-        let mut order = Order::<1024>::new();
-        let s = order.atom(Goldilocks::new(7), Tag::Field).unwrap();
-        let tag0 = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
-        let addr1 = order.atom(Goldilocks::new(1), Tag::Field).unwrap();
-        let axis_f = order.cell(tag0, addr1).unwrap();
+        let mut order = Reduction::<1024>::new();
+        let s = order.atom(Goldilocks::new(7)).unwrap();
+        let tag0 = order.atom(Goldilocks::new(0)).unwrap();
+        let addr1 = order.atom(Goldilocks::new(1)).unwrap();
+        let axis_f = order.pair(tag0, addr1).unwrap();
 
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);
@@ -548,11 +548,11 @@ mod tests {
     /// hash of the first trace row.
     #[test]
     fn e2e_statement_binding_rejects_wrong_input_hash() {
-        let mut order = Order::<1024>::new();
-        let s    = order.atom(Goldilocks::new(7), Tag::Field).unwrap();
-        let tag0 = order.atom(Goldilocks::new(0), Tag::Field).unwrap();
-        let addr = order.atom(Goldilocks::new(1), Tag::Field).unwrap();
-        let axis_f = order.cell(tag0, addr).unwrap();
+        let mut order = Reduction::<1024>::new();
+        let s    = order.atom(Goldilocks::new(7)).unwrap();
+        let tag0 = order.atom(Goldilocks::new(0)).unwrap();
+        let addr = order.atom(Goldilocks::new(1)).unwrap();
+        let axis_f = order.pair(tag0, addr).unwrap();
 
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);

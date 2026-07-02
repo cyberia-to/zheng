@@ -1,0 +1,21 @@
+# ---
+# tags: zheng, config
+# crystal-type: source
+# crystal-domain: comp
+# ---
+[package]
+name = "zheng-cli"
+version = "0.1.0"
+edition = "2024"
+description = "zheng command-line interface"
+license = "Cyber"
+
+[[bin]]
+name = "zheng"
+path = "src/main.rs"
+
+[dependencies]
+zheng = { path = "../rs" }
+nox = { path = "../../nox/rs", features = ["brakedown"] }
+nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
+hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
