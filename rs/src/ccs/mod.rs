@@ -163,7 +163,7 @@ pub fn build_axis_steps_from_trace(
 ///    cell index nox read (r[6]), one eq step per bit;
 /// 4. leaf binding — the opened commitment equals `leaves.dims[ns]` for the
 ///    namespace nox read (r[5]);
-/// 5. root binding — the root recomputed from the leaves (Poseidon2 compression
+/// 5. root binding — the root recomputed from the leaves (hemera compression
 ///    chain, built once per distinct root) equals trace registers r[4], r[11],
 ///    r[12], r[13].
 ///

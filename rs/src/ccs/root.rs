@@ -3,17 +3,17 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! The BBG root as a chain of Poseidon2 compressions — pattern-15 closure.
+//! The BBG root as a chain of hemera compressions — pattern-15 closure.
 //!
 //! One primitive everywhere: [`compress4`] is the first four elements of the
-//! Poseidon2 permutation over `[a ‖ b ‖ 0⁸]` — the same permutation as the nox
+//! hemera permutation over `[a ‖ b ‖ 0⁸]` — the same permutation as the nox
 //! hash jet and the Fiat-Shamir transcript. The BBG root is a left fold of
 //! `compress4` over the 14 leaves (11 dimension commitments ‖ A ‖ N ‖ stats)
 //! from a domain-tagged IV.
 //!
 //! This module is the single source of truth for the root layout: bbg calls
 //! [`root_from_leaves`] natively in `compute_root`, and [`build_root_steps`]
-//! replays the identical chain as Poseidon2 CCS pairs so the look argument can
+//! replays the identical chain as hemera CCS pairs so the look argument can
 //! bind an opened dimension commitment to the root recorded in the trace.
 
 use nebu::Goldilocks;
@@ -86,7 +86,7 @@ fn first4(state: &[HGold; 16]) -> [Goldilocks; 4] {
     core::array::from_fn(|i| Goldilocks::new(state[i].as_canonical_u64()))
 }
 
-/// One Poseidon2 compression: the first 4 elements of `P([a ‖ b ‖ 0⁸])`.
+/// One hemera compression: the first 4 elements of `P([a ‖ b ‖ 0⁸])`.
 pub fn compress4(a: &[Goldilocks; 4], b: &[Goldilocks; 4]) -> [Goldilocks; 4] {
     let mut state = to_hstate(a, b);
     permute(&mut state);
@@ -98,7 +98,7 @@ pub fn root_from_leaves(leaves: &RootLeaves) -> [Goldilocks; 4] {
     leaves.ordered().iter().fold(root_iv(), |acc, leaf| compress4(&acc, leaf))
 }
 
-/// Replay the root chain and emit Poseidon2 CCS pairs for every compression.
+/// Replay the root chain and emit hemera CCS pairs for every compression.
 ///
 /// 14 compressions × 24 round pairs = 336 (CCSInstance, CCSWitness) pairs,
 /// structurally identical to the transcript/hash pairs so they fold into the
