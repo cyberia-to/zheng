@@ -26,7 +26,8 @@ pub use types::{
 };
 pub use crate::ccs::{
     build_axis_transcript_steps, build_look_transcript_steps,
-    look_openings_from_provider, AxisOpening, HashAux, LookOpening,
+    look_openings_from_provider, root_from_leaves, standalone_root, AxisOpening, HashAux,
+    LookOpening, RootLeaves,
 };
 
 use nebu::Goldilocks;

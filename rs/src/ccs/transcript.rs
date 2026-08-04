@@ -85,7 +85,7 @@ pub fn build_transcript_steps(
 ///
 /// Uses partial_round_ccs for rounds k ∈ 3..19 (the 16 partial rounds).
 /// Uses trivial_hash_ccs for the 8 full rounds.
-fn squeeze_ccs_pairs(visitor: &SqueezeVisitor) -> Vec<(CCSInstance, CCSWitness)> {
+pub(crate) fn squeeze_ccs_pairs(visitor: &SqueezeVisitor) -> Vec<(CCSInstance, CCSWitness)> {
     let mut pairs = Vec::with_capacity(ROUNDS_TOTAL);
     let states = &visitor.states;
     let ys = &visitor.y_values;
@@ -123,13 +123,13 @@ fn squeeze_witness(
 }
 
 /// Collects post-round states and S-box inverses from a Poseidon2 permutation.
-struct SqueezeVisitor {
+pub(crate) struct SqueezeVisitor {
     states:   Vec<[Goldilocks; 16]>,
     y_values: Vec<Goldilocks>,
 }
 
 impl SqueezeVisitor {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             states:   Vec::with_capacity(ROUNDS_TOTAL),
             y_values: Vec::with_capacity(ROUNDS_TOTAL),

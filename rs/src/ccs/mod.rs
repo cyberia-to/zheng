@@ -7,12 +7,14 @@
 
 pub mod particle;
 pub mod patterns;
+pub mod root;
 pub mod selector;
 pub mod transcript;
 pub mod verifier_steps;
 
 pub use particle::{build_hash_steps_from_trace, HashAux, Z_LEN_HASH};
 pub use patterns::build_step_ccs;
+pub use root::{build_root_steps, compress4, root_from_leaves, RootLeaves};
 pub use selector::constraint_eval;
 pub use transcript::build_transcript_steps;
 pub use verifier_steps::{eq_step, verifier_steps};
@@ -53,13 +55,13 @@ pub struct LookOpening {
     pub opening: Opening,
     /// Bytes passed to `LensTranscript::new()` when `Brakedown::open` was called.
     pub transcript_seed: Vec<u8>,
-    /// Four 64-bit limbs of the BBG root = H(commit(BBG_poly) ‖ A ‖ N).
-    /// Limb i matches trace register: r[4]=limb0, r[11]=limb1, r[12]=limb2, r[13]=limb3.
-    pub bbg_root: [Goldilocks; 4],
-    /// BBG namespace for this opening (N in the root hash).
+    /// The 14 leaves of the BBG root preimage. The circuit recomputes the root
+    /// from these (see [`root::root_from_leaves`]) and binds it to the trace
+    /// registers r[4], r[11], r[12], r[13] — and binds `leaves.dims[namespace]`
+    /// to `commitment`, closing the commitment↔root soundness gap.
+    pub leaves: RootLeaves,
+    /// BBG namespace of this opening: an index into `leaves.dims`.
     pub namespace: Goldilocks,
-    /// BBG accumulator commitment (A in the root hash). None until BBG design is settled.
-    pub a_commit: Option<[Goldilocks; 4]>,
 }
 
 /// z-index of register r at row t.
@@ -152,29 +154,75 @@ pub fn build_axis_steps_from_trace(
 
 /// Build the verifier_steps() sequence for every look row in the trace.
 ///
-/// Scans the trace for rows with tag 17 (look). For each, calls verifier_steps()
-/// using the matching entry in `openings` (parallel slice, same order as look
-/// rows in the trace). Returns a flat Vec of (CCSInstance, CCSWitness) pairs
-/// with VZ_LEN=3, ready to fold into a separate look accumulator.
+/// Scans the trace for rows with tag 17 (look). For each, the matching entry in
+/// `openings` (parallel slice, same order as look rows) contributes:
+///
+/// 1. `verifier_steps` — the Brakedown opening is internally sound;
+/// 2. value binding — the opened value equals the value nox used (r[7]);
+/// 3. point binding — the evaluation point is the hypercube corner of the flat
+///    cell index nox read (r[6]), one eq step per bit;
+/// 4. leaf binding — the opened commitment equals `leaves.dims[ns]` for the
+///    namespace nox read (r[5]);
+/// 5. root binding — the root recomputed from the leaves (Poseidon2 compression
+///    chain, built once per distinct root) equals trace registers r[4], r[11],
+///    r[12], r[13].
+///
+/// Together these close the look soundness gap: a prover can no longer open an
+/// arbitrary polynomial and claim it is the state the root names.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
-/// than look rows in the trace.
+/// than look rows, `Err(CommitError::LookBinding)` if a namespace is out of
+/// range or any binding constraint is unsatisfied — commit refuses to emit a
+/// proof whose look bindings do not hold, rather than deferring rejection to
+/// the decider.
 pub fn build_look_steps_from_trace(
     trace: &[TraceRow],
     openings: &[LookOpening],
 ) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
     let mut steps = Vec::new();
     let mut opening_idx = 0;
+    // Roots whose recompute chain is already in `steps` (dedup across looks).
+    let mut chained_roots: Vec<[Goldilocks; 4]> = Vec::new();
     for row in trace {
         if row.r()[0] == 17 {
             let lo = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            let row_start = steps.len();
             steps.extend(verifier_steps(&lo.commitment, &lo.point, lo.value, &lo.opening));
-            // bind the 4 BBG root limbs to what nox recorded in the trace
-            steps.push(eq_step(lo.bbg_root[0], Goldilocks::new(row.r()[4])));
-            steps.push(eq_step(lo.bbg_root[1], Goldilocks::new(row.r()[11])));
-            steps.push(eq_step(lo.bbg_root[2], Goldilocks::new(row.r()[12])));
-            steps.push(eq_step(lo.bbg_root[3], Goldilocks::new(row.r()[13])));
-            // TODO(pattern-15): H(lo.commitment || A_commit || N_commit) == lo.bbg_root
+
+            // (2) the opened value is the value nox used
+            steps.push(eq_step(lo.value, Goldilocks::new(row.r()[7]).canonicalize()));
+
+            // (3) the opening point is the corner of the cell index nox read
+            let idx = row.r()[6];
+            for (j, &p) in lo.point.iter().enumerate() {
+                steps.push(eq_step(p, Goldilocks::new((idx >> j) & 1)));
+            }
+
+            // (4) the opened commitment is the leaf of the namespace nox read
+            let ns = row.r()[5] as usize;
+            let leaf = lo.leaves.dims.get(ns).ok_or(CommitError::LookBinding)?;
+            let cb = lo.commitment.as_bytes();
+            for k in 0..4 {
+                steps.push(eq_step(leaf[k], verifier_steps::read_limb(cb, k)));
+            }
+
+            // (5) the root recomputed from the leaves matches the trace registers
+            let root = root_from_leaves(&lo.leaves);
+            if !chained_roots.contains(&root) {
+                let (root_steps, computed) = build_root_steps(&lo.leaves);
+                debug_assert_eq!(computed, root, "replay diverged from native fold");
+                steps.extend(root_steps);
+                chained_roots.push(root);
+            }
+            steps.push(eq_step(root[0], Goldilocks::new(row.r()[4]).canonicalize()));
+            steps.push(eq_step(root[1], Goldilocks::new(row.r()[11]).canonicalize()));
+            steps.push(eq_step(root[2], Goldilocks::new(row.r()[12]).canonicalize()));
+            steps.push(eq_step(root[3], Goldilocks::new(row.r()[13]).canonicalize()));
+
+            // Strictness gate: every binding for this look must hold now.
+            if steps[row_start..].iter().any(|(i, w)| !selector::is_satisfied(i, w)) {
+                return Err(CommitError::LookBinding);
+            }
             opening_idx += 1;
         }
     }
@@ -258,8 +306,10 @@ pub fn axis_eval_point(addr: u64) -> Vec<Goldilocks> {
 /// - Decomposes `key` (direct index into `poly.evals`) into the MSB-first
 ///   multilinear evaluation point over {0,1}^k.
 /// - Generates a Brakedown tensor opening proof.
-/// - Extracts the 4-limb BBG root from the commitment bytes, matching the
-///   limbs written into trace registers r[4], r[11], r[12], r[13] by look.rs.
+/// - Synthesizes solo root leaves (`RootLeaves::solo`): the provider's one
+///   polynomial as `dims[ns]`, every other leaf zero. The program's look object
+///   must carry `root_from_leaves(&solo)` in its root limbs — see
+///   [`standalone_root`].
 pub fn look_openings_from_provider(
     provider: &nox::BrakedownLookProvider,
 ) -> Vec<LookOpening> {
@@ -273,7 +323,7 @@ pub fn look_openings_from_provider(
     let k = poly.evals.len().trailing_zeros() as usize;
 
     let cb = commitment.as_bytes();
-    let bbg_root = [
+    let commitment_limbs = [
         look_commitment_limb(cb, 0),
         look_commitment_limb(cb, 1),
         look_commitment_limb(cb, 2),
@@ -308,11 +358,23 @@ pub fn look_openings_from_provider(
             value: nox_op.value,
             opening,
             transcript_seed: seed.to_vec(),
-            bbg_root,
+            leaves: RootLeaves::solo(nox_op.namespace.as_u64() as usize, commitment_limbs),
             namespace: nox_op.namespace,
-            a_commit: None,
         }
     }).collect()
+}
+
+/// The root limbs a standalone-provider program must carry in its look object:
+/// the solo-leaves root for this provider's commitment under namespace `ns`.
+pub fn standalone_root(provider: &nox::BrakedownLookProvider, ns: usize) -> [Goldilocks; 4] {
+    let cb = provider.commitment().as_bytes();
+    let limbs = [
+        look_commitment_limb(cb, 0),
+        look_commitment_limb(cb, 1),
+        look_commitment_limb(cb, 2),
+        look_commitment_limb(cb, 3),
+    ];
+    root_from_leaves(&RootLeaves::solo(ns, limbs))
 }
 
 fn look_commitment_limb(bytes: &[u8], k: usize) -> Goldilocks {
@@ -438,8 +500,8 @@ mod tests {
         assert_eq!(openings[1].value, Goldilocks::new(30));
         assert_eq!(openings[1].point, vec![Goldilocks::ZERO, Goldilocks::ONE]);
 
-        // bbg_root limb 0 matches commitment_field
-        assert_eq!(openings[0].bbg_root[0], provider.commitment_field());
+        // solo leaves carry the commitment as the namespace-0 dimension leaf
+        assert_eq!(openings[0].leaves.dims[0][0], provider.commitment_field());
 
         // All verifier steps must be satisfied for both openings
         for lo in &openings {
@@ -451,5 +513,91 @@ mod tests {
 
         // Second call returns empty (provider was drained)
         assert!(look_openings_from_provider(&provider).is_empty());
+    }
+
+    /// Execute a real look program: object carries `root` in its four limb
+    /// axes, formula is `[17 [[1 ns] [1 key]]]`. Returns the recorded trace.
+    fn run_look(
+        provider: &nox::BrakedownLookProvider,
+        ns: u64,
+        key: u64,
+        root: [Goldilocks; 4],
+    ) -> Vec<TraceRow> {
+        use nox::{reduce, Reduction, VecTrace};
+        let g = Goldilocks::new;
+        let mut ar = Reduction::<1024>::new();
+        // object [[l0 | [l1 | [l2 | l3]]] | rest]
+        let l: Vec<_> = root.iter().map(|&x| ar.atom(x).unwrap()).collect();
+        let inner = ar.pair(l[2], l[3]).unwrap();
+        let mid = ar.pair(l[1], inner).unwrap();
+        let root_pair = ar.pair(l[0], mid).unwrap();
+        let rest = ar.atom(g(0)).unwrap();
+        let obj = ar.pair(root_pair, rest).unwrap();
+        // formula [17 [[1 ns] [1 key]]]
+        let t17 = ar.atom(g(17)).unwrap();
+        let t1 = ar.atom(g(1)).unwrap();
+        let vns = ar.atom(g(ns)).unwrap();
+        let vkey = ar.atom(g(key)).unwrap();
+        let nf = ar.pair(t1, vns).unwrap();
+        let kf = ar.pair(t1, vkey).unwrap();
+        let body = ar.pair(nf, kf).unwrap();
+        let formula = ar.pair(t17, body).unwrap();
+        let mut trace = VecTrace::default();
+        let _ = reduce(&mut ar, obj, formula, 1000, provider, &mut trace);
+        trace.0
+    }
+
+    #[test]
+    fn look_steps_bind_value_point_leaf_and_root() {
+        use nox::BrakedownLookProvider;
+        use crate::ccs::selector::is_satisfied;
+
+        let evals: Vec<Goldilocks> = [10u64, 20, 30, 40].iter().map(|&v| Goldilocks::new(v)).collect();
+        let provider = BrakedownLookProvider::new(MultilinearPoly::new(evals));
+        let root = standalone_root(&provider, 0);
+
+        // Honest run: program reads (ns=0, key=2) against the solo root.
+        let trace = run_look(&provider, 0, 2, root);
+        assert!(trace.iter().any(|r| r.r()[0] == 17), "trace has a look row");
+        let openings = look_openings_from_provider(&provider);
+        assert_eq!(openings.len(), 1);
+        assert_eq!(openings[0].value, Goldilocks::new(30));
+        let steps = build_look_steps_from_trace(&trace, &openings).unwrap();
+        for (i, (inst, wit)) in steps.iter().enumerate() {
+            assert!(is_satisfied(inst, wit), "honest look step {i} unsatisfied");
+        }
+
+        // Wrong root in the program object (the pre-fix convention: raw
+        // commitment limbs). The root binding must reject it.
+        let cb = provider.commitment().as_bytes();
+        let fake_root = core::array::from_fn(|k| {
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&cb[k * 8..k * 8 + 8]);
+            Goldilocks::new(u64::from_le_bytes(buf))
+        });
+        let trace = run_look(&provider, 0, 2, fake_root);
+        let openings = look_openings_from_provider(&provider);
+        assert!(
+            matches!(build_look_steps_from_trace(&trace, &openings), Err(CommitError::LookBinding)),
+            "commitment-as-root claim went unnoticed"
+        );
+
+        // Tampered opening value: value binding must reject.
+        let trace = run_look(&provider, 0, 2, root);
+        let mut openings = look_openings_from_provider(&provider);
+        openings[0].value = Goldilocks::new(31);
+        assert!(
+            matches!(build_look_steps_from_trace(&trace, &openings), Err(CommitError::LookBinding)),
+            "value tamper went unnoticed"
+        );
+
+        // Tampered leaf: prover swaps in a different dimension commitment.
+        let trace = run_look(&provider, 0, 2, root);
+        let mut openings = look_openings_from_provider(&provider);
+        openings[0].leaves.dims[0] = [Goldilocks::new(1); 4];
+        assert!(
+            matches!(build_look_steps_from_trace(&trace, &openings), Err(CommitError::LookBinding)),
+            "leaf tamper went unnoticed"
+        );
     }
 }

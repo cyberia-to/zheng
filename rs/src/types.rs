@@ -233,6 +233,9 @@ pub enum CommitError {
     TraceOverflow,
     /// Statement input_hash, output_hash, or focus_bound does not match the trace.
     StatementMismatch,
+    /// A look opening does not bind to the trace: namespace out of range, or a
+    /// value / point / commitment / root constraint is unsatisfied.
+    LookBinding,
     DecideFailed(DecideError),
 }
 
