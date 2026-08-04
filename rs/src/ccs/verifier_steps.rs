@@ -90,7 +90,7 @@ pub fn verifier_steps(
     steps
 }
 
-fn read_limb(bytes: &[u8], k: usize) -> Goldilocks {
+pub(crate) fn read_limb(bytes: &[u8], k: usize) -> Goldilocks {
     let mut buf = [0u8; 8];
     buf.copy_from_slice(&bytes[k * 8..k * 8 + 8]);
     Goldilocks::new(u64::from_le_bytes(buf))
