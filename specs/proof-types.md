@@ -6,7 +6,7 @@ alias: stark verification, nox starks, stark proofs, proof system, cyber proofs
 ---
 # proofs
 
-every action in [[cyber]] produces a [[stark]] proof. one proof system. one hash. one field. the table below catalogs every proof type the protocol generates.
+every action in [[cyber]] produces a [[zheng]] proof. one proof system. one hash. one field. the table below catalogs every proof type the protocol generates.
 
 ```
 PROOF TAXONOMY
@@ -56,14 +56,14 @@ location              │ RTT consistency            │ node is at claimed geoh
                       │ observer bootstrap         │ absolute coordinates from single origin  │ MDS + A1
 ```
 
-every proof in the table is a [[stark]]. no SNARKs, no trusted setup, no curves. one hash ([[Hemera]]), one VM ([[nox]]), one field ([[Goldilocks field]]).
+every proof in the table is a [[zheng]] proof. no SNARKs, no trusted setup, no curves. one hash ([[Hemera]]), one VM ([[nox]]), one field ([[Goldilocks field]]).
 
 ## the proof system
 
-[[cyber]] uses multilinear [[starks]] via the Whirlaway architecture: [[SuperSpartan]] IOP + [[Brakedown]] as the multilinear polynomial commitment scheme. no trusted setup, [[Hemera]]-only security (post-quantum), native [[Goldilocks field]] arithmetic.
+[[cyber]] uses [[zheng]], built on the Whirlaway architecture: [[SuperSpartan]] IOP + [[Brakedown]] as the multilinear polynomial commitment scheme. no trusted setup, [[Hemera]]-only security (post-quantum), native [[Goldilocks field]] arithmetic.
 
 ```
-Property          │ SNARK         │ stark (multilinear)
+Property          │ SNARK         │ zheng (multilinear)
 ──────────────────┼───────────────┼─────────────────────
 Trusted setup     │ Required      │ NOT REQUIRED
 Quantum resistant │ No            │ Yes
@@ -88,14 +88,14 @@ nox execution → trace (2ⁿ steps × registers)
 
 the [[nox]] VM's sixteen reduction patterns map to AIR transition constraints — each pattern becomes a polynomial equation relating register state before and after a reduction step. [[SuperSpartan]] handles AIR natively via CCS (Customizable Constraint Systems), with linear-time prover and logarithmic-time verifier.
 
-see [[zheng]] for the concrete implementation (AIR from nox, constraint budget, Hemera as stark hash, recursive composition, BBG integration). see [[stark]] for the general architecture (AIR, CCS, SuperSpartan, Whirlaway).
+see [[zheng]] for the concrete implementation (AIR from nox, constraint budget, Hemera as zheng hash, recursive composition, BBG integration). see [[stark]] for the general architecture (AIR, CCS, SuperSpartan, Whirlaway).
 
 ### self-verification
 
 ```
-THEOREM: The stark verifier for nox is expressible as a nox program.
+THEOREM: The zheng verifier for nox is expressible as a nox program.
 
-stark verification requires:
+zheng verification requires:
   1. Field arithmetic (patterns 5, 7, 8)
   2. Hash computation (pattern 15)
   3. Sumcheck verification (patterns 5, 7, 9 — field ops only)
@@ -114,7 +114,7 @@ the system closes on itself. no trusted external verifier remains.
 ### verifier complexity
 
 ```
-stark VERIFIER COMPONENTS       │ Layer 1 only │ With Layer 3 jets
+zheng VERIFIER COMPONENTS       │ Layer 1 only │ With Layer 3 jets
 ────────────────────────────────┼──────────────┼──────────────────
 1. Parse proof                  │     ~1,000   │    ~1,000
 2. Fiat-Shamir challenges       │    ~30,000   │    ~5,000  (hash jet)
@@ -149,7 +149,7 @@ a [[neuron]] proves itself by demonstrating knowledge of a secret that hashes to
 
 ```
 neuron_secret → Hemera(neuron_secret) = neuron_address
-auth = stark_proof(∃ x : Hemera(x) = neuron_address)
+auth = zheng_proof(∃ x : Hemera(x) = neuron_address)
 ```
 
 the preimage proof costs ~736 constraints. the full lock script verification (with [[nox]] jets) costs ~70,000 constraints. programmable lock scripts extend this to multisig, timelocks, delegation, and recovery — all via the same mechanism.
@@ -169,15 +169,15 @@ the graph sees edges and weights. the graph does not see authors. see [[cyber/id
 
 ## delivery proofs
 
-[[cyber/communication]] uses chained stark proofs for proof of delivery. each relay hop produces a proof attesting correct forwarding. proofs compose recursively:
+[[cyber/communication]] uses chained [[zheng]] proofs for proof of delivery. each relay hop produces a proof attesting correct forwarding. proofs compose recursively:
 
 ```
-π₁ = stark(R₁ received blob, peeled layer, forwarded to R₂)
-π₂ = stark(R₂ received blob, peeled layer, forwarded to R₃)
-π₃ = stark(R₃ received blob, peeled layer, forwarded to B)
-π_B = stark(B received blob, decrypted plaintext, MAC verified)
+π₁ = zheng(R₁ received blob, peeled layer, forwarded to R₂)
+π₂ = zheng(R₂ received blob, peeled layer, forwarded to R₃)
+π₃ = zheng(R₃ received blob, peeled layer, forwarded to B)
+π_B = zheng(B received blob, decrypted plaintext, MAC verified)
 
-π_chain = stark(verify(π₁) ∧ verify(π₂) ∧ verify(π₃) ∧ verify(π_B))
+π_chain = zheng(verify(π₁) ∧ verify(π₂) ∧ verify(π₃) ∧ verify(π_B))
 ```
 
 one proof (~100-200 KB) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
@@ -186,7 +186,7 @@ relays earn [[focus]] for proven delivery. no proof, no payment.
 
 ## execution proofs
 
-every [[nox]] program produces a stark proof of correct execution. this generalizes to:
+every [[nox]] program produces a [[zheng]] proof of correct execution. this generalizes to:
 
 | proof type | what runs | where used |
 |---|---|---|
@@ -197,7 +197,7 @@ every [[nox]] program produces a stark proof of correct execution. this generali
 | equivalence | two programs on all inputs | formal verification via [[nox]] |
 | termination | bounded step count | resource metering, DoS prevention |
 
-[[trident]] extends this to AI: a stark proof that a neural network inference was computed correctly. the verifier checks the proof without re-running the network. this enables verifiable AI at scale — trustless inference, auditable models, provable predictions.
+[[trident]] extends this to AI: a [[zheng]] proof that a neural network inference was computed correctly. the verifier checks the proof without re-running the network. this enables verifiable AI at scale — trustless inference, auditable models, provable predictions.
 
 ## data structure proofs
 
@@ -213,7 +213,7 @@ state root update            │ ~9,600       │ ~1,000
 completeness (nothing hidden)│ impossible   │ ~10,000
 ```
 
-polynomial commitments use [[Brakedown]] as a multilinear PCS. Brakedown proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[stark|multilinear stark]] pipeline itself.
+polynomial commitments use [[Brakedown]] as a multilinear PCS. Brakedown proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[zheng]] pipeline itself.
 
 ## storage and availability proofs
 
@@ -281,9 +281,9 @@ see [[storage proofs]] for the full specification, [[radio]] for the transport l
 |---|---|---|---|
 | [[proof of work]] | computational effort expended | high | honest majority (51%) |
 | [[proof of stake]] | economic commitment at risk | low | honest majority (67%) |
-| stark execution proof | computation ran correctly | minimal | hash collision resistance |
+| zheng execution proof | computation ran correctly | minimal | hash collision resistance |
 
-[[cyber]] layers stark execution proofs on top of [[proof of stake]] consensus. validators produce blocks (PoS), and every state transition within those blocks carries a stark proof of correct execution. the combination: economic security from stake, computational integrity from proofs.
+[[cyber]] layers [[zheng]] execution proofs on top of [[proof of stake]] consensus. validators produce blocks (PoS), and every state transition within those blocks carries a [[zheng]] proof of correct execution. the combination: economic security from stake, computational integrity from proofs.
 
 ## epistemological proofs
 
@@ -348,6 +348,6 @@ see [[proof_of_location]] for the full specification.
 └─────────────────────────────────────────────────────────┘
 ```
 
-one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit trace via [[Brakedown]], verify constraints via [[sumcheck]], produce a [[stark]].
+one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit trace via [[Brakedown]], verify constraints via [[sumcheck]], produce a [[zheng]] proof.
 
 see [[cyber/identity]] for authentication and anonymity, [[cyber/communication]] for delivery proofs, [[proof_of_location]] for anchor-free geolocation, [[BBG]] for polynomial commitment architecture, [[trident]] for verifiable AI, [[cybics]] for proof by simulation, [[cyber/security]] for formal guarantees

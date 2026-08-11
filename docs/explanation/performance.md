@@ -88,18 +88,18 @@ jets, the hemera sponge must be decomposed into individual field
 operations, inflating the circuit to 600,000 constraints. jets provide
 an 8.5x reduction.
 
-## hemera as the stark hash
+## hemera as the zheng hash
 
-every hash operation inside a stark — Fiat-Shamir challenges, commitments in Brakedown, commitment randomness — uses [[hemera]]. the choice of hash is the single largest factor in stark performance.
+every hash operation inside a [[zheng]] proof — Fiat-Shamir challenges, commitments in Brakedown, commitment randomness — uses [[hemera]]. the choice of hash is the single largest factor in zheng performance.
 
-| hash | constraints per call | stark overhead |
+| hash | constraints per call | proof overhead |
 |---|---|---|
 | SHA-256 | ~25,000 | baseline |
 | Keccak-256 | ~150,000 | 6× worse |
 | Poseidon (original) | ~4,000 | 6× cheaper |
 | hemera (Poseidon2) | ~736 | 34× cheaper |
 
-hemera's ~736 constraints per hash means Merkle verification at depth 32 costs ~23,552 constraints instead of ~800,000 with SHA-256. this 34× reduction is what makes recursive stark composition practical at 70,000 total constraints.
+hemera's ~736 constraints per hash means Merkle verification at depth 32 costs ~23,552 constraints instead of ~800,000 with SHA-256. this 34× reduction is what makes recursive proof composition practical at 70,000 total constraints.
 
 the hash is also the field: hemera operates natively on [[Goldilocks]] field elements. no bit-packing, no field conversion, no endianness gymnastics. eight elements in, eight elements out. the output is directly usable in polynomial commitments, constraint evaluations, and [[nox]] arithmetic.
 

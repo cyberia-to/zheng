@@ -37,7 +37,7 @@ Brakedown proof          polynomial commitment + evaluation proof (~1-5 KiB)
     ↓ fold
 accumulator              running HyperNova claim (~200 bytes)
     ↓ decide
-final proof              one STARK proof verifiable in 10-50 μs
+final proof              one zheng proof verifiable in 10-50 μs
 ```
 
 ## 2. Execution Trace

@@ -1,6 +1,6 @@
 # BBG integration
 
-the [[BBG]] (the authenticated state structure for [[cyber]]) uses Brakedown-based polynomial commitments for all indexes. the same Brakedown instance that serves as the stark lens also handles state operations — one polynomial commitment scheme (PCS) for proofs and state.
+the [[BBG]] (the authenticated state structure for [[cyber]]) uses Brakedown-based polynomial commitments for all indexes. the same Brakedown instance that serves as the [[zheng]] lens also handles state operations — one polynomial commitment scheme (PCS) for proofs and state.
 
 ## shared primitives
 

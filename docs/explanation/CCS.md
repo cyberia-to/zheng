@@ -29,6 +29,6 @@ CCS represents high-degree constraints natively. pattern 15 (hash, degree 7) cos
 
 ## CCS and folding
 
-[[HyperNova]] folding operates over CCS instances. since CCS already powers [[SuperSpartan]], the folding scheme and the [[stark]] system share the same constraint language. fold a [[cyberlink]] insertion proof? same CCS instance type. fold a rank update? same CCS. fold a cross-shard merge? same CCS. one framework for every proof in the [[zheng]] taxonomy.
+[[HyperNova]] folding operates over CCS instances. since CCS already powers [[SuperSpartan]], the folding scheme and the [[zheng]] proof system share the same constraint language. fold a [[cyberlink]] insertion proof? same CCS instance type. fold a rank update? same CCS. fold a cross-shard merge? same CCS. one framework for every proof in the [[zheng]] taxonomy.
 
 see [[zheng]] for the proof system, [[SuperSpartan]] for the IOP, [[stark]] for the general theory

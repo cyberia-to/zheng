@@ -37,7 +37,7 @@ both compress to the same verification cost at the next recursion level.
 
 ## self-verification theorem
 
-the stark verifier requires four operations. all are [[nox]]-native:
+the zheng verifier requires four operations. all are [[nox]]-native:
 
 | verifier operation | nox patterns used | why it works |
 |---|---|---|
@@ -142,7 +142,7 @@ epoch starts with state commitment S₀
 
   block E: last block of epoch
     acc_E = fold(acc_{E-1}, block_E_insertions)
-    π_epoch = stark(decider(acc_E))    ← one proof, ~70K constraints
+    π_epoch = zheng(decider(acc_E))    ← one proof, ~70K constraints
 
 S₁ = apply(S₀, π_epoch)  — state transition is one proof verification
 ```
