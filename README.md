@@ -2,6 +2,8 @@ the proof system for [[cyber]]. implements the Whirlaway architecture: [[SuperSp
 
 zheng (証 — proof/evidence in Japanese) provides the cryptographic machinery that turns [[nox]] execution traces into compact, verifiable proofs. one commitment, one opening, one proof.
 
+**φ* SpMV** (`rs/src/phi/`): multi-row CCS for sparse matvec + tri-kernel `prove_phi_star` / `verify_phi_star` — the domain-local core of provable consensus (see `specs/phi-spmv.md`).
+
 ```
 COMPONENT         │ ROLE                           │ INSTANCE
 ──────────────────┼────────────────────────────────┼─────────────────────

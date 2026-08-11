@@ -22,6 +22,7 @@ five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 - [[constraints]] — CCS format, pattern table, state operations
 - [[transcript]] — Fiat-Shamir via hemera (~3 calls)
 - [[api]] — commit/open/verify/fold/decide entry points
+- [[phi-spmv]] — φ* SpMV circuit: multi-row CCS SpMV + tri-kernel prove_phi_star
 
 ## architecture
 

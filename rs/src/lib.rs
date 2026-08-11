@@ -10,24 +10,28 @@
 //! `fold` requires a caller-managed `&mut Transcript` shared across all fold
 //! calls within one CCS group — see its doc comment for the contract.
 
+pub mod ccs;
+pub mod folding;
+pub mod multilinear;
+pub mod phi;
+pub mod spartan;
+pub mod sumcheck;
 pub mod transcript;
 pub mod types;
-pub mod multilinear;
-pub mod sumcheck;
-pub mod ccs;
-pub mod spartan;
-pub mod folding;
 
+pub use crate::ccs::{
+    AxisOpening, HashAux, LookOpening, RootLeaves, build_axis_transcript_steps,
+    build_look_transcript_steps, look_openings_from_provider, root_from_leaves, standalone_root,
+};
+pub use phi::{
+    PhiError, PhiProof, PhiStatement, SparseGraph, SpmvError, SpmvProof, SpmvStatement,
+    TriKernelParams, prove_phi_star, prove_spmv, spmv_native, verify_phi_star, verify_spmv,
+};
 pub use transcript::Transcript;
 pub use types::{
-    Accumulator, CCSInstance, CCSWitness, CommitError, DecideError, FoldError,
-    LensBackend, OpenError, Proof, ProofParams, SecurityLevel, SparseMatrix,
-    Statement, SumcheckPoly, TraceProof, VerifyError,
-};
-pub use crate::ccs::{
-    build_axis_transcript_steps, build_look_transcript_steps,
-    look_openings_from_provider, root_from_leaves, standalone_root, AxisOpening, HashAux,
-    LookOpening, RootLeaves,
+    Accumulator, CCSInstance, CCSWitness, CommitError, DecideError, FoldError, LensBackend,
+    OpenError, Proof, ProofParams, SecurityLevel, SparseMatrix, Statement, SumcheckPoly,
+    TraceProof, VerifyError,
 };
 
 use nebu::Goldilocks;
@@ -37,8 +41,8 @@ use lens::brakedown::Brakedown;
 use lens::{Commitment, Lens, MultilinearPoly, Opening};
 
 use crate::ccs::{
-    build_axis_steps_from_trace, build_ccs_from_trace,
-    build_hash_steps_from_trace, build_look_steps_from_trace,
+    build_axis_steps_from_trace, build_ccs_from_trace, build_hash_steps_from_trace,
+    build_look_steps_from_trace,
 };
 use crate::folding::{decide as run_decide, fold_step};
 use crate::spartan::verifier::SpartanVerifier;
@@ -91,22 +95,24 @@ pub fn commit(
     }
     if statement.input_hash != [0u8; 32]
         && let Some(first) = trace.0.first()
-            && hash_row(first) != statement.input_hash {
-                return Err(CommitError::StatementMismatch);
-            }
+        && hash_row(first) != statement.input_hash
+    {
+        return Err(CommitError::StatementMismatch);
+    }
     if statement.output_hash != [0u8; 32]
         && let Some(last) = trace.0.last()
-            && hash_row(last) != statement.output_hash {
-                return Err(CommitError::StatementMismatch);
-            }
+        && hash_row(last) != statement.output_hash
+    {
+        return Err(CommitError::StatementMismatch);
+    }
 
     // Build all step sequences and chain them.
-    let main_steps          = build_ccs_from_trace(&trace.0);
-    let hash_steps          = build_hash_steps_from_trace(&trace.0, hash_aux)?;
-    let axis_steps          = build_axis_steps_from_trace(&trace.0, axis_openings)?;
-    let axis_transcript     = build_axis_transcript_steps(&trace.0, axis_openings)?;
-    let look_steps          = build_look_steps_from_trace(&trace.0, look_openings)?;
-    let look_transcript     = build_look_transcript_steps(&trace.0, look_openings)?;
+    let main_steps = build_ccs_from_trace(&trace.0);
+    let hash_steps = build_hash_steps_from_trace(&trace.0, hash_aux)?;
+    let axis_steps = build_axis_steps_from_trace(&trace.0, axis_openings)?;
+    let axis_transcript = build_axis_transcript_steps(&trace.0, axis_openings)?;
+    let look_steps = build_look_steps_from_trace(&trace.0, look_openings)?;
+    let look_transcript = build_look_transcript_steps(&trace.0, look_openings)?;
 
     let all_steps: Vec<(CCSInstance, CCSWitness)> = main_steps
         .into_iter()
@@ -139,8 +145,8 @@ pub fn commit(
         if !same {
             // Finalize previous group.
             if let Some(acc) = cur_acc.take() {
-                let proof = run_decide(&acc, statement, params)
-                    .map_err(CommitError::DecideFailed)?;
+                let proof =
+                    run_decide(&acc, statement, params).map_err(CommitError::DecideFailed)?;
                 groups.push((proof, acc));
             }
             cur_instance = Some(instance.clone());
@@ -148,14 +154,18 @@ pub fn commit(
             cur_transcript = Transcript::new();
         }
 
-        fold_step(cur_acc.as_mut().unwrap(), instance, witness, &mut cur_transcript)
-            .map_err(|_| CommitError::TraceOverflow)?;
+        fold_step(
+            cur_acc.as_mut().unwrap(),
+            instance,
+            witness,
+            &mut cur_transcript,
+        )
+        .map_err(|_| CommitError::TraceOverflow)?;
     }
 
     // Finalize last group.
     if let Some(acc) = cur_acc.take() {
-        let proof = run_decide(&acc, statement, params)
-            .map_err(CommitError::DecideFailed)?;
+        let proof = run_decide(&acc, statement, params).map_err(CommitError::DecideFailed)?;
         groups.push((proof, acc));
     }
 
@@ -270,17 +280,17 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nox::{NullCalls, Reduction, VecTrace};
     use lens::brakedown::Brakedown;
     use lens::{Lens, MultilinearPoly, Transcript as LensTranscript};
+    use nox::{NullCalls, Reduction, VecTrace};
 
     fn malformed_trace() -> VecTrace {
         // Two rows with tag=255 (unknown) → trivial_ccs (no constraints).
         // Used to test the full commit→verify pipeline without constraint logic.
         let mut order = Reduction::<1024>::new();
-        let obj     = order.atom(Goldilocks::new(0)).unwrap();
+        let obj = order.atom(Goldilocks::new(0)).unwrap();
         let tag_255 = order.atom(Goldilocks::new(255)).unwrap();
-        let body    = order.atom(Goldilocks::new(0)).unwrap();
+        let body = order.atom(Goldilocks::new(0)).unwrap();
         let formula = order.pair(tag_255, body).unwrap();
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
@@ -289,7 +299,12 @@ mod tests {
     }
 
     fn zero_statement() -> Statement {
-        Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0 }
+        Statement {
+            program_hash: [0u8; 32],
+            input_hash: [0u8; 32],
+            output_hash: [0u8; 32],
+            focus_bound: 0,
+        }
     }
 
     #[test]
@@ -307,24 +322,28 @@ mod tests {
         use crate::ccs::{CONST_IDX, Z_LEN};
         let mut z = vec![Goldilocks::ZERO; Z_LEN];
         z[CONST_IDX] = Goldilocks::ONE;
-        for &(idx, v) in vals { z[idx] = Goldilocks::new(v); }
+        for &(idx, v) in vals {
+            z[idx] = Goldilocks::new(v);
+        }
         CCSWitness { z }
     }
 
     #[test]
     fn fold_add_multi_step_commit_verify() {
-        use crate::ccs::{reg_t, reg_t1};
         use crate::ccs::patterns::build_step_ccs;
-        use crate::folding::fold::fold_step;
+        use crate::ccs::{reg_t, reg_t1};
         use crate::folding::decide::decide as run_decide;
+        use crate::folding::fold::fold_step;
 
         let instance = build_step_ccs(5); // add: r5_{t+1} - r3_t - r4_t = 0
         let witnesses = [
-            make_z_33(&[(reg_t(3), 3), (reg_t(4), 4),  (reg_t1(5), 7)]),
-            make_z_33(&[(reg_t(3), 10),(reg_t(4), 20), (reg_t1(5), 30)]),
-            make_z_33(&[(reg_t(3), 1), (reg_t(4), 1),  (reg_t1(5), 2)]),
+            make_z_33(&[(reg_t(3), 3), (reg_t(4), 4), (reg_t1(5), 7)]),
+            make_z_33(&[(reg_t(3), 10), (reg_t(4), 20), (reg_t1(5), 30)]),
+            make_z_33(&[(reg_t(3), 1), (reg_t(4), 1), (reg_t1(5), 2)]),
         ];
-        for w in &witnesses { assert!(instance.is_satisfied_by(w)); }
+        for w in &witnesses {
+            assert!(instance.is_satisfied_by(w));
+        }
 
         let mut acc = blank_acc(&instance);
         let mut transcript = Transcript::new();
@@ -336,24 +355,28 @@ mod tests {
 
         let stmt = zero_statement();
         let proof = run_decide(&acc, &stmt, &ProofParams::default()).unwrap();
-        let trace_proof = TraceProof { groups: vec![(proof, acc)] };
+        let trace_proof = TraceProof {
+            groups: vec![(proof, acc)],
+        };
         assert!(verify(&trace_proof, &stmt, &ProofParams::default()).is_ok());
     }
 
     #[test]
     fn fold_mul_multi_step_commit_verify() {
-        use crate::ccs::{reg_t, reg_t1};
         use crate::ccs::patterns::build_step_ccs;
-        use crate::folding::fold::fold_step;
+        use crate::ccs::{reg_t, reg_t1};
         use crate::folding::decide::decide as run_decide;
+        use crate::folding::fold::fold_step;
 
         let instance = build_step_ccs(7); // mul: r5_{t+1} - r3_t * r4_t = 0
         let witnesses = [
-            make_z_33(&[(reg_t(3), 6), (reg_t(4), 7),  (reg_t1(5), 42)]),
-            make_z_33(&[(reg_t(3), 2), (reg_t(4), 5),  (reg_t1(5), 10)]),
-            make_z_33(&[(reg_t(3), 3), (reg_t(4), 3),  (reg_t1(5), 9)]),
+            make_z_33(&[(reg_t(3), 6), (reg_t(4), 7), (reg_t1(5), 42)]),
+            make_z_33(&[(reg_t(3), 2), (reg_t(4), 5), (reg_t1(5), 10)]),
+            make_z_33(&[(reg_t(3), 3), (reg_t(4), 3), (reg_t1(5), 9)]),
         ];
-        for w in &witnesses { assert!(instance.is_satisfied_by(w)); }
+        for w in &witnesses {
+            assert!(instance.is_satisfied_by(w));
+        }
 
         let mut acc = blank_acc(&instance);
         let mut transcript = Transcript::new();
@@ -366,7 +389,9 @@ mod tests {
 
         let stmt = zero_statement();
         let proof = run_decide(&acc, &stmt, &ProofParams::default()).unwrap();
-        let trace_proof = TraceProof { groups: vec![(proof, acc)] };
+        let trace_proof = TraceProof {
+            groups: vec![(proof, acc)],
+        };
         assert!(verify(&trace_proof, &stmt, &ProofParams::default()).is_ok());
     }
 
@@ -470,7 +495,13 @@ mod tests {
             let mut lt = LensTranscript::new(b"e2e-axis-open");
             Brakedown::open(&poly, &point, &mut lt)
         };
-        AxisOpening { commitment, point, value, opening, transcript_seed: b"e2e-axis-open".to_vec() }
+        AxisOpening {
+            commitment,
+            point,
+            value,
+            opening,
+            transcript_seed: b"e2e-axis-open".to_vec(),
+        }
     }
 
     /// E2E: trace with Poseidon2 hash operation → hash_aux drives particle CCS.
@@ -483,10 +514,10 @@ mod tests {
     fn e2e_hash_accumulator_roundtrip() {
         let mut order = Reduction::<1024>::new();
         let s = order.atom(Goldilocks::new(42)).unwrap();
-        let tag1  = order.atom(Goldilocks::new(1)).unwrap();
+        let tag1 = order.atom(Goldilocks::new(1)).unwrap();
         let tag15 = order.atom(Goldilocks::new(15)).unwrap();
         let quote_f = order.pair(tag1, s).unwrap();
-        let hash_f  = order.pair(tag15, quote_f).unwrap();
+        let hash_f = order.pair(tag15, quote_f).unwrap();
 
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, s, hash_f, 100, &NullCalls, &mut trace);
@@ -496,8 +527,14 @@ mod tests {
         // Rate = structural digest of s (4 Goldilocks elements), zero-padded to 8.
         let in_digest = *order.digest(s).unwrap();
         let rate = [
-            in_digest[0], in_digest[1], in_digest[2], in_digest[3],
-            Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO,
+            in_digest[0],
+            in_digest[1],
+            in_digest[2],
+            in_digest[3],
+            Goldilocks::ZERO,
+            Goldilocks::ZERO,
+            Goldilocks::ZERO,
+            Goldilocks::ZERO,
         ];
         let hash_aux = HashAux { rate };
 
@@ -522,7 +559,7 @@ mod tests {
 
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);
-        nox::reduce(&mut order, s, axis_f,  99, &NullCalls, &mut trace);
+        nox::reduce(&mut order, s, axis_f, 99, &NullCalls, &mut trace);
         // Two axis rows; consecutive pair satisfies pattern_axis budget-decrement constraint.
         assert_eq!(trace.0.len(), 2);
 
@@ -531,7 +568,7 @@ mod tests {
         let ao2 = make_axis_opening();
 
         // Statement binding: real hashes from first and last trace rows.
-        let input_hash  = super::hash_row(&trace.0[0]);
+        let input_hash = super::hash_row(&trace.0[0]);
         let output_hash = super::hash_row(&trace.0[trace.0.len() - 1]);
         let stmt = Statement {
             program_hash: [0u8; 32],
@@ -550,14 +587,14 @@ mod tests {
     #[test]
     fn e2e_statement_binding_rejects_wrong_input_hash() {
         let mut order = Reduction::<1024>::new();
-        let s    = order.atom(Goldilocks::new(7)).unwrap();
+        let s = order.atom(Goldilocks::new(7)).unwrap();
         let tag0 = order.atom(Goldilocks::new(0)).unwrap();
         let addr = order.atom(Goldilocks::new(1)).unwrap();
         let axis_f = order.pair(tag0, addr).unwrap();
 
         let mut trace = VecTrace::default();
         nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);
-        nox::reduce(&mut order, s, axis_f,  99, &NullCalls, &mut trace);
+        nox::reduce(&mut order, s, axis_f, 99, &NullCalls, &mut trace);
 
         let mut wrong_hash = [0u8; 32];
         wrong_hash[0] = 0xff;
@@ -569,19 +606,26 @@ mod tests {
             focus_bound: 0,
         };
         let params = ProofParams::default();
-        let err = commit(&trace, &[], &[make_axis_opening(), make_axis_opening()], &[], &stmt, &params);
+        let err = commit(
+            &trace,
+            &[],
+            &[make_axis_opening(), make_axis_opening()],
+            &[],
+            &stmt,
+            &params,
+        );
         assert!(matches!(err, Err(CommitError::StatementMismatch)));
     }
 
     /// E2E: commit() rejects when trace length exceeds statement focus_bound.
     #[test]
     fn e2e_statement_binding_rejects_focus_exceeded() {
-        let trace = malformed_trace();   // 2 rows
+        let trace = malformed_trace(); // 2 rows
         let stmt = Statement {
             program_hash: [0u8; 32],
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
-            focus_bound: 1,              // trace has 2 rows > 1
+            focus_bound: 1, // trace has 2 rows > 1
         };
         let params = ProofParams::default();
         let err = commit(&trace, &[], &[], &[], &stmt, &params);
