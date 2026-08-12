@@ -16,8 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 zheng = { path = "../rs" }
-nox = { path = "../../nox/rs", features = ["brakedown"] }
-nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
+nox = { package = "cyber-nox", path = "../../nox/rs", features = ["brakedown"] }
+nebu = { package = "strata-nebu", path = "../../strata/nebu/rs" }
 hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
-lens = { package = "cyber-lens", path = "../../lens/src" }
-tape = { path = "../../tape/impl/rust" }
+lens = { package = "cyb-lens", path = "../../lens/src" }
+tape = { package = "cyber-tape", path = "../../tape/impl/rust" }

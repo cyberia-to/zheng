@@ -1,17 +1,15 @@
-# ---
-# tags: zheng, config
-# crystal-type: source
-# crystal-domain: comp
-# ---
 [package]
 name = "zheng"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "proof system: SuperSpartan IOP + Brakedown PCS + sumcheck"
-license = "Cyber"
+license-file = "LICENSE"
+repository = "https://github.com/cyberia-to/zheng"
+keywords = ["zk", "sumcheck", "brakedown", "cyber"]
+categories = ["cryptography"]
 
 [dependencies]
-nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
-hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
-nox = { path = "../../nox/rs", features = ["brakedown"] }
-lens = { package = "cyber-lens", path = "../../lens/src" }
+nebu = { package = "strata-nebu", version = "0.1", path = "../../strata/nebu/rs" }
+hemera = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
+nox = { package = "cyber-nox", version = "0.1", path = "../../nox/rs", features = ["brakedown"] }
+lens = { package = "cyb-lens", version = "0.1", path = "../../lens/src" }

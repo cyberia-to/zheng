@@ -9,112 +9,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
-name = "cyb-genies"
-version = "0.1.0"
-dependencies = [
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-jali"
-version = "0.1.0"
-dependencies = [
- "cyb-nebu",
- "strata-core",
-]
-
-[[package]]
-name = "cyb-kuro"
-version = "0.1.0"
-dependencies = [
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-lens-assayer"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
- "cyb-trop",
-]
-
-[[package]]
-name = "cyb-lens-binius"
-version = "0.1.0"
-dependencies = [
- "cyb-kuro",
- "cyb-lens-core",
- "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-lens-brakedown"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-core",
- "cyb-nebu",
- "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-lens-core"
-version = "0.1.0"
-dependencies = [
- "cyb-nebu",
- "cyber-hemera",
- "strata-core",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-lens-ikat"
-version = "0.1.0"
-dependencies = [
- "cyb-jali",
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
-]
-
-[[package]]
-name = "cyb-lens-porphyry"
-version = "0.1.0"
-dependencies = [
- "cyb-genies",
- "cyb-lens-core",
- "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-nebu"
-version = "0.1.0"
-dependencies = [
- "strata-compute",
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-trop"
-version = "0.1.0"
-dependencies = [
- "strata-core",
-]
-
-[[package]]
-name = "cyber-hemera"
-version = "0.3.0"
-
-[[package]]
-name = "cyber-lens"
-version = "0.1.0"
+name = "cyb-lens"
+version = "0.1.1"
 dependencies = [
  "cyb-lens-assayer",
  "cyb-lens-binius",
@@ -125,13 +21,81 @@ dependencies = [
 ]
 
 [[package]]
-name = "nox"
-version = "0.1.0"
+name = "cyb-lens-assayer"
+version = "0.1.1"
 dependencies = [
  "cyb-lens-brakedown",
  "cyb-lens-core",
- "cyb-nebu",
+ "strata-nebu",
+ "strata-trop",
+]
+
+[[package]]
+name = "cyb-lens-binius"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-core",
  "cyber-hemera",
+ "strata-kuro",
+]
+
+[[package]]
+name = "cyb-lens-brakedown"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-nebu",
+]
+
+[[package]]
+name = "cyb-lens-core"
+version = "0.1.1"
+dependencies = [
+ "cyber-hemera",
+ "strata-core",
+ "strata-nebu",
+ "strata-proof",
+]
+
+[[package]]
+name = "cyb-lens-ikat"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "strata-jali",
+ "strata-nebu",
+]
+
+[[package]]
+name = "cyb-lens-porphyry"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-genies",
+]
+
+[[package]]
+name = "cyber-hemera"
+version = "0.3.0"
+
+[[package]]
+name = "cyber-nox"
+version = "0.1.1"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyber-hemera",
+ "strata-nebu",
+]
+
+[[package]]
+name = "cyber-tape"
+version = "0.1.0"
+dependencies = [
+ "bytes",
 ]
 
 [[package]]
@@ -153,6 +117,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-genies"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "strata-jali"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-nebu",
+]
+
+[[package]]
+name = "strata-kuro"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "strata-nebu"
+version = "0.1.0"
+dependencies = [
+ "strata-compute",
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
 name = "strata-proof"
 version = "0.1.0"
 dependencies = [
@@ -160,30 +160,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "tape"
+name = "strata-trop"
 version = "0.1.0"
 dependencies = [
- "bytes",
+ "strata-core",
 ]
 
 [[package]]
 name = "zheng"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "cyb-nebu",
+ "cyb-lens",
  "cyber-hemera",
- "cyber-lens",
- "nox",
+ "cyber-nox",
+ "strata-nebu",
 ]
 
 [[package]]
 name = "zheng-cli"
 version = "0.1.0"
 dependencies = [
- "cyb-nebu",
+ "cyb-lens",
  "cyber-hemera",
- "cyber-lens",
- "nox",
- "tape",
+ "cyber-nox",
+ "cyber-tape",
+ "strata-nebu",
  "zheng",
 ]
