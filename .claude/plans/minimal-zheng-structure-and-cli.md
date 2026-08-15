@@ -60,14 +60,14 @@ zheng/
 2. **move library:** `git mv src rs/src`, `git mv Cargo.toml rs/Cargo.toml`.
    keep package name `zheng`, version `0.1.0`, `license = "Cyber"`.
 3. **fix path deps in `rs/Cargo.toml`** — one level deeper (`../` → `../../`):
-   - `nebu`   → `path = "../../strata/nebu/rs"`  (package `cyb-nebu`)
+   - `nebu`   → `path = "../../strata/nebu/rs"`  (package `strata-nebu`)
    - `hemera` → `path = "../../hemera/rs"`        (package `cyber-hemera`)
    - `nox`    → `path = "../../nox/rs"` (features `["brakedown"]`)
    - `lens`   → `path = "../../lens/src"`         (package `cyber-lens`)
 4. **create `cli/` crate** — see part 2 for contents. package `zheng-cli`,
    `[[bin]] name = "zheng"`, `path = "src/main.rs"`; depends on
    `zheng = { path = "../rs" }`, `nox = { path = "../../nox/rs", features = ["brakedown"] }`,
-   `nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }`.
+   `nebu = { package = "strata-nebu", path = "../../strata/nebu/rs" }`.
 5. **add `LICENSE.md`** — link to canonical Cyber license source (per CLAUDE.md
    repo-layout spec; manifests keep the short `license = "Cyber"` field, matching nox).
 6. **add `CHANGELOG.md`** — seed with `0.1.0` (SuperSpartan + Brakedown + sumcheck

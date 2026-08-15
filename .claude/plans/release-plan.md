@@ -34,7 +34,7 @@ src/
 ### phase 0: cargo + types (1 session)
 
 fix `Cargo.toml`:
-- `nebu = { path = "../strata/nebu/rs", package = "cyb-nebu" }`
+- `nebu = { path = "../strata/nebu/rs", package = "strata-nebu" }`
 - `lens = { path = "../lens/src", package = "cyber-lens" }`
 - `hemera = { package = "cyber-hemera", version = "0.2" }`
 - `nox = { path = "../nox/rs" }`
