@@ -109,8 +109,13 @@ pub fn eval_poly(coeffs: &[Goldilocks], x: Goldilocks) -> Goldilocks {
 }
 
 /// Zero-pad a table to the next power of 2 ≥ target, filling with Goldilocks::ZERO.
-pub fn pad_to_power_of_two(table: &mut Vec<Goldilocks>, target: usize) {
-    let n = target.next_power_of_two().max(1);
+/// Grow `table` to a power-of-two length of at least `floor`, zero-filled.
+/// `floor` is a floor, never a cap: a table already longer keeps (and
+/// rounds up) its own length. Truncating here once silently cut every
+/// witness wider than 64 columns and broke verification for any CCS with
+/// more than 32 SpMV rows.
+pub fn pad_to_power_of_two(table: &mut Vec<Goldilocks>, floor: usize) {
+    let n = table.len().max(floor).next_power_of_two().max(1);
     table.resize(n, Goldilocks::ZERO);
 }
 

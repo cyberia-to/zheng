@@ -306,6 +306,39 @@ mod tests {
         assert!(!is_satisfied(&ccs, &w_bad));
     }
 
+    /// Regression: rings big enough to push the inner sumcheck past the
+    /// 64-element floor (z no longer padded UP to 64). Diagnoses which
+    /// verifier stage rejects.
+    #[test]
+    fn prove_verify_spmv_large() {
+        for n in [32usize, 64, 128, 300] {
+            let mut graph = SparseGraph::empty(n);
+            for i in 0..n {
+                graph.add(i, (i + 1) % n, g((i as u64) * 7 + 3));
+            }
+            let x: Vec<Goldilocks> = (0..n).map(|i| g(i as u64 + 5)).collect();
+            let y = spmv_native(&graph, &x);
+            let proof = prove_spmv(&graph, &x, &y).unwrap();
+
+            // Mirror verify_spmv's tail so the exact error is visible.
+            let instance = spmv_ccs(&graph);
+            let witness = spmv_witness(&graph, &x, &y);
+            let mut acc = blank_acc(&instance);
+            let mut t = Transcript::new();
+            fold(&mut acc, &instance, &witness, &mut t).unwrap();
+            let zheng_stmt = proof.statement.to_zheng();
+            let mut vt = Transcript::new_recursive();
+            vt.absorb_statement(&zheng_stmt);
+            vt.absorb(acc.witness_commitment.as_bytes());
+            for &e in &acc.error_evals {
+                vt.absorb(&e.as_u64().to_le_bytes());
+            }
+            vt.absorb(&acc.step_count.to_le_bytes());
+            let r = SpartanVerifier::verify(&acc.committed_instance, &proof.proof, &acc.error_evals, &mut vt);
+            assert!(r.is_ok(), "n={n}: {r:?}");
+        }
+    }
+
     #[test]
     fn prove_verify_spmv() {
         let mut graph = SparseGraph::empty(4);
