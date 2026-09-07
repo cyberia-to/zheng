@@ -1,4 +1,5 @@
 ---
+alias: zheng vs starks
 title: "zheng: a self-proving proof system"
 tags: computer science, cryptography
 crystal-type: article
