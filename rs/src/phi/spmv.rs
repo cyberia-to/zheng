@@ -230,6 +230,7 @@ pub fn verify_spmv(
     }
     let mut vt = Transcript::new_recursive();
     vt.absorb_statement(&zheng_stmt);
+    vt.absorb_linkage(&crate::linkage_digest(&[&acc.witness_commitment]));
     vt.absorb(acc.witness_commitment.as_bytes());
     for &e in &acc.error_evals {
         vt.absorb(&e.as_u64().to_le_bytes());
@@ -333,6 +334,7 @@ mod tests {
             let zheng_stmt = proof.statement.to_zheng();
             let mut vt = Transcript::new_recursive();
             vt.absorb_statement(&zheng_stmt);
+            vt.absorb_linkage(&crate::linkage_digest(&[&acc.witness_commitment]));
             vt.absorb(acc.witness_commitment.as_bytes());
             for &e in &acc.error_evals {
                 vt.absorb(&e.as_u64().to_le_bytes());

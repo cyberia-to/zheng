@@ -26,6 +26,7 @@ const DOM_EVAL: &[u8]      = b"\x04eval";
 const DOM_PCS_OPEN: &[u8]  = b"\x05pcs-open";
 const DOM_RECURSE: &[u8]   = b"\x06recurse";
 const DOM_STATEMENT: &[u8] = b"\x07statement";
+const DOM_LINKAGE: &[u8]   = b"\x08linkage";
 
 // ── transcript ───────────────────────────────────────────────────
 
@@ -124,6 +125,17 @@ impl Transcript {
         self.absorb(&s.input_hash);
         self.absorb(&s.output_hash);
         self.absorb(&s.focus_bound.to_le_bytes());
+    }
+
+    /// Absorb the cross-group linkage digest (domain-separated).
+    ///
+    /// The digest commits to the witness commitments of every accumulator
+    /// group in a TraceProof, binding the groups to each other (option A
+    /// linkage of the axis design): a group spliced in from another proof
+    /// changes the digest and breaks every group's Fiat-Shamir chain.
+    pub fn absorb_linkage(&mut self, digest: &[u8; 32]) {
+        self.absorb(DOM_LINKAGE);
+        self.absorb(digest);
     }
 }
 

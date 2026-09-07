@@ -14,9 +14,15 @@ use crate::types::{Accumulator, DecideError, Proof, ProofParams, Statement};
 /// Produces a proof that the accumulated folded witness satisfies the
 /// accumulated CCS instance. This is the O(1)-cost step that converts
 /// N fold operations into one verifiable proof.
+///
+/// `linkage` is the cross-group digest binding all accumulator groups of
+/// one TraceProof together (option A of the axis design). The verifier
+/// recomputes it from the proof's groups and absorbs it at the same
+/// position; a group decided under a different digest fails verification.
 pub fn decide(
     acc: &Accumulator,
     statement: &Statement,
+    linkage: &[u8; 32],
     _params: &ProofParams,
 ) -> Result<Proof, DecideError> {
     if acc.step_count == 0 {
@@ -25,9 +31,10 @@ pub fn decide(
 
     let mut transcript = Transcript::new_recursive();
 
-    // Bind the proof to the statement and accumulator public data.
-    // Verifier must absorb in identical order.
+    // Bind the proof to the statement, the cross-group linkage, and the
+    // accumulator public data. Verifier must absorb in identical order.
     transcript.absorb_statement(statement);
+    transcript.absorb_linkage(linkage);
     transcript.absorb(acc.witness_commitment.as_bytes());
     for &e in &acc.error_evals {
         transcript.absorb(&e.as_u64().to_le_bytes());
@@ -79,7 +86,7 @@ mod tests {
         let instance = build_step_ccs(5);
         let acc = zero_accumulator(&instance);
         let stmt = Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0 };
-        assert!(decide(&acc, &stmt, &ProofParams::default()).is_err());
+        assert!(decide(&acc, &stmt, &[0u8; 32], &ProofParams::default()).is_err());
     }
 
     #[test]
@@ -96,11 +103,13 @@ mod tests {
             output_hash: [0u8; 32],
             focus_bound: 0,
         };
-        let proof = decide(&acc, &stmt, &ProofParams::default()).unwrap();
+        let linkage = [7u8; 32];
+        let proof = decide(&acc, &stmt, &linkage, &ProofParams::default()).unwrap();
 
         // Reconstruct the verifier transcript in identical order to decide().
         let mut vt = Transcript::new_recursive();
         vt.absorb_statement(&stmt);
+        vt.absorb_linkage(&linkage);
         vt.absorb(acc.witness_commitment.as_bytes());
         for &e in &acc.error_evals {
             vt.absorb(&e.as_u64().to_le_bytes());
