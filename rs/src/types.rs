@@ -83,6 +83,11 @@ pub struct Statement {
     pub output_hash: [u8; 32],
     /// maximum focus consumed by the execution.
     pub focus_bound: u64,
+    /// BBG state root read by look (pattern 17) rows: four little-endian
+    /// Goldilocks limbs, limb i at bytes [8i, 8i+8) — the packing of
+    /// `bbg::BbgState::root()` and [`crate::root_to_bytes`]. `[0u8; 32]`
+    /// is the "no state read" sentinel for programs without look rows.
+    pub bbg_root: [u8; 32],
 }
 
 // ── parameters ───────────────────────────────────────────────────

@@ -21,7 +21,8 @@ pub mod types;
 
 pub use crate::ccs::{
     AxisOpening, HashAux, LookOpening, RootLeaves, build_axis_transcript_steps,
-    build_look_transcript_steps, look_openings_from_provider, root_from_leaves, standalone_root,
+    build_look_transcript_steps, look_openings_from_provider, root_from_leaves, root_to_bytes,
+    standalone_root,
 };
 pub use phi::{
     PhiError, PhiProof, PhiStatement, SparseGraph, SpmvError, SpmvProof, SpmvStatement,
@@ -353,6 +354,7 @@ mod tests {
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 0,
+        bbg_root: [0u8; 32],
         }
     }
 
@@ -622,6 +624,7 @@ mod tests {
             input_hash,
             output_hash,
             focus_bound: 10,
+        bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
 
@@ -651,6 +654,7 @@ mod tests {
             input_hash: wrong_hash,
             output_hash: [0u8; 32],
             focus_bound: 0,
+        bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
         let err = commit(
@@ -673,6 +677,7 @@ mod tests {
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 1, // trace has 2 rows > 1
+            bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
         let err = commit(&trace, &[], &[], &[], &stmt, &params);

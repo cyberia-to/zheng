@@ -16,7 +16,7 @@ pub mod verifier_steps;
 pub use hash_binding::build_hash_binding_steps_from_trace;
 pub use particle::{build_hash_steps_from_trace, HashAux, Z_LEN_HASH};
 pub use patterns::build_step_ccs;
-pub use root::{build_root_steps, compress4, root_from_leaves, RootLeaves};
+pub use root::{build_root_steps, compress4, root_from_leaves, root_to_bytes, RootLeaves};
 pub use selector::constraint_eval;
 pub use transcript::build_transcript_steps;
 pub use verifier_steps::{eq_step, verifier_steps};

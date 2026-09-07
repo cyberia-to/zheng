@@ -85,7 +85,7 @@ mod tests {
     fn decide_empty_accumulator_errors() {
         let instance = build_step_ccs(5);
         let acc = zero_accumulator(&instance);
-        let stmt = Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0 };
+        let stmt = Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0, bbg_root: [0u8; 32] };
         assert!(decide(&acc, &stmt, &[0u8; 32], &ProofParams::default()).is_err());
     }
 
@@ -102,6 +102,7 @@ mod tests {
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 0,
+        bbg_root: [0u8; 32],
         };
         let linkage = [7u8; 32];
         let proof = decide(&acc, &stmt, &linkage, &ProofParams::default()).unwrap();
