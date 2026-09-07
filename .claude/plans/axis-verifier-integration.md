@@ -1,6 +1,6 @@
 # axis (pattern 0) + look (pattern 17): verifier_steps() integration
 
-## status: draft — awaiting user approval
+## status: approved 2026-09-07 — part of trident soft3-release M4
 
 ## context
 
