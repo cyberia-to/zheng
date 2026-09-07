@@ -13,3 +13,13 @@ nebu = { package = "strata-nebu", version = "0.1", path = "../../strata/nebu/rs"
 hemera = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
 nox = { package = "cyber-nox", version = "0.1", path = "../../nox/rs", features = ["brakedown"] }
 lens = { package = "cyber-lens", version = "0.1.1", path = "../../lens/src" }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+# proof artifact wire form: Statement + TraceProof (and everything inside)
+# Serialize/Deserialize; Goldilocks rides nebu's canonical-u64 form,
+# Commitment/Opening ride lens's existing serde feature.
+serde = ["dep:serde", "nebu/serde", "lens/serde"]
+
+[dev-dependencies]
+serde_json = "1"

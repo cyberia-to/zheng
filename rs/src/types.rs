@@ -15,6 +15,7 @@ pub use lens::{Commitment, Opening};
 ///
 /// coefficients ascending: g_i(X) = c_0 + c_1·X + … + c_d·X^d.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SumcheckPoly {
     pub degree: u8,
     pub coeffs: Vec<Goldilocks>,
@@ -47,6 +48,7 @@ impl SumcheckPoly {
 ///
 /// ~2 KiB at 128-bit security for N = 2^20.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Proof {
     /// hemera binding of the trace multilinear polynomial.
     pub commitment: Commitment,
@@ -68,12 +70,14 @@ pub struct Proof {
 /// folded into one accumulator, finalized with a single Spartan proof.
 /// One group per distinct pattern type appearing in the trace.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceProof {
     pub groups: Vec<(Proof, Accumulator)>,
 }
 
 /// public statement: what the proof attests to.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Statement {
     /// hemera hash of the nox program (formula NounId sequence).
     pub program_hash: [u8; 32],
@@ -139,6 +143,7 @@ pub enum LensBackend {
 
 /// a sparse matrix over Goldilocks in compressed sparse row format.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SparseMatrix {
     pub rows: usize,
     pub cols: usize,
@@ -171,6 +176,7 @@ impl SparseMatrix {
 ///
 /// satisfiability: Σ_j c_j · ∏_{i ∈ S_j} (M_i · z) = 0.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CCSInstance {
     /// M_1, …, M_t — constraint matrices.
     pub matrices: Vec<SparseMatrix>,
@@ -207,6 +213,7 @@ impl CCSInstance {
 
 /// a CCS witness: z = public_input || private_witness || constant_1.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CCSWitness {
     pub z: Vec<Goldilocks>,
 }
@@ -219,6 +226,7 @@ pub struct CCSWitness {
 /// For satisfying witnesses all entries are 0. Grows by num_rows scalars per fold group
 /// but is otherwise O(1) in the number of folds.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Accumulator {
     pub committed_instance: CCSInstance,
     /// prover's folded witness (ignored by verifier).
