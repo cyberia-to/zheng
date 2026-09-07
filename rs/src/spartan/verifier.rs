@@ -42,7 +42,16 @@ impl SpartanVerifier {
         let m = instance.num_rows;
         let log_m = m.trailing_zeros() as usize;
         let tau: Vec<Goldilocks> = transcript.squeeze_challenges(log_m);
-        let e_claim = evaluate_multilinear(error_evals, &tau);
+        // e_claim must pair tau with row-index bits exactly as the prover's
+        // eq(tau, x) weighting does: eq_evals is LSB-first (tau_j <-> bit j),
+        // while evaluate_multilinear folds point[0] against the MSB. Using the
+        // latter reverses the pairing for m >= 4 and rejects any honest
+        // relaxed proof whose error_evals are not bit-reversal symmetric
+        // (invisible when the error vector is all zeros).
+        let e_claim = eq_evals(&tau)
+            .iter()
+            .zip(error_evals.iter())
+            .fold(Goldilocks::ZERO, |acc, (&w, &e)| acc + w * e);
 
         let mut outer_verifier = SumcheckVerifier::new(e_claim, log_m);
         let (outer_final_claim, rho_x) =
@@ -97,7 +106,10 @@ impl SpartanVerifier {
         // ── 9. Build w_combined using eq(ρ_x, r) weights ────────────────────
         // w_combined[col] = Σ_i γ^i · Σ_r eq(ρ_x,r) · M_i[r][col]
         // For m=1: eq_rox=[ONE], reduces to Σ_i γ^i · M_i[0][col] (same as before).
-        let eq_rox = eq_evals(&rho_x);
+        // Reversed challenge order: matrix_evals came from MSB-first folds
+        // (see prover step 7) — the row weights must pair identically.
+        let rho_rev: Vec<Goldilocks> = rho_x.iter().rev().copied().collect();
+        let eq_rox = eq_evals(&rho_rev);
         let z_size = 1usize << num_vars;
         let mut w_combined = vec![Goldilocks::ZERO; z_size];
         let mut gp = Goldilocks::ONE;

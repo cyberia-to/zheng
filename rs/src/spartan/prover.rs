@@ -91,7 +91,16 @@ impl SpartanProver {
         // ── 7. Build w_combined: Σ_i γ^i · M̃_i(ρ_x, ·) ─────────────────────────
         // w_combined[col] = Σ_i γ^i · Σ_r eq(ρ_x,r) · M_i[r][col]
         // For m=1: eq_rox=[1], reduces to Σ_i γ^i · M_i[0][col].
-        let eq_rox = eq_evals(&rho_x);
+        //
+        // Row weights must use the same challenge/row-bit pairing as the outer
+        // fold that produced matrix_evals: fold_inplace pins the MSB, so ρ_0
+        // pairs with the top row bit. eq_evals is LSB-first — build it from
+        // the REVERSED challenge order. With the unreversed order the inner
+        // claim disagrees with Σ_i γ^i·û_i whenever a matrix has activity
+        // outside row 0 of an unsatisfied witness (rows of a satisfied CCS
+        // collapse to row 0, which is bit-reversal symmetric — that hid this).
+        let rho_rev: Vec<Goldilocks> = rho_x.iter().rev().copied().collect();
+        let eq_rox = eq_evals(&rho_rev);
         let mut w_combined = vec![Goldilocks::ZERO; z_padded.len()];
         let mut gamma_pow = Goldilocks::ONE;
         for matrix in &instance.matrices {

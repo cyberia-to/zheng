@@ -377,6 +377,65 @@ mod tests {
         assert!(steps.is_empty());
     }
 
+    /// Relaxed completeness at m=16: a witness that does NOT satisfy the CCS,
+    /// proved against its honest per-row error vector, must verify. Before the
+    /// e_claim pairing fix the verifier weighted error_evals with reversed
+    /// tau/row-bit pairing and rejected every such proof at outer round 0.
+    #[test]
+    fn partial_round_relaxed_nonzero_error_roundtrip() {
+        use crate::spartan::prover::SpartanProver;
+        use crate::spartan::verifier::SpartanVerifier;
+        use crate::transcript::Transcript;
+
+        let states = zero_rate_states();
+        let k = 5usize;
+        let state_k = states[k];
+        let state_bad = states[k + 3]; // wrong next state -> unsatisfied
+        let pr = k - 3;
+        let rc = hemera::constants::ROUND_CONSTANTS[128 + pr];
+
+        let mut cap_k = [Goldilocks::ZERO; 8];
+        let mut cap_bad = [Goldilocks::ZERO; 8];
+        for j in 0..8 {
+            cap_k[j] = hg(state_k[8 + j]);
+            cap_bad[j] = hg(state_bad[8 + j]);
+        }
+        let y = field_inv(hg(state_k[0]) + hg(rc));
+        let witness = make_witness_from_states(&state_k, &state_bad, &cap_k, &cap_bad, y);
+        let ccs = partial_round_ccs(k);
+        assert!(!ccs.is_satisfied_by(&witness), "precondition: witness unsatisfied");
+
+        // Honest per-row error vector of this witness.
+        let mut z = witness.z.clone();
+        crate::multilinear::pad_to_power_of_two(&mut z, 64);
+        let error_evals: Vec<Goldilocks> = (0..ccs.num_rows)
+            .map(|r| {
+                ccs.multisets.iter().zip(ccs.coeffs.iter()).fold(
+                    Goldilocks::ZERO,
+                    |acc, (ms, &c)| {
+                        let prod = ms.iter().fold(Goldilocks::ONE, |p, &i| {
+                            p * ccs.matrices[i].entries[r].iter().fold(
+                                Goldilocks::ZERO,
+                                |a, &(col, coeff)| {
+                                    a + coeff * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
+                                },
+                            )
+                        });
+                        acc + c * prod
+                    },
+                )
+            })
+            .collect();
+        assert!(error_evals.iter().any(|&e| e != Goldilocks::ZERO));
+
+        let mut pt = Transcript::new();
+        let proof = SpartanProver::prove(&ccs, &witness, &mut pt);
+
+        let mut vt = Transcript::new();
+        let r = SpartanVerifier::verify(&ccs, &proof, &error_evals, &mut vt);
+        assert!(r.is_ok(), "relaxed proof with honest nonzero error must verify: {r:?}");
+    }
+
     #[test]
     fn partial_round_ccs_spartan_prove_verify() {
         use crate::spartan::prover::SpartanProver;

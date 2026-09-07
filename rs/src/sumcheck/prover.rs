@@ -301,3 +301,35 @@ mod tests {
         assert_eq!(w_final * f_final, prover.claimed_sum());
     }
 }
+#[cfg(test)]
+mod pairing_tests {
+    use nebu::Goldilocks;
+    use crate::multilinear::eq_evals;
+    use crate::sumcheck::prover::OuterSumcheckProver;
+
+    /// The outer fold pins the MSB row bit with the round-0 challenge, so the
+    /// folded matrix eval equals the MLE weighted by eq of the REVERSED
+    /// challenge order. spartan prover/verifier step 7/9 depend on this
+    /// pairing when they rebuild w_combined; a change here must change them.
+    #[test]
+    fn outer_fold_pairs_challenges_msb_first() {
+        let g = Goldilocks::new;
+        let f = vec![g(1), g(2), g(3), g(4)];
+        let tau = vec![g(10), g(20)];
+        let eq_t = eq_evals(&tau);
+        let mut p = OuterSumcheckProver::new(
+            eq_t, vec![f.clone()], vec![vec![0]], vec![Goldilocks::ONE],
+        );
+        let ch = [g(5), g(7)];
+        let mut i = 0;
+        let _ = p.prove_all(|_| { let c = ch[i]; i += 1; c });
+        let u = p.f_tables[0][0];
+
+        let rev_paired: Goldilocks = eq_evals(&[ch[1], ch[0]]).iter().zip(f.iter())
+            .fold(Goldilocks::ZERO, |a, (&w, &v)| a + w * v);
+        let lsb_paired: Goldilocks = eq_evals(&ch).iter().zip(f.iter())
+            .fold(Goldilocks::ZERO, |a, (&w, &v)| a + w * v);
+        assert_eq!(u.as_u64(), rev_paired.as_u64(), "fold is MSB-first");
+        assert_ne!(u.as_u64(), lsb_paired.as_u64(), "pairing direction matters");
+    }
+}
