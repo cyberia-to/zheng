@@ -55,17 +55,17 @@ mod tests {
     use super::*;
     use nebu::Goldilocks;
     use crate::ccs::patterns::build_step_ccs;
-    use crate::ccs::{reg_t, reg_t1, CONST_IDX, Z_LEN};
+    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
     use crate::folding::fold::fold_step;
     use crate::spartan::verifier::SpartanVerifier;
     use crate::types::{CCSWitness, Statement};
 
-    fn make_witness(r3: u64, r4: u64, r5_t1: u64) -> CCSWitness {
+    fn make_witness(r4: u64, r5: u64, r6: u64) -> CCSWitness {
         let mut z = vec![Goldilocks::ZERO; Z_LEN];
         z[CONST_IDX] = Goldilocks::ONE;
-        z[reg_t(3)] = Goldilocks::new(r3);
         z[reg_t(4)] = Goldilocks::new(r4);
-        z[reg_t1(5)] = Goldilocks::new(r5_t1);
+        z[reg_t(5)] = Goldilocks::new(r5);
+        z[reg_t(6)] = Goldilocks::new(r6);
         CCSWitness { z }
     }
 

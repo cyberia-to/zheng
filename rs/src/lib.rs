@@ -51,7 +51,11 @@ use crate::spartan::verifier::SpartanVerifier;
 // ── five entry points ─────────────────────────────────────────────────────────
 
 /// Compute the hemera hash of a trace row's 16 registers as a 32-byte digest.
-fn hash_row(row: &nox::TraceRow) -> [u8; 32] {
+///
+/// This is the exact binding `commit()` enforces between
+/// `Statement.input_hash`/`output_hash` and the first/last trace rows —
+/// exported so provers (joy) can construct statements that bind.
+pub fn row_hash(row: &nox::TraceRow) -> [u8; 32] {
     let mut bytes = Vec::with_capacity(128);
     for &v in row.r().iter() {
         bytes.extend_from_slice(&v.to_le_bytes());
@@ -111,13 +115,13 @@ pub fn commit(
     }
     if statement.input_hash != [0u8; 32]
         && let Some(first) = trace.0.first()
-        && hash_row(first) != statement.input_hash
+        && row_hash(first) != statement.input_hash
     {
         return Err(CommitError::StatementMismatch);
     }
     if statement.output_hash != [0u8; 32]
         && let Some(last) = trace.0.last()
-        && hash_row(last) != statement.output_hash
+        && row_hash(last) != statement.output_hash
     {
         return Err(CommitError::StatementMismatch);
     }
@@ -382,14 +386,14 @@ mod tests {
     #[test]
     fn fold_add_multi_step_commit_verify() {
         use crate::ccs::patterns::build_step_ccs;
-        use crate::ccs::{reg_t, reg_t1};
+        use crate::ccs::reg_t;
         use crate::folding::fold::fold_step;
 
-        let instance = build_step_ccs(5); // add: r5_{t+1} - r3_t - r4_t = 0
+        let instance = build_step_ccs(5); // add: r6 - r4 - r5 = 0
         let witnesses = [
-            make_z_33(&[(reg_t(3), 3), (reg_t(4), 4), (reg_t1(5), 7)]),
-            make_z_33(&[(reg_t(3), 10), (reg_t(4), 20), (reg_t1(5), 30)]),
-            make_z_33(&[(reg_t(3), 1), (reg_t(4), 1), (reg_t1(5), 2)]),
+            make_z_33(&[(reg_t(4), 3), (reg_t(5), 4), (reg_t(6), 7)]),
+            make_z_33(&[(reg_t(4), 10), (reg_t(5), 20), (reg_t(6), 30)]),
+            make_z_33(&[(reg_t(4), 1), (reg_t(5), 1), (reg_t(6), 2)]),
         ];
         for w in &witnesses {
             assert!(instance.is_satisfied_by(w));
@@ -414,14 +418,14 @@ mod tests {
     #[test]
     fn fold_mul_multi_step_commit_verify() {
         use crate::ccs::patterns::build_step_ccs;
-        use crate::ccs::{reg_t, reg_t1};
+        use crate::ccs::reg_t;
         use crate::folding::fold::fold_step;
 
-        let instance = build_step_ccs(7); // mul: r5_{t+1} - r3_t * r4_t = 0
+        let instance = build_step_ccs(7); // mul: r6 - r4 * r5 = 0
         let witnesses = [
-            make_z_33(&[(reg_t(3), 6), (reg_t(4), 7), (reg_t1(5), 42)]),
-            make_z_33(&[(reg_t(3), 2), (reg_t(4), 5), (reg_t1(5), 10)]),
-            make_z_33(&[(reg_t(3), 3), (reg_t(4), 3), (reg_t1(5), 9)]),
+            make_z_33(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]),
+            make_z_33(&[(reg_t(4), 2), (reg_t(5), 5), (reg_t(6), 10)]),
+            make_z_33(&[(reg_t(4), 3), (reg_t(5), 3), (reg_t(6), 9)]),
         ];
         for w in &witnesses {
             assert!(instance.is_satisfied_by(w));
@@ -533,25 +537,6 @@ mod tests {
 
     // ── end-to-end tests ─────────────────────────────────────────────────────
 
-    /// Build a real Brakedown opening for a small 2-variable polynomial.
-    fn make_axis_opening() -> AxisOpening {
-        let evals: Vec<Goldilocks> = (1u64..=4).map(Goldilocks::new).collect();
-        let poly = MultilinearPoly::new(evals);
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
-        let value = Goldilocks::new(1);
-        let opening = {
-            let mut lt = LensTranscript::new(b"e2e-axis-open");
-            Brakedown::open(&poly, &point, &mut lt)
-        };
-        AxisOpening {
-            commitment,
-            point,
-            value,
-            opening,
-            transcript_seed: b"e2e-axis-open".to_vec(),
-        }
-    }
 
     /// E2E: trace with Poseidon2 hash operation → hash_aux drives particle CCS.
     ///
@@ -612,13 +597,12 @@ mod tests {
         // Two axis rows; consecutive pair satisfies pattern_axis budget-decrement constraint.
         assert_eq!(trace.0.len(), 2);
 
-        // One Brakedown opening per axis row (both use the same polynomial for simplicity).
-        let ao1 = make_axis_opening();
-        let ao2 = make_axis_opening();
+        // Interpreter-mode axis rows (NullCalls) carry no commitment and
+        // owe no openings.
 
         // Statement binding: real hashes from first and last trace rows.
-        let input_hash = super::hash_row(&trace.0[0]);
-        let output_hash = super::hash_row(&trace.0[trace.0.len() - 1]);
+        let input_hash = super::row_hash(&trace.0[0]);
+        let output_hash = super::row_hash(&trace.0[trace.0.len() - 1]);
         let stmt = Statement {
             program_hash: [0u8; 32],
             input_hash,
@@ -628,7 +612,7 @@ mod tests {
         };
         let params = ProofParams::default();
 
-        let trace_proof = commit(&trace, &[], &[ao1, ao2], &[], &stmt, &params).unwrap();
+        let trace_proof = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
         assert!(verify(&trace_proof, &stmt, &params).is_ok());
     }
 
@@ -657,14 +641,7 @@ mod tests {
         bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
-        let err = commit(
-            &trace,
-            &[],
-            &[make_axis_opening(), make_axis_opening()],
-            &[],
-            &stmt,
-            &params,
-        );
+        let err = commit(&trace, &[], &[], &[], &stmt, &params);
         assert!(matches!(err, Err(CommitError::StatementMismatch)));
     }
 
@@ -1331,6 +1308,70 @@ mod tests {
         );
     }
 
+    /// Real-trace guard for the arithmetic/eq/branch pattern family: every
+    /// main-fold step of a real nox trace must SATISFY its pattern CCS.
+    /// This is the test that catches stale register wiring (the
+    /// pattern_quote bug class) for any pattern it covers — the old
+    /// add/sub/mul/eq/branch encodings all fail it.
+    #[test]
+    fn real_traces_satisfy_pattern_family() {
+        use crate::ccs::build_ccs_from_trace;
+
+        let g = Goldilocks::new;
+        // (tag, name): binary field ops [tag [[1 a] [1 b]]]
+        for (tag, name) in [(5u64, "add"), (6, "sub"), (7, "mul"), (9, "eq")] {
+            for (a, b) in [(9u64, 4u64), (9, 9)] {
+                let mut ar = Reduction::<1024>::new();
+                let obj = ar.atom(g(1)).unwrap();
+                let t = ar.atom(g(tag)).unwrap();
+                let t1 = ar.atom(g(1)).unwrap();
+                let va = ar.atom(g(a)).unwrap();
+                let vb = ar.atom(g(b)).unwrap();
+                let qa = ar.pair(t1, va).unwrap();
+                let qb = ar.pair(t1, vb).unwrap();
+                let body = ar.pair(qa, qb).unwrap();
+                let formula = ar.pair(t, body).unwrap();
+                let mut trace = VecTrace::default();
+                nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+                nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+                assert!(trace.0.iter().any(|r| r.r()[0] == tag), "{name}: no tag row");
+                for (i, (inst, wit)) in build_ccs_from_trace(&trace.0).iter().enumerate() {
+                    assert!(
+                        inst.is_satisfied_by(wit),
+                        "{name}({a},{b}): step {i} unsatisfied"
+                    );
+                }
+            }
+        }
+
+        // branch [4 [[1 t] [[1 10] [1 20]]]] — both arms
+        for test in [0u64, 7] {
+            let mut ar = Reduction::<1024>::new();
+            let obj = ar.atom(g(1)).unwrap();
+            let t4 = ar.atom(g(4)).unwrap();
+            let t1 = ar.atom(g(1)).unwrap();
+            let vt = ar.atom(g(test)).unwrap();
+            let vy = ar.atom(g(10)).unwrap();
+            let vn = ar.atom(g(20)).unwrap();
+            let qt = ar.pair(t1, vt).unwrap();
+            let qy = ar.pair(t1, vy).unwrap();
+            let qn = ar.pair(t1, vn).unwrap();
+            let arms = ar.pair(qy, qn).unwrap();
+            let body = ar.pair(qt, arms).unwrap();
+            let formula = ar.pair(t4, body).unwrap();
+            let mut trace = VecTrace::default();
+            nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+            nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+            assert!(trace.0.iter().any(|r| r.r()[0] == 4), "no branch row");
+            for (i, (inst, wit)) in build_ccs_from_trace(&trace.0).iter().enumerate() {
+                assert!(
+                    inst.is_satisfied_by(wit),
+                    "branch(test={test}): step {i} unsatisfied"
+                );
+            }
+        }
+    }
+
     /// T-2: tampered eval_value causes verify() to reject.
     #[test]
     fn verify_rejects_tampered_eval_value() {
@@ -1348,3 +1389,47 @@ mod tests {
 }
 
 
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::*;
+    use nox::{NullCalls, Reduction, VecTrace};
+
+    /// A proof artifact survives JSON round-trip and still verifies;
+    /// a tampered byte in the wire form is rejected or fails verification.
+    #[test]
+    fn proof_json_roundtrip_verifies() {
+        let g = Goldilocks::new;
+        let mut order = Reduction::<1024>::new();
+        let s = order.atom(g(7)).unwrap();
+        let tag0 = order.atom(g(0)).unwrap();
+        let addr = order.atom(g(1)).unwrap();
+        let axis_f = order.pair(tag0, addr).unwrap();
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, s, axis_f, 100, &NullCalls, &mut trace);
+        nox::reduce(&mut order, s, axis_f, 99, &NullCalls, &mut trace);
+
+        let stmt = Statement {
+            program_hash: [3u8; 32],
+            input_hash: [0u8; 32],
+            output_hash: [0u8; 32],
+            focus_bound: 10,
+            bbg_root: [0u8; 32],
+        };
+        let params = ProofParams::default();
+        let tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&tp, &stmt, &params).is_ok());
+
+        let proof_json = serde_json::to_string(&tp).unwrap();
+        let stmt_json = serde_json::to_string(&stmt).unwrap();
+        let tp2: TraceProof = serde_json::from_str(&proof_json).unwrap();
+        let stmt2: Statement = serde_json::from_str(&stmt_json).unwrap();
+        assert_eq!(stmt, stmt2);
+        assert!(verify(&tp2, &stmt2, &params).is_ok());
+
+        // Non-canonical field element rejected at deserialize.
+        let bad = proof_json.replacen("[", "[18446744073709551615,", 1);
+        let r: Result<TraceProof, _> = serde_json::from_str(&bad);
+        assert!(r.is_err(), "non-canonical wire form must not deserialize");
+    }
+}

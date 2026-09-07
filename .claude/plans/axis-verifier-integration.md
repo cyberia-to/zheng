@@ -273,6 +273,22 @@ injected from a replay of whatever rate the prover claims.
    trivial_ccs until cross-row / particle-identity wiring lands; e2e
    round-trips for real compose and cons programs now guard the class.
 
+### joy wiring follow-up (2026-09-07, branch feat/proof-serde)
+
+Wiring the prover into joy surfaced that the WHOLE arithmetic pattern
+family (add 5, sub 6, mul 7, eq 9, branch 4) still encoded the stale
+register map (operands r3/r4, result in the next row's r5). Real trident
+programs failed verify on the degree-1 patterns (zero-error rule) while
+mul/eq/branch violations were accepted SILENTLY as relaxed degree-2
+claims. All five re-encoded against specs/trace.md + real traces;
+real_traces_satisfy_pattern_family (real nox programs, both eq outcomes,
+both branch arms) now guards the class. It also caught nox zeroing r10
+on success rows (branch selector clobbered — nox 713d04e) and nox's
+std feature silently switching to the arena-forking par_binary executor
+(now opt-in behind 'parallel' — nox e8cad47). Axis openings are now owed
+only by prover-active rows — interpreter rows (every trident variable
+reference) carry no commitment and owe no opening.
+
 ### spec-code drift found (nox specs/trace.md)
 
 - pattern 15 squeeze: spec claims r9 = r8 - 25; nox records r8 before the
@@ -280,6 +296,9 @@ injected from a replay of whatever rate the prover claims.
 - pattern 2: spec claims r3 = result particle and r9 = r8 - 1; nox leaves
   r3 = 0 and records post-continuation budget (observed r9 = r8 - 4)
 - pattern 3: budget drift likewise (observed r9 = r8 - 3)
+- patterns 5-7: budget claim r9 = r8 - 1 does not hold either — r8/r9
+  bracket the bound-partitioned sub-evaluation (observed r8=3, r9=0 on
+  a real add row); axis rows DO satisfy r9 = r8 - 1
 
 Per the spec-first rule these need resolution in nox specs (or code) —
 out of zheng's scope, flagged for the nox milestone.

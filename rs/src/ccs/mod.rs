@@ -142,14 +142,19 @@ fn is_multi_row(tag: u8) -> bool {
 /// 4. value binding — the opened value equals the result particle nox
 ///    produced (r[7]).
 ///
-/// Bindings 2-4 apply only to prover-active rows (r[11]-r[14] non-zero).
-/// Interpreter mode (NullCalls) leaves those registers zero — there is no
-/// commitment to bind against, and the opening stands alone.
+/// Openings exist only for prover-active rows (r[11]-r[14] non-zero, i.e.
+/// the executor's CallProvider published a noun commitment). Interpreter
+/// mode (NullCalls) leaves those registers zero — there is no commitment,
+/// hence no opening to verify: such rows consume no entry from `openings`
+/// and their result register is bound only by pattern_axis's budget
+/// constraint (documented residual). One opening per prover-active axis
+/// row, in trace order; extra or missing entries are rejected.
 ///
-/// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
-/// than axis rows, `Err(CommitError::AxisBinding)` if the point length does
-/// not match the address or any step is unsatisfied — commit refuses to emit
-/// a proof whose axis bindings do not hold.
+/// Returns `Err(CommitError::TraceOverflow)` if `openings` does not have
+/// exactly one entry per prover-active axis row,
+/// `Err(CommitError::AxisBinding)` if the point length does not match the
+/// address or any step is unsatisfied — commit refuses to emit a proof
+/// whose axis bindings do not hold.
 pub fn build_axis_steps_from_trace(
     trace: &[TraceRow],
     openings: &[AxisOpening],
@@ -157,12 +162,12 @@ pub fn build_axis_steps_from_trace(
     let mut steps = Vec::new();
     let mut opening_idx = 0;
     for row in trace {
-        if row.r()[0] == 0 {
+        if row.r()[0] == 0 && row.r()[11..15].iter().any(|&v| v != 0) {
             let ao = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
             let row_start = steps.len();
             steps.extend(verifier_steps(&ao.commitment, &ao.point, ao.value, &ao.opening));
 
-            if row.r()[11..15].iter().any(|&v| v != 0) {
+            {
                 // (2) the opened commitment is the one the trace row carries
                 let cb = ao.commitment.as_bytes();
                 for k in 0..4 {
@@ -191,6 +196,9 @@ pub fn build_axis_steps_from_trace(
             }
             opening_idx += 1;
         }
+    }
+    if opening_idx != openings.len() {
+        return Err(CommitError::TraceOverflow);
     }
     Ok(steps)
 }
@@ -293,11 +301,13 @@ pub fn build_look_steps_from_trace(
 
 /// Build Poseidon2 CCS pairs for the Fiat-Shamir transcript of every axis opening.
 ///
-/// For each axis row in the trace, produces num_vars × 20 × 24 pairs encoding
-/// the Poseidon2 permutations inside the Brakedown proximity protocol.
+/// For each prover-active axis row (same predicate as
+/// [`build_axis_steps_from_trace`]), produces num_vars × 20 × 24 pairs
+/// encoding the Poseidon2 permutations inside the Brakedown proximity
+/// protocol. Interpreter-mode rows consume no opening.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
-/// than axis rows in the trace.
+/// than prover-active axis rows in the trace.
 pub fn build_axis_transcript_steps(
     trace: &[TraceRow],
     openings: &[AxisOpening],
@@ -305,7 +315,7 @@ pub fn build_axis_transcript_steps(
     let mut steps = Vec::new();
     let mut opening_idx = 0;
     for row in trace {
-        if row.r()[0] == 0 {
+        if row.r()[0] == 0 && row.r()[11..15].iter().any(|&v| v != 0) {
             let ao = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
             steps.extend(build_transcript_steps(
                 &ao.transcript_seed, &ao.commitment, &ao.opening,
@@ -507,8 +517,14 @@ mod tests {
     }
 
     #[test]
-    fn build_axis_steps_produces_verifier_steps_for_each_axis_row() {
-        // Build a real Brakedown commitment + opening for a 2-var polynomial.
+    fn interpreter_axis_rows_consume_no_openings() {
+        // Default rows are tag-0 with zero commitment registers (r11-r14):
+        // interpreter mode. No commitment exists, so no opening is owed —
+        // and providing one anyway is a count mismatch.
+        let trace = vec![TraceRow::default(), TraceRow::default()];
+        let steps = build_axis_steps_from_trace(&trace, &[]).unwrap();
+        assert!(steps.is_empty(), "no commitment, no opening steps");
+
         let poly = MultilinearPoly::new(
             [1u64, 2, 3, 4].iter().map(|&v| Goldilocks::new(v)).collect()
         );
@@ -519,22 +535,17 @@ mod tests {
             let mut lt = LensTranscript::new(b"axis-test");
             Brakedown::open(&poly, &point, &mut lt)
         };
-
-        // Construct a fake trace with one axis row (tag=0) and one non-axis row.
-        // Tag 0 is already the default (r[0] = 0). ✓
-        // All-zero trace: both rows have tag=0 → 2 axis rows.
-        let _trace = vec![TraceRow::default(), TraceRow::default()];
-        let ao = AxisOpening {
+        let unused = AxisOpening {
             commitment, point, value, opening,
             transcript_seed: b"axis-test".to_vec(),
         };
-        let openings = [ao];
-
-        // Use a single-row trace to test the 1-opening case.
-        let trace_one = vec![TraceRow::default()];
-        let steps = build_axis_steps_from_trace(&trace_one, &openings).unwrap();
-        // verifier_steps for a 2-var opening: 4 binding + 1 final = 5
-        assert_eq!(steps.len(), 5);
+        assert!(
+            matches!(
+                build_axis_steps_from_trace(&trace, &[unused]),
+                Err(CommitError::TraceOverflow)
+            ),
+            "an opening no row owes is a count mismatch"
+        );
     }
 
     #[test]

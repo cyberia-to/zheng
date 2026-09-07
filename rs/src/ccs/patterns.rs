@@ -116,80 +116,89 @@ fn pattern_cons() -> CCSInstance {
 }
 
 // ── pattern 4: branch ────────────────────────────────────────────────────────
-// C_4: r5_{t+1} - r6_t + r8_t*(r6_t - r4_t) = 0
-// decomposed: r5_{t+1} - r6_t + r8_t*r6_t - r8_t*r4_t = 0
-// sel = r8_t, yes = r4_t, no = r6_t
+// specs/trace.md + nox/rs/patterns/branch.rs: r4 = test value, r5 = inverse
+// hint (0 when test = 0), r10 = selector (0 = yes arm, 1 = no arm). The
+// chosen-arm result (r6) is cross-row wiring — deferred with compose/cons.
+// C_4a (row 0): r10·(1 − r4·r5) = 0   — selector 1 only with a valid inverse
+// C_4b (row 1): r4·(1 − r10) = 0      — test ≠ 0 forces selector 1
 fn pattern_branch() -> CCSInstance {
-    // 6 matrices needed: r5_{t+1}, r6_t, r8_t×r6_t (two copies), r8_t×r4_t (two copies)
-    let m_r5_t1    = select_matrix(reg_t1(5));
-    let m_r6_t     = select_matrix(reg_t(6));
-    let m_r8_t_a   = select_matrix(reg_t(8));
-    let m_r6_t_dup = select_matrix(reg_t(6));
-    let m_r8_t_b   = select_matrix(reg_t(8));
-    let m_r4_t     = select_matrix(reg_t(4));
+    let mut m_r10_r0 = SparseMatrix::new(2, Z_LEN);
+    let mut m_r4_r0 = SparseMatrix::new(2, Z_LEN);
+    let mut m_r5_r0 = SparseMatrix::new(2, Z_LEN);
+    let mut m_r4_r1 = SparseMatrix::new(2, Z_LEN);
+    let mut m_r10_r1 = SparseMatrix::new(2, Z_LEN);
+    m_r10_r0.set(0, reg_t(10), Goldilocks::ONE);
+    m_r4_r0.set(0, reg_t(4), Goldilocks::ONE);
+    m_r5_r0.set(0, reg_t(5), Goldilocks::ONE);
+    m_r4_r1.set(1, reg_t(4), Goldilocks::ONE);
+    m_r10_r1.set(1, reg_t(10), Goldilocks::ONE);
 
     CCSInstance {
-        matrices: vec![m_r5_t1, m_r6_t, m_r8_t_a, m_r6_t_dup, m_r8_t_b, m_r4_t],
+        matrices: vec![m_r10_r0, m_r4_r0, m_r5_r0, m_r4_r1, m_r10_r1],
         multisets: vec![
-            vec![0],    // +r5_{t+1}
-            vec![1],    // -r6_t
-            vec![2, 3], // +r8_t * r6_t  (matrices[2] × matrices[3])
-            vec![4, 5], // -r8_t * r4_t  (matrices[4] × matrices[5])
+            vec![0],       // +r10           (row 0)
+            vec![0, 1, 2], // -r10·r4·r5     (row 0)
+            vec![3],       // +r4            (row 1)
+            vec![3, 4],    // -r4·r10        (row 1)
         ],
-        coeffs: vec![
-            Goldilocks::ONE,
-            neg_one(),
-            Goldilocks::ONE,
-            neg_one(),
-        ],
-        num_rows: 1,
+        coeffs: vec![Goldilocks::ONE, neg_one(), Goldilocks::ONE, neg_one()],
+        num_rows: 2,
         num_cols: Z_LEN,
     }
 }
 
 // ── pattern 5: add ───────────────────────────────────────────────────────────
-// C_5: r5_{t+1} - r3_t - r4_t = 0
+// specs/trace.md: r4 = left operand, r5 = right operand, r6 = sum — all in
+// the add row itself (verified against a real trident trace: 3,5 -> 8).
+// C_5: r6_t - r4_t - r5_t = 0
+// No budget constraint: r8/r9 bracket the bound-partitioned sub-evaluation
+// (observed r8=3, r9=0), not a fixed decrement — spec drift noted in plan.
 fn pattern_add() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5)); // z[21]
-    let m_r3_t  = select_matrix(reg_t(3));  // z[3]
-    let m_r4_t  = select_matrix(reg_t(4));  // z[4]
+    let m_r6_t = select_matrix(reg_t(6));
+    let m_r4_t = select_matrix(reg_t(4));
+    let m_r5_t = select_matrix(reg_t(5));
     build_ccs(
-        vec![m_r5_t1, m_r3_t, m_r4_t],
+        vec![m_r6_t, m_r4_t, m_r5_t],
         vec![
-            (vec![0], Goldilocks::ONE), // +r5_{t+1}
-            (vec![1], neg_one()),       // -r3_t
-            (vec![2], neg_one()),       // -r4_t
+            (vec![0], Goldilocks::ONE), // +r6_t
+            (vec![1], neg_one()),       // -r4_t
+            (vec![2], neg_one()),       // -r5_t
         ],
     )
 }
 
 // ── pattern 6: sub ───────────────────────────────────────────────────────────
-// C_6: r5_{t+1} - r3_t + r4_t = 0  (r5 = r3 - r4)
+// specs/trace.md: r6 = r4 - r5, all in the sub row itself.
+// C_6: r6_t - r4_t + r5_t = 0
 fn pattern_sub() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5));
-    let m_r3_t  = select_matrix(reg_t(3));
-    let m_r4_t  = select_matrix(reg_t(4));
+    let m_r6_t = select_matrix(reg_t(6));
+    let m_r4_t = select_matrix(reg_t(4));
+    let m_r5_t = select_matrix(reg_t(5));
     build_ccs(
-        vec![m_r5_t1, m_r3_t, m_r4_t],
+        vec![m_r6_t, m_r4_t, m_r5_t],
         vec![
-            (vec![0], Goldilocks::ONE),  // +r5_{t+1}
-            (vec![1], neg_one()),        // -r3_t
-            (vec![2], Goldilocks::ONE),  // +r4_t
+            (vec![0], Goldilocks::ONE),  // +r6_t
+            (vec![1], neg_one()),        // -r4_t
+            (vec![2], Goldilocks::ONE),  // +r5_t
         ],
     )
 }
 
 // ── pattern 7: mul ───────────────────────────────────────────────────────────
-// C_7: r5_{t+1} - r3_t * r4_t = 0
+// specs/trace.md: r6 = r4 * r5, all in the mul row itself (verified against
+// a real trident trace: 8 * 3 -> 24). The old cross-row encoding was
+// degree 2, so the relaxed fold accepted its violations SILENTLY — the
+// zero-error rule only guards degree-1 groups.
+// C_7: r6_t - r4_t * r5_t = 0
 fn pattern_mul() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5));
-    let m_r3_t  = select_matrix(reg_t(3));
-    let m_r4_t  = select_matrix(reg_t(4));
+    let m_r6_t = select_matrix(reg_t(6));
+    let m_r4_t = select_matrix(reg_t(4));
+    let m_r5_t = select_matrix(reg_t(5));
     build_ccs(
-        vec![m_r5_t1, m_r3_t, m_r4_t],
+        vec![m_r6_t, m_r4_t, m_r5_t],
         vec![
-            (vec![0],    Goldilocks::ONE), // +r5_{t+1}
-            (vec![1, 2], neg_one()),       // -r3_t * r4_t (Hadamard)
+            (vec![0],    Goldilocks::ONE), // +r6_t
+            (vec![1, 2], neg_one()),       // -r4_t * r5_t (Hadamard)
         ],
     )
 }
@@ -210,48 +219,47 @@ fn pattern_inv() -> CCSInstance {
 }
 
 // ── pattern 9: eq ────────────────────────────────────────────────────────────
-// Two sub-constraints:
-// C_9a: r3_t*r8_t - r4_t*r8_t - r9_t = 0
-// C_9b: r5_{t+1} - 1 + r9_t = 0
-//
-// Both constraints packed into one CCSInstance with 2 rows.
+// specs/trace.md + nox/rs/patterns/eq.rs: r4/r5 = operand field values,
+// r6 = result (0 equal, 1 not equal), r7 = inverse hint of (r4 − r5).
+// Standard non-equality gadget, 3 constraints over 4 rows (padded to a
+// power of two; row 3 is 0 = 0):
+// C_9a (row 0): (r4 − r5)·(1 − r6) = 0
+// C_9b (row 1): r6·(1 − r6) = 0
+// C_9c (row 2): (r4 − r5)·r7 − r6 = 0
 fn pattern_eq() -> CCSInstance {
-    let mut mr3_2r  = SparseMatrix::new(2, Z_LEN);
-    let mut mr4_2r  = SparseMatrix::new(2, Z_LEN);
-    let mut mr8_2r  = SparseMatrix::new(2, Z_LEN);
-    let mut mr9_2r  = SparseMatrix::new(2, Z_LEN);
-    let mut mr5_2r  = SparseMatrix::new(2, Z_LEN);
-    let mut mc_2r   = SparseMatrix::new(2, Z_LEN);
+    let mut m_diff = SparseMatrix::new(4, Z_LEN);   // r4 − r5 (rows 0, 2)
+    let mut m_1m6 = SparseMatrix::new(4, Z_LEN);    // 1 − r6  (rows 0, 1)
+    let mut m_r6_bool = SparseMatrix::new(4, Z_LEN); // r6     (row 1)
+    let mut m_r7 = SparseMatrix::new(4, Z_LEN);     // r7      (row 2)
+    let mut m_r6_lin = SparseMatrix::new(4, Z_LEN); // r6      (row 2)
 
-    mr3_2r.set(0, reg_t(3), Goldilocks::ONE);
-    mr4_2r.set(0, reg_t(4), Goldilocks::ONE);
-    mr8_2r.set(0, reg_t(8), Goldilocks::ONE);
-    mr8_2r.set(1, reg_t(8), Goldilocks::ONE);  // r8 appears in both rows' context
-    mr9_2r.set(0, reg_t(9), Goldilocks::ONE);
-    mr9_2r.set(1, reg_t(9), Goldilocks::ONE);
-    mr5_2r.set(1, reg_t1(5), Goldilocks::ONE);
-    mc_2r.set(1, CONST_IDX, Goldilocks::ONE);
+    for r in [0usize, 2] {
+        m_diff.set(r, reg_t(4), Goldilocks::ONE);
+        m_diff.set(r, reg_t(5), neg_one());
+    }
+    for r in [0usize, 1] {
+        m_1m6.set(r, CONST_IDX, Goldilocks::ONE);
+        m_1m6.set(r, reg_t(6), neg_one());
+    }
+    m_r6_bool.set(1, reg_t(6), Goldilocks::ONE);
+    m_r7.set(2, reg_t(7), Goldilocks::ONE);
+    m_r6_lin.set(2, reg_t(6), Goldilocks::ONE);
 
     CCSInstance {
-        // matrices indexed 0..5
-        matrices: vec![mr3_2r, mr4_2r, mr8_2r, mr9_2r, mr5_2r, mc_2r],
+        matrices: vec![m_diff, m_1m6, m_r6_bool, m_r7, m_r6_lin],
         multisets: vec![
-            vec![0, 2], // r3_t * r8_t  (row 0)
-            vec![1, 2], // r4_t * r8_t  (row 0)
-            vec![3],    // r9_t         (row 0)
-            vec![4],    // r5_{t+1}     (row 1)
-            vec![5],    // 1            (row 1)
-            vec![3],    // r9_t         (row 1)  — reuse matrix index 3
+            vec![0, 1], // (r4−r5)(1−r6)   (row 0)
+            vec![2, 1], // r6·(1−r6)       (row 1)
+            vec![0, 3], // (r4−r5)·r7      (row 2)
+            vec![4],    // −r6             (row 2)
         ],
         coeffs: vec![
-            Goldilocks::ONE,  // +r3*r8
-            neg_one(),        // -r4*r8
-            neg_one(),        // -r9
-            Goldilocks::ONE,  // +r5_{t+1}
-            neg_one(),        // -1
-            Goldilocks::ONE,  // +r9
+            Goldilocks::ONE,
+            Goldilocks::ONE,
+            Goldilocks::ONE,
+            neg_one(),
         ],
-        num_rows: 2,
+        num_rows: 4,
         num_cols: Z_LEN,
     }
 }
@@ -431,40 +439,74 @@ mod tests {
 
     #[test]
     fn pattern_add_satisfying_witness() {
-        // r3=5, r4=3, r5_{t+1}=8: 8 - 5 - 3 = 0
-        let z = make_z(&[(reg_t(3), 5), (reg_t(4), 3), (reg_t1(5), 8)]);
+        // r4=5, r5=3, r6=8: 8 - 5 - 3 = 0
+        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
         let ccs = pattern_add();
         assert!(ccs.is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]
     fn pattern_add_wrong_witness() {
-        let z = make_z(&[(reg_t(3), 5), (reg_t(4), 3), (reg_t1(5), 7)]);
+        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 7)]);
         let ccs = pattern_add();
         assert!(!ccs.is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]
     fn pattern_sub_satisfying_witness() {
-        // r3=7, r4=2, r5=5: 5 - 7 + 2 = 0
-        let z = make_z(&[(reg_t(3), 7), (reg_t(4), 2), (reg_t1(5), 5)]);
+        // r4=7, r5=2, r6=5: 5 - 7 + 2 = 0
+        let z = make_z(&[(reg_t(4), 7), (reg_t(5), 2), (reg_t(6), 5)]);
         let ccs = pattern_sub();
         assert!(ccs.is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]
     fn pattern_mul_satisfying_witness() {
-        // r3=6, r4=7, r5=42: 42 - 6*7 = 0
-        let z = make_z(&[(reg_t(3), 6), (reg_t(4), 7), (reg_t1(5), 42)]);
+        // r4=6, r5=7, r6=42: 42 - 6*7 = 0
+        let z = make_z(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]);
         let ccs = pattern_mul();
         assert!(ccs.is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]
     fn pattern_mul_wrong_witness() {
-        let z = make_z(&[(reg_t(3), 6), (reg_t(4), 7), (reg_t1(5), 43)]);
+        let z = make_z(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 43)]);
         let ccs = pattern_mul();
         assert!(!ccs.is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_eq_gadget() {
+        // equal: r4=r5=9, r6=0, r7=0
+        let z = make_z(&[(reg_t(4), 9), (reg_t(5), 9)]);
+        assert!(pattern_eq().is_satisfied_by(&CCSWitness { z }));
+        // unequal: r4=9, r5=4, r6=1, r7=inv(5)
+        let inv5 = (Goldilocks::new(9) - Goldilocks::new(4)).inv().as_u64();
+        let z = make_z(&[(reg_t(4), 9), (reg_t(5), 4), (reg_t(6), 1), (reg_t(7), inv5)]);
+        assert!(pattern_eq().is_satisfied_by(&CCSWitness { z }));
+        // forged: unequal operands claimed equal (r6=0) with r7=0
+        let z = make_z(&[(reg_t(4), 9), (reg_t(5), 4)]);
+        assert!(!pattern_eq().is_satisfied_by(&CCSWitness { z }));
+        // forged: equal operands claimed unequal (r6=1)
+        let z = make_z(&[(reg_t(4), 9), (reg_t(5), 9), (reg_t(6), 1)]);
+        assert!(!pattern_eq().is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_branch_selector_gadget() {
+        // test=0: r4=0, r5=0, r10=0
+        let z = make_z(&[]);
+        assert!(pattern_branch().is_satisfied_by(&CCSWitness { z }));
+        // test=7: r4=7, r5=inv(7), r10=1
+        let inv7 = Goldilocks::new(7).inv().as_u64();
+        let z = make_z(&[(reg_t(4), 7), (reg_t(5), inv7), (reg_t(10), 1)]);
+        assert!(pattern_branch().is_satisfied_by(&CCSWitness { z }));
+        // forged: test=7 claimed selector 0
+        let z = make_z(&[(reg_t(4), 7), (reg_t(5), inv7)]);
+        assert!(!pattern_branch().is_satisfied_by(&CCSWitness { z }));
+        // forged: test=0 claimed selector 1
+        let z = make_z(&[(reg_t(10), 1)]);
+        assert!(!pattern_branch().is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]

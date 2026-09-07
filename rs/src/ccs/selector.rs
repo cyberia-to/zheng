@@ -46,7 +46,7 @@ pub fn is_satisfied(instance: &CCSInstance, witness: &CCSWitness) -> bool {
 mod tests {
     use super::*;
     use crate::ccs::patterns::{build_step_ccs, trivial_ccs};
-    use crate::ccs::{reg_t, reg_t1, CONST_IDX, Z_LEN};
+    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
 
     fn make_z(vals: &[(usize, u64)]) -> Vec<Goldilocks> {
         let mut z = vec![Goldilocks::ZERO; Z_LEN];
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn add_constraint_evaluates_to_zero() {
         let ccs = build_step_ccs(5);
-        let z = make_z(&[(reg_t(3), 5), (reg_t(4), 3), (reg_t1(5), 8)]);
+        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
         let v = constraint_eval(&ccs, &CCSWitness { z });
         assert_eq!(v, vec![Goldilocks::ZERO]);
     }
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn add_constraint_nonzero_on_wrong_witness() {
         let ccs = build_step_ccs(5);
-        let z = make_z(&[(reg_t(3), 5), (reg_t(4), 3), (reg_t1(5), 9)]);
+        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 9)]);
         let v = constraint_eval(&ccs, &CCSWitness { z });
         assert_ne!(v, vec![Goldilocks::ZERO]);
     }
