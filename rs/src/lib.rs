@@ -58,6 +58,21 @@ fn hash_row(row: &nox::TraceRow) -> [u8; 32] {
     *hemera::hash(&bytes).as_bytes()
 }
 
+/// Digest binding all accumulator groups of one TraceProof together.
+///
+/// hemera hash over the group count and every group's witness commitment,
+/// in group order. Absorbed into each group's decide transcript (option A
+/// linkage of the axis design): a valid group spliced in from another
+/// proof changes the digest and breaks every group's Fiat-Shamir chain.
+pub(crate) fn linkage_digest(commitments: &[&Commitment]) -> [u8; 32] {
+    let mut bytes = Vec::with_capacity(8 + commitments.len() * 32);
+    bytes.extend_from_slice(&(commitments.len() as u64).to_le_bytes());
+    for c in commitments {
+        bytes.extend_from_slice(c.as_bytes());
+    }
+    *hemera::hash(&bytes).as_bytes()
+}
+
 /// Initialize a blank accumulator for a given CCS instance structure.
 fn blank_acc(instance: &CCSInstance) -> Accumulator {
     let init_z = vec![Goldilocks::ZERO; 64];
@@ -127,14 +142,14 @@ pub fn commit(
         return Err(CommitError::TraceOverflow);
     }
 
-    let mut groups: Vec<(Proof, Accumulator)> = Vec::new();
-
-    // Sequential grouping: start a new group whenever the CCS instance changes.
-    // Full equality is required because instances with the same structural shape
-    // (matrix count, dimensions) but different matrix coefficients (e.g. distinct
-    // Poseidon2 partial-round constants) must not fold together — their error_evals
-    // are computed against the current instance's matrices while the verifier checks
-    // against committed_instance, which only holds the first instance in the group.
+    // Pass 1 — fold. Sequential grouping: start a new group whenever the CCS
+    // instance changes. Full equality is required because instances with the
+    // same structural shape (matrix count, dimensions) but different matrix
+    // coefficients (e.g. distinct Poseidon2 partial-round constants) must not
+    // fold together — their error_evals are computed against the current
+    // instance's matrices while the verifier checks against
+    // committed_instance, which only holds the first instance in the group.
+    let mut folded: Vec<Accumulator> = Vec::new();
     let mut cur_instance: Option<CCSInstance> = None;
     let mut cur_acc: Option<Accumulator> = None;
     let mut cur_transcript = Transcript::new();
@@ -143,11 +158,8 @@ pub fn commit(
         let same = cur_instance.as_ref() == Some(instance);
 
         if !same {
-            // Finalize previous group.
             if let Some(acc) = cur_acc.take() {
-                let proof =
-                    run_decide(&acc, statement, params).map_err(CommitError::DecideFailed)?;
-                groups.push((proof, acc));
+                folded.push(acc);
             }
             cur_instance = Some(instance.clone());
             cur_acc = Some(blank_acc(instance));
@@ -162,10 +174,19 @@ pub fn commit(
         )
         .map_err(|_| CommitError::TraceOverflow)?;
     }
-
-    // Finalize last group.
     if let Some(acc) = cur_acc.take() {
-        let proof = run_decide(&acc, statement, params).map_err(CommitError::DecideFailed)?;
+        folded.push(acc);
+    }
+
+    // Pass 2 — cross-group linkage over every group's witness commitment.
+    let commitments: Vec<&Commitment> = folded.iter().map(|a| &a.witness_commitment).collect();
+    let linkage = linkage_digest(&commitments);
+
+    // Pass 3 — decide each group under the shared linkage digest.
+    let mut groups: Vec<(Proof, Accumulator)> = Vec::with_capacity(folded.len());
+    for acc in folded {
+        let proof =
+            run_decide(&acc, statement, &linkage, params).map_err(CommitError::DecideFailed)?;
         groups.push((proof, acc));
     }
 
@@ -231,9 +252,32 @@ pub fn verify(
     statement: &Statement,
     _params: &ProofParams,
 ) -> Result<(), VerifyError> {
+    // Recompute the cross-group linkage digest from the proof's own groups —
+    // it must match what every group's decide transcript absorbed.
+    let commitments: Vec<&Commitment> = proof
+        .groups
+        .iter()
+        .map(|(_, acc)| &acc.witness_commitment)
+        .collect();
+    let linkage = linkage_digest(&commitments);
+
     for (group_proof, acc) in &proof.groups {
+        // Degree-1 groups (all multisets of size ≤ 1) fold satisfied steps to
+        // exactly zero error — error is linear in the witness. A non-zero
+        // entry means an unsatisfied step (e.g. a forged axis binding) was
+        // folded in; the relaxed Spartan check alone would accept it.
+        let linear = acc
+            .committed_instance
+            .multisets
+            .iter()
+            .all(|multiset| multiset.len() <= 1);
+        if linear && acc.error_evals.iter().any(|&e| e != Goldilocks::ZERO) {
+            return Err(VerifyError::LinearErrorNonzero);
+        }
+
         let mut transcript = Transcript::new_recursive();
         transcript.absorb_statement(statement);
+        transcript.absorb_linkage(&linkage);
         transcript.absorb(acc.witness_commitment.as_bytes());
         for &e in &acc.error_evals {
             transcript.absorb(&e.as_u64().to_le_bytes());
@@ -268,13 +312,16 @@ pub fn fold(
 /// Run the SuperSpartan decider on an accumulated HyperNova state.
 ///
 /// Produces the final proof from the accumulated CCS instance and witness,
-/// bound to the given statement via Fiat-Shamir.
+/// bound to the given statement via Fiat-Shamir. The proof carries a
+/// single-group linkage digest, so a one-group `TraceProof` built from it
+/// verifies with [`verify`].
 pub fn decide(
     acc: &Accumulator,
     statement: &Statement,
     params: &ProofParams,
 ) -> Result<Proof, DecideError> {
-    run_decide(acc, statement, params)
+    let linkage = linkage_digest(&[&acc.witness_commitment]);
+    run_decide(acc, statement, &linkage, params)
 }
 
 #[cfg(test)]
@@ -332,7 +379,6 @@ mod tests {
     fn fold_add_multi_step_commit_verify() {
         use crate::ccs::patterns::build_step_ccs;
         use crate::ccs::{reg_t, reg_t1};
-        use crate::folding::decide::decide as run_decide;
         use crate::folding::fold::fold_step;
 
         let instance = build_step_ccs(5); // add: r5_{t+1} - r3_t - r4_t = 0
@@ -354,7 +400,7 @@ mod tests {
         assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO)); // degree-1: stays 0
 
         let stmt = zero_statement();
-        let proof = run_decide(&acc, &stmt, &ProofParams::default()).unwrap();
+        let proof = decide(&acc, &stmt, &ProofParams::default()).unwrap();
         let trace_proof = TraceProof {
             groups: vec![(proof, acc)],
         };
@@ -365,7 +411,6 @@ mod tests {
     fn fold_mul_multi_step_commit_verify() {
         use crate::ccs::patterns::build_step_ccs;
         use crate::ccs::{reg_t, reg_t1};
-        use crate::folding::decide::decide as run_decide;
         use crate::folding::fold::fold_step;
 
         let instance = build_step_ccs(7); // mul: r5_{t+1} - r3_t * r4_t = 0
@@ -388,7 +433,7 @@ mod tests {
         // Spartan proves/verifies against this accumulated error.
 
         let stmt = zero_statement();
-        let proof = run_decide(&acc, &stmt, &ProofParams::default()).unwrap();
+        let proof = decide(&acc, &stmt, &ProofParams::default()).unwrap();
         let trace_proof = TraceProof {
             groups: vec![(proof, acc)],
         };
@@ -632,6 +677,300 @@ mod tests {
         assert!(matches!(err, Err(CommitError::FocusExhausted)));
     }
 
+    // ── prover-active axis: trace binding harness ────────────────────────────
+
+    /// CallProvider that reports a fixed Lens commitment for every object.
+    /// The executor writes its limbs into r[11]-r[14] (prover-active mode),
+    /// arming the axis trace bindings in build_axis_steps_from_trace.
+    struct AxisProver {
+        commitment: [u8; 32],
+    }
+
+    impl nox::LookProvider for AxisProver {
+        fn look(
+            &self,
+            _commitment: Goldilocks,
+            _namespace: Goldilocks,
+            _key: Goldilocks,
+        ) -> Option<Goldilocks> {
+            None
+        }
+    }
+
+    impl<const N: usize> nox::CallProvider<N> for AxisProver {
+        fn provide(
+            &self,
+            _reduction: &mut Reduction<N>,
+            _tag: Goldilocks,
+            _object: nox::Order,
+        ) -> Option<nox::Order> {
+            None
+        }
+
+        fn axis_commitment(&self, _object_id: u64) -> Option<[u8; 32]> {
+            Some(self.commitment)
+        }
+    }
+
+    /// Run `axis(s, 5)` twice over s = [[a b] [c d]] with a prover-active
+    /// provider. The noun polynomial's evaluations are the particle ids at
+    /// depth-2 addresses 4..8, so its value at axis_eval_point(5) is the
+    /// result particle in r[7]. `tweak` perturbs the unopened leaves,
+    /// deriving a distinct commitment with the same value at the opened
+    /// point (used to build a second, different-but-valid proof).
+    fn prover_active_axis_setup(tweak: u64) -> (VecTrace, Vec<AxisOpening>) {
+        use lens::Transcript as LensTranscript;
+
+        let g = Goldilocks::new;
+        let mut order = Reduction::<1024>::new();
+        let a = order.atom(g(11)).unwrap();
+        let b = order.atom(g(22)).unwrap();
+        let c = order.atom(g(33)).unwrap();
+        let d = order.atom(g(44)).unwrap();
+        let left = order.pair(a, b).unwrap();
+        let right = order.pair(c, d).unwrap();
+        let s = order.pair(left, right).unwrap();
+        let tag0 = order.atom(g(0)).unwrap();
+        let addr = order.atom(g(5)).unwrap();
+        let axis_f = order.pair(tag0, addr).unwrap();
+
+        // Noun polynomial: particle ids at addresses 4, 5, 6, 7 (LSB-first
+        // index = low address bits). Address 5 → index 1.
+        let ids = [a as u64, b as u64, c as u64, d as u64];
+        let evals: Vec<Goldilocks> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| if i == 1 { g(v) } else { g(v + tweak) })
+            .collect();
+        let poly = MultilinearPoly::new(evals);
+        let commitment = Brakedown::commit(&poly);
+        let prover = AxisProver {
+            commitment: commitment.as_bytes().try_into().unwrap(),
+        };
+
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, s, axis_f, 100, &prover, &mut trace);
+        nox::reduce(&mut order, s, axis_f, 99, &prover, &mut trace);
+        assert_eq!(trace.0.len(), 2);
+        assert_eq!(trace.0[0].r()[7], b as u64, "axis 5 = tail(head(s)) = b");
+        assert_ne!(trace.0[0].r()[11], 0, "prover-active row carries the commitment");
+
+        let point = crate::ccs::axis_eval_point(5);
+        let value = poly.evaluate(&point);
+        assert_eq!(
+            value,
+            g(b as u64),
+            "noun polynomial at the address point is the result particle"
+        );
+
+        let openings = (0..2)
+            .map(|_| {
+                let mut lt = LensTranscript::new(b"e2e-axis-prover");
+                AxisOpening {
+                    commitment,
+                    point: point.clone(),
+                    value,
+                    opening: Brakedown::open(&poly, &point, &mut lt),
+                    transcript_seed: b"e2e-axis-prover".to_vec(),
+                }
+            })
+            .collect();
+        (trace, openings)
+    }
+
+    /// E2E: prover-active axis — commitment (r11-r14), point (r5) and value
+    /// (r7) bindings all hold and the proof round-trips.
+    #[test]
+    fn e2e_prover_active_axis_binding_roundtrip() {
+        let (trace, openings) = prover_active_axis_setup(0);
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let trace_proof = commit(&trace, &[], &openings, &[], &stmt, &params).unwrap();
+        assert!(verify(&trace_proof, &stmt, &params).is_ok());
+    }
+
+    /// Negative: a valid opening for a DIFFERENT commitment than the trace
+    /// carries (r11-r14) must be rejected — the swapped-opening attack.
+    #[test]
+    fn commit_rejects_swapped_axis_commitment() {
+        let (trace_p, _) = prover_active_axis_setup(0);
+        let (_, openings_q) = prover_active_axis_setup(7);
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let err = commit(&trace_p, &[], &openings_q, &[], &stmt, &params);
+        assert!(matches!(err, Err(CommitError::AxisBinding)));
+    }
+
+    /// Negative: an opening whose claimed value differs from the result
+    /// particle nox produced (r7) must be rejected — the forged-result attack.
+    #[test]
+    fn commit_rejects_forged_axis_result() {
+        let (trace, mut openings) = prover_active_axis_setup(0);
+        openings[0].value += Goldilocks::ONE;
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let err = commit(&trace, &[], &openings, &[], &stmt, &params);
+        assert!(matches!(err, Err(CommitError::AxisBinding)));
+    }
+
+    /// Negative: a corrupted opening proof (tampered final_poly byte) must be
+    /// rejected — the tampered-opening attack.
+    #[test]
+    fn commit_rejects_tampered_axis_opening() {
+        let (trace, mut openings) = prover_active_axis_setup(0);
+        if let Opening::Tensor { final_poly, .. } = &mut openings[0].opening {
+            final_poly[0] ^= 1;
+        } else {
+            panic!("Brakedown opening is Tensor");
+        }
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let err = commit(&trace, &[], &openings, &[], &stmt, &params);
+        assert!(matches!(err, Err(CommitError::AxisBinding)));
+    }
+
+    /// Negative: splicing the axis group of one valid proof into another
+    /// valid proof must break verification. Both groups are self-consistent;
+    /// only the option-A linkage digest ties them to their own proof.
+    #[test]
+    fn verify_rejects_spliced_axis_group() {
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+
+        let (t1, o1) = prover_active_axis_setup(0);
+        let (t2, o2) = prover_active_axis_setup(7);
+        let p1 = commit(&t1, &[], &o1, &[], &stmt, &params).unwrap();
+        let p2 = commit(&t2, &[], &o2, &[], &stmt, &params).unwrap();
+        assert!(verify(&p1, &stmt, &params).is_ok());
+        assert!(verify(&p2, &stmt, &params).is_ok());
+
+        // The single VZ_LEN=3 group holds the axis opening eq steps.
+        let axis_group = |p: &TraceProof| {
+            let idxs: Vec<usize> = p
+                .groups
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
+                .map(|(i, _)| i)
+                .collect();
+            assert_eq!(idxs.len(), 1, "exactly one axis eq-step group");
+            idxs[0]
+        };
+        let i1 = axis_group(&p1);
+        let i2 = axis_group(&p2);
+        assert_ne!(
+            p1.groups[i1].1.witness_commitment.as_bytes(),
+            p2.groups[i2].1.witness_commitment.as_bytes(),
+            "the two axis groups differ (different noun commitments)"
+        );
+
+        let mut spliced = p1.clone();
+        spliced.groups[i1] = p2.groups[i2].clone();
+        assert!(
+            verify(&spliced, &stmt, &params).is_err(),
+            "axis group spliced from another proof must not verify"
+        );
+    }
+
+    /// Fold a hand-built axis step sequence, decide it, and wrap it as a
+    /// one-group TraceProof — the route of a malicious prover who bypasses
+    /// commit()'s strictness gate.
+    fn prove_raw_axis_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
+        let mut acc = blank_acc(&steps[0].0);
+        let mut transcript = Transcript::new();
+        for (instance, witness) in steps {
+            crate::folding::fold_step(&mut acc, instance, witness, &mut transcript).unwrap();
+        }
+        let proof = decide(&acc, &zero_statement(), &ProofParams::default()).unwrap();
+        TraceProof {
+            groups: vec![(proof, acc)],
+        }
+    }
+
+    /// Negative: a prover who folds a commitment-binding step for the WRONG
+    /// commitment (valid opening of poly Q claimed against commitment P) and
+    /// bypasses the commit gate is caught at verify time — linear groups must
+    /// carry zero error.
+    #[test]
+    fn verify_rejects_folded_wrong_commitment_binding() {
+        use crate::ccs::verifier_steps::read_limb;
+        use crate::ccs::{eq_step, verifier_steps};
+        use lens::Transcript as LensTranscript;
+
+        let poly_q = MultilinearPoly::new(make_poly(&[9, 8, 7, 6]));
+        let commitment_q = Brakedown::commit(&poly_q);
+        let commitment_p = Brakedown::commit(&MultilinearPoly::new(make_poly(&[1, 2, 3, 4])));
+        let point = vec![Goldilocks::ZERO, Goldilocks::ONE];
+        let value = poly_q.evaluate(&point);
+        let opening = {
+            let mut lt = LensTranscript::new(b"raw-axis");
+            Brakedown::open(&poly_q, &point, &mut lt)
+        };
+
+        // Internally-valid opening steps for Q…
+        let mut steps = verifier_steps(&commitment_q, &point, value, &opening);
+        // …plus the binding the trace would demand: Q's limbs against P's
+        // registers. Unsatisfied — and folded in anyway.
+        for k in 0..4 {
+            steps.push(eq_step(
+                read_limb(commitment_q.as_bytes(), k),
+                read_limb(commitment_p.as_bytes(), k),
+            ));
+        }
+
+        let trace_proof = prove_raw_axis_steps(&steps);
+        let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
+    }
+
+    /// Negative: a prover who folds a value-binding step claiming a forged
+    /// result (opened value vs. a different r7) and bypasses the commit gate
+    /// is caught at verify time.
+    #[test]
+    fn verify_rejects_folded_forged_result_binding() {
+        use crate::ccs::{eq_step, verifier_steps};
+        use lens::Transcript as LensTranscript;
+
+        let poly = MultilinearPoly::new(make_poly(&[5, 15, 25, 35]));
+        let commitment = Brakedown::commit(&poly);
+        let point = vec![Goldilocks::ONE, Goldilocks::ZERO];
+        let value = poly.evaluate(&point);
+        let opening = {
+            let mut lt = LensTranscript::new(b"raw-axis-forge");
+            Brakedown::open(&poly, &point, &mut lt)
+        };
+
+        let mut steps = verifier_steps(&commitment, &point, value, &opening);
+        // Value binding against a forged result particle.
+        let forged_r7 = value + Goldilocks::ONE;
+        steps.push(eq_step(value, forged_r7));
+
+        let trace_proof = prove_raw_axis_steps(&steps);
+        let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
+    }
+
+    /// The zero-error rule accepts honest linear folds: the same raw route
+    /// with all steps satisfied verifies.
+    #[test]
+    fn verify_accepts_raw_satisfied_axis_steps() {
+        use crate::ccs::verifier_steps;
+        use lens::Transcript as LensTranscript;
+
+        let poly = MultilinearPoly::new(make_poly(&[5, 15, 25, 35]));
+        let commitment = Brakedown::commit(&poly);
+        let point = vec![Goldilocks::ONE, Goldilocks::ZERO];
+        let value = poly.evaluate(&point);
+        let opening = {
+            let mut lt = LensTranscript::new(b"raw-axis-honest");
+            Brakedown::open(&poly, &point, &mut lt)
+        };
+
+        let steps = verifier_steps(&commitment, &point, value, &opening);
+        let trace_proof = prove_raw_axis_steps(&steps);
+        assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
+    }
+
     /// T-2: tampered eval_value causes verify() to reject.
     #[test]
     fn verify_rejects_tampered_eval_value() {
@@ -647,3 +986,4 @@ mod tests {
         assert!(verify(&trace_proof, &stmt, &params).is_err());
     }
 }
+

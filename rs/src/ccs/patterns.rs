@@ -76,15 +76,16 @@ fn build_ccs(matrices: Vec<SparseMatrix>, terms: Vec<(Vec<usize>, Goldilocks)>) 
 }
 
 // ── pattern 1: quote ─────────────────────────────────────────────────────────
-// r5_{t+1} = literal stored in r4_t (the formula body)
-// C_1: r5_{t+1} - r4_t = 0
+// result = body, both in the quote row itself (specs/trace.md pattern 1):
+// r4_t = body, r7_t = body.
+// C_1: r7_t - r4_t = 0
 fn pattern_quote() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5));  // selects z[21]
-    let m_r4_t  = select_matrix(reg_t(4));   // selects z[4]
+    let m_r7_t = select_matrix(reg_t(7));  // selects z[7]
+    let m_r4_t = select_matrix(reg_t(4));  // selects z[4]
     build_ccs(
-        vec![m_r5_t1, m_r4_t],
+        vec![m_r7_t, m_r4_t],
         vec![
-            (vec![0], Goldilocks::ONE),  // +r5_{t+1}
+            (vec![0], Goldilocks::ONE),  // +r7_t
             (vec![1], neg_one()),        // -r4_t
         ],
     )
@@ -422,6 +423,16 @@ mod tests {
         // r8=10, r9=8: 8 - 10 + 1 = -1 ≠ 0 ✗
         let z = make_z(&[(reg_t(8), 10), (reg_t(9), 8)]);
         assert!(!pattern_axis().is_satisfied_by(&CCSWitness { z }));
+    }
+
+    #[test]
+    fn pattern_quote_result_equals_body_in_row() {
+        // r4=42 (body), r7=42 (result): 42 - 42 = 0 ✓
+        let z = make_z(&[(reg_t(4), 42), (reg_t(7), 42)]);
+        assert!(pattern_quote().is_satisfied_by(&CCSWitness { z }));
+        // r4=42, r7=41: constraint violated ✗
+        let z = make_z(&[(reg_t(4), 42), (reg_t(7), 41)]);
+        assert!(!pattern_quote().is_satisfied_by(&CCSWitness { z }));
     }
 
     #[test]

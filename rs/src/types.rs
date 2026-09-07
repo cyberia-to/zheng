@@ -236,6 +236,10 @@ pub enum CommitError {
     /// A look opening does not bind to the trace: namespace out of range, or a
     /// value / point / commitment / root constraint is unsatisfied.
     LookBinding,
+    /// An axis opening does not bind to the trace: a commitment (r11-r14),
+    /// point (r5) or value (r7) constraint is unsatisfied, or the point length
+    /// does not match the axis address, or a verifier step is unsatisfied.
+    AxisBinding,
     DecideFailed(DecideError),
 }
 
@@ -250,6 +254,10 @@ pub enum VerifyError {
     SumcheckFailed { round: usize },
     EvaluationMismatch,
     LensFailed,
+    /// A degree-1 group carries a non-zero error term. Linear CCS instances
+    /// fold satisfied steps to exactly zero error, so a non-zero entry means
+    /// an unsatisfied step (e.g. a forged axis binding) was folded in.
+    LinearErrorNonzero,
 }
 
 #[derive(Debug)]
