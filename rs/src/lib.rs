@@ -262,6 +262,19 @@ pub fn verify(
     let linkage = linkage_digest(&commitments);
 
     for (group_proof, acc) in &proof.groups {
+        // Degree-1 groups (all multisets of size ≤ 1) fold satisfied steps to
+        // exactly zero error — error is linear in the witness. A non-zero
+        // entry means an unsatisfied step (e.g. a forged axis binding) was
+        // folded in; the relaxed Spartan check alone would accept it.
+        let linear = acc
+            .committed_instance
+            .multisets
+            .iter()
+            .all(|multiset| multiset.len() <= 1);
+        if linear && acc.error_evals.iter().any(|&e| e != Goldilocks::ZERO) {
+            return Err(VerifyError::LinearErrorNonzero);
+        }
+
         let mut transcript = Transcript::new_recursive();
         transcript.absorb_statement(statement);
         transcript.absorb_linkage(&linkage);
@@ -857,6 +870,105 @@ mod tests {
             verify(&spliced, &stmt, &params).is_err(),
             "axis group spliced from another proof must not verify"
         );
+    }
+
+    /// Fold a hand-built axis step sequence, decide it, and wrap it as a
+    /// one-group TraceProof — the route of a malicious prover who bypasses
+    /// commit()'s strictness gate.
+    fn prove_raw_axis_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
+        let mut acc = blank_acc(&steps[0].0);
+        let mut transcript = Transcript::new();
+        for (instance, witness) in steps {
+            crate::folding::fold_step(&mut acc, instance, witness, &mut transcript).unwrap();
+        }
+        let proof = decide(&acc, &zero_statement(), &ProofParams::default()).unwrap();
+        TraceProof {
+            groups: vec![(proof, acc)],
+        }
+    }
+
+    /// Negative: a prover who folds a commitment-binding step for the WRONG
+    /// commitment (valid opening of poly Q claimed against commitment P) and
+    /// bypasses the commit gate is caught at verify time — linear groups must
+    /// carry zero error.
+    #[test]
+    fn verify_rejects_folded_wrong_commitment_binding() {
+        use crate::ccs::verifier_steps::read_limb;
+        use crate::ccs::{eq_step, verifier_steps};
+        use lens::Transcript as LensTranscript;
+
+        let poly_q = MultilinearPoly::new(make_poly(&[9, 8, 7, 6]));
+        let commitment_q = Brakedown::commit(&poly_q);
+        let commitment_p = Brakedown::commit(&MultilinearPoly::new(make_poly(&[1, 2, 3, 4])));
+        let point = vec![Goldilocks::ZERO, Goldilocks::ONE];
+        let value = poly_q.evaluate(&point);
+        let opening = {
+            let mut lt = LensTranscript::new(b"raw-axis");
+            Brakedown::open(&poly_q, &point, &mut lt)
+        };
+
+        // Internally-valid opening steps for Q…
+        let mut steps = verifier_steps(&commitment_q, &point, value, &opening);
+        // …plus the binding the trace would demand: Q's limbs against P's
+        // registers. Unsatisfied — and folded in anyway.
+        for k in 0..4 {
+            steps.push(eq_step(
+                read_limb(commitment_q.as_bytes(), k),
+                read_limb(commitment_p.as_bytes(), k),
+            ));
+        }
+
+        let trace_proof = prove_raw_axis_steps(&steps);
+        let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
+    }
+
+    /// Negative: a prover who folds a value-binding step claiming a forged
+    /// result (opened value vs. a different r7) and bypasses the commit gate
+    /// is caught at verify time.
+    #[test]
+    fn verify_rejects_folded_forged_result_binding() {
+        use crate::ccs::{eq_step, verifier_steps};
+        use lens::Transcript as LensTranscript;
+
+        let poly = MultilinearPoly::new(make_poly(&[5, 15, 25, 35]));
+        let commitment = Brakedown::commit(&poly);
+        let point = vec![Goldilocks::ONE, Goldilocks::ZERO];
+        let value = poly.evaluate(&point);
+        let opening = {
+            let mut lt = LensTranscript::new(b"raw-axis-forge");
+            Brakedown::open(&poly, &point, &mut lt)
+        };
+
+        let mut steps = verifier_steps(&commitment, &point, value, &opening);
+        // Value binding against a forged result particle.
+        let forged_r7 = value + Goldilocks::ONE;
+        steps.push(eq_step(value, forged_r7));
+
+        let trace_proof = prove_raw_axis_steps(&steps);
+        let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
+    }
+
+    /// The zero-error rule accepts honest linear folds: the same raw route
+    /// with all steps satisfied verifies.
+    #[test]
+    fn verify_accepts_raw_satisfied_axis_steps() {
+        use crate::ccs::verifier_steps;
+        use lens::Transcript as LensTranscript;
+
+        let poly = MultilinearPoly::new(make_poly(&[5, 15, 25, 35]));
+        let commitment = Brakedown::commit(&poly);
+        let point = vec![Goldilocks::ONE, Goldilocks::ZERO];
+        let value = poly.evaluate(&point);
+        let opening = {
+            let mut lt = LensTranscript::new(b"raw-axis-honest");
+            Brakedown::open(&poly, &point, &mut lt)
+        };
+
+        let steps = verifier_steps(&commitment, &point, value, &opening);
+        let trace_proof = prove_raw_axis_steps(&steps);
+        assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
     }
 
     /// T-2: tampered eval_value causes verify() to reject.

@@ -254,6 +254,10 @@ pub enum VerifyError {
     SumcheckFailed { round: usize },
     EvaluationMismatch,
     LensFailed,
+    /// A degree-1 group carries a non-zero error term. Linear CCS instances
+    /// fold satisfied steps to exactly zero error, so a non-zero entry means
+    /// an unsatisfied step (e.g. a forged axis binding) was folded in.
+    LinearErrorNonzero,
 }
 
 #[derive(Debug)]
