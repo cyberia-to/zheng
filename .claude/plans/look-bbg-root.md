@@ -1,8 +1,15 @@
 # look ↔ BBG_root: putting the state root in the Statement
 
-Status: design note — written from the bbg side (soft3-release M6). The
-bbg-side prerequisites are DONE; everything below the "what zheng must add"
-line is zheng-side work, not yet implemented.
+Status: IMPLEMENTED 2026-09-07 (branch feat/look-root). All four zheng-side
+items landed: Statement.bbg_root (+ absorb after focus_bound — transcript
+format break logged in CHANGELOG; accumulator-size stabilisation was out of
+scope, so one more break may follow), root_to_bytes packing helper,
+per-look-row eq steps binding root_from_leaves(leaves) to the public root
+limbs inside build_look_steps_from_trace, and the LookBinding commit gate
+(zero root = no-state-read sentinel, look rows against it reject). Note's
+caveat about commit() not taking a Statement was stale — it does, so the
+gate lives there. e2e + negative + inheritance tests in rs/src/lib.rs; the
+bbg-side look_e2e.rs consuming the field is bbg's (M6) follow-up.
 
 ## the gap
 
