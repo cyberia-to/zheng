@@ -165,11 +165,76 @@ that bind the axis row's commitment to the axis_acc binding steps.
 | 3 (option B commitment constraint) | nox trace update for axis r10-r13 |
 | look (pattern 17) | BBG_root in Statement (blocked on bbg) |
 
-## question for user
+## implemented (2026-09-07, branch feat/axis-openings)
 
-Proceed with phase 1 + 2 now? This implements:
-- `build_axis_steps_from_trace()` in zheng
-- `pattern_axis()` budget constraint (replaces trivial_ccs)
-- Two-accumulator decide/verify (main_acc + axis_acc)
+The repo had grown past this plan's draft state before implementation began:
+`build_axis_steps_from_trace()`, the `pattern_axis()` budget constraint,
+per-CCS-structure accumulator groups in `commit()` (a generalization of the
+two-accumulator design — one group per distinct instance, so main/hash/axis/
+look each land in their own accumulators), and the full look (17) binding
+suite were already in place. What this milestone added:
 
-Phase 3 (explicit commitment binding) and look (17) remain deferred.
+### 1. axis trace bindings (`rs/src/ccs/mod.rs`)
+
+For every prover-active axis row (r11-r14 non-zero, i.e. the executor's
+`CallProvider::axis_commitment()` was live), `build_axis_steps_from_trace()`
+now emits eq steps binding the opening to the trace:
+
+- commitment limbs ↔ r11-r14
+- evaluation point ↔ `axis_eval_point(r5)` (binary path of the axis address)
+- opened value ↔ r7 (result particle)
+
+A strictness gate rejects at commit time (`CommitError::AxisBinding`).
+This settles the axis opening derivation: **point = binary path of r5,
+value = r7, commitment = r11-r14**. Interpreter mode (NullCalls, registers
+zero) keeps opening-only behavior per specs/trace.md.
+
+### 2. option A linkage (`rs/src/lib.rs`, `rs/src/folding/decide.rs`, `rs/src/transcript.rs`)
+
+`linkage_digest` = hemera hash over group count + every group's witness
+commitment in order. `commit()` folds all groups first, computes the digest,
+then decides each group with the digest absorbed (domain `\x08linkage`)
+right after the statement. `verify()` recomputes the digest from the proof's
+own groups and absorbs identically. Demonstrated: without the digest, an
+axis group spliced from another valid proof verifies (test observed
+accepting before the change); with it, splicing breaks every group's
+Fiat-Shamir chain (`verify_rejects_spliced_axis_group`).
+
+### 3. zero-error rule for degree-1 groups (`rs/src/lib.rs::verify`)
+
+Error is linear in the witness for degree-1 CCS, so satisfied steps fold to
+exactly zero error. `verify()` now rejects (`VerifyError::LinearErrorNonzero`)
+any all-linear group carrying a non-zero error term — closing the relaxed-
+fold loophole where a malicious prover folds an unsatisfied binding step and
+reports its honest error. Negative tests fold a wrong-commitment binding and
+a forged-result binding directly (bypassing the commit gate) and are
+rejected at verify time.
+
+### surfaced by the zero-error rule: pattern_quote fix
+
+The quote constraint was stale (r5_{t+1} = r4_t, cross-row) and no real
+trace satisfied it — the relaxed fold masked the violation. Fixed to the
+spec's r7 = r4 (same row). Any linear pattern that real traces violate
+would now surface the same way; compose (2) and cons (3) still use the
+old cross-row wiring (r5_{t+1} = r3_t) and are untested against real
+traces — flagged for the same treatment when their e2e coverage lands.
+
+### known limitation (accepted by option A)
+
+The eq-step witnesses binding opening ↔ trace registers are prover-supplied;
+no cross-accumulator constraint forces them to equal the main accumulator's
+committed register values. A fully malicious prover who *omits or rewrites*
+binding steps is not caught by the verifier — the linkage digest binds
+groups to each other, not step content to the main trace witness. Closing
+this requires option B (commitment limbs constrained inside pattern_axis(),
+nox already emits r11-r14) plus recursion over the step count, or a
+permutation argument across accumulators. Tracked as the residual gap for
+the recursion milestone.
+
+## remaining
+
+- phase 3 / option B: explicit r11-r14 constraint in pattern_axis()
+  (nox already emits the limbs; needs per-row constant matrices at fold time)
+- hash openings: same binding treatment for pattern 15 sponge inputs
+- look (17): bindings already implemented pre-milestone; BBG_root in
+  Statement still blocked on bbg
