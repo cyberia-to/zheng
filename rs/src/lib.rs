@@ -1129,6 +1129,33 @@ mod tests {
         assert!(verify(&tp, &stmt, &params).is_ok());
     }
 
+    /// E2E: a real cons program (`[3 [[1 7] [1 9]]]`), run twice, commits
+    /// and verifies.
+    #[test]
+    fn e2e_cons_roundtrip() {
+        let g = Goldilocks::new;
+        let mut ar = Reduction::<1024>::new();
+        let obj = ar.atom(g(5)).unwrap();
+        let t1 = ar.atom(g(1)).unwrap();
+        let seven = ar.atom(g(7)).unwrap();
+        let nine = ar.atom(g(9)).unwrap();
+        let qa = ar.pair(t1, seven).unwrap();
+        let qb = ar.pair(t1, nine).unwrap();
+        let body = ar.pair(qa, qb).unwrap();
+        let t3 = ar.atom(g(3)).unwrap();
+        let formula = ar.pair(t3, body).unwrap();
+
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+        nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+        assert!(trace.0.iter().any(|r| r.r()[0] == 3), "trace has a cons row");
+
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&tp, &stmt, &params).is_ok());
+    }
+
     /// T-2: tampered eval_value causes verify() to reject.
     #[test]
     fn verify_rejects_tampered_eval_value() {

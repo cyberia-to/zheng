@@ -104,18 +104,15 @@ fn pattern_compose() -> CCSInstance {
 }
 
 // ── pattern 3: cons ──────────────────────────────────────────────────────────
-// result is a cons pair; r5_{t+1} = r3_t (head already computed).
-// C_3: r5_{t+1} - r3_t = 0
+// specs/trace.md: "r3 = particle(pair(r4, r5)) verified via hemera hash
+// wiring" — needs the particle-identity wiring, not expressible as a linear
+// in-row constraint. The previous encoding (r5_{t+1} - r3_t = 0) compared
+// the cons result particle to the NEXT row's r5 — unrelated values on every
+// real trace, so honest cons programs failed the zero-error rule at verify.
+// Same bug class as pattern_quote/pattern_compose; no constraint until the
+// hash wiring lands.
 fn pattern_cons() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5));
-    let m_r3_t  = select_matrix(reg_t(3));
-    build_ccs(
-        vec![m_r5_t1, m_r3_t],
-        vec![
-            (vec![0], Goldilocks::ONE),
-            (vec![1], neg_one()),
-        ],
-    )
+    trivial_ccs()
 }
 
 // ── pattern 4: branch ────────────────────────────────────────────────────────
