@@ -249,7 +249,11 @@ fn blank_acc(instance: &CCSInstance) -> Accumulator {
     Accumulator {
         committed_instance: instance.clone(),
         folded_witness: CCSWitness { z: z.clone() },
-        witness_commitment: Brakedown::commit_raw(&z),
+        // A placeholder: the first fold overwrites this before anything
+        // absorbs it (fold_step step_count==0 branch), so committing the
+        // full zero vector here was ~12% of a proof spent hashing nothing.
+        // One-element commit keeps the type honest at negligible cost.
+        witness_commitment: Brakedown::commit_raw(&z[..1]),
         error_evals: vec![Goldilocks::ZERO; instance.num_rows],
         step_count: 0,
     }
