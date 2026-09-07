@@ -41,8 +41,8 @@ use lens::brakedown::Brakedown;
 use lens::{Commitment, Lens, MultilinearPoly, Opening};
 
 use crate::ccs::{
-    build_axis_steps_from_trace, build_ccs_from_trace, build_hash_steps_from_trace,
-    build_look_steps_from_trace,
+    build_axis_steps_from_trace, build_ccs_from_trace, build_hash_binding_steps_from_trace,
+    build_hash_steps_from_trace, build_look_steps_from_trace,
 };
 use crate::folding::{decide as run_decide, fold_step};
 use crate::spartan::verifier::SpartanVerifier;
@@ -124,6 +124,7 @@ pub fn commit(
     // Build all step sequences and chain them.
     let main_steps = build_ccs_from_trace(&trace.0);
     let hash_steps = build_hash_steps_from_trace(&trace.0, hash_aux)?;
+    let hash_binding = build_hash_binding_steps_from_trace(&trace.0, hash_aux)?;
     let axis_steps = build_axis_steps_from_trace(&trace.0, axis_openings)?;
     let axis_transcript = build_axis_transcript_steps(&trace.0, axis_openings)?;
     let look_steps = build_look_steps_from_trace(&trace.0, look_openings)?;
@@ -132,6 +133,7 @@ pub fn commit(
     let all_steps: Vec<(CCSInstance, CCSWitness)> = main_steps
         .into_iter()
         .chain(hash_steps)
+        .chain(hash_binding)
         .chain(axis_steps)
         .chain(axis_transcript)
         .chain(look_steps)
@@ -875,7 +877,7 @@ mod tests {
     /// Fold a hand-built axis step sequence, decide it, and wrap it as a
     /// one-group TraceProof — the route of a malicious prover who bypasses
     /// commit()'s strictness gate.
-    fn prove_raw_axis_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
+    fn prove_raw_linear_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
         let mut acc = blank_acc(&steps[0].0);
         let mut transcript = Transcript::new();
         for (instance, witness) in steps {
@@ -918,7 +920,7 @@ mod tests {
             ));
         }
 
-        let trace_proof = prove_raw_axis_steps(&steps);
+        let trace_proof = prove_raw_linear_steps(&steps);
         let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
         assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
     }
@@ -945,7 +947,7 @@ mod tests {
         let forged_r7 = value + Goldilocks::ONE;
         steps.push(eq_step(value, forged_r7));
 
-        let trace_proof = prove_raw_axis_steps(&steps);
+        let trace_proof = prove_raw_linear_steps(&steps);
         let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
         assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
     }
@@ -967,8 +969,126 @@ mod tests {
         };
 
         let steps = verifier_steps(&commitment, &point, value, &opening);
-        let trace_proof = prove_raw_axis_steps(&steps);
+        let trace_proof = prove_raw_linear_steps(&steps);
         assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
+    }
+
+    // ── hash (pattern 15): trace binding tests ───────────────────────────────
+    // Hash carries NO polynomial opening: the sponge is verified in-circuit,
+    // and HashAux's rate is the only prover-supplied input. The bindings tie
+    // every block row to the replay of that rate.
+
+    /// Build the trace and honest HashAux for `[15 [1 s]]` hashing atom `val`.
+    fn hash_setup(val: u64) -> (VecTrace, crate::ccs::HashAux) {
+        let g = Goldilocks::new;
+        let mut order = Reduction::<1024>::new();
+        let s = order.atom(g(val)).unwrap();
+        let tag1 = order.atom(g(1)).unwrap();
+        let tag15 = order.atom(g(15)).unwrap();
+        let quote_f = order.pair(tag1, s).unwrap();
+        let hash_f = order.pair(tag15, quote_f).unwrap();
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, s, hash_f, 100, &NullCalls, &mut trace);
+        assert_eq!(trace.0.len(), 26);
+        let d = *order.digest(s).unwrap();
+        let rate = [
+            d[0], d[1], d[2], d[3],
+            Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO,
+        ];
+        (trace, crate::ccs::HashAux { rate })
+    }
+
+    /// E2E: two hash blocks in one trace — bindings, round CCS and linkage
+    /// all round-trip.
+    #[test]
+    fn e2e_two_hash_blocks_roundtrip() {
+        let (mut trace, aux1) = hash_setup(42);
+        let (trace2, aux2) = hash_setup(42);
+        trace.0.extend(trace2.0);
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let tp = commit(&trace, &[aux1, aux2], &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&tp, &stmt, &params).is_ok());
+    }
+
+    /// Negative: a tampered rate (not any digest) diverges from the trace at
+    /// every row — the binding gate rejects at commit.
+    #[test]
+    fn commit_rejects_tampered_hash_rate() {
+        let (trace, _) = hash_setup(42);
+        let forged = crate::ccs::HashAux { rate: [Goldilocks::new(3); 8] };
+        let err = commit(&trace, &[forged], &[], &[], &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::HashBinding)));
+    }
+
+    /// Negative: a VALID digest of a different particle (swapped input) still
+    /// diverges from the recorded sponge states — rejected at commit.
+    #[test]
+    fn commit_rejects_swapped_hash_rate() {
+        let (trace, _) = hash_setup(42);
+        let (_, aux_other) = hash_setup(43);
+        let err = commit(&trace, &[aux_other], &[], &[], &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::HashBinding)));
+    }
+
+    /// Negative: a prover who folds a forged output-digest binding directly
+    /// (bypassing the commit gate) is caught by the degree-1 zero-error rule
+    /// — the hash bindings inherit it from the axis machinery.
+    #[test]
+    fn verify_rejects_folded_forged_hash_digest() {
+        use crate::ccs::eq_step;
+
+        let (trace, aux) = hash_setup(42);
+        let mut steps =
+            crate::ccs::build_hash_binding_steps_from_trace(&trace.0, &[aux]).unwrap();
+        // The squeeze row's recorded digest limb vs a forged replay value.
+        let digest0 = Goldilocks::new(trace.0[25].r()[4]).canonicalize();
+        steps.push(eq_step(digest0 + Goldilocks::ONE, digest0));
+
+        let trace_proof = prove_raw_linear_steps(&steps);
+        let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
+    }
+
+    /// Negative: the hash binding group of one valid proof spliced into
+    /// another valid proof breaks the option-A linkage digest — the hash
+    /// bindings inherit the cross-group linkage.
+    #[test]
+    fn verify_rejects_spliced_hash_binding_group() {
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let (t1, a1) = hash_setup(42);
+        let (t2, a2) = hash_setup(43);
+        let p1 = commit(&t1, &[a1], &[], &[], &stmt, &params).unwrap();
+        let p2 = commit(&t2, &[a2], &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&p1, &stmt, &params).is_ok());
+        assert!(verify(&p2, &stmt, &params).is_ok());
+
+        let eq_group = |p: &TraceProof| {
+            let idxs: Vec<usize> = p
+                .groups
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
+                .map(|(i, _)| i)
+                .collect();
+            assert_eq!(idxs.len(), 1, "exactly one eq-step binding group");
+            idxs[0]
+        };
+        let i1 = eq_group(&p1);
+        let i2 = eq_group(&p2);
+        assert_ne!(
+            p1.groups[i1].1.witness_commitment.as_bytes(),
+            p2.groups[i2].1.witness_commitment.as_bytes(),
+            "different hashed particles give different binding witnesses"
+        );
+
+        let mut spliced = p1.clone();
+        spliced.groups[i1] = p2.groups[i2].clone();
+        assert!(
+            verify(&spliced, &stmt, &params).is_err(),
+            "hash binding group spliced from another proof must not verify"
+        );
     }
 
     /// T-2: tampered eval_value causes verify() to reject.
@@ -986,4 +1106,5 @@ mod tests {
         assert!(verify(&trace_proof, &stmt, &params).is_err());
     }
 }
+
 

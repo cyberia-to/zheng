@@ -236,6 +236,10 @@ pub enum CommitError {
     /// A look opening does not bind to the trace: namespace out of range, or a
     /// value / point / commitment / root constraint is unsatisfied.
     LookBinding,
+    /// A hash block does not bind to the trace: the block is not 25 rows,
+    /// or a replayed sponge state / round index / digest / budget constraint
+    /// diverges from the recorded rows.
+    HashBinding,
     /// An axis opening does not bind to the trace: a commitment (r11-r14),
     /// point (r5) or value (r7) constraint is unsatisfied, or the point length
     /// does not match the axis address, or a verifier step is unsatisfied.
