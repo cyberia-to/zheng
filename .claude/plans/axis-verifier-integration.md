@@ -231,10 +231,73 @@ nox already emits r11-r14) plus recursion over the step count, or a
 permutation argument across accumulators. Tracked as the residual gap for
 the recursion milestone.
 
+## hash (pattern 15) — implemented 2026-09-07, branch feat/hash-openings
+
+### finding: hash carries no opening
+
+Evidence: nox specs/trace.md pattern 15 register map holds Poseidon2
+sponge state (r4-r7, r10-r13), round index (r14), digest and result — no
+commitment or opening registers; nox/rs/patterns/hash.rs writes exactly
+that. Verification is in-circuit (`particle::partial_round_ccs`, 16-row
+degree-2 CCS per partial round) driven by `HashAux` — the "hash opening
+derivation" of this plan's title is a misnomer. The prover-supplied
+surface is the HashAux **rate**, and it was unbound: full-round pairs use
+`trivial_hash_ccs` (no constraints) and the capacity/y witness columns are
+injected from a replay of whatever rate the prover claims.
+
+### what landed
+
+1. **spartan relaxed-path fix** (prerequisite): two challenge/row-bit
+   pairing bugs made prover and verifier disagree on any m>1 group whose
+   error vector or matrix activity extends past row 0 — e_claim used
+   MSB-paired `evaluate_multilinear` against the prover's LSB-paired
+   `eq_evals` weighting, and `w_combined` row weights used unreversed
+   challenge order against MSB-first-folded matrix_evals. Satisfied
+   witnesses collapse all row activity to row 0 (bit-reversal symmetric),
+   which hid both. A tampered rate was "rejected" only by these bugs.
+   Fixed both sides; regression tests pin the fold convention and the
+   relaxed round-trip.
+
+2. **hash trace bindings** (`rs/src/ccs/hash_binding.rs`): degree-1 eq
+   steps bind every block row to the replay of the claimed rate — state
+   limbs and round index per round row, output digest and 24-sentinel on
+   the squeeze row. Strictness gate `CommitError::HashBinding`. The steps
+   fold into the shared eq-step group and inherit option-A linkage and the
+   zero-error rule — verified by tests (tampered rate, swapped rate,
+   forged digest folded past the gate, spliced hash binding group).
+
+3. **compose (2) and cons (3) fixed** — same bug class as pattern_quote:
+   constraints wired to registers no real trace sets (r5_{t+1} = r3_t;
+   nox leaves compose r3 = 0). Under the zero-error rule every honest
+   compose/cons program committed and failed verification. Both are
+   trivial_ccs until cross-row / particle-identity wiring lands; e2e
+   round-trips for real compose and cons programs now guard the class.
+
+### spec-code drift found (nox specs/trace.md)
+
+- pattern 15 squeeze: spec claims r9 = r8 - 25; nox records r8 before the
+  body sub-formula (observed r9 = r8 - 26 for `[15 [1 s]]`)
+- pattern 2: spec claims r3 = result particle and r9 = r8 - 1; nox leaves
+  r3 = 0 and records post-continuation budget (observed r9 = r8 - 4)
+- pattern 3: budget drift likewise (observed r9 = r8 - 3)
+
+Per the spec-first rule these need resolution in nox specs (or code) —
+out of zheng's scope, flagged for the nox milestone.
+
+### hash residual (same class as axis option A)
+
+The rate ↔ input-particle link stays prover-claimed: r15 holds the
+particle id, its structural digest is not in the trace. Closing requires
+recursion over the digest computation or a nox trace change emitting the
+digest limbs — the exact analog of the axis r11-r14 option-B upgrade.
+
 ## remaining
 
 - phase 3 / option B: explicit r11-r14 constraint in pattern_axis()
   (nox already emits the limbs; needs per-row constant matrices at fold time)
-- hash openings: same binding treatment for pattern 15 sponge inputs
+- hash: full-round in-circuit CCS (transitions k∈{0..2,19..23} still
+  trivial — the replay bindings pin them to the claimed rate, the circuit
+  itself does not); rate ↔ input digest binding (see residual above)
+- compose/cons: cross-row result wiring (blocked on wiring infrastructure)
 - look (17): bindings already implemented pre-milestone; BBG_root in
   Statement still blocked on bbg
