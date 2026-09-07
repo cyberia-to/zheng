@@ -162,20 +162,6 @@ pub fn trikernel_step(
     raw.iter().map(|v| *v * inv_sum).collect()
 }
 
-/// L1 distance.
-pub fn l1_dist(a: &[Goldilocks], b: &[Goldilocks]) -> Goldilocks {
-    let mut s = Goldilocks::ZERO;
-    for (x, y) in a.iter().zip(b.iter()) {
-        // field has no abs; use x-y and y-x min via comparison on u64 for demo
-        let d1 = *x - *y;
-        let d2 = *y - *x;
-        // pick the smaller representative under u64 order as pseudo-abs for tests
-        let v = if d1.as_u64() < d2.as_u64() { d1 } else { d2 };
-        s += v;
-    }
-    s
-}
-
 /// Prove φ* after `iterations` steps. Proves each diffusion SpMV (T·φ).
 pub fn prove_phi_star(
     transition: &SparseGraph,
