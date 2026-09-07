@@ -236,6 +236,10 @@ pub enum CommitError {
     /// A look opening does not bind to the trace: namespace out of range, or a
     /// value / point / commitment / root constraint is unsatisfied.
     LookBinding,
+    /// An axis opening does not bind to the trace: a commitment (r11-r14),
+    /// point (r5) or value (r7) constraint is unsatisfied, or the point length
+    /// does not match the axis address, or a verifier step is unsatisfied.
+    AxisBinding,
     DecideFailed(DecideError),
 }
 

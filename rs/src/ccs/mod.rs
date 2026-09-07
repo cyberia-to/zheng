@@ -129,13 +129,25 @@ fn is_multi_row(tag: u8) -> bool {
 
 /// Build the verifier_steps() sequence for every axis row in the trace.
 ///
-/// Scans the trace for rows with tag 0 (axis). For each, calls verifier_steps()
-/// using the matching entry in `openings` (parallel slice, same order as axis
-/// rows in the trace). Returns a flat Vec of (CCSInstance, CCSWitness) pairs
-/// with VZ_LEN=3, ready to fold into a separate axis accumulator.
+/// Scans the trace for rows with tag 0 (axis). For each, the matching entry in
+/// `openings` (parallel slice, same order as axis rows) contributes:
+///
+/// 1. `verifier_steps` — the Brakedown opening is internally sound;
+/// 2. commitment binding — the opened commitment equals the four limbs the
+///    executor's CallProvider wrote into r[11]-r[14];
+/// 3. point binding — the evaluation point is `axis_eval_point(r[5])`, the
+///    binary path of the axis address nox navigated, one eq step per bit;
+/// 4. value binding — the opened value equals the result particle nox
+///    produced (r[7]).
+///
+/// Bindings 2-4 apply only to prover-active rows (r[11]-r[14] non-zero).
+/// Interpreter mode (NullCalls) leaves those registers zero — there is no
+/// commitment to bind against, and the opening stands alone.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
-/// than axis rows in the trace.
+/// than axis rows, `Err(CommitError::AxisBinding)` if the point length does
+/// not match the address or any step is unsatisfied — commit refuses to emit
+/// a proof whose axis bindings do not hold.
 pub fn build_axis_steps_from_trace(
     trace: &[TraceRow],
     openings: &[AxisOpening],
@@ -145,7 +157,36 @@ pub fn build_axis_steps_from_trace(
     for row in trace {
         if row.r()[0] == 0 {
             let ao = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            let row_start = steps.len();
             steps.extend(verifier_steps(&ao.commitment, &ao.point, ao.value, &ao.opening));
+
+            if row.r()[11..15].iter().any(|&v| v != 0) {
+                // (2) the opened commitment is the one the trace row carries
+                let cb = ao.commitment.as_bytes();
+                for k in 0..4 {
+                    steps.push(eq_step(
+                        verifier_steps::read_limb(cb, k),
+                        Goldilocks::new(row.r()[11 + k]),
+                    ));
+                }
+
+                // (3) the opening point is the binary path of the axis address
+                let derived = axis_eval_point(row.r()[5]);
+                if derived.len() != ao.point.len() {
+                    return Err(CommitError::AxisBinding);
+                }
+                for (&p, &d) in ao.point.iter().zip(derived.iter()) {
+                    steps.push(eq_step(p, d));
+                }
+
+                // (4) the opened value is the result particle nox produced
+                steps.push(eq_step(ao.value, Goldilocks::new(row.r()[7]).canonicalize()));
+            }
+
+            // Strictness gate: every step for this axis row must hold now.
+            if steps[row_start..].iter().any(|(i, w)| !selector::is_satisfied(i, w)) {
+                return Err(CommitError::AxisBinding);
+            }
             opening_idx += 1;
         }
     }
