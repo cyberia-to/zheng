@@ -21,7 +21,8 @@ pub mod types;
 
 pub use crate::ccs::{
     AxisOpening, HashAux, LookOpening, RootLeaves, build_axis_transcript_steps,
-    build_look_transcript_steps, look_openings_from_provider, root_from_leaves, standalone_root,
+    build_look_transcript_steps, look_openings_from_provider, root_from_leaves, root_to_bytes,
+    standalone_root,
 };
 pub use phi::{
     PhiError, PhiProof, PhiStatement, SparseGraph, SpmvError, SpmvProof, SpmvStatement,
@@ -127,7 +128,7 @@ pub fn commit(
     let hash_binding = build_hash_binding_steps_from_trace(&trace.0, hash_aux)?;
     let axis_steps = build_axis_steps_from_trace(&trace.0, axis_openings)?;
     let axis_transcript = build_axis_transcript_steps(&trace.0, axis_openings)?;
-    let look_steps = build_look_steps_from_trace(&trace.0, look_openings)?;
+    let look_steps = build_look_steps_from_trace(&trace.0, look_openings, &statement.bbg_root)?;
     let look_transcript = build_look_transcript_steps(&trace.0, look_openings)?;
 
     let all_steps: Vec<(CCSInstance, CCSWitness)> = main_steps
@@ -353,6 +354,7 @@ mod tests {
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 0,
+        bbg_root: [0u8; 32],
         }
     }
 
@@ -622,6 +624,7 @@ mod tests {
             input_hash,
             output_hash,
             focus_bound: 10,
+        bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
 
@@ -651,6 +654,7 @@ mod tests {
             input_hash: wrong_hash,
             output_hash: [0u8; 32],
             focus_bound: 0,
+        bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
         let err = commit(
@@ -673,6 +677,7 @@ mod tests {
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 1, // trace has 2 rows > 1
+            bbg_root: [0u8; 32],
         };
         let params = ProofParams::default();
         let err = commit(&trace, &[], &[], &[], &stmt, &params);
@@ -1154,6 +1159,176 @@ mod tests {
         let params = ProofParams::default();
         let tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
         assert!(verify(&tp, &stmt, &params).is_ok());
+    }
+
+    // ── look (pattern 17): public-root e2e and negatives ─────────────────────
+    // The look chain (opening → value=r7 → point=r6 → leaf=dims[r5] → root =
+    // r4/r11-r13) previously ended at the object's root limbs — witness data.
+    // Statement.bbg_root makes the root a public input; these tests exercise
+    // the full commit()/verify() pipeline for look for the first time.
+
+    /// Run `[17 [[1 ns] [1 key]]]` against a provider over `evals`; the
+    /// object carries the solo root limbs. Returns (trace, openings, root).
+    fn look_setup(evals: &[u64], key: u64) -> (VecTrace, Vec<LookOpening>, [u8; 32]) {
+        use nox::{BrakedownLookProvider, reduce};
+
+        let g = Goldilocks::new;
+        let poly = MultilinearPoly::new(evals.iter().map(|&v| g(v)).collect());
+        let provider = BrakedownLookProvider::new(poly);
+        let root = crate::ccs::standalone_root(&provider, 0);
+        let root_bytes = root_to_bytes(&root);
+
+        let mut ar = Reduction::<1024>::new();
+        // object [[l0 | [l1 | [l2 | l3]]] | rest]
+        let l: Vec<_> = root.iter().map(|&x| ar.atom(x).unwrap()).collect();
+        let inner = ar.pair(l[2], l[3]).unwrap();
+        let mid = ar.pair(l[1], inner).unwrap();
+        let root_pair = ar.pair(l[0], mid).unwrap();
+        let rest = ar.atom(g(0)).unwrap();
+        let obj = ar.pair(root_pair, rest).unwrap();
+        // formula [17 [[1 0] [1 key]]]
+        let t17 = ar.atom(g(17)).unwrap();
+        let t1 = ar.atom(g(1)).unwrap();
+        let vns = ar.atom(g(0)).unwrap();
+        let vkey = ar.atom(g(key)).unwrap();
+        let nf = ar.pair(t1, vns).unwrap();
+        let kf = ar.pair(t1, vkey).unwrap();
+        let body = ar.pair(nf, kf).unwrap();
+        let formula = ar.pair(t17, body).unwrap();
+
+        let mut trace = VecTrace::default();
+        let _ = reduce(&mut ar, obj, formula, 1000, &provider, &mut trace);
+        assert!(trace.0.iter().any(|r| r.r()[0] == 17), "trace has a look row");
+        let openings = crate::ccs::look_openings_from_provider(&provider);
+        assert_eq!(openings.len(), 1);
+        (trace, openings, root_bytes)
+    }
+
+    fn look_statement(root: [u8; 32]) -> Statement {
+        Statement { bbg_root: root, ..zero_statement() }
+    }
+
+    /// E2E: a real look program against a committed state, its root public
+    /// in the Statement, round-trips through commit and verify.
+    #[test]
+    fn e2e_look_roundtrip() {
+        let (trace, openings, root) = look_setup(&[10, 20, 30, 40], 2);
+        let stmt = look_statement(root);
+        let params = ProofParams::default();
+        let tp = commit(&trace, &[], &[], &openings, &stmt, &params).unwrap();
+        assert!(verify(&tp, &stmt, &params).is_ok());
+    }
+
+    /// Negative: the public root names a different state — rejected at commit.
+    #[test]
+    fn commit_rejects_look_root_mismatch() {
+        let (trace, openings, root) = look_setup(&[10, 20, 30, 40], 2);
+        let mut wrong = root;
+        wrong[0] ^= 1;
+        let err = commit(&trace, &[], &[], &openings, &look_statement(wrong), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::LookBinding)));
+    }
+
+    /// Negative: a VALID opening of a different state (its own consistent
+    /// leaves and root) against this statement's root — rejected at commit.
+    #[test]
+    fn commit_rejects_swapped_look_opening() {
+        let (trace, _, root) = look_setup(&[10, 20, 30, 40], 2);
+        let (_, other_openings, _) = look_setup(&[11, 21, 31, 41], 2);
+        let err = commit(&trace, &[], &[], &other_openings, &look_statement(root), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::LookBinding)));
+    }
+
+    /// Negative: tampered leaves — the recomputed root diverges from both the
+    /// trace registers and the public root — rejected at commit.
+    #[test]
+    fn commit_rejects_tampered_look_leaves() {
+        let (trace, mut openings, root) = look_setup(&[10, 20, 30, 40], 2);
+        openings[0].leaves.dims[3] = [Goldilocks::new(7); 4];
+        let err = commit(&trace, &[], &[], &openings, &look_statement(root), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::LookBinding)));
+    }
+
+    /// Negative: look rows against the zero-root sentinel — a program that
+    /// reads state must declare its root — rejected at commit.
+    #[test]
+    fn commit_rejects_look_without_public_root() {
+        let (trace, openings, _) = look_setup(&[10, 20, 30, 40], 2);
+        let err = commit(&trace, &[], &[], &openings, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::LookBinding)));
+    }
+
+    /// Negative: a prover who folds a root-vs-statement binding for the wrong
+    /// public root directly (bypassing the commit gate) is caught by the
+    /// degree-1 zero-error rule.
+    #[test]
+    fn verify_rejects_folded_wrong_statement_root() {
+        use crate::ccs::eq_step;
+        use crate::ccs::verifier_steps::read_limb;
+
+        let (trace, openings, root) = look_setup(&[10, 20, 30, 40], 2);
+        let mut steps =
+            crate::ccs::build_look_steps_from_trace(&trace.0, &openings, &root).unwrap();
+        // The forged binding: recomputed root limb vs a different public root.
+        let limbs = crate::ccs::root_from_leaves(&openings[0].leaves);
+        let mut wrong = root;
+        wrong[0] ^= 1;
+        steps.push(eq_step(limbs[0], read_limb(&wrong, 0)));
+
+        // Keep only the linear eq steps for the raw fold (the root-chain
+        // hemera pairs use a different CCS shape).
+        let eq_only: Vec<_> = steps
+            .into_iter()
+            .filter(|(inst, _)| inst.num_cols == 3)
+            .collect();
+        let trace_proof = prove_raw_linear_steps(&eq_only);
+        let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
+    }
+
+    /// Negative: the look eq-step group of one valid proof spliced into
+    /// another valid proof over the SAME state (same statement, different
+    /// keys read) breaks the option-A linkage.
+    #[test]
+    fn verify_rejects_spliced_look_group() {
+        let params = ProofParams::default();
+        let (t1, o1, root) = look_setup(&[10, 20, 30, 40], 2);
+        let (t2, o2, root2) = look_setup(&[10, 20, 30, 40], 0);
+        assert_eq!(root, root2, "same state, same public root");
+        let stmt = look_statement(root);
+        let p1 = commit(&t1, &[], &[], &o1, &stmt, &params).unwrap();
+        let p2 = commit(&t2, &[], &[], &o2, &stmt, &params).unwrap();
+        assert!(verify(&p1, &stmt, &params).is_ok());
+        assert!(verify(&p2, &stmt, &params).is_ok());
+
+        // The root-chain hemera pairs split the look eq run into two VZ=3
+        // groups: [opening + value/point/leaf eqs] and [root + statement eqs].
+        // Splice the first — different keys read give different witnesses.
+        let eq_group = |p: &TraceProof| {
+            let idxs: Vec<usize> = p
+                .groups
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
+                .map(|(i, _)| i)
+                .collect();
+            assert_eq!(idxs.len(), 2, "two eq-step groups around the root chain");
+            idxs[0]
+        };
+        let i1 = eq_group(&p1);
+        let i2 = eq_group(&p2);
+        assert_ne!(
+            p1.groups[i1].1.witness_commitment.as_bytes(),
+            p2.groups[i2].1.witness_commitment.as_bytes(),
+            "different keys read give different binding witnesses"
+        );
+
+        let mut spliced = p1.clone();
+        spliced.groups[i1] = p2.groups[i2].clone();
+        assert!(
+            verify(&spliced, &stmt, &params).is_err(),
+            "look group spliced from another proof must not verify"
+        );
     }
 
     /// T-2: tampered eval_value causes verify() to reject.

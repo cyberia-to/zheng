@@ -84,6 +84,7 @@ impl PhiStatement {
                     .unwrap_or(&[0u8; 32])
             },
             focus_bound: self.iterations as u64,
+        bbg_root: [0u8; 32],
         }
     }
 }

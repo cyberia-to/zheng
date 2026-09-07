@@ -98,6 +98,16 @@ pub fn root_from_leaves(leaves: &RootLeaves) -> [Goldilocks; 4] {
     leaves.ordered().iter().fold(root_iv(), |acc, leaf| compress4(&acc, leaf))
 }
 
+/// Pack root limbs as `Statement.bbg_root` bytes: limb i little-endian at
+/// bytes [8i, 8i+8) — the packing of `bbg::BbgState::root()`.
+pub fn root_to_bytes(root: &[Goldilocks; 4]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    for (i, limb) in root.iter().enumerate() {
+        out[i * 8..(i + 1) * 8].copy_from_slice(&limb.as_u64().to_le_bytes());
+    }
+    out
+}
+
 /// Replay the root chain and emit hemera CCS pairs for every compression.
 ///
 /// 14 compressions × 24 round pairs = 336 (CCSInstance, CCSWitness) pairs,

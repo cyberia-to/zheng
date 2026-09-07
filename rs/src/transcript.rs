@@ -125,6 +125,7 @@ impl Transcript {
         self.absorb(&s.input_hash);
         self.absorb(&s.output_hash);
         self.absorb(&s.focus_bound.to_le_bytes());
+        self.absorb(&s.bbg_root);
     }
 
     /// Absorb the cross-group linkage digest (domain-separated).

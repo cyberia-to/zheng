@@ -4,6 +4,15 @@
 
 Initial minimal release: turn a [[nox]] execution trace into a verifiable proof.
 
+### Changed
+
+- **transcript format break**: `Statement` gained `bbg_root: [u8; 32]` (the
+  BBG state root for look/pattern-17 reads; `[0u8; 32]` = no state read) and
+  `absorb_statement` now absorbs it after `focus_bound`. Every proof made
+  before this change fails verification against the new transcript. The
+  accumulator-size stabilisation (soft3 blocker 3) was out of scope for this
+  change, so the format may break once more when that lands.
+
 ### Added
 
 - SuperSpartan IOP over CCS (Customizable Constraint Systems) — outer + inner

@@ -155,6 +155,7 @@ impl SpmvStatement {
                 b
             },
             focus_bound: self.n as u64,
+        bbg_root: [0u8; 32],
         }
     }
 }

@@ -299,5 +299,13 @@ digest limbs — the exact analog of the axis r11-r14 option-B upgrade.
   trivial — the replay bindings pin them to the claimed rate, the circuit
   itself does not); rate ↔ input digest binding (see residual above)
 - compose/cons: cross-row result wiring (blocked on wiring infrastructure)
-- look (17): bindings already implemented pre-milestone; BBG_root in
-  Statement still blocked on bbg
+- look (17): DONE 2026-09-07 — Statement.bbg_root public input, root
+  eq-binding + LookBinding gate, full-pipeline e2e (see look-bbg-root.md).
+  The option-A residual (prover-supplied eq witnesses) applies to look as
+  to axis and hash.
+
+option-B rationale (axis-options-comparison.md, now deleted for the
+.claude line budget): statement-binding vs in-circuit commitment
+constraint were equal on soundness and speed; A won on zero nox
+coordination. B's upgrade path stays: nox emits r11-r14, pattern_axis
+gains 4 eq constraints with per-row constant matrices.
