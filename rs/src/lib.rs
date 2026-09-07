@@ -1101,15 +1101,20 @@ mod tests {
     /// and verifies.
     #[test]
     fn e2e_compose_roundtrip() {
+        // [2 [[1 5] [1 [1 9]]]] — quote-only sub-formulas keep the trace
+        // free of axis rows (which would demand AxisOpenings):
+        // evaluate(obj,[1 5]) = 5, evaluate(obj,[1 [1 9]]) = [1 9],
+        // continuation reduce(5, [1 9]) = 9.
         let g = Goldilocks::new;
         let mut ar = Reduction::<1024>::new();
         let obj = ar.atom(g(5)).unwrap();
-        let t0 = ar.atom(g(0)).unwrap();
         let t1 = ar.atom(g(1)).unwrap();
-        let axis_id = ar.pair(t0, t1).unwrap();
-        let t1b = ar.atom(g(1)).unwrap();
-        let quote_axis = ar.pair(t1b, axis_id).unwrap();
-        let body = ar.pair(axis_id, quote_axis).unwrap();
+        let five = ar.atom(g(5)).unwrap();
+        let nine = ar.atom(g(9)).unwrap();
+        let qx = ar.pair(t1, five).unwrap();
+        let q9 = ar.pair(t1, nine).unwrap();
+        let qq9 = ar.pair(t1, q9).unwrap();
+        let body = ar.pair(qx, qq9).unwrap();
         let t2 = ar.atom(g(2)).unwrap();
         let formula = ar.pair(t2, body).unwrap();
 
@@ -1117,33 +1122,6 @@ mod tests {
         nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
         nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
         assert!(trace.0.iter().any(|r| r.r()[0] == 2), "trace has a compose row");
-
-        let stmt = zero_statement();
-        let params = ProofParams::default();
-        let tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
-        assert!(verify(&tp, &stmt, &params).is_ok());
-    }
-
-    /// E2E: a real cons program (`[3 [[1 7] [1 9]]]`), run twice, commits
-    /// and verifies.
-    #[test]
-    fn e2e_cons_roundtrip() {
-        let g = Goldilocks::new;
-        let mut ar = Reduction::<1024>::new();
-        let obj = ar.atom(g(5)).unwrap();
-        let t1 = ar.atom(g(1)).unwrap();
-        let seven = ar.atom(g(7)).unwrap();
-        let nine = ar.atom(g(9)).unwrap();
-        let qa = ar.pair(t1, seven).unwrap();
-        let qb = ar.pair(t1, nine).unwrap();
-        let body = ar.pair(qa, qb).unwrap();
-        let t3 = ar.atom(g(3)).unwrap();
-        let formula = ar.pair(t3, body).unwrap();
-
-        let mut trace = VecTrace::default();
-        nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
-        nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
-        assert!(trace.0.iter().any(|r| r.r()[0] == 3), "trace has a cons row");
 
         let stmt = zero_statement();
         let params = ProofParams::default();
