@@ -92,33 +92,27 @@ fn pattern_quote() -> CCSInstance {
 }
 
 // ── pattern 2: compose ───────────────────────────────────────────────────────
-// result of compose is r5_{t+1} = r3_t (output of sub-formula on subject).
-// C_2: r5_{t+1} - r3_t = 0
+// specs/trace.md: "r3 wired to result row of reduce(r4, r5) via CCS" — a
+// cross-row wiring constraint the per-row scheme cannot express yet. The
+// previous encoding (r5_{t+1} - r3_t = 0) held on NO real trace — nox leaves
+// r3 = 0 on compose rows and the next row's r5 is unrelated — so every
+// honest compose program failed the degree-1 zero-error rule at verify.
+// No constraint until wiring infrastructure lands (same bug class as the
+// pattern_quote fix; note the spec's r3 is itself code-drifted).
 fn pattern_compose() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5));
-    let m_r3_t  = select_matrix(reg_t(3));
-    build_ccs(
-        vec![m_r5_t1, m_r3_t],
-        vec![
-            (vec![0], Goldilocks::ONE),
-            (vec![1], neg_one()),
-        ],
-    )
+    trivial_ccs()
 }
 
 // ── pattern 3: cons ──────────────────────────────────────────────────────────
-// result is a cons pair; r5_{t+1} = r3_t (head already computed).
-// C_3: r5_{t+1} - r3_t = 0
+// specs/trace.md: "r3 = particle(pair(r4, r5)) verified via hemera hash
+// wiring" — needs the particle-identity wiring, not expressible as a linear
+// in-row constraint. The previous encoding (r5_{t+1} - r3_t = 0) compared
+// the cons result particle to the NEXT row's r5 — unrelated values on every
+// real trace, so honest cons programs failed the zero-error rule at verify.
+// Same bug class as pattern_quote/pattern_compose; no constraint until the
+// hash wiring lands.
 fn pattern_cons() -> CCSInstance {
-    let m_r5_t1 = select_matrix(reg_t1(5));
-    let m_r3_t  = select_matrix(reg_t(3));
-    build_ccs(
-        vec![m_r5_t1, m_r3_t],
-        vec![
-            (vec![0], Goldilocks::ONE),
-            (vec![1], neg_one()),
-        ],
-    )
+    trivial_ccs()
 }
 
 // ── pattern 4: branch ────────────────────────────────────────────────────────
