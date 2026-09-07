@@ -210,8 +210,18 @@ pub fn build_axis_steps_from_trace(
 ///    chain, built once per distinct root) equals trace registers r[4], r[11],
 ///    r[12], r[13].
 ///
+/// 6. statement binding — the recomputed root equals the PUBLIC
+///    `Statement.bbg_root` (four LE limbs), one eq step per limb. This is
+///    the final link: without it the root registers come from the program's
+///    object (witness data) and a prover can fabricate a self-consistent
+///    state; with it, object root = recomputed root = public root.
+///
 /// Together these close the look soundness gap: a prover can no longer open an
 /// arbitrary polynomial and claim it is the state the root names.
+///
+/// `bbg_root` is `Statement.bbg_root`. The zero root is the no-state-read
+/// sentinel: a trace containing look rows with a zero `bbg_root` is
+/// rejected — a program that reads state must declare its root publicly.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
 /// than look rows, `Err(CommitError::LookBinding)` if a namespace is out of
@@ -221,6 +231,7 @@ pub fn build_axis_steps_from_trace(
 pub fn build_look_steps_from_trace(
     trace: &[TraceRow],
     openings: &[LookOpening],
+    bbg_root: &[u8; 32],
 ) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
     let mut steps = Vec::new();
     let mut opening_idx = 0;
@@ -261,6 +272,14 @@ pub fn build_look_steps_from_trace(
             steps.push(eq_step(root[1], Goldilocks::new(row.r()[11]).canonicalize()));
             steps.push(eq_step(root[2], Goldilocks::new(row.r()[12]).canonicalize()));
             steps.push(eq_step(root[3], Goldilocks::new(row.r()[13]).canonicalize()));
+
+            // (6) the recomputed root is the public statement root
+            if *bbg_root == [0u8; 32] {
+                return Err(CommitError::LookBinding);
+            }
+            for (k, &limb) in root.iter().enumerate() {
+                steps.push(eq_step(limb, verifier_steps::read_limb(bbg_root, k)));
+            }
 
             // Strictness gate: every binding for this look must hold now.
             if steps[row_start..].iter().any(|(i, w)| !selector::is_satisfied(i, w)) {
@@ -598,6 +617,7 @@ mod tests {
         let evals: Vec<Goldilocks> = [10u64, 20, 30, 40].iter().map(|&v| Goldilocks::new(v)).collect();
         let provider = BrakedownLookProvider::new(MultilinearPoly::new(evals));
         let root = standalone_root(&provider, 0);
+        let root_bytes = root_to_bytes(&root);
 
         // Honest run: program reads (ns=0, key=2) against the solo root.
         let trace = run_look(&provider, 0, 2, root);
@@ -605,7 +625,7 @@ mod tests {
         let openings = look_openings_from_provider(&provider);
         assert_eq!(openings.len(), 1);
         assert_eq!(openings[0].value, Goldilocks::new(30));
-        let steps = build_look_steps_from_trace(&trace, &openings).unwrap();
+        let steps = build_look_steps_from_trace(&trace, &openings, &root_bytes).unwrap();
         for (i, (inst, wit)) in steps.iter().enumerate() {
             assert!(is_satisfied(inst, wit), "honest look step {i} unsatisfied");
         }
@@ -621,7 +641,7 @@ mod tests {
         let trace = run_look(&provider, 0, 2, fake_root);
         let openings = look_openings_from_provider(&provider);
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings), Err(CommitError::LookBinding)),
+            matches!(build_look_steps_from_trace(&trace, &openings, &root_bytes), Err(CommitError::LookBinding)),
             "commitment-as-root claim went unnoticed"
         );
 
@@ -630,7 +650,7 @@ mod tests {
         let mut openings = look_openings_from_provider(&provider);
         openings[0].value = Goldilocks::new(31);
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings), Err(CommitError::LookBinding)),
+            matches!(build_look_steps_from_trace(&trace, &openings, &root_bytes), Err(CommitError::LookBinding)),
             "value tamper went unnoticed"
         );
 
@@ -639,8 +659,27 @@ mod tests {
         let mut openings = look_openings_from_provider(&provider);
         openings[0].leaves.dims[0] = [Goldilocks::new(1); 4];
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings), Err(CommitError::LookBinding)),
+            matches!(build_look_steps_from_trace(&trace, &openings, &root_bytes), Err(CommitError::LookBinding)),
             "leaf tamper went unnoticed"
+        );
+
+        // Statement root mismatch: honest trace and openings, but the public
+        // root names a different state.
+        let trace = run_look(&provider, 0, 2, root);
+        let openings = look_openings_from_provider(&provider);
+        let mut wrong_root = root_bytes;
+        wrong_root[0] ^= 1;
+        assert!(
+            matches!(build_look_steps_from_trace(&trace, &openings, &wrong_root), Err(CommitError::LookBinding)),
+            "statement root mismatch went unnoticed"
+        );
+
+        // Zero-root sentinel: a program with look rows must declare its root.
+        let trace = run_look(&provider, 0, 2, root);
+        let openings = look_openings_from_provider(&provider);
+        assert!(
+            matches!(build_look_steps_from_trace(&trace, &openings, &[0u8; 32]), Err(CommitError::LookBinding)),
+            "look against the zero-root sentinel went unnoticed"
         );
     }
 }
