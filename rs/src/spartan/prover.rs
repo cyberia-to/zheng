@@ -152,7 +152,7 @@ impl SpartanProver {
 mod tests {
     use super::*;
     use crate::ccs::patterns::build_step_ccs;
-    use crate::ccs::{reg_t, reg_t1, CONST_IDX, Z_LEN};
+    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
     use crate::spartan::verifier::SpartanVerifier;
     use crate::transcript::Transcript;
     fn make_z(vals: &[(usize, u64)]) -> Vec<Goldilocks> {
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn prove_verify_add_pattern() {
         // r3=5, r4=3, r5_{t+1}=8
-        let z = make_z(&[(reg_t(3), 5), (reg_t(4), 3), (reg_t1(5), 8)]);
+        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
         let instance = build_step_ccs(5);
         let witness = CCSWitness { z };
 
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn prove_verify_mul_pattern() {
         // r3=6, r4=7, r5_{t+1}=42
-        let z = make_z(&[(reg_t(3), 6), (reg_t(4), 7), (reg_t1(5), 42)]);
+        let z = make_z(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]);
         let instance = build_step_ccs(7);
         let witness = CCSWitness { z };
 

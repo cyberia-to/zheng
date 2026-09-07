@@ -386,14 +386,14 @@ mod tests {
     #[test]
     fn fold_add_multi_step_commit_verify() {
         use crate::ccs::patterns::build_step_ccs;
-        use crate::ccs::{reg_t, reg_t1};
+        use crate::ccs::reg_t;
         use crate::folding::fold::fold_step;
 
-        let instance = build_step_ccs(5); // add: r5_{t+1} - r3_t - r4_t = 0
+        let instance = build_step_ccs(5); // add: r6 - r4 - r5 = 0
         let witnesses = [
-            make_z_33(&[(reg_t(3), 3), (reg_t(4), 4), (reg_t1(5), 7)]),
-            make_z_33(&[(reg_t(3), 10), (reg_t(4), 20), (reg_t1(5), 30)]),
-            make_z_33(&[(reg_t(3), 1), (reg_t(4), 1), (reg_t1(5), 2)]),
+            make_z_33(&[(reg_t(4), 3), (reg_t(5), 4), (reg_t(6), 7)]),
+            make_z_33(&[(reg_t(4), 10), (reg_t(5), 20), (reg_t(6), 30)]),
+            make_z_33(&[(reg_t(4), 1), (reg_t(5), 1), (reg_t(6), 2)]),
         ];
         for w in &witnesses {
             assert!(instance.is_satisfied_by(w));
@@ -418,14 +418,14 @@ mod tests {
     #[test]
     fn fold_mul_multi_step_commit_verify() {
         use crate::ccs::patterns::build_step_ccs;
-        use crate::ccs::{reg_t, reg_t1};
+        use crate::ccs::reg_t;
         use crate::folding::fold::fold_step;
 
-        let instance = build_step_ccs(7); // mul: r5_{t+1} - r3_t * r4_t = 0
+        let instance = build_step_ccs(7); // mul: r6 - r4 * r5 = 0
         let witnesses = [
-            make_z_33(&[(reg_t(3), 6), (reg_t(4), 7), (reg_t1(5), 42)]),
-            make_z_33(&[(reg_t(3), 2), (reg_t(4), 5), (reg_t1(5), 10)]),
-            make_z_33(&[(reg_t(3), 3), (reg_t(4), 3), (reg_t1(5), 9)]),
+            make_z_33(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]),
+            make_z_33(&[(reg_t(4), 2), (reg_t(5), 5), (reg_t(6), 10)]),
+            make_z_33(&[(reg_t(4), 3), (reg_t(5), 3), (reg_t(6), 9)]),
         ];
         for w in &witnesses {
             assert!(instance.is_satisfied_by(w));
@@ -1306,6 +1306,70 @@ mod tests {
             verify(&spliced, &stmt, &params).is_err(),
             "look group spliced from another proof must not verify"
         );
+    }
+
+    /// Real-trace guard for the arithmetic/eq/branch pattern family: every
+    /// main-fold step of a real nox trace must SATISFY its pattern CCS.
+    /// This is the test that catches stale register wiring (the
+    /// pattern_quote bug class) for any pattern it covers — the old
+    /// add/sub/mul/eq/branch encodings all fail it.
+    #[test]
+    fn real_traces_satisfy_pattern_family() {
+        use crate::ccs::build_ccs_from_trace;
+
+        let g = Goldilocks::new;
+        // (tag, name): binary field ops [tag [[1 a] [1 b]]]
+        for (tag, name) in [(5u64, "add"), (6, "sub"), (7, "mul"), (9, "eq")] {
+            for (a, b) in [(9u64, 4u64), (9, 9)] {
+                let mut ar = Reduction::<1024>::new();
+                let obj = ar.atom(g(1)).unwrap();
+                let t = ar.atom(g(tag)).unwrap();
+                let t1 = ar.atom(g(1)).unwrap();
+                let va = ar.atom(g(a)).unwrap();
+                let vb = ar.atom(g(b)).unwrap();
+                let qa = ar.pair(t1, va).unwrap();
+                let qb = ar.pair(t1, vb).unwrap();
+                let body = ar.pair(qa, qb).unwrap();
+                let formula = ar.pair(t, body).unwrap();
+                let mut trace = VecTrace::default();
+                nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+                nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+                assert!(trace.0.iter().any(|r| r.r()[0] == tag), "{name}: no tag row");
+                for (i, (inst, wit)) in build_ccs_from_trace(&trace.0).iter().enumerate() {
+                    assert!(
+                        inst.is_satisfied_by(wit),
+                        "{name}({a},{b}): step {i} unsatisfied"
+                    );
+                }
+            }
+        }
+
+        // branch [4 [[1 t] [[1 10] [1 20]]]] — both arms
+        for test in [0u64, 7] {
+            let mut ar = Reduction::<1024>::new();
+            let obj = ar.atom(g(1)).unwrap();
+            let t4 = ar.atom(g(4)).unwrap();
+            let t1 = ar.atom(g(1)).unwrap();
+            let vt = ar.atom(g(test)).unwrap();
+            let vy = ar.atom(g(10)).unwrap();
+            let vn = ar.atom(g(20)).unwrap();
+            let qt = ar.pair(t1, vt).unwrap();
+            let qy = ar.pair(t1, vy).unwrap();
+            let qn = ar.pair(t1, vn).unwrap();
+            let arms = ar.pair(qy, qn).unwrap();
+            let body = ar.pair(qt, arms).unwrap();
+            let formula = ar.pair(t4, body).unwrap();
+            let mut trace = VecTrace::default();
+            nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+            nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+            assert!(trace.0.iter().any(|r| r.r()[0] == 4), "no branch row");
+            for (i, (inst, wit)) in build_ccs_from_trace(&trace.0).iter().enumerate() {
+                assert!(
+                    inst.is_satisfied_by(wit),
+                    "branch(test={test}): step {i} unsatisfied"
+                );
+            }
+        }
     }
 
     /// T-2: tampered eval_value causes verify() to reject.
