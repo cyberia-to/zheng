@@ -1,6 +1,6 @@
 [package]
 name = "zheng"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 description = "proof system: SuperSpartan IOP + Brakedown PCS + sumcheck"
 license-file = "LICENSE"
@@ -11,8 +11,8 @@ categories = ["cryptography"]
 [dependencies]
 nebu = { package = "strata-nebu", version = "0.1", path = "../../strata/nebu/rs" }
 hemera = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
-nox = { package = "cyber-nox", version = "0.1", path = "../../nox/rs", features = ["brakedown"] }
-lens = { package = "cyber-lens", version = "0.1.1", path = "../../lens/src" }
+nox = { package = "cyber-nox", version = "0.2", path = "../../nox/rs", features = ["brakedown"] }
+lens = { package = "cyber-lens", version = "0.1.3", path = "../../lens/src" }
 serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
