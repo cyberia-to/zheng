@@ -212,7 +212,7 @@ impl CCSInstance {
 }
 
 /// a CCS witness: z = public_input || private_witness || constant_1.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CCSWitness {
     pub z: Vec<Goldilocks>,
@@ -229,7 +229,12 @@ pub struct CCSWitness {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Accumulator {
     pub committed_instance: CCSInstance,
-    /// prover's folded witness (ignored by verifier).
+    /// prover's folded witness (ignored by verifier). Never serialized: a
+    /// proof artifact carrying it would ship the prover's private state —
+    /// for programs with divine() secrets, the secrets' folded image — and
+    /// triple the wire size for nothing the verifier reads. Deserializes
+    /// empty; only the prover-side fold ever needs it populated.
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub folded_witness: CCSWitness,
     pub witness_commitment: Commitment,
     /// per-row constraint evaluation; length = committed_instance.num_rows.
