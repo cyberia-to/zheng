@@ -335,7 +335,7 @@ pub fn decide(
 mod tests {
     use super::*;
     use lens::brakedown::Brakedown;
-    use lens::{Lens, MultilinearPoly, Transcript as LensTranscript};
+    use lens::{Lens, MultilinearPoly};
     use nox::{NullCalls, Reduction, VecTrace};
 
     fn malformed_trace() -> VecTrace {
