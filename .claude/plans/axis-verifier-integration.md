@@ -328,3 +328,53 @@ option-B rationale (axis-options-comparison.md, now deleted for the
 constraint were equal on soundness and speed; A won on zero nox
 coordination. B's upgrade path stays: nox emits r11-r14, pattern_axis
 gains 4 eq constraints with per-row constant matrices.
+
+
+## wall we did not see: proof size — universal step CCS (zheng#8)
+
+**what the spec says** (`specs/constraints.md` §"the combined constraint"):
+one step relation `C(t) = Σ_p selector_p(r0_t) · C_p(t)` over the 18
+patterns — ONE CCS structure for every trace row, therefore ONE HyperNova
+accumulator, ONE decider, ~2 KiB per proof regardless of program.
+
+**what commit() does**: builds a distinct CCS instance per pattern (and
+per Poseidon2 round constant set, per binding run) and folds
+*sequential runs* — a new group every time the instance changes along
+the trace. Groups = number of structure switches, not even number of
+structures. Measured: add 3 groups, hp 12, one hash 23, a depth-32
+Merkle path **1343 groups → 2.67 MB**. Per group ~1.7 KiB holds; the
+count is the bug.
+
+**two steps, in order:**
+
+1. *Group by structure, not by run* (small, pure `commit()` change).
+   Partition instances by exact `CCSInstance` equality across the whole
+   trace (BTreeMap keyed on the instance), fold each key once. `fold_step`
+   already requires `acc.committed_instance == instance`, so soundness is
+   unchanged; the linkage digest covers every group as before (verify
+   recomputes it from the proof). Expected: Merkle-32 from 1343 groups to
+   ~30 (18 patterns × hash-round variants + binding shapes) → ~50 KB.
+   This alone lifts hash-heavy programs from MB to tens of KB.
+
+2. *The universal step CCS* (the spec). One instance for all Layer-1
+   rows: pattern constraints multiplied by a selector on r0. NOT Lagrange
+   over 18 values (degree +17): add 18 one-hot selector columns
+   `s_0..s_17` to z (Z_LEN 33 → 51, with `Σ s_p = 1`, `s_p·(r0−p) = 0`),
+   so `s_p · C_p` raises degree by one. Poseidon2 rounds: the round
+   constant becomes a witness column selected by the round index (r14)
+   instead of baking constants into the matrices — one instance for all
+   25 rows of a hash block. Binding eq-steps (VZ_LEN=3) stay a second,
+   single accumulator (the original two-accumulator design) — or are
+   widened into the universal row with their own selector. Result:
+   2 groups (main + bindings), ~4 KB per proof, constant in program size.
+   Decider cost per the spec's ~825 constraints. This also makes the
+   option-B residual (binding steps ↔ main witness) expressible: the
+   binding can reference the universal row's committed registers directly.
+
+**effort**: step 1 — one session, mechanical, no spec change. step 2 —
+3–5 sessions (selector columns, per-pattern CCS rewrite into a shared
+matrix set, round-constant witnessing for hash, new negative tests that
+a wrong selector fails). specs/constraints.md gains the one-hot form.
+
+**acceptance**: Merkle-32 proves into ≤ 8 KB; group count is independent
+of trace length; every existing negative test still rejects.
