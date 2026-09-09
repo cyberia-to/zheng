@@ -834,17 +834,28 @@ mod tests {
 
     /// Fold a hand-built eq step sequence as the binding group next to a
     /// satisfied universal group — the route of a malicious prover who
-    /// bypasses commit()'s strictness gates.
+    /// bypasses commit()'s strictness gates AND `fold_step`'s own
+    /// per-witness satisfiability gate (`crate::folding::fold::fold_step_unchecked`,
+    /// test-only). These tests exist to pin the verify()-time zero-error
+    /// rule as a backstop independent of the fold-time gate — the fold-time
+    /// gate alone (reachable via the public `fold_step`/`commit()`) already
+    /// rejects an unsatisfied linear step before it can ever reach here; see
+    /// `folding::fold::tests` for that regression.
     fn prove_raw_linear_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
         use crate::ccs::reg_t;
+        use crate::folding::fold::fold_step_unchecked;
+
         let universal_acc = fold_all(
             universal_ccs(),
             &[row(1, &[(reg_t(4), 5), (reg_t(7), 5)])],
         )
         .unwrap();
         let eq = eq_instance();
-        let witnesses: Vec<CCSWitness> = steps.iter().map(|(_, w)| w.clone()).collect();
-        let binding_acc = fold_all(&eq, &witnesses).unwrap();
+        let mut binding_acc = blank_acc(&eq);
+        let mut transcript = Transcript::new();
+        for (_, w) in steps {
+            fold_step_unchecked(&mut binding_acc, &eq, w, &mut transcript).unwrap();
+        }
         let linkage = linkage_digest(&[
             &universal_acc.witness_commitment,
             &binding_acc.witness_commitment,
@@ -856,6 +867,24 @@ mod tests {
             accumulator: acc,
         };
         TraceProof { universal: close(universal_acc), binding: Some(close(binding_acc)) }
+    }
+
+    /// Regression: the PUBLIC folding path (`fold_all`, which calls the
+    /// gated `fold_step`) now refuses an unsatisfied binding step before it
+    /// is folded in at all — a caller no longer needs `verify()`'s zero-error
+    /// rule to catch this; `fold_step` itself does. This is the fold-time
+    /// half of the fix; `verify_rejects_folded_wrong_commitment_binding` and
+    /// its siblings below pin the verify-time backstop for the (now
+    /// unreachable via the public API) case where the fold-time gate is
+    /// ALSO bypassed (`fold_step_unchecked`, test-only).
+    #[test]
+    fn fold_all_rejects_unsatisfied_eq_step() {
+        use crate::ccs::eq_step;
+
+        let eq = eq_instance();
+        let (_, bad_step) = eq_step(Goldilocks::new(1), Goldilocks::new(2));
+        let err = fold_all(&eq, &[bad_step]);
+        assert!(matches!(err, Err(CommitError::TraceOverflow)), "{err:?}");
     }
 
     /// Negative: a prover who folds a commitment-binding step for the WRONG

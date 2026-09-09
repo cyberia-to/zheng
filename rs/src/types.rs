@@ -250,6 +250,15 @@ pub struct CCSWitness {
 /// error_evals[r] = Σ_j c_j · ∏_{i ∈ S_j} (M_i[row r] · z_folded) for each row r.
 /// For satisfying witnesses all entries are 0. Grows by num_rows scalars per fold group
 /// but is otherwise O(1) in the number of folds.
+///
+/// Fields are `pub(crate)`, not `pub`: an `Accumulator` is only ever produced
+/// by [`crate::fold`]/[`crate::folding::fold::fold_step`], which now checks
+/// every incoming witness against the instance before folding it in
+/// (`FoldError::UnsatisfyingWitness`). A bare struct literal from outside
+/// this crate would skip that gate entirely — the exact attack this type
+/// closes (see `fold.rs`'s `attack_*` tests). Downstream crates (joy, bbg)
+/// only ever move `Accumulator` values around opaquely (store, clone, pass
+/// to `decide`/`verify`); none construct or read individual fields.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Accumulator {
@@ -258,18 +267,31 @@ pub struct Accumulator {
     /// the group's position in the [`TraceProof`] (a proof that named its
     /// own instance could name a trivial one). Deserializes empty.
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub committed_instance: CCSInstance,
+    pub(crate) committed_instance: CCSInstance,
     /// prover's folded witness (ignored by verifier). Never serialized: a
     /// proof artifact carrying it would ship the prover's private state —
     /// for programs with divine() secrets, the secrets' folded image — and
     /// triple the wire size for nothing the verifier reads. Deserializes
     /// empty; only the prover-side fold ever needs it populated.
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub folded_witness: CCSWitness,
-    pub witness_commitment: Commitment,
+    pub(crate) folded_witness: CCSWitness,
+    pub(crate) witness_commitment: Commitment,
     /// per-row constraint evaluation; length = committed_instance.num_rows.
-    pub error_evals: Vec<Goldilocks>,
-    pub step_count: u64,
+    pub(crate) error_evals: Vec<Goldilocks>,
+    pub(crate) step_count: u64,
+}
+
+impl Accumulator {
+    /// The Brakedown commitment to the folded witness — public accumulator
+    /// data a caller may need to display or log (e.g. bbg checkpoints).
+    pub fn witness_commitment(&self) -> &Commitment {
+        &self.witness_commitment
+    }
+
+    /// Number of steps folded into this accumulator so far.
+    pub fn step_count(&self) -> u64 {
+        self.step_count
+    }
 }
 
 // ── errors ───────────────────────────────────────────────────────
@@ -323,6 +345,17 @@ pub enum VerifyError {
 pub enum FoldError {
     InstanceMismatch,
     WitnessMismatch,
+    /// The incoming witness (before folding) does not satisfy `instance`:
+    /// `error_evals(instance, witness) != 0` at at least one row. `commit()`
+    /// already filters every real trace pair through this check
+    /// (`CommitError::StepUnsatisfied`) before calling `fold_step` — this is
+    /// the same gate enforced by the shared primitive itself, so a caller
+    /// that reaches `fold_step`/`fold` directly (bypassing `commit()`, e.g.
+    /// the public `zheng::fold` entry point) cannot fold in a fabricated,
+    /// non-satisfying row either. It does not by itself prove the witness
+    /// reflects any REAL nox execution — only that it is internally
+    /// consistent with the instance (see `specs/decider.md` §soundness).
+    UnsatisfyingWitness,
 }
 
 #[derive(Debug)]
