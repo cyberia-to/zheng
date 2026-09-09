@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.2] — 2026-09-09
+
+### Fixed
+
+- **proof size — accumulator groups are structures, not runs** (#8, step 1):
+  `commit()` now partitions steps by exact `CCSInstance` equality across
+  the whole trace (first-occurrence order) instead of opening a new
+  accumulator at every structure switch along the trace. Group count is
+  bounded by the number of distinct instances, never by trace length.
+  Measured with joy: hello 3→2 groups (5.4 KB→3.6 KB), two-divine 12→5
+  (20 KB→8.5 KB), one hash 23→22 (52 KB→50 KB), depth-32 Merkle path
+  1343→22 (2.67 MB→57 KB). Soundness unchanged: linkage digest over every
+  group, zero-error rule for degree-1 groups, commit-time gates. Not a
+  wire-format change — verify recomputes the linkage from the proof's own
+  groups. Step 2 (the universal step CCS) lands as 0.3.0.
+
 ## [0.1.0] — unreleased
 
 Initial minimal release: turn a [[nox]] execution trace into a verifiable proof.

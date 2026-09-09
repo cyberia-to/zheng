@@ -92,10 +92,12 @@ fn blank_acc(instance: &CCSInstance) -> Accumulator {
 
 /// Prove a nox execution trace.
 ///
-/// Groups trace steps by CCS structure (one group per distinct pattern type),
-/// folds each group into its own HyperNova accumulator, and runs the decider
-/// on each accumulator. Returns a TraceProof containing one (Proof, Accumulator)
-/// per group.
+/// Groups trace steps by CCS structure (one group per distinct CCS instance
+/// across the whole trace, first-occurrence order), folds each group into its
+/// own HyperNova accumulator, and runs the decider on each accumulator.
+/// Returns a TraceProof containing one (Proof, Accumulator) per group. The
+/// group count depends only on which structures occur, never on how often
+/// or in what order.
 ///
 /// `hash_aux` provides prover hints for Poseidon2 hash blocks (one per block).
 /// `axis_openings` provides Brakedown opening proofs for axis reads (one per axis row).
@@ -149,41 +151,34 @@ pub fn commit(
         return Err(CommitError::TraceOverflow);
     }
 
-    // Pass 1 — fold. Sequential grouping: start a new group whenever the CCS
-    // instance changes. Full equality is required because instances with the
-    // same structural shape (matrix count, dimensions) but different matrix
-    // coefficients (e.g. distinct Poseidon2 partial-round constants) must not
-    // fold together — their error_evals are computed against the current
-    // instance's matrices while the verifier checks against
-    // committed_instance, which only holds the first instance in the group.
-    let mut folded: Vec<Accumulator> = Vec::new();
-    let mut cur_instance: Option<CCSInstance> = None;
-    let mut cur_acc: Option<Accumulator> = None;
-    let mut cur_transcript = Transcript::new();
+    // Pass 1 — fold, grouped by STRUCTURE: one accumulator per distinct CCS
+    // instance across the whole step sequence, in first-occurrence order.
+    // Group count is therefore bounded by the number of distinct instances
+    // (patterns × Poseidon2 round-constant sets + binding shapes), never by
+    // the trace length — a structure recurring later folds into its existing
+    // accumulator. Full instance equality is required because instances with
+    // the same shape but different coefficients (distinct partial-round
+    // constants) must not share an accumulator: the verifier checks error
+    // terms against committed_instance. `fold_step` enforces the same rule.
+    // Each group keeps its own fold transcript; within a group, steps fold in
+    // trace order, which is canonical on both sides.
+    let mut folded: Vec<(Accumulator, Transcript)> = Vec::new();
 
     for (instance, witness) in &all_steps {
-        let same = cur_instance.as_ref() == Some(instance);
-
-        if !same {
-            if let Some(acc) = cur_acc.take() {
-                folded.push(acc);
+        let idx = match folded
+            .iter()
+            .position(|(acc, _)| acc.committed_instance == *instance)
+        {
+            Some(i) => i,
+            None => {
+                folded.push((blank_acc(instance), Transcript::new()));
+                folded.len() - 1
             }
-            cur_instance = Some(instance.clone());
-            cur_acc = Some(blank_acc(instance));
-            cur_transcript = Transcript::new();
-        }
-
-        fold_step(
-            cur_acc.as_mut().unwrap(),
-            instance,
-            witness,
-            &mut cur_transcript,
-        )
-        .map_err(|_| CommitError::TraceOverflow)?;
+        };
+        let (acc, transcript) = &mut folded[idx];
+        fold_step(acc, instance, witness, transcript).map_err(|_| CommitError::TraceOverflow)?;
     }
-    if let Some(acc) = cur_acc.take() {
-        folded.push(acc);
-    }
+    let folded: Vec<Accumulator> = folded.into_iter().map(|(acc, _)| acc).collect();
 
     // Pass 2 — cross-group linkage over every group's witness commitment.
     let commitments: Vec<&Commitment> = folded.iter().map(|a| &a.witness_commitment).collect();
@@ -993,6 +988,44 @@ mod tests {
         assert!(verify(&tp, &stmt, &params).is_ok());
     }
 
+    /// Group count is a function of which structures occur, never of trace
+    /// length: two hash blocks and three hash blocks yield the same number of
+    /// accumulator groups, and the step counts grow instead. (Two, not one:
+    /// a block followed by another block adds the squeeze→quote boundary
+    /// pair — a structure a single block never has.)
+    #[test]
+    fn group_count_independent_of_trace_length() {
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+
+        let (mut t1, a1) = hash_setup(42);
+        let (t1b, a2) = hash_setup(43);
+        t1.0.extend(t1b.0);
+        let p1 = commit(&t1, &[a1, a2], &[], &[], &stmt, &params).unwrap();
+
+        let (mut t3, b1) = hash_setup(42);
+        let (t3b, b2) = hash_setup(43);
+        let (t3c, b3) = hash_setup(44);
+        t3.0.extend(t3b.0);
+        t3.0.extend(t3c.0);
+        let p3 = commit(&t3, &[b1, b2, b3], &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&p3, &stmt, &params).is_ok());
+
+        assert_eq!(
+            p1.groups.len(),
+            p3.groups.len(),
+            "groups are structures, not runs: 2 vs 3 hash blocks"
+        );
+        let steps = |p: &TraceProof| -> u64 { p.groups.iter().map(|(_, a)| a.step_count).sum() };
+        assert!(steps(&p3) > steps(&p1), "the extra block folds into existing groups");
+        // No two groups share an instance — the partition is exact.
+        for (i, (_, a)) in p3.groups.iter().enumerate() {
+            for (_, b) in &p3.groups[i + 1..] {
+                assert_ne!(a.committed_instance, b.committed_instance);
+            }
+        }
+    }
+
     /// Negative: a tampered rate (not any digest) diverges from the trace at
     /// every row — the binding gate rejects at commit.
     #[test]
@@ -1278,9 +1311,9 @@ mod tests {
         assert!(verify(&p1, &stmt, &params).is_ok());
         assert!(verify(&p2, &stmt, &params).is_ok());
 
-        // The root-chain hemera pairs split the look eq run into two VZ=3
-        // groups: [opening + value/point/leaf eqs] and [root + statement eqs].
-        // Splice the first — different keys read give different witnesses.
+        // Grouping by structure puts every eq step — opening, value/point/leaf
+        // and root/statement bindings — into ONE VZ=3 group regardless of the
+        // root-chain hemera pairs between them in trace order.
         let eq_group = |p: &TraceProof| {
             let idxs: Vec<usize> = p
                 .groups
@@ -1289,7 +1322,7 @@ mod tests {
                 .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
                 .map(|(i, _)| i)
                 .collect();
-            assert_eq!(idxs.len(), 2, "two eq-step groups around the root chain");
+            assert_eq!(idxs.len(), 1, "exactly one eq-step group");
             idxs[0]
         };
         let i1 = eq_group(&p1);
