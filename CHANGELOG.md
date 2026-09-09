@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.3] — 2026-09-09
+
+### Added
+
+- `Accumulator::blank(&CCSInstance)` — the public way to start a fold
+  outside `commit()`. 0.3.2 made the fields `pub(crate)` and left
+  downstream provers that fold their own universal-step rows (foculus:
+  tip, tickets, pay) with no constructor at all. The gate is unchanged:
+  every step still passes `fold`'s satisfiability check, and `verify`
+  derives the instance from the group's position, never from the
+  accumulator. `commit()`'s own blank accumulator now uses the same
+  constructor. No wire change.
+
 ## [0.3.2] — 2026-09-09
 
 ### Fixed

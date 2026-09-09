@@ -282,6 +282,23 @@ pub struct Accumulator {
 }
 
 impl Accumulator {
+    /// A blank accumulator for `instance`: zero witness, zero error, no
+    /// steps. The only way to start a fold outside [`crate::commit`] — every
+    /// step folded into it still passes [`crate::fold`]'s satisfiability
+    /// gate, and [`crate::verify`] checks the decided group against the
+    /// instance it derives from the group's position, never against
+    /// `instance` — so a caller gains nothing by naming a trivial one.
+    pub fn blank(instance: &CCSInstance) -> Self {
+        let z = vec![Goldilocks::ZERO; 64];
+        Self {
+            committed_instance: instance.clone(),
+            folded_witness: CCSWitness { z: z.clone() },
+            witness_commitment: lens::brakedown::Brakedown::commit_raw(&z),
+            error_evals: vec![Goldilocks::ZERO; instance.num_rows],
+            step_count: 0,
+        }
+    }
+
     /// The Brakedown commitment to the folded witness — public accumulator
     /// data a caller may need to display or log (e.g. bbg checkpoints).
     pub fn witness_commitment(&self) -> &Commitment {
