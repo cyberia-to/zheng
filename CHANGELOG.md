@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.3.1] — 2026-09-09
+
+### Fixed
+
+- **wire form: inert bytes off the proof.** A single-bit-flip scan of a
+  0.3.0 artifact found 2 080 proof bytes a flip could not disturb: the
+  8-byte codeword symbols in `Opening::Tensor::query_responses` (20
+  queries × log n rounds × 8 B per group). Root cause is in lens, and
+  pre-existing since lens dbf472b (2026-04-16, long before zheng 0.2.2):
+  `Brakedown::verify` reads each query's index (it must equal the
+  transcript-derived one) and never its symbol — the commitment is a flat
+  hemera hash of the whole codeword, so a symbol cannot be authenticated
+  against it and the verifier does not try. **Inert bytes, not a
+  soundness hole in the sense of the verifier accepting a different
+  proof**: the verification predicate never depended on those bytes, so a
+  flipped symbol verified for the same reason an absent one would. (The
+  fact that the proximity queries carry no checked symbol IS a gap in the
+  lens Brakedown verifier — its opening binds `round_commitments[0]` to
+  the commitment, replays the query indices and compares `final_poly` to
+  the claimed value, nothing more — recorded in specs/decider.md and
+  owed to lens, not patched here.)
+- `Proof.pcs_opening` now serializes through `zheng::wire::opening`:
+  round commitments, final polynomial and the query indices (u32) only;
+  deserialization restores the opening with empty symbols, exactly what
+  the verifier reads. Every byte of a serialized `TraceProof` is now
+  verifier-checked: `every_bit_of_the_wire_is_checked` flips every bit
+  of every byte of a one-group proof, `every_byte_of_a_two_group_wire_is_checked`
+  bits 0 and 7 of every byte of a hash proof — each flip fails to
+  deserialize or fails to verify.
+- Proof bytes (joy, postcard, proof only): hello 1127 B (was 2388),
+  two-divine 1179 B (2440), one hash 2154 B (4496), Merkle-32 2161 B
+  (4503). Artifacts: 1312 / 1384 / 2389 / 2581 B. Wire-incompatible with
+  0.3.0 artifacts.
+
 ## [0.3.0] — 2026-09-09
 
 ### Changed
