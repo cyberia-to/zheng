@@ -80,21 +80,9 @@ pub(crate) fn linkage_digest(commitments: &[&Commitment]) -> [u8; 32] {
     *hemera::hash(&bytes).as_bytes()
 }
 
-/// Initialize a blank accumulator for a given CCS instance structure.
-fn blank_acc(instance: &CCSInstance) -> Accumulator {
-    let init_z = vec![Goldilocks::ZERO; 64];
-    Accumulator {
-        committed_instance: instance.clone(),
-        folded_witness: CCSWitness { z: init_z.clone() },
-        witness_commitment: Brakedown::commit_raw(&init_z),
-        error_evals: vec![Goldilocks::ZERO; instance.num_rows],
-        step_count: 0,
-    }
-}
-
 /// Fold a sequence of witnesses of one instance into a fresh accumulator.
 fn fold_all(instance: &CCSInstance, witnesses: &[CCSWitness]) -> Result<Accumulator, CommitError> {
-    let mut acc = blank_acc(instance);
+    let mut acc = Accumulator::blank(instance);
     let mut transcript = Transcript::new();
     for w in witnesses {
         fold_step(&mut acc, instance, w, &mut transcript).map_err(|_| CommitError::TraceOverflow)?;
@@ -394,7 +382,7 @@ mod tests {
     /// Fold universal rows and close them as a one-group TraceProof.
     fn fold_universal(rows: &[CCSWitness]) -> ProofGroup {
         let instance = universal_ccs();
-        let mut acc = blank_acc(instance);
+        let mut acc = Accumulator::blank(instance);
         let mut transcript = Transcript::new();
         for w in rows {
             assert!(instance.is_satisfied_by(w));
@@ -851,7 +839,7 @@ mod tests {
         )
         .unwrap();
         let eq = eq_instance();
-        let mut binding_acc = blank_acc(&eq);
+        let mut binding_acc = Accumulator::blank(&eq);
         let mut transcript = Transcript::new();
         for (_, w) in steps {
             fold_step_unchecked(&mut binding_acc, &eq, w, &mut transcript).unwrap();
