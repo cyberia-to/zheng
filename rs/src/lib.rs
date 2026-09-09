@@ -42,11 +42,12 @@ use lens::brakedown::Brakedown;
 use lens::{Commitment, Lens, MultilinearPoly, Opening};
 
 use crate::ccs::{
-    build_axis_steps_from_trace, build_ccs_from_trace, build_hash_binding_steps_from_trace,
-    build_hash_steps_from_trace, build_look_steps_from_trace,
+    build_axis_steps_from_trace, build_hash_binding_steps_from_trace, build_look_steps_from_trace,
+    build_universal_steps_from_trace, eq_instance, universal_ccs,
 };
 use crate::folding::{decide as run_decide, fold_step};
 use crate::spartan::verifier::SpartanVerifier;
+use crate::types::ProofGroup;
 
 // ── five entry points ─────────────────────────────────────────────────────────
 
@@ -90,14 +91,25 @@ fn blank_acc(instance: &CCSInstance) -> Accumulator {
     }
 }
 
+/// Fold a sequence of witnesses of one instance into a fresh accumulator.
+fn fold_all(instance: &CCSInstance, witnesses: &[CCSWitness]) -> Result<Accumulator, CommitError> {
+    let mut acc = blank_acc(instance);
+    let mut transcript = Transcript::new();
+    for w in witnesses {
+        fold_step(&mut acc, instance, w, &mut transcript).map_err(|_| CommitError::TraceOverflow)?;
+    }
+    Ok(acc)
+}
+
 /// Prove a nox execution trace.
 ///
-/// Groups trace steps by CCS structure (one group per distinct CCS instance
-/// across the whole trace, first-occurrence order), folds each group into its
-/// own HyperNova accumulator, and runs the decider on each accumulator.
-/// Returns a TraceProof containing one (Proof, Accumulator) per group. The
-/// group count depends only on which structures occur, never on how often
-/// or in what order.
+/// Every Layer-1 row — each consecutive trace pair, each replayed
+/// Fiat-Shamir Poseidon2 round of an axis/look opening, each BBG root-chain
+/// compression — is a witness of the ONE universal step instance and folds
+/// into ONE HyperNova accumulator. The opening bindings (axis, hash, look eq
+/// steps) fold into a second, degree-1 accumulator when present. Each is
+/// closed by one decider under a shared linkage digest. The proof is two
+/// groups at most and its size does not depend on the trace length.
 ///
 /// `hash_aux` provides prover hints for Poseidon2 hash blocks (one per block).
 /// `axis_openings` provides Brakedown opening proofs for axis reads (one per axis row).
@@ -128,71 +140,51 @@ pub fn commit(
         return Err(CommitError::StatementMismatch);
     }
 
-    // Build all step sequences and chain them.
-    let main_steps = build_ccs_from_trace(&trace.0);
-    let hash_steps = build_hash_steps_from_trace(&trace.0, hash_aux)?;
-    let hash_binding = build_hash_binding_steps_from_trace(&trace.0, hash_aux)?;
-    let axis_steps = build_axis_steps_from_trace(&trace.0, axis_openings)?;
-    let axis_transcript = build_axis_transcript_steps(&trace.0, axis_openings)?;
-    let look_steps = build_look_steps_from_trace(&trace.0, look_openings, &statement.bbg_root)?;
-    let look_transcript = build_look_transcript_steps(&trace.0, look_openings)?;
+    // Opening bindings (eq instance) first — their gates name the cause
+    // (a wrong hash rate, a swapped axis commitment) more precisely than the
+    // universal row gate, which would also reject the rows they feed.
+    let mut bindings = build_hash_binding_steps_from_trace(&trace.0, hash_aux)?;
+    bindings.extend(build_axis_steps_from_trace(&trace.0, axis_openings)?);
+    // Layer-1 rows (universal instance).
+    let mut rows = build_universal_steps_from_trace(&trace.0, hash_aux)?;
+    rows.extend(build_axis_transcript_steps(&trace.0, axis_openings)?);
+    let (look_eq, look_rows) =
+        build_look_steps_from_trace(&trace.0, look_openings, &statement.bbg_root)?;
+    bindings.extend(look_eq);
+    rows.extend(look_rows);
+    rows.extend(build_look_transcript_steps(&trace.0, look_openings)?);
 
-    let all_steps: Vec<(CCSInstance, CCSWitness)> = main_steps
-        .into_iter()
-        .chain(hash_steps)
-        .chain(hash_binding)
-        .chain(axis_steps)
-        .chain(axis_transcript)
-        .chain(look_steps)
-        .chain(look_transcript)
-        .collect();
-
-    if all_steps.is_empty() {
+    if rows.is_empty() {
         return Err(CommitError::TraceOverflow);
     }
 
-    // Pass 1 — fold, grouped by STRUCTURE: one accumulator per distinct CCS
-    // instance across the whole step sequence, in first-occurrence order.
-    // Group count is therefore bounded by the number of distinct instances
-    // (patterns × Poseidon2 round-constant sets + binding shapes), never by
-    // the trace length — a structure recurring later folds into its existing
-    // accumulator. Full instance equality is required because instances with
-    // the same shape but different coefficients (distinct partial-round
-    // constants) must not share an accumulator: the verifier checks error
-    // terms against committed_instance. `fold_step` enforces the same rule.
-    // Each group keeps its own fold transcript; within a group, steps fold in
-    // trace order, which is canonical on both sides.
-    let mut folded: Vec<(Accumulator, Transcript)> = Vec::new();
-
-    for (instance, witness) in &all_steps {
-        let idx = match folded
-            .iter()
-            .position(|(acc, _)| acc.committed_instance == *instance)
-        {
-            Some(i) => i,
-            None => {
-                folded.push((blank_acc(instance), Transcript::new()));
-                folded.len() - 1
-            }
-        };
-        let (acc, transcript) = &mut folded[idx];
-        fold_step(acc, instance, witness, transcript).map_err(|_| CommitError::TraceOverflow)?;
-    }
-    let folded: Vec<Accumulator> = folded.into_iter().map(|(acc, _)| acc).collect();
+    // Pass 1 — fold. One accumulator per instance; within each, trace order.
+    let universal_acc = fold_all(universal_ccs(), &rows)?;
+    let binding_acc = if bindings.is_empty() {
+        None
+    } else {
+        let eq = eq_instance();
+        let witnesses: Vec<CCSWitness> = bindings.into_iter().map(|(_, w)| w).collect();
+        Some(fold_all(&eq, &witnesses)?)
+    };
 
     // Pass 2 — cross-group linkage over every group's witness commitment.
-    let commitments: Vec<&Commitment> = folded.iter().map(|a| &a.witness_commitment).collect();
+    let mut commitments = vec![&universal_acc.witness_commitment];
+    if let Some(acc) = &binding_acc {
+        commitments.push(&acc.witness_commitment);
+    }
     let linkage = linkage_digest(&commitments);
 
     // Pass 3 — decide each group under the shared linkage digest.
-    let mut groups: Vec<(Proof, Accumulator)> = Vec::with_capacity(folded.len());
-    for acc in folded {
+    let close = |acc: Accumulator| -> Result<ProofGroup, CommitError> {
         let proof =
             run_decide(&acc, statement, &linkage, params).map_err(CommitError::DecideFailed)?;
-        groups.push((proof, acc));
-    }
+        Ok(ProofGroup { proof, accumulator: acc })
+    };
+    let universal = close(universal_acc)?;
+    let binding = binding_acc.map(close).transpose()?;
 
-    Ok(TraceProof { groups })
+    Ok(TraceProof { universal, binding })
 }
 
 /// Commit a polynomial and open it at an evaluation point.
@@ -247,8 +239,9 @@ pub fn verify_eval(
 
 /// Verify a zheng proof against a public statement.
 ///
-/// Checks each CCS-structure group in the TraceProof independently.
-/// All groups must verify for the overall proof to be valid.
+/// The universal group is checked against `ccs::universal_ccs()`, the
+/// binding group against `ccs::eq_instance()` — the instances come from
+/// the verifier, never from the proof. Both groups must verify.
 pub fn verify(
     proof: &TraceProof,
     statement: &Statement,
@@ -256,23 +249,26 @@ pub fn verify(
 ) -> Result<(), VerifyError> {
     // Recompute the cross-group linkage digest from the proof's own groups —
     // it must match what every group's decide transcript absorbed.
-    let commitments: Vec<&Commitment> = proof
-        .groups
-        .iter()
-        .map(|(_, acc)| &acc.witness_commitment)
-        .collect();
+    let commitments: Vec<&Commitment> =
+        proof.groups().map(|g| &g.accumulator.witness_commitment).collect();
     let linkage = linkage_digest(&commitments);
 
-    for (group_proof, acc) in &proof.groups {
-        // Degree-1 groups (all multisets of size ≤ 1) fold satisfied steps to
+    let eq = eq_instance();
+    let instances = core::iter::once(universal_ccs()).chain(core::iter::once(&eq));
+    for (group, instance) in proof.groups().zip(instances) {
+        let acc = &group.accumulator;
+        if acc.error_evals.len() != instance.num_rows {
+            return Err(VerifyError::GroupLayout);
+        }
+
+        // Degree-1 instances (the binding group) fold satisfied steps to
         // exactly zero error — error is linear in the witness. A non-zero
         // entry means an unsatisfied step (e.g. a forged axis binding) was
-        // folded in; the relaxed Spartan check alone would accept it.
-        let linear = acc
-            .committed_instance
-            .multisets
-            .iter()
-            .all(|multiset| multiset.len() <= 1);
+        // folded in; the relaxed Spartan check alone would accept it. The
+        // universal instance is not linear: its rows are gated products, so
+        // its error vector carries genuine cross terms and this rule cannot
+        // apply — commit()'s per-row gate is what refuses a violated row.
+        let linear = instance.multisets.iter().all(|multiset| multiset.len() <= 1);
         if linear && acc.error_evals.iter().any(|&e| e != Goldilocks::ZERO) {
             return Err(VerifyError::LinearErrorNonzero);
         }
@@ -285,12 +281,7 @@ pub fn verify(
             transcript.absorb(&e.as_u64().to_le_bytes());
         }
         transcript.absorb(&acc.step_count.to_le_bytes());
-        SpartanVerifier::verify(
-            &acc.committed_instance,
-            group_proof,
-            &acc.error_evals,
-            &mut transcript,
-        )?;
+        SpartanVerifier::verify(instance, &group.proof, &acc.error_evals, &mut transcript)?;
     }
     Ok(())
 }
@@ -315,8 +306,8 @@ pub fn fold(
 ///
 /// Produces the final proof from the accumulated CCS instance and witness,
 /// bound to the given statement via Fiat-Shamir. The proof carries a
-/// single-group linkage digest, so a one-group `TraceProof` built from it
-/// verifies with [`verify`].
+/// single-group linkage digest, so a `TraceProof` whose only group is this
+/// one (a universal accumulator, no binding group) verifies with [`verify`].
 pub fn decide(
     acc: &Accumulator,
     statement: &Statement,
@@ -333,9 +324,9 @@ mod tests {
     use lens::{Lens, MultilinearPoly};
     use nox::{NullCalls, Reduction, VecTrace};
 
+    /// Two rows with tag=255 (unknown pattern). Under the universal step
+    /// instance no selector can be set for such a row — it is unprovable.
     fn malformed_trace() -> VecTrace {
-        // Two rows with tag=255 (unknown) → trivial_ccs (no constraints).
-        // Used to test the full commit→verify pipeline without constraint logic.
         let mut order = Reduction::<1024>::new();
         let obj = order.atom(Goldilocks::new(0)).unwrap();
         let tag_255 = order.atom(Goldilocks::new(255)).unwrap();
@@ -357,90 +348,90 @@ mod tests {
         }
     }
 
+    /// `[1 5]` reduced twice: two quote rows, the smallest provable trace.
+    fn quote_trace() -> VecTrace {
+        let mut order = Reduction::<1024>::new();
+        let obj = order.atom(Goldilocks::new(0)).unwrap();
+        let t1 = order.atom(Goldilocks::new(1)).unwrap();
+        let five = order.atom(Goldilocks::new(5)).unwrap();
+        let formula = order.pair(t1, five).unwrap();
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
+        nox::reduce(&mut order, obj, formula, 10, &NullCalls, &mut trace);
+        assert_eq!(trace.0.len(), 2);
+        trace
+    }
+
     #[test]
     fn commit_verify_roundtrip() {
-        let trace = malformed_trace();
+        let trace = quote_trace();
         let stmt = zero_statement();
         let params = ProofParams::default();
         let trace_proof = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
+        assert_eq!(trace_proof.group_count(), 1, "no openings: universal group only");
         assert!(verify(&trace_proof, &stmt, &params).is_ok());
     }
 
-    // ── helpers for manual CCS witness construction ───────────────────────────
+    /// An unknown pattern tag has no selector column: the row is
+    /// unprovable and commit names it.
+    #[test]
+    fn commit_rejects_unknown_pattern_tag() {
+        let trace = malformed_trace();
+        let err = commit(&trace, &[], &[], &[], &zero_statement(), &ProofParams::default());
+        assert!(matches!(err, Err(CommitError::StepUnsatisfied(0))), "{err:?}");
+    }
 
-    fn make_z_33(vals: &[(usize, u64)]) -> CCSWitness {
-        use crate::ccs::{CONST_IDX, Z_LEN};
-        let mut z = vec![Goldilocks::ZERO; Z_LEN];
-        z[CONST_IDX] = Goldilocks::ONE;
-        for &(idx, v) in vals {
-            z[idx] = Goldilocks::new(v);
+    // ── helpers for manual witness construction ──────────────────────────────
+
+    /// A universal row of pattern `tag` with the given register values.
+    fn row(tag: u64, vals: &[(usize, u64)]) -> CCSWitness {
+        let mut v = vec![(crate::ccs::reg_t(0), tag)];
+        v.extend_from_slice(vals);
+        crate::ccs::universal::test_witness(&v)
+    }
+
+    /// Fold universal rows and close them as a one-group TraceProof.
+    fn fold_universal(rows: &[CCSWitness]) -> ProofGroup {
+        let instance = universal_ccs();
+        let mut acc = blank_acc(instance);
+        let mut transcript = Transcript::new();
+        for w in rows {
+            assert!(instance.is_satisfied_by(w));
+            crate::folding::fold_step(&mut acc, instance, w, &mut transcript).unwrap();
         }
-        CCSWitness { z }
+        let proof = decide(&acc, &zero_statement(), &ProofParams::default()).unwrap();
+        ProofGroup { proof, accumulator: acc }
     }
 
     #[test]
     fn fold_add_multi_step_commit_verify() {
-        use crate::ccs::patterns::build_step_ccs;
         use crate::ccs::reg_t;
-        use crate::folding::fold::fold_step;
-
-        let instance = build_step_ccs(5); // add: r6 - r4 - r5 = 0
-        let witnesses = [
-            make_z_33(&[(reg_t(4), 3), (reg_t(5), 4), (reg_t(6), 7)]),
-            make_z_33(&[(reg_t(4), 10), (reg_t(5), 20), (reg_t(6), 30)]),
-            make_z_33(&[(reg_t(4), 1), (reg_t(5), 1), (reg_t(6), 2)]),
+        let rows = [
+            row(5, &[(reg_t(4), 3), (reg_t(5), 4), (reg_t(6), 7)]),
+            row(5, &[(reg_t(4), 10), (reg_t(5), 20), (reg_t(6), 30)]),
+            row(5, &[(reg_t(4), 1), (reg_t(5), 1), (reg_t(6), 2)]),
         ];
-        for w in &witnesses {
-            assert!(instance.is_satisfied_by(w));
-        }
-
-        let mut acc = blank_acc(&instance);
-        let mut transcript = Transcript::new();
-        for w in &witnesses {
-            fold_step(&mut acc, &instance, w, &mut transcript).unwrap();
-        }
-        assert_eq!(acc.step_count, 3);
-        assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO)); // degree-1: stays 0
-
-        let stmt = zero_statement();
-        let proof = decide(&acc, &stmt, &ProofParams::default()).unwrap();
-        let trace_proof = TraceProof {
-            groups: vec![(proof, acc)],
-        };
-        assert!(verify(&trace_proof, &stmt, &ProofParams::default()).is_ok());
+        let universal = fold_universal(&rows);
+        assert_eq!(universal.accumulator.step_count, 3);
+        let trace_proof = TraceProof { universal, binding: None };
+        assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
     }
 
     #[test]
-    fn fold_mul_multi_step_commit_verify() {
-        use crate::ccs::patterns::build_step_ccs;
+    fn fold_mixed_patterns_commit_verify() {
         use crate::ccs::reg_t;
-        use crate::folding::fold::fold_step;
-
-        let instance = build_step_ccs(7); // mul: r6 - r4 * r5 = 0
-        let witnesses = [
-            make_z_33(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]),
-            make_z_33(&[(reg_t(4), 2), (reg_t(5), 5), (reg_t(6), 10)]),
-            make_z_33(&[(reg_t(4), 3), (reg_t(5), 3), (reg_t(6), 9)]),
+        // add, mul and quote rows in one accumulator — the point of the
+        // universal instance. Degree-2+ terms leave genuine cross-term
+        // error; Spartan proves/verifies against the accumulated error.
+        let rows = [
+            row(7, &[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]),
+            row(5, &[(reg_t(4), 2), (reg_t(5), 5), (reg_t(6), 7)]),
+            row(1, &[(reg_t(4), 9), (reg_t(7), 9)]),
         ];
-        for w in &witnesses {
-            assert!(instance.is_satisfied_by(w));
-        }
-
-        let mut acc = blank_acc(&instance);
-        let mut transcript = Transcript::new();
-        for w in &witnesses {
-            fold_step(&mut acc, &instance, w, &mut transcript).unwrap();
-        }
-        assert_eq!(acc.step_count, 3);
-        // degree-2 multi-fold: e_acc = error_evals(w_folded) ≠ 0 in general;
-        // Spartan proves/verifies against this accumulated error.
-
-        let stmt = zero_statement();
-        let proof = decide(&acc, &stmt, &ProofParams::default()).unwrap();
-        let trace_proof = TraceProof {
-            groups: vec![(proof, acc)],
-        };
-        assert!(verify(&trace_proof, &stmt, &ProofParams::default()).is_ok());
+        let universal = fold_universal(&rows);
+        assert_eq!(universal.accumulator.step_count, 3);
+        let trace_proof = TraceProof { universal, binding: None };
+        assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
     }
 
     fn make_poly(values: &[u64]) -> Vec<Goldilocks> {
@@ -823,47 +814,47 @@ mod tests {
         assert!(verify(&p1, &stmt, &params).is_ok());
         assert!(verify(&p2, &stmt, &params).is_ok());
 
-        // The single VZ_LEN=3 group holds the axis opening eq steps.
-        let axis_group = |p: &TraceProof| {
-            let idxs: Vec<usize> = p
-                .groups
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
-                .map(|(i, _)| i)
-                .collect();
-            assert_eq!(idxs.len(), 1, "exactly one axis eq-step group");
-            idxs[0]
-        };
-        let i1 = axis_group(&p1);
-        let i2 = axis_group(&p2);
+        // The binding group holds the axis opening eq steps.
+        let b1 = p1.binding.as_ref().expect("axis proof has a binding group");
+        let b2 = p2.binding.as_ref().expect("axis proof has a binding group");
         assert_ne!(
-            p1.groups[i1].1.witness_commitment.as_bytes(),
-            p2.groups[i2].1.witness_commitment.as_bytes(),
-            "the two axis groups differ (different noun commitments)"
+            b1.accumulator.witness_commitment.as_bytes(),
+            b2.accumulator.witness_commitment.as_bytes(),
+            "the two binding groups differ (different noun commitments)"
         );
 
         let mut spliced = p1.clone();
-        spliced.groups[i1] = p2.groups[i2].clone();
+        spliced.binding = Some(b2.clone());
         assert!(
             verify(&spliced, &stmt, &params).is_err(),
             "axis group spliced from another proof must not verify"
         );
     }
 
-    /// Fold a hand-built axis step sequence, decide it, and wrap it as a
-    /// one-group TraceProof — the route of a malicious prover who bypasses
-    /// commit()'s strictness gate.
+    /// Fold a hand-built eq step sequence as the binding group next to a
+    /// satisfied universal group — the route of a malicious prover who
+    /// bypasses commit()'s strictness gates.
     fn prove_raw_linear_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
-        let mut acc = blank_acc(&steps[0].0);
-        let mut transcript = Transcript::new();
-        for (instance, witness) in steps {
-            crate::folding::fold_step(&mut acc, instance, witness, &mut transcript).unwrap();
-        }
-        let proof = decide(&acc, &zero_statement(), &ProofParams::default()).unwrap();
-        TraceProof {
-            groups: vec![(proof, acc)],
-        }
+        use crate::ccs::reg_t;
+        let universal_acc = fold_all(
+            universal_ccs(),
+            &[row(1, &[(reg_t(4), 5), (reg_t(7), 5)])],
+        )
+        .unwrap();
+        let eq = eq_instance();
+        let witnesses: Vec<CCSWitness> = steps.iter().map(|(_, w)| w.clone()).collect();
+        let binding_acc = fold_all(&eq, &witnesses).unwrap();
+        let linkage = linkage_digest(&[
+            &universal_acc.witness_commitment,
+            &binding_acc.witness_commitment,
+        ]);
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let close = |acc: Accumulator| ProofGroup {
+            proof: run_decide(&acc, &stmt, &linkage, &params).unwrap(),
+            accumulator: acc,
+        };
+        TraceProof { universal: close(universal_acc), binding: Some(close(binding_acc)) }
     }
 
     /// Negative: a prover who folds a commitment-binding step for the WRONG
@@ -1011,19 +1002,14 @@ mod tests {
         let p3 = commit(&t3, &[b1, b2, b3], &[], &[], &stmt, &params).unwrap();
         assert!(verify(&p3, &stmt, &params).is_ok());
 
+        assert_eq!(p1.group_count(), 2, "universal + binding");
         assert_eq!(
-            p1.groups.len(),
-            p3.groups.len(),
+            p1.group_count(),
+            p3.group_count(),
             "groups are structures, not runs: 2 vs 3 hash blocks"
         );
-        let steps = |p: &TraceProof| -> u64 { p.groups.iter().map(|(_, a)| a.step_count).sum() };
+        let steps = |p: &TraceProof| -> u64 { p.groups().map(|g| g.accumulator.step_count).sum() };
         assert!(steps(&p3) > steps(&p1), "the extra block folds into existing groups");
-        // No two groups share an instance — the partition is exact.
-        for (i, (_, a)) in p3.groups.iter().enumerate() {
-            for (_, b) in &p3.groups[i + 1..] {
-                assert_ne!(a.committed_instance, b.committed_instance);
-            }
-        }
     }
 
     /// Negative: a tampered rate (not any digest) diverges from the trace at
@@ -1079,30 +1065,28 @@ mod tests {
         assert!(verify(&p1, &stmt, &params).is_ok());
         assert!(verify(&p2, &stmt, &params).is_ok());
 
-        let eq_group = |p: &TraceProof| {
-            let idxs: Vec<usize> = p
-                .groups
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
-                .map(|(i, _)| i)
-                .collect();
-            assert_eq!(idxs.len(), 1, "exactly one eq-step binding group");
-            idxs[0]
-        };
-        let i1 = eq_group(&p1);
-        let i2 = eq_group(&p2);
+        let b1 = p1.binding.as_ref().expect("hash proof has a binding group");
+        let b2 = p2.binding.as_ref().expect("hash proof has a binding group");
         assert_ne!(
-            p1.groups[i1].1.witness_commitment.as_bytes(),
-            p2.groups[i2].1.witness_commitment.as_bytes(),
+            b1.accumulator.witness_commitment.as_bytes(),
+            b2.accumulator.witness_commitment.as_bytes(),
             "different hashed particles give different binding witnesses"
         );
 
         let mut spliced = p1.clone();
-        spliced.groups[i1] = p2.groups[i2].clone();
+        spliced.binding = Some(b2.clone());
         assert!(
             verify(&spliced, &stmt, &params).is_err(),
             "hash binding group spliced from another proof must not verify"
+        );
+
+        // The universal group is linked too: swapping it between two
+        // proofs of different hashed particles breaks both digests.
+        let mut spliced = p1.clone();
+        spliced.universal = p2.universal.clone();
+        assert!(
+            verify(&spliced, &stmt, &params).is_err(),
+            "universal group spliced from another proof must not verify"
         );
     }
 
@@ -1277,7 +1261,7 @@ mod tests {
         use crate::ccs::verifier_steps::read_limb;
 
         let (trace, openings, root) = look_setup(&[10, 20, 30, 40], 2);
-        let mut steps =
+        let (mut steps, _rows) =
             crate::ccs::build_look_steps_from_trace(&trace.0, &openings, &root).unwrap();
         // The forged binding: recomputed root limb vs a different public root.
         let limbs = crate::ccs::root_from_leaves(&openings[0].leaves);
@@ -1285,13 +1269,7 @@ mod tests {
         wrong[0] ^= 1;
         steps.push(eq_step(limbs[0], read_limb(&wrong, 0)));
 
-        // Keep only the linear eq steps for the raw fold (the root-chain
-        // hemera pairs use a different CCS shape).
-        let eq_only: Vec<_> = steps
-            .into_iter()
-            .filter(|(inst, _)| inst.num_cols == 3)
-            .collect();
-        let trace_proof = prove_raw_linear_steps(&eq_only);
+        let trace_proof = prove_raw_linear_steps(&steps);
         let err = verify(&trace_proof, &zero_statement(), &ProofParams::default());
         assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
     }
@@ -1311,48 +1289,47 @@ mod tests {
         assert!(verify(&p1, &stmt, &params).is_ok());
         assert!(verify(&p2, &stmt, &params).is_ok());
 
-        // Grouping by structure puts every eq step — opening, value/point/leaf
-        // and root/statement bindings — into ONE VZ=3 group regardless of the
-        // root-chain hemera pairs between them in trace order.
-        let eq_group = |p: &TraceProof| {
-            let idxs: Vec<usize> = p
-                .groups
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, a))| a.committed_instance.num_cols == 3)
-                .map(|(i, _)| i)
-                .collect();
-            assert_eq!(idxs.len(), 1, "exactly one eq-step group");
-            idxs[0]
-        };
-        let i1 = eq_group(&p1);
-        let i2 = eq_group(&p2);
+        // Every eq step — opening, value/point/leaf and root/statement
+        // bindings — is in the ONE binding group; the root-chain rows are
+        // universal rows.
+        let b1 = p1.binding.as_ref().expect("look proof has a binding group");
+        let b2 = p2.binding.as_ref().expect("look proof has a binding group");
         assert_ne!(
-            p1.groups[i1].1.witness_commitment.as_bytes(),
-            p2.groups[i2].1.witness_commitment.as_bytes(),
+            b1.accumulator.witness_commitment.as_bytes(),
+            b2.accumulator.witness_commitment.as_bytes(),
             "different keys read give different binding witnesses"
         );
 
         let mut spliced = p1.clone();
-        spliced.groups[i1] = p2.groups[i2].clone();
+        spliced.binding = Some(b2.clone());
         assert!(
             verify(&spliced, &stmt, &params).is_err(),
             "look group spliced from another proof must not verify"
         );
     }
 
-    /// Real-trace guard for the arithmetic/eq/branch pattern family: every
-    /// main-fold step of a real nox trace must SATISFY its pattern CCS.
+    /// Real-trace guard for the pattern family: every universal row of a
+    /// real nox trace must SATISFY the universal instance (the commit gate).
     /// This is the test that catches stale register wiring (the
     /// pattern_quote bug class) for any pattern it covers — the old
-    /// add/sub/mul/eq/branch encodings all fail it.
+    /// add/sub/mul/eq/branch/inv encodings all fail it.
     #[test]
     fn real_traces_satisfy_pattern_family() {
-        use crate::ccs::build_ccs_from_trace;
+        use crate::ccs::build_universal_steps_from_trace;
 
         let g = Goldilocks::new;
-        // (tag, name): binary field ops [tag [[1 a] [1 b]]]
-        for (tag, name) in [(5u64, "add"), (6, "sub"), (7, "mul"), (9, "eq")] {
+        // (tag, name): binary ops [tag [[1 a] [1 b]]] — field ops, eq, and
+        // the multi-row bit patterns lt/xor/and/shl.
+        for (tag, name) in [
+            (5u64, "add"),
+            (6, "sub"),
+            (7, "mul"),
+            (9, "eq"),
+            (10, "lt"),
+            (11, "xor"),
+            (12, "and"),
+            (14, "shl"),
+        ] {
             for (a, b) in [(9u64, 4u64), (9, 9)] {
                 let mut ar = Reduction::<1024>::new();
                 let obj = ar.atom(g(1)).unwrap();
@@ -1368,13 +1345,26 @@ mod tests {
                 nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
                 nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
                 assert!(trace.0.iter().any(|r| r.r()[0] == tag), "{name}: no tag row");
-                for (i, (inst, wit)) in build_ccs_from_trace(&trace.0).iter().enumerate() {
-                    assert!(
-                        inst.is_satisfied_by(wit),
-                        "{name}({a},{b}): step {i} unsatisfied"
-                    );
-                }
+                let r = build_universal_steps_from_trace(&trace.0, &[]);
+                assert!(r.is_ok(), "{name}({a},{b}): {r:?}");
             }
+        }
+
+        // unary ops [tag [1 a]]: inv (64-row Fermat chain), not (32-row).
+        for (tag, name, a) in [(8u64, "inv", 7u64), (13, "not", 0xF0F0)] {
+            let mut ar = Reduction::<1024>::new();
+            let obj = ar.atom(g(1)).unwrap();
+            let t = ar.atom(g(tag)).unwrap();
+            let t1 = ar.atom(g(1)).unwrap();
+            let va = ar.atom(g(a)).unwrap();
+            let body = ar.pair(t1, va).unwrap();
+            let formula = ar.pair(t, body).unwrap();
+            let mut trace = VecTrace::default();
+            nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+            nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
+            assert!(trace.0.iter().any(|r| r.r()[0] == tag), "{name}: no tag row");
+            let r = build_universal_steps_from_trace(&trace.0, &[]);
+            assert!(r.is_ok(), "{name}({a}): {r:?}");
         }
 
         // branch [4 [[1 t] [[1 10] [1 20]]]] — both arms
@@ -1396,28 +1386,81 @@ mod tests {
             nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
             nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
             assert!(trace.0.iter().any(|r| r.r()[0] == 4), "no branch row");
-            for (i, (inst, wit)) in build_ccs_from_trace(&trace.0).iter().enumerate() {
-                assert!(
-                    inst.is_satisfied_by(wit),
-                    "branch(test={test}): step {i} unsatisfied"
-                );
+            let r = build_universal_steps_from_trace(&trace.0, &[]);
+            assert!(r.is_ok(), "branch(test={test}): {r:?}");
+        }
+    }
+
+    /// Real-trace guard for call (16): a provider that answers, a check
+    /// formula that accepts (quotes 0), rows satisfy the universal instance
+    /// and the whole trace round-trips.
+    #[test]
+    fn real_call_trace_satisfies_and_roundtrips() {
+        struct Answer;
+        impl nox::LookProvider for Answer {
+            fn look(&self, _c: Goldilocks, _n: Goldilocks, _k: Goldilocks) -> Option<Goldilocks> {
+                None
             }
         }
+        impl<const N: usize> nox::CallProvider<N> for Answer {
+            fn provide(
+                &self,
+                reduction: &mut Reduction<N>,
+                _tag: Goldilocks,
+                _object: nox::Order,
+            ) -> Option<nox::Order> {
+                reduction.atom(Goldilocks::new(77))
+            }
+        }
+
+        // [16 [[1 3] [1 0]]]: tag formula quotes 3, check formula quotes 0.
+        let g = Goldilocks::new;
+        let mut ar = Reduction::<1024>::new();
+        let obj = ar.atom(g(1)).unwrap();
+        let t16 = ar.atom(g(16)).unwrap();
+        let t1 = ar.atom(g(1)).unwrap();
+        let three = ar.atom(g(3)).unwrap();
+        let zero = ar.atom(g(0)).unwrap();
+        let tag_f = ar.pair(t1, three).unwrap();
+        let check_f = ar.pair(t1, zero).unwrap();
+        let body = ar.pair(tag_f, check_f).unwrap();
+        let formula = ar.pair(t16, body).unwrap();
+        let mut trace = VecTrace::default();
+        nox::reduce(&mut ar, obj, formula, 1000, &Answer, &mut trace);
+        nox::reduce(&mut ar, obj, formula, 1000, &Answer, &mut trace);
+        assert!(trace.0.iter().any(|r| r.r()[0] == 16), "no call row");
+
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
+        assert!(verify(&tp, &stmt, &params).is_ok());
     }
 
     /// T-2: tampered eval_value causes verify() to reject.
     #[test]
     fn verify_rejects_tampered_eval_value() {
-        let trace = malformed_trace();
+        let trace = quote_trace();
         let stmt = zero_statement();
         let params = ProofParams::default();
         let mut trace_proof = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
 
-        // Flip the eval_value in the first group's proof.
-        let (proof, _acc) = &mut trace_proof.groups[0];
+        // Flip the eval_value in the universal group's proof.
+        let proof = &mut trace_proof.universal.proof;
         proof.eval_value = Goldilocks::new(proof.eval_value.as_u64().wrapping_add(1));
 
         assert!(verify(&trace_proof, &stmt, &params).is_err());
+    }
+
+    /// A proof cannot name its own instance: the error vector must have the
+    /// verifier's row count for the group's position.
+    #[test]
+    fn verify_rejects_foreign_group_layout() {
+        let trace = quote_trace();
+        let stmt = zero_statement();
+        let params = ProofParams::default();
+        let mut tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
+        tp.universal.accumulator.error_evals.truncate(1);
+        assert!(matches!(verify(&tp, &stmt, &params), Err(VerifyError::GroupLayout)));
     }
 }
 

@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.3.0] — 2026-09-09
+
+### Changed
+
+- **BREAKING (transcript + proof format): the universal step CCS** (#8,
+  step 2; specs/constraints.md). ONE CCS instance for every Layer-1 row:
+  18 one-hot pattern selectors `s_p` bound to r0 (`s_p·(r0−p) = 0`,
+  `Σ s_p = 1`), 25 one-hot round selectors `u_k` bound to r14 with
+  `Σ u_k = s_15`, derived flags π/κ and the Poseidon2 round constant as a
+  witness column `rc = Σ RC_j·u_j` — one instance for all 25 rows of a
+  hash block instead of one per constant set. Each pattern's constraints
+  are multiplied by their gate (degree +1; Lagrange selectors over 18
+  values would have been +17). m = 64 rows, 15 matrices, degree ≤ 4,
+  witness 96 → 128. Fiat-Shamir transcript replays and BBG root chains are
+  universal rows too.
+- `TraceProof` is `{ universal: ProofGroup, binding: Option<ProofGroup> }`
+  — two accumulator groups at most for any program. `ProofGroup { proof,
+  accumulator }`. The verifier derives each group's instance from its
+  position (`ccs::universal_ccs()`, `ccs::eq_instance()`); the instance
+  is no longer on the wire (`Accumulator.committed_instance` is
+  `serde(skip)`), closing the hole where a proof could name a trivial
+  instance for itself.
+- `commit()` gates every universal row at commit time:
+  `CommitError::StepUnsatisfied(t)` for an unknown tag, an out-of-range
+  hash round or a register file violating its pattern. The verifier
+  cannot see a violated Layer-1 row through the relaxed fold (the error
+  vector of a degree-4 instance is legitimately non-zero); the zero-error
+  rule keeps guarding the degree-1 binding group.
+- Pattern encodings verified against real nox traces for the whole family
+  (add, sub, mul, eq, branch, inv, lt, xor, and, not, shl, call). inv (8)
+  now checks the final-row inverse `r6·(r6·r4 − 1) = 0` (its old
+  `r5_{t+1}·r3_t = 1` never held on a real trace). lt/xor/and gained bit
+  booleanity, not gained `r11 = 0`.
+- `ccs::patterns` (per-pattern instances), `particle::partial_round_ccs`,
+  `trivial_hash_ccs`, `Z_LEN_HASH`, `build_ccs_from_trace`,
+  `build_hash_steps_from_trace` removed; `build_universal_steps_from_trace`,
+  `universal_witness`, `poseidon_witness`, `eq_instance` added.
+  `build_look_steps_from_trace` returns `(eq steps, universal rows)`.
+- Downstream: joy pins `zheng = "0.3.0"`, bbg `"0.3"`.
+
+### Measured (joy, real programs; proof bytes in postcard, artifact = proof + statement + meta)
+
+| program | 0.2.1 | 0.2.2 (structures) | 0.3.0 proof | 0.3.0 artifact |
+|---|---|---|---|---|
+| hello `(a+b)*a` | 3 groups / 5.4 KB | 2 / 3623 B | 1 / 2388 B | 2578 B |
+| two `divine()` | 12 / 20 KB | 5 / 8525 B | 1 / 2440 B | 2697 B |
+| one `hash` | 23 / 52 KB | 22 / 50204 B | 2 / 4496 B | 4801 B |
+| Merkle-32 (33 hashes, 1906 reductions) | 1343 / 2.67 MB | 22 / 56886 B | 2 / 4503 B | 11176 B (6523 B of it is joy's `meta.assembly`) |
+
+Proof size is now a constant of the system (~2.4 KiB + ~1.7 KiB when the
+program opens anything). Every proof made before this change fails
+verification.
+
 ## [0.2.2] — 2026-09-09
 
 ### Fixed

@@ -323,12 +323,9 @@ digest limbs — the exact analog of the axis r11-r14 option-B upgrade.
   The option-A residual (prover-supplied eq witnesses) applies to look as
   to axis and hash.
 
-option-B rationale (axis-options-comparison.md, now deleted for the
-.claude line budget): statement-binding vs in-circuit commitment
-constraint were equal on soundness and speed; A won on zero nox
-coordination. B's upgrade path stays: nox emits r11-r14, pattern_axis
-gains 4 eq constraints with per-row constant matrices.
-
+option-B rationale (axis-options-comparison.md, deleted for the .claude
+budget): A and B tied on soundness and speed; A won on zero nox
+coordination. B's path stays: pattern_axis gains 4 eq constraints on r11-r14.
 
 ## wall we did not see: proof size — universal step CCS (zheng#8)
 
@@ -386,3 +383,35 @@ order, own fold transcript per group. Measured with joy: hello 3→2 groups
 1343→22 (56886 B). The 22 = 17 Poseidon2 shapes (16 partial-round
 constant sets + the trivial full-round shape) + main patterns + the one
 eq-step group; `group_count_independent_of_trace_length` pins it.
+
+**step 2 landed** (2026-09-09, branch feat/universal-step-ccs, 0.3.0):
+`ccs/universal.rs` — one instance, m = 64, 15 slot matrices, 6 fixed
+product shapes, degree ≤ 4; selectors as designed plus 25 round
+selectors with `Σ u_k = s_15` (one linear row gives both "one round on
+hash rows" and "no round elsewhere", so π/κ are exclusive gates and the
+Poseidon2 terms cannot leak into other patterns' rows); rc as a witness
+column bound by `rc = Σ RC_j·u_j`. Transcript replays and root chains are
+universal rows (r0 = 15 layout). `TraceProof { universal, binding }`,
+instances verifier-derived, never on the wire. Measured: hello 2388 B,
+two-divine 2440 B, hashone 4496 B, Merkle-32 4503 B (proof bytes; joy's
+artifact adds statement + meta, 11176 B for Merkle-32 because
+`meta.assembly` carries the 6.5 KB formula text). No wall was hit.
+
+*Zero-error rule under the universal instance.* No verifier-side
+equivalent exists: every universal row is a gated product, so an honest
+fold carries non-zero cross-term error and `e` cannot distinguish a
+violated row. The relaxed fold as implemented never had verifier-side
+soundness for degree ≥ 2 (the mul/eq/branch "silently accepted" finding
+above); 0.3.0 makes this explicit — `commit()` gates every row
+(`StepUnsatisfied`), the binding group keeps the zero-error rule, and
+specs/decider.md §soundness records the residual. Closing it is the
+recursion milestone: a verifier-checked fold.
+
+*Residuals carried forward.* Full Poseidon2 rounds still unconstrained
+in-circuit (bindings pin them to the replay); capacity columns are not
+chained between consecutive rows; compose/cons/look carry no in-row
+constraint; bit patterns lack block decomposition sums; inv checks only
+the final-row inverse; the option-A residual (prover-supplied binding
+witnesses) is unchanged. cybergraph, mudra and inf pin older zheng
+versions by path (`0.2`, `0.1.2`, `0.1.2`) and will need bumps when they
+next build with the `prove` features.

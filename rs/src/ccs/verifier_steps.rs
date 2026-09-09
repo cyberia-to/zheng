@@ -15,9 +15,9 @@
 //!   (a) 4 commitment-binding eq steps: round_commitments[0][k] == commitment[k]
 //!   (b) 1 final-value eq step: final_poly[0] == value
 //!
-//! Fiat-Shamir transcript steps (num_vars × 20 × 24 Poseidon2 CCS pairs) are
-//! produced separately by `ccs::transcript::build_transcript_steps` and folded
-//! into the hash accumulator.
+//! Fiat-Shamir transcript steps (num_vars × 20 × 24 Poseidon2 rows) are
+//! produced separately by `ccs::transcript::build_transcript_steps` as
+//! universal-step witnesses and fold into the Layer-1 accumulator.
 
 use nebu::Goldilocks;
 
@@ -38,18 +38,25 @@ fn sel(col: usize) -> SparseMatrix {
     m
 }
 
-/// Encode `a == b` as a single m=1 CCS step.
-///
-/// Constraint: z[0] - z[1] = 0.  Z = [a, b, 1].
-pub fn eq_step(a: Goldilocks, b: Goldilocks) -> (CCSInstance, CCSWitness) {
-    let instance = CCSInstance {
+/// The binding instance: z[0] − z[1] = 0 over Z = [a, b, 1]. Degree 1, so
+/// satisfied steps fold to exactly zero error (the verifier's zero-error
+/// rule). Every eq step shares it; the verifier derives it from the
+/// binding group's position, never from the wire.
+pub fn eq_instance() -> CCSInstance {
+    CCSInstance {
         matrices: vec![sel(0), sel(1)],
         multisets: vec![vec![0], vec![1]],
         coeffs: vec![Goldilocks::ONE, neg_one()],
         num_rows: 1,
         num_cols: VZ_LEN,
-    };
-    (instance, CCSWitness { z: vec![a, b, Goldilocks::ONE] })
+    }
+}
+
+/// Encode `a == b` as a single m=1 CCS step.
+///
+/// Constraint: z[0] - z[1] = 0.  Z = [a, b, 1].
+pub fn eq_step(a: Goldilocks, b: Goldilocks) -> (CCSInstance, CCSWitness) {
+    (eq_instance(), CCSWitness { z: vec![a, b, Goldilocks::ONE] })
 }
 
 /// Encode the Brakedown verifier as a flat sequence of m=1 CCS steps.

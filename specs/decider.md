@@ -12,8 +12,27 @@ the final step of a [[HyperNova]] folding chain. takes an [[accumulator]] that h
 decide(accumulator) -> proof
   cost:         ~825 constraints  (CCS jet + batch + algebraic FS)
   verification: 10–50 μs
-  proof size:   ~2 KiB
+  proof size:   ~2.4 KiB per decided group (measured, see below)
 ```
+
+## measured: the universal step decider (0.3.0)
+
+one Layer-1 accumulator per program, closed by one decider. the accumulated instance is the universal step ([[constraints]]): m = 64 rows, 15 matrices, degree ≤ 4, witness padded to n = 128.
+
+| component | size |
+|---|---|
+| witness commitment + step count | 40 B |
+| error vector (64 Goldilocks, varint) | ~0.5 KiB |
+| matrix evaluations (15) | ~0.13 KiB |
+| outer sumcheck: log m = 6 rounds × degree-5 polynomials | ~0.3 KiB |
+| inner sumcheck: log n = 7 rounds × degree-2 polynomials | ~0.2 KiB |
+| Brakedown opening at n = 128 | ~1.2 KiB |
+| **universal group** | **2.4–2.8 KiB** |
+| binding group (eq instance: m = 1, 2 matrices, n = 64) | ~1.7 KiB, only when the program opens something |
+
+measured with joy on real programs (postcard wire form, proof only): `(a+b)*a` 2388 B, two `divine()` 2440 B, one `hash` 4496 B, a depth-32 Merkle path of 33 chained hashes (1906 reductions) 4503 B. the size is a constant of the system; the trace length changes only the step count.
+
+the decider's own cost does not depend on the trace either: one sumcheck over 64 rows, one over 128 columns, one Brakedown opening — the same work for 5 reductions and for 1906.
 
 ## what it does
 
@@ -82,5 +101,7 @@ when the accumulator contains folds from multiple algebras (F_p, F_2, ring), `de
 ## soundness
 
 folding preserves CCS satisfiability. if any step produced a dishonest trace row, the accumulated error term `e` will be non-zero with overwhelming probability over the fold challenge β. the decider checks satisfiability of the folded instance — a non-zero `e` causes it to reject.
+
+**current implementation residual.** the relaxed fold as implemented recomputes `e` from the folded witness and the verifier receives `e` as public accumulator data without a verifier-side fold check (no cross-term commitment chain — Brakedown is not additively homomorphic). for a degree-1 instance this is closed by the zero-error rule: satisfied steps fold to `e = 0` exactly, so the binding group must carry a zero error vector. for the universal instance (degree ≤ 4) the honest error vector is non-zero, so a violated Layer-1 row is not visible to the verifier through `e`; `commit()` refuses to fold one (`CommitError::StepUnsatisfied`), which makes the prover honest but leaves the verifier trusting the fold. closing this needs a verifier-checked fold (a HyperNova-style sumcheck fold or a hash-based accumulation scheme) — the recursion milestone.
 
 see [[recursion]] for the full HyperNova folding protocol. see [[accumulator]] for the accumulator format and serialization. see [[verifier]] for standalone (non-folding) proof verification.

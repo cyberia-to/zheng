@@ -64,15 +64,40 @@ pub struct Proof {
     pub pcs_opening: Opening,
 }
 
-/// Proof for a complete nox trace, grouped by CCS structure.
+/// One accumulator group: the decided proof and the accumulator it decides.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ProofGroup {
+    pub proof: Proof,
+    pub accumulator: Accumulator,
+}
+
+/// Proof for a complete nox trace: two accumulator groups at most.
 ///
-/// Each group covers all trace steps with the same constraint structure
-/// folded into one accumulator, finalized with a single Spartan proof.
-/// One group per distinct pattern type appearing in the trace.
+/// `universal` folds every Layer-1 row (trace pairs, transcript and root
+/// Poseidon2 rounds) under the universal step instance
+/// (`ccs::universal_ccs`). `binding` folds the degree-1 opening bindings
+/// (axis, hash, look eq steps) under `ccs::eq_instance`; absent when the
+/// trace has none. The verifier derives both instances from these
+/// positions — the wire never carries a CCS instance. Size is ~4 KiB and
+/// independent of the trace length.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceProof {
-    pub groups: Vec<(Proof, Accumulator)>,
+    pub universal: ProofGroup,
+    pub binding: Option<ProofGroup>,
+}
+
+impl TraceProof {
+    /// The groups in canonical order: universal, then binding if present.
+    pub fn groups(&self) -> impl Iterator<Item = &ProofGroup> {
+        core::iter::once(&self.universal).chain(self.binding.iter())
+    }
+
+    /// Number of accumulator groups (1 or 2).
+    pub fn group_count(&self) -> usize {
+        1 + usize::from(self.binding.is_some())
+    }
 }
 
 /// public statement: what the proof attests to.
@@ -143,7 +168,6 @@ pub enum LensBackend {
 
 /// a sparse matrix over Goldilocks in compressed sparse row format.
 #[derive(Clone, Debug, Default, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SparseMatrix {
     pub rows: usize,
     pub cols: usize,
@@ -175,8 +199,7 @@ impl SparseMatrix {
 /// a CCS instance.
 ///
 /// satisfiability: Σ_j c_j · ∏_{i ∈ S_j} (M_i · z) = 0.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct CCSInstance {
     /// M_1, …, M_t — constraint matrices.
     pub matrices: Vec<SparseMatrix>,
@@ -228,6 +251,11 @@ pub struct CCSWitness {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Accumulator {
+    /// The instance every fold into this accumulator must match. Prover
+    /// state only: never serialized — the verifier derives the instance from
+    /// the group's position in the [`TraceProof`] (a proof that named its
+    /// own instance could name a trivial one). Deserializes empty.
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub committed_instance: CCSInstance,
     /// prover's folded witness (ignored by verifier). Never serialized: a
     /// proof artifact carrying it would ship the prover's private state —
@@ -262,6 +290,11 @@ pub enum CommitError {
     /// point (r5) or value (r7) constraint is unsatisfied, or the point length
     /// does not match the axis address, or a verifier step is unsatisfied.
     AxisBinding,
+    /// Trace pair `t` (rows t, t+1) does not satisfy the universal step
+    /// instance: an unknown pattern tag, an out-of-range hash round index,
+    /// or registers that violate the pattern's constraint. The relaxed fold
+    /// would carry the violation invisibly; commit refuses instead.
+    StepUnsatisfied(usize),
     DecideFailed(DecideError),
 }
 
@@ -280,6 +313,8 @@ pub enum VerifyError {
     /// fold satisfied steps to exactly zero error, so a non-zero entry means
     /// an unsatisfied step (e.g. a forged axis binding) was folded in.
     LinearErrorNonzero,
+    /// A group's error vector does not have its instance's row count.
+    GroupLayout,
 }
 
 #[derive(Debug)]

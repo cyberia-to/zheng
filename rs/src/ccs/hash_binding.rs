@@ -7,11 +7,12 @@
 //!
 //! Pattern 15 carries NO polynomial opening — the trace registers hold
 //! Poseidon2 sponge state, round index and digest (nox specs/trace.md), and
-//! the sponge is verified in-circuit via `particle::partial_round_ccs`. What
-//! the circuit alone does not pin is the correspondence between the
-//! prover-supplied [`HashAux`] rate and the recorded trace rows: full-round
-//! transitions use `trivial_hash_ccs` (no constraints) and the capacity/y
-//! witness columns are injected from a replay of the claimed rate.
+//! the sponge is verified in-circuit by the universal step instance's
+//! partial-round rows. What the circuit alone does not pin is the
+//! correspondence between the prover-supplied [`HashAux`] rate and the
+//! recorded trace rows: full-round transitions carry no in-circuit
+//! constraint and the capacity/y witness columns are injected from a replay
+//! of the claimed rate.
 //!
 //! These eq steps (VZ_LEN=3, degree 1) bind every row of a hash block to
 //! the unique Poseidon2 state sequence generated from that rate:
@@ -33,9 +34,7 @@
 use nebu::Goldilocks;
 use nox::TraceRow;
 
-use hemera::field::Goldilocks as HGold;
-
-use super::particle::HashAux;
+use super::particle::{replay_states, HashAux};
 use super::selector;
 use super::verifier_steps::eq_step;
 use crate::types::{CCSInstance, CCSWitness, CommitError};
@@ -49,8 +48,8 @@ fn reg(row: &TraceRow, i: usize) -> Goldilocks {
 
 /// Build eq binding steps for every hash block in the trace.
 ///
-/// Block detection and `aux` pairing mirror
-/// [`particle::build_hash_steps_from_trace`] exactly: consecutive tag=15
+/// Block detection and `aux` pairing mirror the universal row builder
+/// (`ccs::build_universal_steps_from_trace`) exactly: consecutive tag=15
 /// runs of at least 2 rows consume one [`HashAux`] each, in trace order.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `aux` has fewer entries than
@@ -86,15 +85,9 @@ pub fn build_hash_binding_steps_from_trace(
             return Err(CommitError::HashBinding);
         }
 
-        // Replay the permutation from the claimed rate — the same call
-        // build_hash_steps_from_trace uses to recover capacity columns.
-        let mut rate_h = [HGold::ZERO; 8];
-        for (j, r) in ha.rate.iter().enumerate() {
-            rate_h[j] = HGold::new(r.canonicalize().as_u64());
-        }
-        let states: Vec<[Goldilocks; 16]> = hemera::StepSponge::absorb(&rate_h)
-            .map(|s| core::array::from_fn(|j| Goldilocks::new(s[j].as_canonical_u64())))
-            .collect();
+        // Replay the permutation from the claimed rate — the same replay
+        // the universal rows use to recover the capacity columns.
+        let states = replay_states(&ha.rate);
 
         let block_steps_start = steps.len();
 
