@@ -378,3 +378,11 @@ a wrong selector fails). specs/constraints.md gains the one-hot form.
 
 **acceptance**: Merkle-32 proves into ≤ 8 KB; group count is independent
 of trace length; every existing negative test still rejects.
+
+**step 1 landed** (2026-09-09, branch fix/group-by-structure, 0.2.2):
+`commit()` keys accumulators on exact instance equality, first-occurrence
+order, own fold transcript per group. Measured with joy: hello 3→2 groups
+(3623 B), two-divine 12→5 (8525 B), one hash 23→22 (50204 B), Merkle-32
+1343→22 (56886 B). The 22 = 17 Poseidon2 shapes (16 partial-round
+constant sets + the trivial full-round shape) + main patterns + the one
+eq-step group; `group_count_independent_of_trace_length` pins it.
