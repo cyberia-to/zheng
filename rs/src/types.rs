@@ -60,7 +60,9 @@ pub struct Proof {
     pub sumcheck_polys: Vec<SumcheckPoly>,
     /// evaluation of the committed polynomial at the sumcheck output point.
     pub eval_value: Goldilocks,
-    /// Brakedown opening proof at the sumcheck output point.
+    /// Brakedown opening proof at the sumcheck output point. On the wire
+    /// it carries only what the verifier reads (`crate::wire::opening`).
+    #[cfg_attr(feature = "serde", serde(with = "crate::wire::opening"))]
     pub pcs_opening: Opening,
 }
 
