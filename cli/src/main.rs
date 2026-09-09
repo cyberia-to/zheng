@@ -238,7 +238,7 @@ fn proof_rows(
     commit_ms: f64,
     verify_ms: f64,
 ) -> Vec<tape_out::Row> {
-    let steps: u64 = proof.groups().map(|g| g.accumulator.step_count).sum();
+    let steps: u64 = proof.groups().map(|g| g.accumulator.step_count()).sum();
     let p = &proof.universal.proof;
     let (outer, inner) = (p.outer_sumcheck_polys.len(), p.sumcheck_polys.len());
     vec![

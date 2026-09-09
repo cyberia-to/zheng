@@ -1,5 +1,76 @@
 # Changelog
 
+## [0.3.2] — 2026-09-09
+
+### Fixed
+
+- **soundness: `fold_step` folded any witness unconditionally.** An
+  empirical attack — build a witness with the right shape but a wrong
+  register (e.g. an add row claiming `5 + 3 = 9`), fold it through the
+  PUBLIC `fold_step`/`fold` entry point, decide, verify — succeeded before
+  this fix: `fold_step` trusted the caller to have screened the witness,
+  and the only screen was `commit()`'s own separate, caller-side gate
+  (`CommitError::StepUnsatisfied`). Any caller reaching `fold_step`/`fold`
+  directly — a downstream crate, a future bug in some other caller — could
+  skip it entirely. The per-witness satisfiability check now lives in
+  `fold_step` itself (new `FoldError::UnsatisfyingWitness`), and
+  `Accumulator`'s fields are `pub(crate)` (were `pub`): the type can only
+  be produced by folding through this gate, not by a bare struct literal
+  from outside the crate. `cli` gains `Accumulator::witness_commitment()`
+  / `::step_count()` read accessors for the one place it read a field
+  directly.
+- **is this a real soundness hole in shipped 0.3.0/0.3.1? Yes, and no
+  proof is retroactively affected.** A proof HONESTLY produced by
+  `commit()` from a real nox trace was never at risk: `commit()`'s own
+  gates already ensured every folded witness was a genuine, satisfying
+  encoding of that trace before `fold_step` ever saw it. What was true,
+  and is now closed, is that `fold_step`/`fold` — the lower-level public
+  API `commit()` is built on — offered NO defense of its own: a party
+  with the ability to call them directly (bypassing `commit()`) could
+  fold an arbitrary, non-satisfying witness and still get a `decide()`/
+  `verify()`-accepting proof for any `Statement`. If you have proofs from
+  0.3.0/0.3.1 produced via `commit()`, they remain valid; this closes what
+  a malicious prover calling the folding API directly could get away with
+  going forward.
+
+### Found, not closed (see `specs/decider.md` §soundness for full detail)
+
+- **the universal instance's constant wire (`z[32]`) is never
+  independently pinned.** The all-zero witness satisfies the ENTIRE
+  universal CCS exactly — not merely undetected, genuinely zero error —
+  because every row that treats `z[32]` as "the literal 1" is itself
+  gated by a selector that is also a free witness column. This fix's
+  per-witness gate cannot catch it: the witness is not lying about its
+  own error. Closing it needs a public/private witness split or an extra
+  fixed-point PCS opening of `z[32]` checked against 1 — an architecture
+  change, sized comparably to the universal-step-CCS milestone, not
+  attempted here. `commit()`'s honest path is unaffected (it always sets
+  `z[32] = 1`).
+- **a genuinely satisfying but semantically meaningless witness still
+  verifies against any Statement.** Unchanged from 0.3.0: `decide()`'s
+  SuperSpartan sumcheck proves "the error is consistent with the
+  committed witness", not "the witness is a real nox execution, or
+  related to the Statement". Closing this needs a verifier-checked fold
+  over the real steps that produced the witness (the recursion
+  milestone) — not achievable in this fix.
+
+### Added
+
+- Three regression tests documenting the attacks above precisely —
+  `fold_step_rejects_witness_with_wrong_register` (closed),
+  `attack_zeroed_constant_wire_satisfies_universal_instance` (open,
+  documents the constant-wire residual),
+  `attack_satisfying_but_meaningless_witness_passes_for_any_statement`
+  (open, documents the recursion-milestone residual) — all in
+  `rs/src/folding/fold.rs`. A fourth, `fold_all_rejects_unsatisfied_eq_step`
+  (`rs/src/lib.rs`), pins the same fold-time gate for the degree-1
+  binding path, which previously relied solely on `verify()`'s zero-error
+  rule to catch a step folded past `commit()`'s own gate.
+
+No wire format change — `Accumulator`'s serialized shape (`witness_commitment`,
+`error_evals`, `step_count`) is unchanged; only Rust-level field visibility
+and a new `FoldError` variant.
+
 ## [0.3.1] — 2026-09-09
 
 ### Fixed
