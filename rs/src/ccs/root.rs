@@ -21,8 +21,8 @@ use nebu::Goldilocks;
 use hemera::field::Goldilocks as HGold;
 use hemera::permutation::{permute, permute_traced};
 
-use super::transcript::{squeeze_ccs_pairs, SqueezeVisitor};
-use crate::types::{CCSInstance, CCSWitness};
+use super::transcript::{squeeze_rows, SqueezeVisitor};
+use crate::types::CCSWitness;
 
 /// The 14 leaves of the BBG root preimage, each a 4-limb digest.
 ///
@@ -108,20 +108,20 @@ pub fn root_to_bytes(root: &[Goldilocks; 4]) -> [u8; 32] {
     out
 }
 
-/// Replay the root chain and emit hemera CCS pairs for every compression.
+/// Replay the root chain and emit universal Poseidon2 rows for every compression.
 ///
-/// 14 compressions × 24 round pairs = 336 (CCSInstance, CCSWitness) pairs,
-/// structurally identical to the transcript/hash pairs so they fold into the
-/// same accumulator shapes. Returns the pairs and the recomputed root limbs;
-/// the caller binds those limbs to the trace registers with eq steps.
-pub fn build_root_steps(leaves: &RootLeaves) -> (Vec<(CCSInstance, CCSWitness)>, [Goldilocks; 4]) {
+/// 14 compressions × 24 round rows = 336 universal-step witnesses, the same
+/// row shape as a trace hash pair, so they fold into the single Layer-1
+/// accumulator. Returns the rows and the recomputed root limbs; the caller
+/// binds those limbs to the trace registers with eq steps.
+pub fn build_root_steps(leaves: &RootLeaves) -> (Vec<CCSWitness>, [Goldilocks; 4]) {
     let mut steps = Vec::new();
     let mut acc = root_iv();
     for leaf in leaves.ordered() {
         let mut state = to_hstate(&acc, &leaf);
         let mut visitor = SqueezeVisitor::new();
         permute_traced(&mut state, &mut visitor);
-        steps.extend(squeeze_ccs_pairs(&visitor));
+        steps.extend(squeeze_rows(&visitor));
         acc = first4(&state);
     }
     (steps, acc)
@@ -131,6 +131,7 @@ pub fn build_root_steps(leaves: &RootLeaves) -> (Vec<(CCSInstance, CCSWitness)>,
 mod tests {
     use super::*;
     use crate::ccs::selector::is_satisfied;
+    use crate::ccs::universal::universal_ccs;
 
     fn g(v: u64) -> Goldilocks {
         Goldilocks::new(v)
@@ -181,8 +182,8 @@ mod tests {
         let (steps, computed) = build_root_steps(&leaves);
         assert_eq!(computed, root_from_leaves(&leaves), "replay matches native fold");
         assert_eq!(steps.len(), 14 * 24, "24 round pairs per compression");
-        for (i, (instance, witness)) in steps.iter().enumerate() {
-            assert!(is_satisfied(instance, witness), "root step {i} unsatisfied");
+        for (i, witness) in steps.iter().enumerate() {
+            assert!(is_satisfied(universal_ccs(), witness), "root step {i} unsatisfied");
         }
     }
 }
