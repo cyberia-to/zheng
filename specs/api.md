@@ -27,7 +27,7 @@ let outcome = reduce(&mut order, object, formula, budget, &NullCalls, &mut trace
 **phase 2 — proving (zheng):** encode the trace and produce a proof.
 
 ```rust
-let (proof, acc) = zheng::commit(&tracer.0, &statement, &params)?;
+let proof = zheng::commit(&tracer, &hash_aux, &axis_openings, &look_openings, &statement, &params)?;
 ```
 
 nox produces the trace; zheng consumes it. the two phases are independent — run nox with any `CallProvider`, pass the resulting `&[TraceRow]` to zheng.
@@ -36,25 +36,24 @@ nox produces the trace; zheng consumes it. the two phases are independent — ru
 
 ```
 zheng::commit(
-  trace:      &[nox::TraceRow],
-  statement:  &Statement,
-  params:     &ProofParams,
-) -> Result<(Proof, Accumulator), CommitError>
+  trace:          &nox::VecTrace,
+  hash_aux:       &[HashAux],        one per Poseidon2 hash block (the sponge rate)
+  axis_openings:  &[AxisOpening],    one per prover-active axis row
+  look_openings:  &[LookOpening],    one per look row
+  statement:      &Statement,
+  params:         &ProofParams,
+) -> Result<TraceProof, CommitError>
 ```
 
-encodes the trace as a multilinear polynomial over the 16-column register layout, commits via [[Brakedown]], runs [[SuperSpartan]] sumcheck. returns a proof and an accumulator ready for folding.
-
-| parameter | type | description |
-|---|---|---|
-| trace | &[nox::TraceRow] | execution trace produced by nox::reduce with VecTrace |
-| statement | &Statement | object\_hash, formula\_hash, result\_hash, budget |
-| params | ProofParams | security level, Lens configuration |
+turns every consecutive trace pair into a witness of the universal step instance ([[constraints]]), appends the replayed Fiat-Shamir Poseidon2 rounds of each opening and the BBG root chain as further universal rows, folds them all into ONE [[HyperNova]] accumulator, folds the opening bindings (degree-1 eq steps) into a second accumulator when there are any, and closes each with one [[decider]] under a shared linkage digest.
 
 returns:
-- `(Proof, Accumulator)` on success
-- `CommitError::ExecutionFailed` if nox halts with error
-- `CommitError::FocusExhausted` if computation exceeds focus bound
-- `CommitError::TraceOverflow` if trace exceeds maximum rows (2^32)
+- `TraceProof { universal, binding: Option<_> }` on success — two groups at most, ~4 KiB, independent of trace length
+- `CommitError::FocusExhausted` if the trace exceeds the statement's focus bound
+- `CommitError::StatementMismatch` if input_hash/output_hash do not bind the first/last rows
+- `CommitError::StepUnsatisfied(t)` if trace pair t violates its pattern's constraint, carries an unknown tag or an out-of-range hash round — commit refuses to prove what the verifier could not see through the relaxed fold
+- `CommitError::HashBinding` / `AxisBinding` / `LookBinding` if an opening does not bind to the trace
+- `CommitError::TraceOverflow` if openings/hints do not match the trace or the trace has fewer than two rows
 
 ## open
 
@@ -166,19 +165,31 @@ enum LensBackend {
 
 ```
 Accumulator {
-  committed_instance:  CCSInstance,
+  committed_instance:  CCSInstance,     prover state, never on the wire
   witness_commitment:  [u8; 32],
-  error_term:          GoldilocksElement,
+  error_evals:         [GoldilocksElement; m]   one per constraint row
   step_count:          u64,
 }
 ```
+
+### TraceProof
+
+```
+TraceProof {
+  universal:  ProofGroup,               every Layer-1 row, instance = universal_ccs()
+  binding:    Option<ProofGroup>,       opening bindings, instance = eq_instance()
+}
+ProofGroup { proof: Proof, accumulator: Accumulator }
+```
+
+the verifier derives each group's instance from its position; a proof never names its own instance.
 
 ## usage patterns
 
 ### single proof
 
 ```
-let (proof, _) = zheng::commit(&program, &input, focus, &params)?;
+let proof = zheng::commit(&trace, &hash_aux, &[], &[], &statement, &params)?;
 zheng::verify(&proof, &statement, &params)?;
 ```
 

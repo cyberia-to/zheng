@@ -238,15 +238,12 @@ fn proof_rows(
     commit_ms: f64,
     verify_ms: f64,
 ) -> Vec<tape_out::Row> {
-    let steps: u64 = proof.groups.iter().map(|(_, acc)| acc.step_count).sum();
-    let (outer, inner) = proof
-        .groups
-        .first()
-        .map(|(p, _)| (p.outer_sumcheck_polys.len(), p.sumcheck_polys.len()))
-        .unwrap_or((0, 0));
+    let steps: u64 = proof.groups().map(|g| g.accumulator.step_count).sum();
+    let p = &proof.universal.proof;
+    let (outer, inner) = (p.outer_sumcheck_polys.len(), p.sumcheck_polys.len());
     vec![
         ("trace_rows", trace.0.len().to_string()),
-        ("groups", proof.groups.len().to_string()),
+        ("groups", proof.group_count().to_string()),
         ("steps", steps.to_string()),
         ("outer_rounds", outer.to_string()),
         ("inner_rounds", inner.to_string()),

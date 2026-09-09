@@ -3,15 +3,13 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! Fiat-Shamir transcript verification as Poseidon2 CCS instances.
+//! Fiat-Shamir transcript verification as universal Poseidon2 rows.
 //!
 //! Each `transcript.squeeze()` in a Brakedown opening is one Poseidon2
 //! permutation (24 rounds). `build_transcript_steps` replays the transcript
-//! using raw hemera and produces one `(CCSInstance, CCSWitness)` pair per
-//! round of each squeeze.
-//!
-//! Uses Z_LEN_HASH=50 / num_rows=16, identical to pattern-15 hash steps,
-//! so all transcript steps fold into the hash accumulator.
+//! using raw hemera and produces one universal-step witness per round of
+//! each squeeze — the same row shape as a pattern-15 trace pair, so every
+//! replayed round folds into the single Layer-1 accumulator.
 
 use nebu::Goldilocks;
 
@@ -21,19 +19,16 @@ use hemera::trace::{FullRoundWitnesses, RoundVisitor};
 
 use lens::{Commitment, Opening};
 
-use crate::types::{CCSInstance, CCSWitness};
-use crate::ccs::particle::{
-    partial_round_ccs, trivial_hash_ccs, Z_LEN_HASH,
-    IDX_CONST, IDX_CAP_K, IDX_CAP_K1, IDX_Y, sk, sk1,
-};
+use crate::ccs::universal::poseidon_witness;
+use crate::types::CCSWitness;
 
 /// Number of proximity queries per Brakedown round, matching lens NUM_QUERIES.
 const NUM_QUERIES: usize = 20;
 
-/// Replay the Brakedown transcript and produce Poseidon2 CCS pairs for each squeeze.
+/// Replay the Brakedown transcript and produce universal rows for each squeeze.
 ///
-/// For a `k`-variable opening, produces `k × 20 × 24` pairs:
-/// - 24 CCS pairs per squeeze (one per Poseidon2 round)
+/// For a `k`-variable opening, produces `k × 20 × 24` rows:
+/// - 24 rows per squeeze (one per Poseidon2 round)
 /// - 20 squeezes per Brakedown folding round
 /// - `k` folding rounds
 ///
@@ -46,7 +41,7 @@ pub fn build_transcript_steps(
     transcript_seed: &[u8],
     commitment: &Commitment,
     opening: &Opening,
-) -> Vec<(CCSInstance, CCSWitness)> {
+) -> Vec<CCSWitness> {
     let Opening::Tensor { round_commitments, .. } = opening else {
         return vec![];
     };
@@ -68,8 +63,7 @@ pub fn build_transcript_steps(
             let mut visitor = SqueezeVisitor::new();
             snap.finalize_traced(&mut visitor);
 
-            // Build 24 CCS pairs from the 24 round transitions.
-            steps.extend(squeeze_ccs_pairs(&visitor));
+            steps.extend(squeeze_rows(&visitor));
 
             // Advance transcript: finalize + re-seed (mirroring Transcript::squeeze).
             let hash = hasher.finalize();
@@ -81,82 +75,41 @@ pub fn build_transcript_steps(
     steps
 }
 
-/// Produces 24 (CCSInstance, CCSWitness) pairs for one Poseidon2 permutation.
-///
-/// Uses partial_round_ccs for rounds k ∈ 3..19 (the 16 partial rounds).
-/// Uses trivial_hash_ccs for the 8 full rounds.
-pub(crate) fn squeeze_ccs_pairs(visitor: &SqueezeVisitor) -> Vec<(CCSInstance, CCSWitness)> {
-    let mut pairs = Vec::with_capacity(ROUNDS_TOTAL);
+/// The 24 universal rows of one Poseidon2 permutation: transition k → k+1
+/// for k = 0..23, the last pair closing on the final state (round index 24
+/// is the squeeze sentinel, as in a trace hash block).
+pub(crate) fn squeeze_rows(visitor: &SqueezeVisitor) -> Vec<CCSWitness> {
     let states = &visitor.states;
-    let ys = &visitor.y_values;
-
-    for k in 0..ROUNDS_TOTAL {
-        let state_k  = states[k];
-        let state_k1 = if k + 1 < ROUNDS_TOTAL { states[k + 1] } else { states[ROUNDS_TOTAL - 1] };
-        let y        = if k + 1 < ROUNDS_TOTAL { ys[k + 1] } else { Goldilocks::ZERO };
-
-        let instance = if (3..19).contains(&k) {
-            partial_round_ccs(k)
-        } else {
-            trivial_hash_ccs()
-        };
-        let witness = squeeze_witness(&state_k, &state_k1, y);
-        pairs.push((instance, witness));
-    }
-    pairs
+    (0..ROUNDS_TOTAL)
+        .map(|k| {
+            let next = if k + 1 < ROUNDS_TOTAL { &states[k + 1] } else { &states[ROUNDS_TOTAL - 1] };
+            poseidon_witness(&states[k], next, k)
+        })
+        .collect()
 }
 
-/// Build the Z_LEN_HASH=50 witness z-vector from two consecutive Poseidon2 states.
-fn squeeze_witness(
-    state_k: &[Goldilocks; 16],
-    state_k1: &[Goldilocks; 16],
-    y: Goldilocks,
-) -> CCSWitness {
-    let mut z = vec![Goldilocks::ZERO; Z_LEN_HASH];
-    z[IDX_CONST] = Goldilocks::ONE;
-    for i in 0..8 { z[sk(i)]  = state_k[i]; }
-    for i in 0..8 { z[sk1(i)] = state_k1[i]; }
-    for j in 0..8 { z[IDX_CAP_K  + j] = state_k[8 + j]; }
-    for j in 0..8 { z[IDX_CAP_K1 + j] = state_k1[8 + j]; }
-    z[IDX_Y] = y;
-    CCSWitness { z }
-}
-
-/// Collects post-round states and S-box inverses from a Poseidon2 permutation.
+/// Collects post-round states from a Poseidon2 permutation.
 pub(crate) struct SqueezeVisitor {
-    states:   Vec<[Goldilocks; 16]>,
-    y_values: Vec<Goldilocks>,
+    states: Vec<[Goldilocks; 16]>,
 }
 
 impl SqueezeVisitor {
     pub(crate) fn new() -> Self {
-        Self {
-            states:   Vec::with_capacity(ROUNDS_TOTAL),
-            y_values: Vec::with_capacity(ROUNDS_TOTAL),
-        }
+        Self { states: Vec::with_capacity(ROUNDS_TOTAL) }
     }
 }
 
-fn hg(x: HGoldilocks) -> Goldilocks { Goldilocks::new(x.as_canonical_u64()) }
-
 fn hstate(s: &[HGoldilocks; 16]) -> [Goldilocks; 16] {
-    core::array::from_fn(|i| hg(s[i]))
+    core::array::from_fn(|i| Goldilocks::new(s[i].as_canonical_u64()))
 }
 
 impl RoundVisitor for SqueezeVisitor {
-    fn full_round(
-        &mut self,
-        _index: u8,
-        state: &[HGoldilocks; 16],
-        _witnesses: &FullRoundWitnesses,
-    ) {
+    fn full_round(&mut self, _index: u8, state: &[HGoldilocks; 16], _witnesses: &FullRoundWitnesses) {
         self.states.push(hstate(state));
-        self.y_values.push(Goldilocks::ZERO);
     }
 
-    fn partial_round(&mut self, _index: u8, state: &[HGoldilocks; 16], sbox_out: HGoldilocks) {
+    fn partial_round(&mut self, _index: u8, state: &[HGoldilocks; 16], _sbox_out: HGoldilocks) {
         self.states.push(hstate(state));
-        self.y_values.push(hg(sbox_out));
     }
 }
 
@@ -164,6 +117,7 @@ impl RoundVisitor for SqueezeVisitor {
 mod tests {
     use super::*;
     use crate::ccs::selector::is_satisfied;
+    use crate::ccs::universal::universal_ccs;
     use lens::brakedown::{Brakedown, MultilinearPoly};
     use lens::{Lens, Transcript as LensTranscript};
 
@@ -197,8 +151,9 @@ mod tests {
         let (commitment, opening) = open_at(&poly, &point);
         let steps = build_transcript_steps(b"transcript-steps-test", &commitment, &opening);
         assert!(!steps.is_empty());
-        for (i, (inst, wit)) in steps.iter().enumerate() {
-            assert!(is_satisfied(inst, wit), "transcript step {i} not satisfied");
+        let u = universal_ccs();
+        for (i, wit) in steps.iter().enumerate() {
+            assert!(is_satisfied(u, wit), "transcript step {i} not satisfied");
         }
     }
 

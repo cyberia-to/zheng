@@ -16,36 +16,66 @@ a constraint is a polynomial equation C_p(t) that must equal zero at every trace
 C_p(t) = polynomial_expression(registers_at_row_t, registers_at_row_{t+1})
 ```
 
-the combined constraint over all patterns:
+the combined constraint over all patterns — the **universal step**, one CCS instance for every Layer-1 row:
 
 ```
-C(t) = Σ_{p=0}^{17} selector_p(r0_t) × C_p(t)
+C(t) = Σ_{p=0}^{17} s_p(t) × C_p(t)
 ```
 
-where selector_p(r0_t) = 1 when r0_t = p, 0 otherwise. constructed via Lagrange interpolation over the 18 pattern values.
+where the selectors s_0..s_17 are **one-hot witness columns**, bound to r0_t by two constraint families:
+
+```
+s_p × (r0_t − p) = 0      for every p        (a non-zero s_p forces r0 = p)
+Σ_p s_p = 1                                  (some s_p is non-zero)
+```
+
+together: exactly one s_p is non-zero and it equals 1 — two non-zero selectors would need two values of r0, and the sum then fixes the survivor to 1. every other pattern's terms vanish identically, so multiplying C_p by s_p raises its degree by exactly one. Lagrange selectors interpolated over the 18 tag values would raise it by 17 — rejected for that reason. a row whose tag is outside 0..17 admits no selector and is unprovable.
+
+because one instance covers every row, one HyperNova accumulator and one decider cover the whole Layer-1 trace; the proof is ~4 KiB whatever the program (see [[decider]]).
+
+### hash rows
+
+pattern 15 rows carry a second one-hot family, the round selectors u_0..u_24 on r14_t:
+
+```
+u_k × (r14_t − k) = 0     for every k ∈ 0..25
+Σ_k u_k = s_15                               (one round on hash rows, none elsewhere)
+```
+
+three derived columns are bound linearly to the round selectors:
+
+```
+π  = Σ_{j=3..18} u_j                         partial-round flag
+κ  = s_15 − u_24                             round-counter flag (0 on the squeeze row)
+rc = Σ_{j=3..18} RC[128 + j − 3] × u_j       the hemera partial-round constant
+```
+
+the Poseidon2 partial-round constraints are gated by π, the r14 counter by κ, and the round constant is the witness column rc — one instance serves all 25 rows of a hash block instead of one instance per constant set. the same rows serve the synthetic Poseidon2 rounds of the Fiat-Shamir transcript replay (axis and look openings) and the BBG root chain: they are laid out as hash rows (r0 = 15, state in r4-r7 / r10-r13, r14 = k).
 
 ## pattern constraint table
 
-| pattern | name | constraint | degree | count |
-|---|---|---|---|---|
-| 0 | axis | navigation through subject tree | 1 | ~depth |
-| 1 | quote | r5_{t+1} = literal | 1 | 1 |
-| 2 | compose | chain: eval x, eval y, eval result on x's output | 1 | 2 |
-| 3 | cons | pair two sub-results | 1 | 2 |
-| 4 | branch | selector × (next − yes) + (1 − sel) × (next − no) = 0 | 2 | 2 |
-| 5 | add | r5_{t+1} = r3_t + r4_t | 1 | 1 |
-| 6 | sub | r5_{t+1} = r3_t − r4_t | 1 | 1 |
-| 7 | mul | r5_{t+1} = r3_t × r4_t | 2 | 1 |
-| 8 | inv | r5_{t+1} × r3_t = 1 | 2 | 1 |
-| 9 | eq | (r3_t − r4_t) × inv = flag, r5_{t+1} = 1 − flag | 2 | 1 |
-| 10 | lt | range decomposition into 64 bits | 1 | ~64 |
-| 11 | xor | bit decomposition + XOR per bit | 2 | ~64 |
-| 12 | and | bit decomposition + AND per bit | 2 | ~64 |
-| 13 | not | bitwise complement | 1 | ~64 |
-| 14 | shl | shift via multiplication by 2^n | 2 | ~64 |
-| 15 | hash | Poseidon2 round: state_{t+1} = MDS × (state_t)^7 (300 rows) | 7 | ~736 |
-| 16 | call | external constraint check (Layer 1 verification) | varies | varies |
-| 17 | look | Lens.verify(r5, eval(r4), r6, proof): 2 inline wiring constraints + Brakedown verification via folded CCS sub-instance | 1 (inline) | 2 inline; ~825 folded |
+| pattern | name | gated constraint (row t unless noted) | degree (with gate) |
+|---|---|---|---|
+| 0 | axis | r9 − r8 + 1 = 0 (budget); opening bound by the binding group | 2 |
+| 1 | quote | r7 − r4 = 0 | 2 |
+| 2 | compose | none in-row (cross-row wiring pending) | — |
+| 3 | cons | none in-row (particle-identity wiring pending) | — |
+| 4 | branch | r10 × (1 − r4 r5) = 0 ; r4 × (1 − r10) = 0 | 4, 3 |
+| 5 | add | r6 − r4 − r5 = 0 | 2 |
+| 6 | sub | r6 − r4 + r5 = 0 | 2 |
+| 7 | mul | r6 − r4 r5 = 0 | 3 |
+| 8 | inv | r6 × (r6 r4 − 1) = 0 — r6 = 0 on chain rows, v⁻¹ on the final row; the square-and-multiply chain is unconstrained witness | 4 |
+| 9 | eq | (r4−r5)(1−r6) = 0 ; r6(1−r6) = 0 ; (r4−r5) r7 − r6 = 0 | 3 |
+| 10 | lt | r10, r11 ∈ {0,1} (block decomposition pending) | 3 |
+| 11 | xor | r10 + r11 − 2 r10 r11 − r12 = 0 ; r10, r11 ∈ {0,1} | 3 |
+| 12 | and | r10 r11 − r12 = 0 ; r10, r11 ∈ {0,1} | 3 |
+| 13 | not | r10 + r12 − 1 = 0 ; r11 = 0 | 2 |
+| 14 | shl | r12 − r11 = 0 | 2 |
+| 15 | hash | κ × (r14_{t+1} − r14_t − 1) = 0 ; π × Poseidon2 partial round (16 rows: y(state_0 + rc) = 1, matmul_internal) | 2, 3 |
+| 16 | call | r6 = 0 (check formula result) | 2 |
+| 17 | look | none in-row; openings, leaves, root and Statement.bbg_root bound by the binding group | — |
+
+every gated constraint is verified against real nox traces (`real_traces_satisfy_pattern_family`, `real_call_trace_satisfies_and_roundtrips` in `rs/src/lib.rs`): a stale encoding makes honest programs unprovable at commit time, so the table is exactly what the code enforces. constraints listed as pending (cross-row wiring, bit decomposition sums, full Poseidon2 rounds) are not enforced.
 
 ## universal constraints
 
@@ -88,26 +118,53 @@ boundary constraints are point evaluations of the trace polynomial at specific b
 
 ## CCS encoding
 
-all constraints map to [[CCS]] instances. the key advantage: high-degree constraints (pattern 15, degree 7) cost only field operations in the [[SuperSpartan]] prover. no cryptographic cost increase over degree-1 constraints.
-
-each pattern's constraint polynomial C_p(t) = 0 is decomposed into CCS form:
+all constraints map to one [[CCS]] instance, the universal step. the key advantage: high-degree constraints cost only field operations in the [[SuperSpartan]] prover. no cryptographic cost increase over degree-1 constraints.
 
 ```
 Σ_{i ∈ [q]} c_i · ∏_{j ∈ S_i} (M_j · z) = 0
 ```
 
-where z is the witness vector (the trace row), M_j are sparse matrices that select registers from the trace at row t or t+1, S_i are index sets specifying which M_j outputs multiply together, and c_i are [[Goldilocks field]] coefficients.
+where z is the witness vector of one step, M_j are sparse matrices that select linear forms over z, S_i are index sets specifying which M_j outputs multiply together, and c_i are [[Goldilocks field]] coefficients.
 
-register layout for z (row t concatenated with row t+1):
+### universal witness layout (Z_LEN = 96, padded to 128)
 
 ```
-z = [r0_t, r1_t, ..., r15_t, r0_{t+1}, r1_{t+1}, ..., r15_{t+1}, 1]
-     idx 0   idx 1      idx 15  idx 16     idx 17        idx 31    idx 32
+z[0..16]   r0_t .. r15_t                 z[16..32]  r0_{t+1} .. r15_{t+1}     z[32]  1
+z[33..51]  s_0 .. s_17                   pattern selectors
+z[51..76]  u_0 .. u_24                   round selectors
+z[76] π    z[77] κ    z[78] rc           derived hash flags and round constant
+z[79..87]  state_k[8..16]                capacity at row t   (prover-supplied)
+z[87..95]  state_{k+1}[8..16]            capacity at row t+1 (prover-supplied)
+z[95] y    inv(state_k[0] + rc)          partial-round S-box witness
 ```
 
-index 32 holds the constant 1, used by M matrices that extract a fixed scalar.
+### universal instance shape (m = 64 rows, 15 matrices, 6 terms, degree ≤ 4)
 
-## CCS encoding per pattern
+the instance is built from 15 slot matrices and 6 product terms of fixed shape, all with coefficient 1: {A0,B0}, {C0,D0,E0}, {A1,B1}, {C1,D1,E1}, {F,G,H,I}, {P}. a row places one linear form per slot it uses; signs live in the linear forms. rows:
+
+```
+ 0..18   s_p × (r0 − p)                   {A0,B0}
+ 18      Σ s_p − 1                        {P}
+19..44   u_k × (r14 − k)                  {A0,B0}
+ 44      Σ u_k − s_15                     {P}
+ 45      π − Σ_{3..18} u_j                {P}
+ 46      κ − s_15 + u_24                  {P}
+ 47      rc − Σ RC_j u_j                  {P}
+48..64   pattern rows: π × Poseidon2 partial round in slot family 0
+         (row 48: S-box, rows 49..63: matmul_internal), every other
+         pattern's gadgets in slot family 1 and {F,G,H,I}, sharing rows —
+         at most one gate is live on a satisfying witness
+```
+
+the 15 matrices are what the decider opens (15 matrix evaluations); the 64 rows are what the accumulator's error vector spans. both are constants of the system, independent of the program.
+
+### the binding instance
+
+opening bindings (axis commitment/point/value, hash-block replay, look leaf/root/statement) are degree-1 eq steps `z[0] − z[1] = 0` over Z = [a, b, 1], folded into a second accumulator. degree 1 means satisfied steps fold to exactly zero error, which the verifier enforces (the zero-error rule). the universal instance is not degree 1 — its error vector carries genuine cross terms — so a violated Layer-1 row is refused by `commit()`'s per-row gate, not detected by the verifier (see [[decider]] soundness).
+
+## CCS encoding per pattern (reference derivations)
+
+the derivations below show each pattern's constraint in CCS form before gating; in the universal instance each term is additionally multiplied by the pattern's selector (or π/κ for hash rows) and lives on the rows listed above. the register indices in these derivations follow the original AIR sketch; the enforced register map is the table above and nox specs/trace.md.
 
 ### arithmetic patterns (5, 6, 7, 8)
 

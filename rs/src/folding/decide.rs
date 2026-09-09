@@ -54,19 +54,15 @@ pub fn decide(
 mod tests {
     use super::*;
     use nebu::Goldilocks;
-    use crate::ccs::patterns::build_step_ccs;
-    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
+    use crate::ccs::reg_t;
+    use crate::ccs::universal::{test_witness, universal_ccs};
     use crate::folding::fold::fold_step;
     use crate::spartan::verifier::SpartanVerifier;
     use crate::types::{CCSWitness, Statement};
 
+    /// An add row (tag 5): r6 = r4 + r5.
     fn make_witness(r4: u64, r5: u64, r6: u64) -> CCSWitness {
-        let mut z = vec![Goldilocks::ZERO; Z_LEN];
-        z[CONST_IDX] = Goldilocks::ONE;
-        z[reg_t(4)] = Goldilocks::new(r4);
-        z[reg_t(5)] = Goldilocks::new(r5);
-        z[reg_t(6)] = Goldilocks::new(r6);
-        CCSWitness { z }
+        test_witness(&[(reg_t(0), 5), (reg_t(4), r4), (reg_t(5), r5), (reg_t(6), r6)])
     }
 
     fn zero_accumulator(instance: &crate::types::CCSInstance) -> Accumulator {
@@ -83,7 +79,7 @@ mod tests {
 
     #[test]
     fn decide_empty_accumulator_errors() {
-        let instance = build_step_ccs(5);
+        let instance = universal_ccs().clone();
         let acc = zero_accumulator(&instance);
         let stmt = Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0, bbg_root: [0u8; 32] };
         assert!(decide(&acc, &stmt, &[0u8; 32], &ProofParams::default()).is_err());
@@ -91,7 +87,7 @@ mod tests {
 
     #[test]
     fn fold_then_decide_produces_valid_proof() {
-        let instance = build_step_ccs(5); // add pattern
+        let instance = universal_ccs().clone(); // add pattern
         let witness = make_witness(5, 3, 8); // 5+3=8 ✓
         let mut acc = zero_accumulator(&instance);
         let mut t = Transcript::new();

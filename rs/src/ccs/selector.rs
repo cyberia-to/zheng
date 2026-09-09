@@ -45,39 +45,28 @@ pub fn is_satisfied(instance: &CCSInstance, witness: &CCSWitness) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs::patterns::{build_step_ccs, trivial_ccs};
-    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
-
-    fn make_z(vals: &[(usize, u64)]) -> Vec<Goldilocks> {
-        let mut z = vec![Goldilocks::ZERO; Z_LEN];
-        z[CONST_IDX] = Goldilocks::ONE;
-        for &(idx, v) in vals {
-            z[idx] = Goldilocks::new(v);
-        }
-        z
-    }
+    use crate::ccs::reg_t;
+    use crate::ccs::universal::{test_witness, universal_ccs, NUM_ROWS};
 
     #[test]
-    fn trivial_ccs_always_zero() {
-        let ccs = trivial_ccs();
-        let w = CCSWitness { z: vec![Goldilocks::ZERO; Z_LEN] };
-        let v = constraint_eval(&ccs, &w);
-        assert!(v.iter().all(|&x| x == Goldilocks::ZERO));
+    fn empty_instance_evaluates_to_zero_rows() {
+        let ccs = CCSInstance { num_rows: 3, ..CCSInstance::default() };
+        let w = CCSWitness { z: vec![Goldilocks::ZERO; 4] };
+        assert_eq!(constraint_eval(&ccs, &w), vec![Goldilocks::ZERO; 3]);
     }
 
     #[test]
     fn add_constraint_evaluates_to_zero() {
-        let ccs = build_step_ccs(5);
-        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
-        let v = constraint_eval(&ccs, &CCSWitness { z });
-        assert_eq!(v, vec![Goldilocks::ZERO]);
+        let w = test_witness(&[(reg_t(0), 5), (reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
+        let v = constraint_eval(universal_ccs(), &w);
+        assert_eq!(v, vec![Goldilocks::ZERO; NUM_ROWS]);
     }
 
     #[test]
     fn add_constraint_nonzero_on_wrong_witness() {
-        let ccs = build_step_ccs(5);
-        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 9)]);
-        let v = constraint_eval(&ccs, &CCSWitness { z });
-        assert_ne!(v, vec![Goldilocks::ZERO]);
+        let w = test_witness(&[(reg_t(0), 5), (reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 9)]);
+        let v = constraint_eval(universal_ccs(), &w);
+        assert_ne!(v, vec![Goldilocks::ZERO; NUM_ROWS]);
+        assert!(!is_satisfied(universal_ccs(), &w));
     }
 }

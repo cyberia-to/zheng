@@ -151,45 +151,37 @@ impl SpartanProver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs::patterns::build_step_ccs;
-    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
+    use crate::ccs::reg_t;
+    use crate::ccs::universal::{test_witness, universal_ccs};
     use crate::spartan::verifier::SpartanVerifier;
     use crate::transcript::Transcript;
-    fn make_z(vals: &[(usize, u64)]) -> Vec<Goldilocks> {
-        let mut z = vec![Goldilocks::ZERO; Z_LEN];
-        z[CONST_IDX] = Goldilocks::ONE;
-        for &(idx, v) in vals {
-            z[idx] = Goldilocks::new(v);
-        }
-        z
-    }
 
     #[test]
     fn prove_verify_add_pattern() {
-        // r3=5, r4=3, r5_{t+1}=8
-        let z = make_z(&[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
-        let instance = build_step_ccs(5);
-        let witness = CCSWitness { z };
+        // add row: r4=5, r5=3, r6=8
+        let witness = test_witness(&[(reg_t(0), 5), (reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]);
+        let instance = universal_ccs();
 
         let mut pt = Transcript::new();
-        let proof = SpartanProver::prove(&instance, &witness, &mut pt);
+        let proof = SpartanProver::prove(instance, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        let result = SpartanVerifier::verify(&instance, &proof, &[Goldilocks::ZERO], &mut vt);
+        let zero = vec![Goldilocks::ZERO; instance.num_rows];
+        let result = SpartanVerifier::verify(instance, &proof, &zero, &mut vt);
         assert!(result.is_ok(), "verify failed: {result:?}");
     }
 
     #[test]
     fn prove_verify_mul_pattern() {
-        // r3=6, r4=7, r5_{t+1}=42
-        let z = make_z(&[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]);
-        let instance = build_step_ccs(7);
-        let witness = CCSWitness { z };
+        // mul row: r4=6, r5=7, r6=42
+        let witness = test_witness(&[(reg_t(0), 7), (reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]);
+        let instance = universal_ccs();
 
         let mut pt = Transcript::new();
-        let proof = SpartanProver::prove(&instance, &witness, &mut pt);
+        let proof = SpartanProver::prove(instance, &witness, &mut pt);
 
         let mut vt = Transcript::new();
-        assert!(SpartanVerifier::verify(&instance, &proof, &[Goldilocks::ZERO], &mut vt).is_ok());
+        let zero = vec![Goldilocks::ZERO; instance.num_rows];
+        assert!(SpartanVerifier::verify(instance, &proof, &zero, &mut vt).is_ok());
     }
 }

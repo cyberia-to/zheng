@@ -141,8 +141,8 @@ pub fn fold_step(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs::patterns::build_step_ccs;
-    use crate::ccs::{reg_t, CONST_IDX, Z_LEN};
+    use crate::ccs::universal::{test_witness, universal_ccs};
+    use crate::ccs::reg_t;
 
     fn zero_accumulator(instance: &CCSInstance) -> Accumulator {
         let z = vec![Goldilocks::ZERO; 64];
@@ -155,30 +155,26 @@ mod tests {
         }
     }
 
+    /// An add row (tag 5): r6 = r4 + r5.
     fn make_witness(r4: u64, r5: u64, r6: u64) -> CCSWitness {
-        let mut z = vec![Goldilocks::ZERO; Z_LEN];
-        z[CONST_IDX] = Goldilocks::ONE;
-        z[reg_t(4)] = Goldilocks::new(r4);
-        z[reg_t(5)] = Goldilocks::new(r5);
-        z[reg_t(6)] = Goldilocks::new(r6);
-        CCSWitness { z }
+        test_witness(&[(reg_t(0), 5), (reg_t(4), r4), (reg_t(5), r5), (reg_t(6), r6)])
     }
 
     #[test]
     fn first_fold_adopts_witness() {
-        let instance = build_step_ccs(5);
+        let instance = universal_ccs().clone();
         let witness = make_witness(5, 3, 8);
         let mut acc = zero_accumulator(&instance);
         let mut transcript = Transcript::new();
         fold_step(&mut acc, &instance, &witness, &mut transcript).unwrap();
         assert_eq!(acc.step_count, 1);
-        // Error should be [0] for satisfying witness (all rows zero).
+        // Error is all-zero for a satisfying witness (every row zero).
         assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO));
     }
 
     #[test]
     fn two_folds_increase_step_count() {
-        let instance = build_step_ccs(5);
+        let instance = universal_ccs().clone();
         let w1 = make_witness(5, 3, 8);
         let w2 = make_witness(2, 4, 6);
         let mut acc = zero_accumulator(&instance);
@@ -190,7 +186,7 @@ mod tests {
 
     #[test]
     fn fold_step_is_deterministic() {
-        let instance = build_step_ccs(5);
+        let instance = universal_ccs().clone();
         let witness = make_witness(5, 3, 8);
 
         let mut acc1 = zero_accumulator(&instance);

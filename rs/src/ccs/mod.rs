@@ -3,23 +3,32 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! CCS instance construction from nox execution traces.
+//! CCS witness construction from nox execution traces.
+//!
+//! Every Layer-1 row — a trace pair (t, t+1), a replayed Fiat-Shamir
+//! Poseidon2 round, a BBG root-chain compression — is a witness of the ONE
+//! universal step instance (`universal.rs`). The opening bindings (axis,
+//! hash, look) are degree-1 eq steps over a second, tiny instance
+//! (`verifier_steps::eq_instance`). Two instances, two accumulators, for
+//! any program.
 
 pub mod hash_binding;
 pub mod particle;
-pub mod patterns;
 pub mod root;
 pub mod selector;
 pub mod transcript;
+pub mod universal;
 pub mod verifier_steps;
 
 pub use hash_binding::build_hash_binding_steps_from_trace;
-pub use particle::{build_hash_steps_from_trace, HashAux, Z_LEN_HASH};
-pub use patterns::build_step_ccs;
+pub use particle::{replay_states, HashAux};
 pub use root::{build_root_steps, compress4, root_from_leaves, root_to_bytes, RootLeaves};
 pub use selector::constraint_eval;
 pub use transcript::build_transcript_steps;
-pub use verifier_steps::{eq_step, verifier_steps};
+pub use universal::{
+    universal_ccs, universal_witness, Capacity, CONST_IDX, NUM_ROWS, Z_LEN, reg_t, reg_t1,
+};
+pub use verifier_steps::{eq_instance, eq_step, verifier_steps};
 
 use nebu::Goldilocks;
 use nox::TraceRow;
@@ -66,67 +75,76 @@ pub struct LookOpening {
     pub namespace: Goldilocks,
 }
 
-/// z-index of register r at row t.
-pub const fn reg_t(r: usize) -> usize { r }
-
-/// z-index of register r at row t+1.
-pub const fn reg_t1(r: usize) -> usize { r + 16 }
-
-/// z-index of the constant 1.
-pub const CONST_IDX: usize = 32;
-
-/// Length of the witness vector z (before padding).
-pub const Z_LEN: usize = 33;
-
-/// Build a one-row sparse matrix that selects z[col] with coefficient 1.
-pub fn select_matrix(col: usize) -> crate::types::SparseMatrix {
-    let mut m = crate::types::SparseMatrix::new(1, Z_LEN);
-    m.set(0, col, Goldilocks::ONE);
-    m
+/// Registers of a trace row as canonical field elements.
+pub fn row_regs(row: &TraceRow) -> [Goldilocks; 16] {
+    core::array::from_fn(|i| Goldilocks::new(row.r()[i]).canonicalize())
 }
 
-/// Build z from two consecutive trace rows.
+/// Build the universal-step witness of every consecutive trace pair.
 ///
-/// z = [r0_t, ..., r15_t, r0_{t+1}, ..., r15_{t+1}, 1]  (33 elements)
-pub fn witness_from_rows(row_t: &TraceRow, row_t1: &TraceRow) -> CCSWitness {
-    let mut z = Vec::with_capacity(Z_LEN);
-    for &v in row_t.r().iter() {
-        z.push(Goldilocks::new(v).canonicalize());
-    }
-    for &v in row_t1.r().iter() {
-        z.push(Goldilocks::new(v).canonicalize());
-    }
-    z.push(Goldilocks::ONE);
-    CCSWitness { z }
-}
-
-/// Build all per-step (CCSInstance, CCSWitness) pairs from a trace.
+/// For a trace of N rows: N−1 witnesses (pair t covers rows t, t+1). Hash
+/// blocks (consecutive tag-15 runs of at least 2 rows) consume one
+/// [`HashAux`] each, in trace order; the replay of the claimed rate fills
+/// the capacity columns of every pair inside the block. Selectors and the
+/// round-constant column are derived from the registers by
+/// [`universal_witness`].
 ///
-/// For a trace of N rows: produces N-1 pairs (each pair covers rows t, t+1).
-/// Multi-row patterns (10–15) apply their intra-block constraint only when
-/// both rows carry the same tag; boundary pairs (tag changes) use trivial_ccs.
-pub fn build_ccs_from_trace(trace: &[TraceRow]) -> Vec<(CCSInstance, CCSWitness)> {
+/// Commit-time gate: every witness must satisfy the universal instance —
+/// `Err(CommitError::StepUnsatisfied(t))` names the first pair that does
+/// not (an unknown pattern tag, a hash row with an out-of-range round
+/// index, or a register file that violates its pattern's constraint).
+/// The verifier cannot see a violated Layer-1 row through the relaxed
+/// fold; this gate is what makes `commit()` refuse to prove one.
+///
+/// Returns `Err(CommitError::TraceOverflow)` if `aux` has fewer entries than
+/// hash blocks in the trace.
+pub fn build_universal_steps_from_trace(
+    trace: &[TraceRow],
+    aux: &[HashAux],
+) -> Result<Vec<CCSWitness>, CommitError> {
     if trace.len() < 2 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    trace.windows(2)
-        .map(|w| {
-            let tag_t  = u8::try_from(w[0].r()[0]).unwrap_or(255);
-            let tag_t1 = u8::try_from(w[1].r()[0]).unwrap_or(255);
-            let instance = if is_multi_row(tag_t) && tag_t != tag_t1 {
-                patterns::trivial_ccs()
+    // Capacity columns per row index, filled from each block's replay.
+    let mut caps: Vec<Option<Capacity>> = vec![None; trace.len()];
+    let mut aux_idx = 0;
+    let mut i = 0;
+    while i < trace.len() {
+        if trace[i].r()[0] != 15 {
+            i += 1;
+            continue;
+        }
+        let block_start = i;
+        while i < trace.len() && trace[i].r()[0] == 15 {
+            i += 1;
+        }
+        if i - block_start < 2 {
+            continue;
+        }
+        let ha = aux.get(aux_idx).ok_or(CommitError::TraceOverflow)?;
+        aux_idx += 1;
+        let states = replay_states(&ha.rate);
+        for (t, row) in trace[block_start..i].iter().enumerate() {
+            let k = row.r()[14] as usize;
+            let state_k = states.get(k).unwrap_or(&states[23]);
+            let state_k1 = states.get(k + 1).unwrap_or(&states[23]);
+            caps[block_start + t] = Some(universal::capacity(state_k, state_k1));
+        }
+    }
+
+    let u = universal_ccs();
+    trace
+        .windows(2)
+        .enumerate()
+        .map(|(t, w)| {
+            let witness = universal_witness(&row_regs(&w[0]), &row_regs(&w[1]), caps[t].as_ref());
+            if selector::is_satisfied(u, &witness) {
+                Ok(witness)
             } else {
-                build_step_ccs(tag_t)
-            };
-            let witness = witness_from_rows(&w[0], &w[1]);
-            (instance, witness)
+                Err(CommitError::StepUnsatisfied(t))
+            }
         })
         .collect()
-}
-
-/// Returns true for patterns that emit multiple consecutive trace rows.
-fn is_multi_row(tag: u8) -> bool {
-    matches!(tag, 10..=15)
 }
 
 /// Build the verifier_steps() sequence for every axis row in the trace.
@@ -231,17 +249,23 @@ pub fn build_axis_steps_from_trace(
 /// sentinel: a trace containing look rows with a zero `bbg_root` is
 /// rejected — a program that reads state must declare its root publicly.
 ///
+/// Returns the eq binding steps and the root-chain universal rows (hemera
+/// compressions, one chain per distinct root) separately: they fold into
+/// different accumulators.
+///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
 /// than look rows, `Err(CommitError::LookBinding)` if a namespace is out of
 /// range or any binding constraint is unsatisfied — commit refuses to emit a
 /// proof whose look bindings do not hold, rather than deferring rejection to
 /// the decider.
+#[allow(clippy::type_complexity)]
 pub fn build_look_steps_from_trace(
     trace: &[TraceRow],
     openings: &[LookOpening],
     bbg_root: &[u8; 32],
-) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
+) -> Result<(Vec<(CCSInstance, CCSWitness)>, Vec<CCSWitness>), CommitError> {
     let mut steps = Vec::new();
+    let mut rows = Vec::new();
     let mut opening_idx = 0;
     // Roots whose recompute chain is already in `steps` (dedup across looks).
     let mut chained_roots: Vec<[Goldilocks; 4]> = Vec::new();
@@ -271,9 +295,9 @@ pub fn build_look_steps_from_trace(
             // (5) the root recomputed from the leaves matches the trace registers
             let root = root_from_leaves(&lo.leaves);
             if !chained_roots.contains(&root) {
-                let (root_steps, computed) = build_root_steps(&lo.leaves);
+                let (root_rows, computed) = build_root_steps(&lo.leaves);
                 debug_assert_eq!(computed, root, "replay diverged from native fold");
-                steps.extend(root_steps);
+                rows.extend(root_rows);
                 chained_roots.push(root);
             }
             steps.push(eq_step(root[0], Goldilocks::new(row.r()[4]).canonicalize()));
@@ -296,13 +320,13 @@ pub fn build_look_steps_from_trace(
             opening_idx += 1;
         }
     }
-    Ok(steps)
+    Ok((steps, rows))
 }
 
-/// Build Poseidon2 CCS pairs for the Fiat-Shamir transcript of every axis opening.
+/// Build universal Poseidon2 rows for the Fiat-Shamir transcript of every axis opening.
 ///
 /// For each prover-active axis row (same predicate as
-/// [`build_axis_steps_from_trace`]), produces num_vars × 20 × 24 pairs
+/// [`build_axis_steps_from_trace`]), produces num_vars × 20 × 24 rows
 /// encoding the Poseidon2 permutations inside the Brakedown proximity
 /// protocol. Interpreter-mode rows consume no opening.
 ///
@@ -311,7 +335,7 @@ pub fn build_look_steps_from_trace(
 pub fn build_axis_transcript_steps(
     trace: &[TraceRow],
     openings: &[AxisOpening],
-) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
+) -> Result<Vec<CCSWitness>, CommitError> {
     let mut steps = Vec::new();
     let mut opening_idx = 0;
     for row in trace {
@@ -326,9 +350,9 @@ pub fn build_axis_transcript_steps(
     Ok(steps)
 }
 
-/// Build Poseidon2 CCS pairs for the Fiat-Shamir transcript of every look opening.
+/// Build universal Poseidon2 rows for the Fiat-Shamir transcript of every look opening.
 ///
-/// For each look row in the trace, produces num_vars × 20 × 24 pairs encoding
+/// For each look row in the trace, produces num_vars × 20 × 24 rows encoding
 /// the Poseidon2 permutations inside the Brakedown proximity protocol.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
@@ -336,7 +360,7 @@ pub fn build_axis_transcript_steps(
 pub fn build_look_transcript_steps(
     trace: &[TraceRow],
     openings: &[LookOpening],
-) -> Result<Vec<(CCSInstance, CCSWitness)>, CommitError> {
+) -> Result<Vec<CCSWitness>, CommitError> {
     let mut steps = Vec::new();
     let mut opening_idx = 0;
     for row in trace {
@@ -464,18 +488,20 @@ mod tests {
 
     #[test]
     fn witness_has_correct_length() {
-        let t  = TraceRow::default();
-        let t1 = TraceRow::default();
-        let w = witness_from_rows(&t, &t1);
+        let w = universal_witness(&row_regs(&TraceRow::default()), &row_regs(&TraceRow::default()), None);
         assert_eq!(w.z.len(), Z_LEN);
-        assert_eq!(w.z[Z_LEN - 1], Goldilocks::ONE);
+        assert_eq!(w.z[CONST_IDX], Goldilocks::ONE);
     }
 
     #[test]
     fn build_from_two_row_trace_gives_one_step() {
+        // Default rows are tag-0 (axis) with r8 = r9 = 0: budget r9 = r8 − 1
+        // fails, so the pair is unprovable and the gate names it.
         let rows = vec![TraceRow::default(), TraceRow::default()];
-        let steps = build_ccs_from_trace(&rows);
-        assert_eq!(steps.len(), 1);
+        assert!(matches!(
+            build_universal_steps_from_trace(&rows, &[]),
+            Err(CommitError::StepUnsatisfied(0))
+        ));
     }
 
     #[test]
@@ -636,9 +662,13 @@ mod tests {
         let openings = look_openings_from_provider(&provider);
         assert_eq!(openings.len(), 1);
         assert_eq!(openings[0].value, Goldilocks::new(30));
-        let steps = build_look_steps_from_trace(&trace, &openings, &root_bytes).unwrap();
+        let (steps, rows) = build_look_steps_from_trace(&trace, &openings, &root_bytes).unwrap();
         for (i, (inst, wit)) in steps.iter().enumerate() {
             assert!(is_satisfied(inst, wit), "honest look step {i} unsatisfied");
+        }
+        assert_eq!(rows.len(), 14 * 24, "one root chain of 14 compressions");
+        for (i, wit) in rows.iter().enumerate() {
+            assert!(is_satisfied(universal_ccs(), wit), "root row {i} unsatisfied");
         }
 
         // Wrong root in the program object (the pre-fix convention: raw
