@@ -97,7 +97,7 @@ impl Transcript {
     /// Absorb a sumcheck round polynomial (domain-separated).
     pub fn absorb_sumcheck_poly(&mut self, round: usize, poly: &SumcheckPoly) {
         self.absorb(&[DOM_SUMCHECK]);
-        self.absorb(&round.to_le_bytes());
+        self.absorb(&(round as u64).to_le_bytes());
         self.absorb(&[poly.degree]);
         for coeff in &poly.coeffs {
             self.absorb(&encode_field(*coeff));

@@ -12,6 +12,7 @@
 
 pub mod ccs;
 pub mod folding;
+pub mod execution;
 pub mod multilinear;
 pub mod phi;
 pub mod spartan;

@@ -29,6 +29,16 @@ impl SpartanVerifier {
         error_evals: &[Goldilocks],
         transcript: &mut Transcript,
     ) -> Result<(), VerifyError> {
+        Self::verify_using::<Brakedown>(instance, proof, error_evals, transcript)
+    }
+
+    /// Verify with the PCS fixed by the caller's protocol, never by proof data.
+    pub fn verify_using<P: Lens<Goldilocks>>(
+        instance: &CCSInstance,
+        proof: &Proof,
+        error_evals: &[Goldilocks],
+        transcript: &mut Transcript,
+    ) -> Result<(), VerifyError> {
         // ── 1. Absorb commitment ─────────────────────────────────────────────
         transcript.absorb_commitment(&proof.commitment);
 
@@ -68,7 +78,8 @@ impl SpartanVerifier {
         for (multiset, &coeff) in instance.multisets.iter().zip(instance.coeffs.iter()) {
             let mut product = Goldilocks::ONE;
             for &idx in multiset {
-                let e = proof.matrix_evals
+                let e = proof
+                    .matrix_evals
                     .get(idx)
                     .copied()
                     .ok_or(VerifyError::EvaluationMismatch)?;
@@ -100,8 +111,7 @@ impl SpartanVerifier {
         // ── 8. Inner sumcheck verification ───────────────────────────────────
         let num_vars = proof.sumcheck_polys.len();
         let mut verifier = SumcheckVerifier::new(batched_claim, num_vars);
-        let (final_claim, eval_point) =
-            verifier.verify_all(&proof.sumcheck_polys, transcript)?;
+        let (final_claim, eval_point) = verifier.verify_all(&proof.sumcheck_polys, transcript)?;
 
         // ── 9. Build w_combined using eq(ρ_x, r) weights ────────────────────
         // w_combined[col] = Σ_i γ^i · Σ_r eq(ρ_x,r) · M_i[r][col]
@@ -136,7 +146,7 @@ impl SpartanVerifier {
         transcript.absorb_eval(proof.eval_value);
         let seed = transcript.squeeze_hash();
         let mut lt = LensTranscript::new(&seed);
-        if !Brakedown::verify(
+        if !P::verify(
             &proof.commitment,
             &pcs_point,
             proof.eval_value,

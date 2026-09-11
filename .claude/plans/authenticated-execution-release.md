@@ -1,6 +1,7 @@
 # Authenticated execution release requirements
 
-Status: release blocked; findings and implementation requirements from the
+Status: execution-proof implementation authorized by the owner on 2026-09-11;
+production release remains blocked until the stated gates pass. Findings from the
 2026-09-11 Trident/Warrior audit. The wire repair is implemented separately;
 this document does not claim the proof foundations below are implemented.
 
@@ -80,7 +81,7 @@ format regression and this audit. No exploit was added as part of this work.
 - Keep exhaustive bit-flip stress audits separate from bounded CI regressions
   and report explicitly which were executed. Do not call skipped audits green.
 
-## Smallest implementation route (read-only design, awaiting scope decision)
+## Smallest implementation route (authorized; implementation in progress)
 
 Recommendation: first prove the full, unfolded execution CCS with a public
 input binding and a zero-knowledge IOP/PCS. Treat verifier-checked folding as
@@ -194,3 +195,18 @@ A useful minimal vertical slice is a complete bounded execution relation for
 one explicitly listed program family, but it is a development milestone. It
 must not be shipped as complete nox support while other advertised language
 features lack execution constraints.
+
+## Implemented public execution checkpoint
+
+2026-09-11: owner authorized closing execution/output linkage. New
+execution module derives a global CCS from the canonical program, supports
+bounded public nox tags0–15, and binds inputs/output/cost/budget. The public
+format authenticates the full witness using Lens PublicTensor and checks all
+CCS rows exactly, plus Spartan consistency. This removes unchecked folding,
+unpinned constants, empirical code-distance and small-field sumcheck error
+from acceptance of this public certificate. Witness disclosure and linear
+verification are explicit; secret calls/state remain refused. Default Joy
+prove/verify/traits use the new format, legacy inspection requires opt-in.
+Contract: specs/execution.md; evidence: docs/explanation/public-execution.md.
+Succinct/ZK proving, dynamic control/shape completeness and authenticated
+state execution remain future protocol work, not completed by this checkpoint.
