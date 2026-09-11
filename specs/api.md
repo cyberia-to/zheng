@@ -241,3 +241,11 @@ variant. Serialization retains the row combination and every queried column,
 index, and Merkle authentication path. Deserialization rejects legacy `Tensor`
 and other PCS variants. Artifacts using the former indices-only encoding must
 be regenerated; dropping authenticated column data is forbidden.
+
+### recursive opening availability
+
+`commit` returns `CommitError::UnsupportedRecursiveOpening` when supplied
+axis or look openings. The retired `Tensor` recursive gadgets do not
+authenticate `TensorMerkle` columns or paths. The native decider PCS works;
+recursive axis/look support remains release-blocked until constrained
+authentication and its linkage to the trace are implemented.

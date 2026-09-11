@@ -129,6 +129,13 @@ pub fn commit(
         return Err(CommitError::StatementMismatch);
     }
 
+    // The legacy recursive gadgets describe the retired Tensor protocol;
+    // they cannot verify authenticated TensorMerkle columns and paths.
+    // Explicit refusal prevents treating an empty gadget as a checked opening.
+    if !axis_openings.is_empty() || !look_openings.is_empty() {
+        return Err(CommitError::UnsupportedRecursiveOpening);
+    }
+
     // Opening bindings (eq instance) first — their gates name the cause
     // (a wrong hash rate, a swapped axis commitment) more precisely than the
     // universal row gate, which would also reject the rows they feed.
@@ -735,6 +742,15 @@ mod tests {
             })
             .collect();
         (trace, openings)
+    }
+
+    #[test]
+    fn authenticated_recursive_openings_are_refused_until_constrained() {
+        let (trace, openings) = prover_active_axis_setup(0);
+        assert!(matches!(
+            commit(&trace, &[], &openings, &[], &zero_statement(), &ProofParams::default()),
+            Err(CommitError::UnsupportedRecursiveOpening)
+        ));
     }
 
     /// E2E: prover-active axis — commitment (r11-r14), point (r5) and value
