@@ -9,6 +9,13 @@ alias: zheng CLI, zheng command
 the `zheng` command-line face of the proof system. drives the library's five
 entry points from a shell and emits results as a [[tape]] chunk stream.
 
+`run`, `demo` and `prove` use the **legacy trace statement** API, not the
+public execution relation. Their reports include `verification_scope =
+legacy_trace_statement` and `execution_output = unverified`. Exit status zero
+means only that the legacy statement check passed. To authenticate a public
+program, input and output, use `joy prove` / `joy verify` or
+`zheng::execution::verify_execution`; see [execution](execution.md).
+
 ## invocation
 
 ```
@@ -26,14 +33,14 @@ output convention — one channel (stdout), two renderings of the same data:
 
 ## commands
 
-### run — prove a formula end to end
+### run — check a legacy trace statement
 
 ```
 zheng run -e '<formula>' [--object N] [--budget B]
 ```
 
-evaluates a nox formula, proves the resulting execution trace, and verifies the
-proof — one process, no intermediate files.
+evaluates a nox formula and checks a legacy statement derived from its trace —
+one process, no intermediate files. This does not bind the public result.
 
 - `-e '<formula>'` — a nox data formula in bracket syntax (`[a b c]` → right-nested
   pairs, atoms are u64 decimals). same grammar as the `nox` CLI. required.
