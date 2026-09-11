@@ -233,3 +233,11 @@ let proof = zheng::decide(&acc, &params)?;
 ```
 
 see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion]] for composition protocol, [[lens]] for polynomial commitment
+
+### authenticated PCS wire format
+
+With `serde`, the decider PCS opening is the complete Lens `TensorMerkle`
+variant. Serialization retains the row combination and every queried column,
+index, and Merkle authentication path. Deserialization rejects legacy `Tensor`
+and other PCS variants. Artifacts using the former indices-only encoding must
+be regenerated; dropping authenticated column data is forbidden.
