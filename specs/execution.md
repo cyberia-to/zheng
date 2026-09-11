@@ -87,5 +87,5 @@ constraints. Legacy library methods remain explicitly statement-only.
 Tests compare native nox with symbolic witnesses, include real compiled
 Trident imports/loops/branches, mutate intermediate/hash/bit witnesses and
 public claims, construct malicious proofs bypassing the honest prover, and
-verify through fresh CLI processes. See docs/explanation/public-execution.md
+verify through fresh CLI processes. See audit/public-execution.md
 for actual measurements and remaining legacy acceptance failures.

@@ -207,6 +207,6 @@ unpinned constants, empirical code-distance and small-field sumcheck error
 from acceptance of this public certificate. Witness disclosure and linear
 verification are explicit; secret calls/state remain refused. Default Joy
 prove/verify/traits use the new format, legacy inspection requires opt-in.
-Contract: specs/execution.md; evidence: docs/explanation/public-execution.md.
+Contract: specs/execution.md; evidence: audit/public-execution.md.
 Succinct/ZK proving, dynamic control/shape completeness and authenticated
 state execution remain future protocol work, not completed by this checkpoint.

@@ -1,7 +1,7 @@
 # Public execution validation — 2026-09-11
 
 Status: implemented and tested for the bounded public relation in
-[the execution specification](../../specs/execution.md). This is a public
+[the execution specification](../specs/execution.md). This is a public
 execution certificate, not a succinct or zero-knowledge production release.
 
 ## What is authenticated
@@ -46,7 +46,7 @@ loops and branches, structural hashing, intermediate witness mutations,
 changed program/input/output/cost/budget, malicious proofs constructed outside
 the honest prover, malformed/noncanonical wire encodings and Merkle openings,
 and rejection of secret/state inputs. The independent review is recorded in
-[direct-execution-review](../../specs/props/direct-execution-review.md).
+[direct-execution-review](direct-execution-review.md).
 
 The full legacy gates are **not green**. Zheng's bounded serde suite reports
 150 passes and 20 failures, with two exhaustive bit stress tests excluded.
@@ -80,7 +80,7 @@ with secret inputs fails and creates no certificate.
 
 Local binaries, source fixtures, certificates, exact commands, logs and
 SHA-256 checksums are retained in
-[`joy/target/public-execution-20260911`](../../../joy/target/public-execution-20260911).
+[`joy/target/public-execution-20260911`](../../joy/target/public-execution-20260911).
 These ignored build artifacts are development evidence, not published releases.
 The earlier migration candidates retain their original legacy semantics.
 

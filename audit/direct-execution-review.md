@@ -1,6 +1,6 @@
 ---
 status: accepted
-tags: zheng, soundness
+tags: zheng, soundness, audit
 ---
 
 # Direct execution proof review
@@ -11,7 +11,7 @@ it does not certify a protocol or claim they are already implemented.
 The implementation adopted full-table PublicTensor authentication and exact
 CCS row/public-coordinate checking. These replace the separate-coordinate
 openings and empirical-code assumptions discussed in the initial review below.
-The final contract is [execution.md](../execution.md); the review preserves why
+The final contract is [execution.md](../specs/execution.md); the review preserves why
 the initial sampled PCS route was rejected for this certificate.
 
 ## Viable relation boundary
