@@ -8,7 +8,7 @@ alias: zheng verifier, verification algorithm
 
 the standalone verifier algorithm for [[zheng]]. accepts a proof and a public statement, returns accept or reject. the verifier is a [[nox]] program — it runs inside the same VM that produced the original trace, enabling recursive proof composition.
 
-recursive [[Brakedown]] opening check is pure field arithmetic. no Merkle verification, no hash-dominated bottleneck. proof size: ~2 KiB (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + Lens opening ~1.3 KiB).
+the Lens opening today is [[Brakedown]] with `TensorMerkle` authentication: every queried codeword column carries a Merkle path against the commitment root. proof size scales with trace size — see [[performance]] for measured numbers. a Merkle-free recursive opening (constant ~2 KiB) was designed but is blocked on a soundness gap; see [[recursive-brakedown]] in roadmap/ and `lens` issue #6.
 
 ## algorithm
 
@@ -36,12 +36,13 @@ VERIFY(commitment C, statement S, proof pi) -> accept/reject:
 
   4. LENS VERIFICATION
      assert Brakedown_verify(C, r, v, pi.pcs_opening)
-     (recursive tensor check, O(lambda log log N) field ops)
+     (TensorMerkle: per-column Merkle path check against the commitment root,
+      plus the row-combination consistency check against the encoding)
 
   return accept
 ```
 
-step 2 is pure field arithmetic. step 4 is pure field arithmetic (matrix-vector product check via recursive Brakedown). the entire verification loop is field-op dominated.
+step 2 is pure field arithmetic. step 4 authenticates each queried column against the commitment root via Merkle path, then checks encoding consistency — this is where hashing dominates the verifier's cost (see [[performance]]).
 
 ## constraint evaluation
 
@@ -119,26 +120,14 @@ the sumcheck protocol (step 2) starts with `claim_0 = 0` because a valid trace s
 
 ## cost breakdown
 
-the verifier uses recursive Brakedown. three cost tiers depending on optimization level:
+the verifier uses `TensorMerkle` Brakedown: every queried column is authenticated by a Merkle path against the commitment root, so hashing — not field arithmetic — dominates. see [[performance]] for the full component breakdown; summary:
 
 | configuration | constraints | description |
 |---|---|---|
-| generic (no jets) | ~8,000 | field arithmetic only, no optimizations |
-| CCS jet + batch opening | ~825 | batched Brakedown verification, CCS-aware jet |
-| + algebraic Fiat-Shamir | ~89 | hemera challenges replaced by algebraic FS |
+| Layer 1 only (no jets) | ~600,000 | Merkle verification is ~83% of this |
+| with jets | ~70,000 | `merkle_verify` jet gives Merkle checks a 10× reduction |
 
-the ~825 tier is the practical target. breakdown:
-
-| component | constraints | notes |
-|---|---|---|
-| parse proof | ~100 | structured deserialization |
-| Fiat-Shamir challenges | ~736 | hemera sponge, ~3 calls total |
-| Brakedown recursive opening check | ~200 | O(lambda log log N) field ops, log log N recursion levels |
-| constraint evaluation | ~150 | selector polynomials + pattern constraints |
-| sumcheck check | ~75 | field arithmetic only |
-| **total** | **~825** | field-op dominated, no hashing in Lens |
-
-the ~89 tier replaces hemera-based Fiat-Shamir with algebraic challenges derived from the field structure. all verification becomes pure field arithmetic.
+a Merkle-free design (recursive Brakedown, targeting ~825 constraints generic / ~89 with algebraic Fiat-Shamir) was analyzed but is blocked on a soundness gap in the recursive opening — see [[recursive-brakedown]] in roadmap/ and `lens` issue #6. those numbers are the target if that gap closes, not the current cost.
 
 ## nox pattern decomposition
 
@@ -149,11 +138,11 @@ every verifier operation maps to native [[nox]] patterns:
 | field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks field]] is the native field |
 | hash computation | 15 (hash) / hash jet | [[hemera]] — Fiat-Shamir only, ~3 calls |
 | [[sumcheck]] verification | 5, 7, 9 | pure field arithmetic |
-| [[Brakedown]] Lens opening verification | 5, 7 (matrix-vector product) | pure field arithmetic, no hashing |
+| [[Brakedown]] Lens opening verification | 5, 7, 15 (hash) / hash jet | Merkle path checks per queried column, plus a field-arithmetic encoding-consistency check |
 
 no external primitive enters the verification loop. the verifier is closed under the nox instruction set. consequence: verify(proof) can itself be proven, and verify(verify(proof)) too, to arbitrary depth.
 
-Brakedown opening verification is entirely field arithmetic — no hash jets needed in the Lens check. hemera is used only for Fiat-Shamir transcript (squeezing challenges), reducing the hash dependency in the recursive verifier.
+Brakedown opening verification with `TensorMerkle` is hash-dominated: each queried column needs a Merkle path checked against the commitment root. hemera is used both for that and for the Fiat-Shamir transcript.
 
 ## input/output format
 
@@ -178,11 +167,12 @@ OUTPUT:
 
 ## verification time
 
-| security level | verification time | operations |
-|---|---|---|
-| 128-bit | ~5 us | O(lambda log log N) field ops + ~3 hemera calls |
+| security level | verification time |
+|---|---|
+| 100-bit | ~290 μs |
+| 128-bit | ~1.0 ms |
 
-verification time is independent of the original computation size. a proof of a 300-constraint identity check and a proof of a million-constraint neural network inference verify in the same time.
+see [[performance]] for the derivation. verification time is dominated by Merkle-path checks over the queried columns, not by the trace size directly — but proof size (and so the number of columns to check) does grow with trace size, unlike the constant-size claim a Merkle-free lens would give.
 
 ## recursive verification
 
@@ -190,11 +180,11 @@ when the verifier runs as a nox program, its execution trace can be proven by zh
 
 ```
 proof_A = zheng.prove(computation)            // ~|C| constraints
-proof_B = zheng.prove(zheng.verify(proof_A))  // ~825 constraints
-proof_C = zheng.prove(zheng.verify(proof_B))  // ~825 constraints
+proof_B = zheng.prove(zheng.verify(proof_A))  // ~70,000 constraints (with jets)
+proof_C = zheng.prove(zheng.verify(proof_B))  // ~70,000 constraints (with jets)
 ```
 
-each recursion level costs ~825 constraints, regardless of the original computation size. proof size remains constant: ~2 KiB.
+each recursion level costs ~70,000 constraints with jets (~600,000 without) — see [[performance]]. `commit` currently rejects axis/look openings for recursive composition (`CommitError::UnsupportedRecursiveOpening`); the native decider path works, recursive composition beyond that is release-blocked.
 
 with HyperNova folding, recursive composition drops further: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end. see [[recursion]] for folding-first composition.
 

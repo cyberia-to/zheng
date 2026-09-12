@@ -1,11 +1,33 @@
 ---
 alias: recursive brakedown
 title: "recursive Brakedown: the perfect lens"
-tags: cyber, soft3, zheng, article
-crystal-type: article
+tags: cyber, cip
+crystal-type: process
 crystal-domain: cyber
+status: blocked
 date: 2026-03-24
 ---
+# recursive Brakedown: the perfect lens
+
+**status: blocked, not implemented.** this page designs a Merkle-free
+recursive opening for Brakedown — commit to the opening vector instead
+of sending it, recurse, `log log N` levels down to O(1). the design
+turned out to have exactly the soundness gap its own open question #1
+worried about: the queried codeword values in the recursive `Tensor`
+scheme are never checked against the round commitments, so a malicious
+prover can lie about them. this is `lens` issue
+[#6](https://github.com/cyberia-to/lens/issues/6) — "the same defect
+Brakedown had before it moved to `TensorMerkle`," per the code comment
+on `lens::Opening::Tensor`.
+
+the fix that actually shipped, `Opening::TensorMerkle`, authenticates
+every queried column with a Merkle path against the commitment root.
+that is what `zheng` uses today — see [[polynomial-commitments]] and
+[[performance]] for the current, Merkle-based numbers. this page's
+analysis stays as the record of the Merkle-free path and where it
+broke; reviving it requires closing open question #1 with an actual
+security reduction for the authenticated recursive case, not just the
+plain-tensor case analyzed below.
 
 ## the gap
 
