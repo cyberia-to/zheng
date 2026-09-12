@@ -46,7 +46,7 @@ FRI-based schemes ([[FRI]], [[STIR]], [[WHIR (legacy)]]) and Brakedown need only
 
 ## Brakedown in zheng
 
-[[zheng]] uses recursive Brakedown as its polynomial commitment scheme. Brakedown is Merkle-free, eliminating the Merkle tree overhead that dominated earlier FRI-family schemes.
+[[zheng]] uses Brakedown as its polynomial commitment scheme, with `TensorMerkle` authentication: every queried column carries a Merkle path against the commitment root. a Merkle-free recursive opening was designed to eliminate that overhead entirely, but it hit a soundness gap and is blocked — see [[recursive-brakedown]] in roadmap/ and [[performance]] for the current, Merkle-based cost.
 
 the pipeline:
 
@@ -77,7 +77,7 @@ the proximity test ensures the prover actually committed to a low-degree polynom
 
 from the perspective of the rest of the [[zheng]] stack, a polynomial commitment scheme (PCS) — called a lens in zheng — is an interface with three methods: commit, open, verify. [[SuperSpartan]] calls commit once at the start and open once at the end. the [[sumcheck protocol]] runs in between, oblivious to which lens sits underneath.
 
-this abstraction is deliberate. when the lens improves — from [[FRI]] to [[STIR]] to [[WHIR (legacy)]] to recursive Brakedown — everything above stays the same. the IOP layer, the constraint system, the VM trace format, the recursive verifier: none of them change. only the implementation behind commit/open/verify changes, and proof sizes shrink, and verification gets faster.
+this abstraction is deliberate. when the lens improves — from [[FRI]] to [[STIR]] to [[WHIR (legacy)]] to Brakedown, and someday to a Merkle-free recursive opening if [[recursive-brakedown|its soundness gap closes]] — everything above stays the same. the IOP layer, the constraint system, the VM trace format, the recursive verifier: none of them change. only the implementation behind commit/open/verify changes, and proof sizes shrink, and verification gets faster.
 
 the commitment scheme is the trust anchor because it is the only component that touches the real world — the only place where computational hardness assumptions enter. everything else in the proof system is information-theoretic, secured by the mathematics of polynomials and probability. the lens is where cryptography meets algebra, and Brakedown sits at that junction.
 

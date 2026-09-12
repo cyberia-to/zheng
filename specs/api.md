@@ -65,7 +65,7 @@ zheng::open(
 ) -> Result<Opening, OpenError>
 ```
 
-produces a Brakedown opening at the sumcheck output point. the opening proves that the committed polynomial evaluates to the claimed value at the given point. recursive Brakedown: O(log N + lambda) proof size via log log N levels of self-commitment.
+produces a Brakedown opening at the sumcheck output point. the opening proves that the committed polynomial evaluates to the claimed value at the given point. current opening is `TensorMerkle`: authenticated columns with Merkle paths, size growing with trace size. a Merkle-free O(log N + λ) recursive opening was designed but is blocked on a soundness gap — see [[recursive-brakedown]] in roadmap/.
 
 ## verify
 
@@ -118,7 +118,7 @@ zheng::decide(
 ) -> Result<Proof, DecideError>
 ```
 
-produces a final proof from the accumulated folds. runs SuperSpartan + sumcheck + Brakedown verification on the folded CCS instance. cost: ~825 constraints (CCS jet + batch + algebraic FS). called once at the end of a folding sequence.
+produces a final proof from the accumulated folds. runs SuperSpartan + sumcheck + Brakedown verification on the folded CCS instance. cost today is dominated by `TensorMerkle` Merkle-path checks — see [[performance]] for the ~70,000-constraint (with jets) / ~600,000 (without) breakdown. ~825 constraints was the target under a Merkle-free recursive opening; that opening is blocked (see [[recursive-brakedown]] in roadmap/). called once at the end of a folding sequence.
 
 ## data types
 
@@ -133,7 +133,7 @@ Proof {
 }
 ```
 
-size: ~2 KiB at 128-bit security (sumcheck ~0.5 KiB + evaluation ~0.3 KiB + Lens opening ~1.3 KiB). constant regardless of original computation size.
+size grows with trace size — `pcs_opening` is a `TensorMerkle` opening (authenticated columns + Merkle paths), not the constant-size Merkle-free opening a Merkle-free lens would give. see [[performance]] for measured examples (e.g. 594,224 bytes for a 75-line trace, `audit/private-execution-release.md`). ~2 KiB constant was the target size under the blocked Merkle-free recursive opening (see [[recursive-brakedown]] in roadmap/).
 
 ### Statement
 
@@ -156,7 +156,7 @@ ProofParams {
 }
 
 enum LensBackend {
-  Brakedown,   // primary: expander-graph codes, Merkle-free (Goldilocks)
+  Brakedown,   // primary: expander-graph codes, TensorMerkle-authenticated (Goldilocks)
   Binius,      // binary: F_2 tower (2 of 14 nox languages)
 }
 ```
@@ -201,7 +201,7 @@ for tx in block.transactions() {
   let (instance, witness) = tx.to_ccs();
   acc = zheng::fold(&acc, &instance, &witness)?;  // ~30 field ops each
 }
-let block_proof = zheng::decide(&acc, &params)?;   // ~825 constraints, once
+let block_proof = zheng::decide(&acc, &params)?;   // ~70,000 constraints with jets, once
 ```
 
 ### epoch composition (fold)

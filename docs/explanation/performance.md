@@ -125,7 +125,7 @@ Merkle verification dominates without jets (83% of cost). the merkle_verify jet 
 | [[Groth16]] | 128 bytes | ~1.5 ms | trusted (per-circuit) | no |
 | [[PLONK]] | ~400 bytes | ~5 ms | universal ceremony | no |
 | univariate [[STARK]] (FRI) | ~200 KiB | 10-50 ms | transparent | yes |
-| zheng (SuperSpartan + recursive Brakedown) | ~157 KiB | ~1.0 ms | transparent | yes |
+| zheng (SuperSpartan + Brakedown/TensorMerkle) | ~157 KiB | ~1.0 ms | transparent | yes |
 
 Groth16 wins on proof size by three orders of magnitude. PLONK wins on
 proof size by two. both lose on trust assumptions and quantum resistance.
