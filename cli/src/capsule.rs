@@ -3,7 +3,7 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! Program capsule: a nox program serialized as one [[tape]] chunk.
+//! Program capsule: a nox program serialized as one [[tade]] chunk.
 //!
 //! A raw execution trace has no public reconstruction path (`TraceRow` columns
 //! are crate-private), so the capsule stores the *program* — formula text,
@@ -12,7 +12,7 @@
 //! Encoding: `(sigil::BAR, render::STRUCT)` chunk whose payload is
 //! `encode_nested` of `kv` pairs in fixed order (formula, object, budget).
 
-use tape::{encode_nested, kv, read_kv, render, sigil, Chunk, Reader};
+use tade::{encode_nested, kv, read_kv, render, sigil, Chunk, Reader};
 
 /// A nox program: what to run and with how much budget.
 pub struct Program {
@@ -21,7 +21,7 @@ pub struct Program {
     pub budget: u64,
 }
 
-/// Serialize a program to capsule bytes (one tape chunk frame).
+/// Serialize a program to capsule bytes (one tade chunk frame).
 pub fn encode(p: &Program) -> Vec<u8> {
     let payload = encode_nested(&[
         kv("formula", Chunk::text(&p.formula)),
@@ -65,6 +65,6 @@ mod tests {
 
     #[test]
     fn decode_rejects_garbage() {
-        assert!(decode(b"not a tape frame at all").is_err() || decode(b"").is_err());
+        assert!(decode(b"not a tade frame at all").is_err() || decode(b"").is_err());
     }
 }
