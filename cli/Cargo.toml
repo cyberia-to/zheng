@@ -5,7 +5,7 @@
 # ---
 [package]
 name = "zheng-cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "zheng command-line interface"
 license = "Cyber"
@@ -15,9 +15,9 @@ name = "zheng"
 path = "src/main.rs"
 
 [dependencies]
-zheng = { path = "../rs" }
-nox = { package = "cyber-nox", path = "../../nox/rs", features = ["brakedown"] }
-nebu = { package = "strata-nebu", path = "../../strata/nebu/rs" }
-hemera = { package = "cyber-hemera", path = "../../hemera/rs" }
-lens = { package = "cyber-lens", path = "../../lens/src" }
-tape = { package = "cyber-tape", path = "../../tape/impl/rust" }
+zheng = { version = "0.4.0", path = "../rs" }
+nox = { version = "0.3.0", package = "cyber-nox", path = "../../nox/rs", features = ["brakedown"] }
+nebu = { version = "0.1.1", package = "strata-nebu", path = "../../strata/nebu/rs" }
+hemera = { version = "0.3.1", package = "cyber-hemera", path = "../../hemera/rs" }
+lens = { version = "0.2.0", package = "cyber-lens", path = "../../lens/src" }
+tape = { version = "0.1.0", package = "tade", path = "../../tade/impl/rust" }
