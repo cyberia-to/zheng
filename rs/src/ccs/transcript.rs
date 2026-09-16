@@ -3,13 +3,11 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! Fiat-Shamir transcript verification as universal Poseidon2 rows.
+//! Poseidon2 squeeze-row primitives and legacy Tensor transcript replay.
 //!
-//! Each `transcript.squeeze()` in a Brakedown opening is one Poseidon2
-//! permutation (24 rounds). `build_transcript_steps` replays the transcript
-//! using raw hemera and produces one universal-step witness per round of
-//! each squeeze — the same row shape as a pattern-15 trace pair, so every
-//! replayed round folds into the single Layer-1 accumulator.
+//! The fixed-query legacy replay is not the current Lens systematic-v2
+//! transcript and does not authenticate an opening. `TensorMerkle` is explicitly
+//! unsupported here; the public trace commit API refuses recursive openings.
 
 use nebu::Goldilocks;
 
@@ -22,19 +20,18 @@ use lens::{Commitment, Opening};
 use crate::ccs::universal::poseidon_witness;
 use crate::types::CCSWitness;
 
-/// Number of proximity queries per Brakedown round, matching lens NUM_QUERIES.
+/// Historical Tensor transcript query count; not the current Lens parameter.
 const NUM_QUERIES: usize = 20;
 
-/// Replay the Brakedown transcript and produce universal rows for each squeeze.
+/// Replay the historical Tensor transcript into universal squeeze rows.
 ///
 /// For a `k`-variable opening, produces `k × 20 × 24` rows:
 /// - 24 rows per squeeze (one per Poseidon2 round)
 /// - 20 squeezes per Brakedown folding round
 /// - `k` folding rounds
 ///
-/// `transcript_seed` is the bytes passed to `lens::Transcript::new()` when
-/// `Brakedown::open` was called. The verifier's transcript absorbs the same
-/// data sequence, making the replay deterministic from `opening.round_commitments`.
+/// This historical data sequence is deterministic from `opening.round_commitments`.
+/// It must not be used to claim verification of a current `Brakedown::open` result.
 ///
 /// Returns empty vec if `opening` is not `Opening::Tensor`.
 pub fn build_transcript_steps(
@@ -135,26 +132,25 @@ mod tests {
     }
 
     #[test]
-    fn transcript_steps_count_two_vars() {
-        let poly = small_poly();
-        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
-        let (commitment, opening) = open_at(&poly, &point);
-        let steps = build_transcript_steps(b"transcript-steps-test", &commitment, &opening);
-        // 2 vars × 20 queries × 24 rounds = 960
-        assert_eq!(steps.len(), 2 * NUM_QUERIES * ROUNDS_TOTAL);
+    fn a_real_poseidon_squeeze_produces_satisfied_universal_rows() {
+        let mut hasher = Hasher::new();
+        hasher.update(b"real squeeze primitive regression");
+        let mut visitor = SqueezeVisitor::new();
+        hasher.finalize_traced(&mut visitor);
+        let rows = squeeze_rows(&visitor);
+        assert_eq!(rows.len(), ROUNDS_TOTAL);
+        for (i, witness) in rows.iter().enumerate() {
+            assert!(is_satisfied(universal_ccs(), witness), "squeeze row {i}");
+        }
     }
 
     #[test]
-    fn all_transcript_steps_satisfied_on_real_opening() {
+    fn current_authenticated_opening_has_no_legacy_transcript_rows() {
         let poly = small_poly();
         let point = vec![Goldilocks::ZERO, Goldilocks::ONE];
         let (commitment, opening) = open_at(&poly, &point);
-        let steps = build_transcript_steps(b"transcript-steps-test", &commitment, &opening);
-        assert!(!steps.is_empty());
-        let u = universal_ccs();
-        for (i, wit) in steps.iter().enumerate() {
-            assert!(is_satisfied(u, wit), "transcript step {i} not satisfied");
-        }
+        assert!(matches!(opening, Opening::TensorMerkle { .. }));
+        assert!(build_transcript_steps(b"transcript-steps-test", &commitment, &opening).is_empty());
     }
 
     #[test]

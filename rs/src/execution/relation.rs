@@ -1,7 +1,8 @@
 //! Bounded symbolic nox execution, with shared wires for all data movement.
 //!
 //! This is a restricted public-input circuit, not the complete nox VM. Dynamic
-//! continuations, state, calls and mismatched branch shapes fail closed.
+//! continuations, state and mismatched branch shapes fail closed. Calls carry
+//! atom witnesses checked by their continuation under the selected branch.
 //! Matrices depend on program and subject shape, never witness/input values.
 use crate::types::{CCSInstance, CCSWitness, SparseMatrix};
 use nebu::Goldilocks as F;
@@ -24,6 +25,8 @@ pub enum RelationError {
     NonCanonical,
     Limit,
     InputCount,
+    SecretCount,
+    LookupUnavailable,
 }
 
 #[derive(Clone, Debug)]
@@ -39,6 +42,13 @@ enum Op {
     Product(Linear, Linear),
     Inverse(Linear),
     Bit(Linear, usize),
+    Secret(Linear),
+    Look {
+        active: Linear,
+        root: [Linear; 4],
+        namespace: Linear,
+        key: Linear,
+    },
 }
 
 /// Wire zero MUST be authenticated as one by the outer public-input protocol.
@@ -51,18 +61,64 @@ pub struct ExecutionRelation {
     pub output_shape: SubjectShape,
     pub cost_index: usize,
     pub max_cost: u64,
+    pub lookups: Vec<LookupCoordinates>,
     ops: Vec<Op>,
 }
 impl ExecutionRelation {
     pub fn witness(&self, inputs: &[F]) -> Result<CCSWitness, RelationError> {
+        self.witness_with_secrets(inputs, &[])
+    }
+    pub fn witness_with_secrets(
+        &self,
+        inputs: &[F],
+        secrets: &[F],
+    ) -> Result<CCSWitness, RelationError> {
+        self.witness_with_provider(inputs, secrets, &mut |_, _, _| None)
+    }
+    pub fn witness_with_provider(
+        &self,
+        inputs: &[F],
+        secrets: &[F],
+        provider: &mut dyn FnMut([F; 4], F, F) -> Option<F>,
+    ) -> Result<CCSWitness, RelationError> {
         if inputs.len() != self.input_indices.len() {
             return Err(RelationError::InputCount);
         }
+        let mut secret_index = 0;
         let mut z = vec![F::ONE];
         z.extend_from_slice(inputs);
         for op in &self.ops {
             let eval = |l: &Linear| l.iter().fold(F::ZERO, |s, &(i, c)| s + z[i] * c);
             let v = match op {
+                Op::Look {
+                    active,
+                    root,
+                    namespace,
+                    key,
+                } => {
+                    if eval(active) == F::ZERO {
+                        F::ZERO
+                    } else {
+                        let root = std::array::from_fn(|i| eval(&root[i]));
+                        let namespace = eval(namespace);
+                        if namespace.as_u64() > 9 {
+                            return Err(RelationError::LookupUnavailable);
+                        }
+                        provider(root, namespace, eval(key))
+                            .ok_or(RelationError::LookupUnavailable)?
+                    }
+                }
+                Op::Secret(active) => {
+                    if eval(active) == F::ZERO {
+                        F::ZERO
+                    } else {
+                        let v = *secrets
+                            .get(secret_index)
+                            .ok_or(RelationError::SecretCount)?;
+                        secret_index += 1;
+                        v
+                    }
+                }
                 Op::Linear(a) => eval(a),
                 Op::Product(a, b) => eval(a) * eval(b),
                 Op::Bit(a, k) => F::new((eval(a).canonicalize().as_u64() >> k) & 1),
@@ -73,6 +129,9 @@ impl ExecutionRelation {
             };
             z.push(v);
         }
+        if secret_index != secrets.len() {
+            return Err(RelationError::SecretCount);
+        }
         z.resize(self.instance.num_cols, F::ZERO);
         Ok(CCSWitness { z })
     }
@@ -82,6 +141,9 @@ struct Builder {
     ops: Vec<Op>,
     rows: Vec<(Linear, Linear, Linear)>,
     calls: usize,
+    active: Value,
+    lookups: Vec<LookupCoordinates>,
+    state: Option<PublicStateTables>,
 }
 const MAX_CALLS: usize = 4096;
 const MAX_DEPTH: usize = 128;
@@ -143,140 +205,30 @@ impl Builder {
             }
         }
     }
-    fn eval(
-        &mut self,
-        obj: &Value,
-        f: &ExecutionNoun,
-        depth: usize,
-    ) -> Result<(Value, Value, u64), RelationError> {
-        if self.ops.len() > 32768 || self.rows.len() > 32768 {
-            return Err(RelationError::Limit);
+    fn equal(&mut self, a: &Value, b: &Value) -> Result<Value, RelationError> {
+        if !matches!(a, Value::Pair(..)) && !matches!(b, Value::Pair(..)) {
+            let delta = self.add(a, b, true)?;
+            return self.nonzero(&delta);
         }
-        let result = self.eval_inner(obj, f, depth)?;
-        check_value(&result.0, 0, &mut 0)?;
-        if self.ops.len() > 32768 || self.rows.len() > 32768 {
-            return Err(RelationError::Limit);
+        let left = self.structural_digest(a, 0)?;
+        let right = self.structural_digest(b, 0)?;
+        let mut unequal = Value::Constant(F::ZERO);
+        for (a, b) in left.iter().zip(right.iter()) {
+            let delta = self.add(a, b, true)?;
+            let bit = self.nonzero(&delta)?;
+            let both = self.product(self.linear(&unequal)?, self.linear(&bit)?);
+            let sum = self.add(&unequal, &bit, false)?;
+            unequal = self.add(&sum, &both, true)?;
         }
-        Ok(result)
+        Ok(unequal)
     }
-    fn eval_inner(
-        &mut self,
-        obj: &Value,
-        f: &ExecutionNoun,
-        depth: usize,
-    ) -> Result<(Value, Value, u64), RelationError> {
-        self.calls += 1;
-        if self.calls > MAX_CALLS || depth > MAX_DEPTH {
-            return Err(RelationError::Limit);
-        }
-        let (tag, body) = pair(f)?;
-        let tag = match tag {
-            ExecutionNoun::Atom(t) => *t,
-            _ => return Err(RelationError::Malformed),
-        };
-        let one = Value::Constant(F::ONE);
-        match tag {
-            0 => {
-                let a = match body {
-                    ExecutionNoun::Atom(a) => *a,
-                    _ => return Err(RelationError::Malformed),
-                };
-                if a == 0 {
-                    return Ok((self.axis_hash(obj)?, one, 1));
-                }
-                let mut v = obj;
-                let bits = 63 - a.leading_zeros();
-                for b in (0..bits).rev() {
-                    v = match v {
-                        Value::Pair(l, r) => {
-                            if (a >> b) & 1 == 0 {
-                                l
-                            } else {
-                                r
-                            }
-                        }
-                        _ => return Err(RelationError::Unsupported("axis into atom")),
-                    };
-                }
-                Ok((v.clone(), one, 1))
-            }
-            1 => Ok((constant(body, depth + 1)?, one, 1)),
-            15 => {
-                let (v, c, m) = self.eval(obj, body, depth + 1)?;
-                let out = self.hash(&v)?;
-                let cost = self.add(&c, &Value::Constant(F::new(25)), false)?;
-                Ok((out, cost, m + 25))
-            }
-            13 => {
-                let (v, c, m) = self.eval(obj, body, depth + 1)?;
-                let bits = self.bits(&v, 32)?;
-                let word = self.pack(&bits)?;
-                let out = self.add(&Value::Constant(F::new(u32::MAX as u64)), &word, true)?;
-                let cost = self.add(&c, &Value::Constant(F::new(32)), false)?;
-                Ok((out, cost, m + 32))
-            }
-            8 => {
-                let (v, c, m) = self.eval(obj, body, depth + 1)?;
-                let a = self.linear(&v)?;
-                let i = self.wire(Op::Inverse(a.clone()));
-                self.rows.push((a, vec![(i, F::ONE)], vec![(0, F::ONE)]));
-                let cost = self.add(&c, &Value::Constant(F::new(64)), false)?;
-                Ok((Value::Wire(i), cost, m + 64))
-            }
-            2 | 3 | 5 | 6 | 7 | 9 | 10 | 11 | 12 | 14 => {
-                let (a, b) = pair(body)?;
-                let (av, ac, am) = self.eval(obj, a, depth + 1)?;
-                let (bv, bc, bm) = self.eval(obj, b, depth + 1)?;
-                let own_cost = if tag == 10 {
-                    64
-                } else if tag >= 11 {
-                    32
-                } else {
-                    1
-                };
-                let ab = self.add(&ac, &bc, false)?;
-                let mut cost = self.add(&Value::Constant(F::new(own_cost)), &ab, false)?;
-                let mut max = own_cost + am + bm;
-                let value = match tag {
-                    2 => {
-                        let continuation = static_noun(&bv, depth + 1)?;
-                        let (v, c, m) = self.eval(&av, &continuation, depth + 1)?;
-                        cost = self.add(&cost, &c, false)?;
-                        max += m;
-                        v
-                    }
-                    3 => Value::Pair(Box::new(av), Box::new(bv)),
-                    5 | 6 => self.add(&av, &bv, tag == 6)?,
-                    7 => self.product(self.linear(&av)?, self.linear(&bv)?),
-                    9 => {
-                        let diff = self.add(&av, &bv, true)?;
-                        self.nonzero(&diff)?
-                    }
-                    10 => self.less_than(&av, &bv)?,
-                    11 | 12 | 14 => self.word_binary(tag, &av, &bv)?,
-                    _ => unreachable!(),
-                };
-                Ok((value, cost, max))
-            }
-            4 => {
-                let (t, arms) = pair(body)?;
-                let (a, b) = pair(arms)?;
-                let (tv, tc, tm) = self.eval(obj, t, depth + 1)?;
-                let s = self.nonzero(&tv)?;
-                let (av, ac, am) = self.eval(obj, a, depth + 1)?;
-                let (bv, bc, bm) = self.eval(obj, b, depth + 1)?;
-                let value = self.mux(&s, &av, &bv)?;
-                let arm = self.mux(&s, &ac, &bc)?;
-                let c = self.add(&tc, &arm, false)?;
-                let c = self.add(&one, &c, false)?;
-                Ok((value, c, 1 + tm + am.max(bm)))
-            }
-            _ => Err(RelationError::Unsupported(
-                "pattern requires an execution gadget",
-            )),
-        }
+    fn enforce_equal(&mut self, mut a: Linear, b: Linear) -> Result<(), RelationError> {
+        a.extend(b.into_iter().map(|(i, c)| (i, -c)));
+        self.rows.push((a, self.linear(&self.active)?, vec![]));
+        Ok(())
     }
 }
+
 fn check_value(v: &Value, d: usize, count: &mut usize) -> Result<(), RelationError> {
     *count += 1;
     if d > MAX_DEPTH || *count > MAX_CALLS {
@@ -373,10 +325,34 @@ fn validate_program(n: &ExecutionNoun, d: usize, count: &mut usize) -> Result<()
     }
 }
 /// Compile solely from the public formula and public subject tree shape.
-/// Caller must require budget >= max_cost and bind every public coordinate.
+/// All possible costs are below the field modulus. Callers must bind the
+/// selected cost as canonical public cycles and require cycles <= budget.
 pub fn compile_relation(
     program: &ExecutionNoun,
     shape: &SubjectShape,
+) -> Result<ExecutionRelation, RelationError> {
+    compile_relation_internal(program, shape, None)
+}
+/// Public tables MUST have been authenticated against this root by the owner.
+#[derive(Clone, Debug)]
+pub struct PublicStateTables {
+    pub root: [F; 4],
+    pub dimensions: [Vec<F>; 10],
+}
+pub fn compile_relation_with_state(
+    program: &ExecutionNoun,
+    shape: &SubjectShape,
+    state: &PublicStateTables,
+) -> Result<ExecutionRelation, RelationError> {
+    if state.dimensions.iter().map(Vec::len).sum::<usize>() > 2048 {
+        return Err(RelationError::Limit);
+    }
+    compile_relation_internal(program, shape, Some(state.clone()))
+}
+fn compile_relation_internal(
+    program: &ExecutionNoun,
+    shape: &SubjectShape,
+    state: Option<PublicStateTables>,
 ) -> Result<ExecutionRelation, RelationError> {
     validate_program(program, 0, &mut 0)?;
     let mut next = 1;
@@ -386,8 +362,16 @@ pub fn compile_relation(
         ops: vec![],
         rows: vec![],
         calls: 0,
+        active: Value::Constant(F::ONE),
+        lookups: vec![],
+        state,
     };
     let (value, cost, max_cost) = b.eval(&obj, program, 0)?;
+    // Public cycles have an unambiguous integer interpretation. Bounding the
+    // entire circuit below p prevents a selected cost from wrapping in F_p.
+    if max_cost >= nebu::field::P {
+        return Err(RelationError::Limit);
+    }
     let mut output_indices = vec![];
     let output_shape = outputs(&mut b, &value, &mut output_indices)?;
     let cost_index = match b.alloc_linear(b.linear(&cost)?) {
@@ -415,6 +399,7 @@ pub fn compile_relation(
         output_shape,
         cost_index,
         max_cost,
+        lookups: b.lookups,
         ops: b.ops,
     })
 }
@@ -428,3 +413,10 @@ mod bits;
 
 #[path = "hash.rs"]
 mod hash;
+
+#[path = "relation_eval.rs"]
+mod eval;
+
+#[path = "relation_look.rs"]
+mod look;
+pub use look::LookupCoordinates;

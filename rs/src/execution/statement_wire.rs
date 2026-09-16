@@ -5,7 +5,7 @@ use serde::{
     de::{Error, SeqAccess, Visitor},
 };
 use std::{fmt, marker::PhantomData};
-fn bounded<'de, D, T, const LIMIT: usize>(d: D) -> Result<Vec<T>, D::Error>
+pub(super) fn bounded<'de, D, T, const LIMIT: usize>(d: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

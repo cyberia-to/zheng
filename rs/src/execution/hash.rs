@@ -99,7 +99,7 @@ impl Builder {
         Ok(state)
     }
 
-    fn structural_digest(
+    pub(super) fn structural_digest(
         &mut self,
         value: &Value,
         depth: usize,
@@ -280,6 +280,9 @@ mod tests {
             ops: vec![],
             rows: vec![],
             calls: 0,
+            active: Value::Constant(F::ONE),
+            lookups: vec![],
+            state: None,
         };
         let inverse = builder.hash_inv(&Value::Wire(1)).unwrap();
         let Value::Wire(index) = inverse else {

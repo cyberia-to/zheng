@@ -77,7 +77,7 @@ impl ExecutionStatement {
             .ok_or_else(|| "empty program".into())
     }
 
-    fn relation(&self) -> Result<ExecutionRelation, String> {
+    pub(crate) fn validate_bounds(&self) -> Result<(), String> {
         if self.public_input.len() > MAX_INPUTS
             || self.public_output.len() > MAX_OUTPUTS
             || !canonical(&self.public_input)
@@ -87,22 +87,24 @@ impl ExecutionStatement {
         {
             return Err("invalid public statement bounds or field values".into());
         }
+        Ok(())
+    }
+
+    pub(crate) fn relation(&self) -> Result<ExecutionRelation, String> {
+        self.validate_bounds()?;
         let mut shape = SubjectShape::Atom;
         for _ in &self.public_input {
             shape = SubjectShape::Pair(Box::new(SubjectShape::Atom), Box::new(shape));
         }
         let relation = compile_relation(&self.program_noun()?, &shape)
             .map_err(|e| format!("unsupported execution relation: {e:?}"))?;
-        if self.budget < relation.max_cost {
-            return Err(format!(
-                "budget must cover conservative bound {}",
-                relation.max_cost
-            ));
+        if !relation.lookups.is_empty() {
+            return Err("state lookup requires authenticated state execution protocol".into());
         }
         Ok(relation)
     }
 
-    fn inputs(&self) -> Vec<F> {
+    pub(crate) fn inputs(&self) -> Vec<F> {
         self.public_input
             .iter()
             .rev()
@@ -111,7 +113,17 @@ impl ExecutionStatement {
             .collect()
     }
 
-    fn bindings(&self, relation: &ExecutionRelation) -> Result<Vec<(usize, F)>, String> {
+    pub(crate) fn bindings(&self, relation: &ExecutionRelation) -> Result<Vec<(usize, F)>, String> {
+        self.bindings_with_inputs(relation, &self.inputs())
+    }
+    pub(crate) fn bindings_with_inputs(
+        &self,
+        relation: &ExecutionRelation,
+        inputs: &[F],
+    ) -> Result<Vec<(usize, F)>, String> {
+        if inputs.len() != relation.input_indices.len() {
+            return Err("input shape mismatch".into());
+        }
         if self.public_output.len() != relation.output_indices.len() {
             return Err("output shape does not match program".into());
         }
@@ -120,7 +132,7 @@ impl ExecutionStatement {
             .input_indices
             .iter()
             .copied()
-            .zip(self.inputs())
+            .zip(inputs.iter().copied())
             .chain(
                 relation
                     .output_indices
@@ -139,7 +151,7 @@ impl ExecutionStatement {
 
     /// Stable encoding independent of serde, usize width and JSON formatting.
     pub fn transcript_bytes(&self) -> Vec<u8> {
-        let mut bytes = b"zheng-nox-public-execution-v1".to_vec();
+        let mut bytes = b"zheng-nox-public-execution-v2".to_vec();
         bytes.extend_from_slice(&(self.program.len() as u64).to_le_bytes());
         for token in &self.program {
             match token {

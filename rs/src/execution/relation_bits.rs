@@ -11,7 +11,7 @@ impl Builder {
             sum.push((i, F::new(1u64 << k)));
             bits.push(Value::Wire(i));
         }
-        self.rows.push((sum, vec![(0, F::ONE)], source));
+        self.enforce_equal(sum, source)?;
         if n == 64 {
             // Goldilocks p = 0xffffffff00000001. A canonical u64 has
             // high32 != MAX, or (high32 == MAX AND low32 == 0).
