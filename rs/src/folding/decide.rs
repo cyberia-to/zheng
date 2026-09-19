@@ -114,4 +114,57 @@ mod tests {
         vt.absorb(&acc.step_count.to_le_bytes());
         assert!(SpartanVerifier::verify(&acc.committed_instance, &proof, &acc.error_evals, &mut vt).is_ok());
     }
+
+    /// launch.md property 5: "fold is a commutative monoid". `fold_step`
+    /// folds a running witness combination weighted by a transcript-derived
+    /// challenge, so the two orders do not produce byte-identical
+    /// accumulators — the challenge itself depends on fold order. What the
+    /// property needs is closure: any order of folding two individually
+    /// satisfying witnesses stays satisfying, and both orders decide().
+    #[test]
+    fn fold_order_does_not_affect_validity() {
+        let instance = universal_ccs().clone(); // add pattern
+        let w1 = make_witness(5, 3, 8); // 5+3=8 ✓
+        let w2 = make_witness(2, 4, 6); // 2+4=6 ✓
+
+        let mut acc_ab = zero_accumulator(&instance);
+        let mut t_ab = Transcript::new();
+        fold_step(&mut acc_ab, &instance, &w1, &mut t_ab).unwrap();
+        fold_step(&mut acc_ab, &instance, &w2, &mut t_ab).unwrap();
+
+        let mut acc_ba = zero_accumulator(&instance);
+        let mut t_ba = Transcript::new();
+        fold_step(&mut acc_ba, &instance, &w2, &mut t_ba).unwrap();
+        fold_step(&mut acc_ba, &instance, &w1, &mut t_ba).unwrap();
+
+        for acc in [&acc_ab, &acc_ba] {
+            assert_eq!(acc.step_count, 2);
+            assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO));
+        }
+
+        let stmt = Statement {
+            program_hash: [0u8; 32],
+            input_hash: [0u8; 32],
+            output_hash: [0u8; 32],
+            focus_bound: 0,
+            bbg_root: [0u8; 32],
+        };
+        let linkage = [7u8; 32];
+
+        for acc in [&acc_ab, &acc_ba] {
+            let proof = decide(acc, &stmt, &linkage, &ProofParams::default()).unwrap();
+            let mut vt = Transcript::new_recursive();
+            vt.absorb_statement(&stmt);
+            vt.absorb_linkage(&linkage);
+            vt.absorb(acc.witness_commitment.as_bytes());
+            for &e in &acc.error_evals {
+                vt.absorb(&e.as_u64().to_le_bytes());
+            }
+            vt.absorb(&acc.step_count.to_le_bytes());
+            assert!(
+                SpartanVerifier::verify(&acc.committed_instance, &proof, &acc.error_evals, &mut vt)
+                    .is_ok()
+            );
+        }
+    }
 }
