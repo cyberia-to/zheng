@@ -296,7 +296,18 @@ pub fn build_look_steps_from_trace(
             let root = root_from_leaves(&lo.leaves);
             if !chained_roots.contains(&root) {
                 let (root_rows, computed) = build_root_steps(&lo.leaves);
-                debug_assert_eq!(computed, root, "replay diverged from native fold");
+                // `root_from_leaves` (native fold) and `build_root_steps` (traced
+                // replay) must compute the same root — this is checked by
+                // `root_steps_match_native_and_satisfy` in isolation, but the
+                // eq steps below bind `root`, not `computed`. In a release build
+                // a divergence here would silently emit witness rows (`rows`)
+                // for a different root than the one asserted against the trace
+                // and the public statement, a soundness gap the caller cannot
+                // detect from `Ok(..)`. Reject instead of trusting the debug-only
+                // check.
+                if computed != root {
+                    return Err(CommitError::LookBinding);
+                }
                 rows.extend(root_rows);
                 chained_roots.push(root);
             }
