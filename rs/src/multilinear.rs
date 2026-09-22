@@ -42,8 +42,20 @@ pub fn fold_inplace(table: &mut Vec<Goldilocks>, r: Goldilocks) {
 }
 
 /// Evaluate the multilinear extension at an arbitrary point by repeated folding.
+///
+/// Panics if `evals.len() != 1 << point.len()`. This is not redundant with
+/// `fold_inplace`'s own power-of-two check: a mismatch where `evals.len()`
+/// is already a power of two but larger than `1 << point.len()` folds down
+/// to a partial table instead of a single value, and `table[0]` returns a
+/// silently wrong evaluation instead of panicking — a real risk on the
+/// verifier path (`SpartanVerifier`), where `evals`/`point` lengths derive
+/// from proof data.
 pub fn evaluate_multilinear(evals: &[Goldilocks], point: &[Goldilocks]) -> Goldilocks {
-    debug_assert_eq!(evals.len(), 1 << point.len());
+    assert_eq!(
+        evals.len(),
+        1 << point.len(),
+        "evaluate_multilinear: evals.len() must equal 1 << point.len()"
+    );
     let mut table = evals.to_vec();
     for &r in point {
         fold_inplace(&mut table, r);
@@ -176,6 +188,16 @@ mod tests {
             &[Goldilocks::ZERO, Goldilocks::ONE],
         );
         assert_eq!(v, Goldilocks::new(20));
+    }
+
+    #[test]
+    #[should_panic(expected = "evals.len() must equal 1 << point.len()")]
+    fn evaluate_multilinear_rejects_length_mismatch_in_release_too() {
+        // evals.len() = 8 (a power of two) but point.len() = 2 wants 4: without
+        // the check this folds to a 2-element partial table and table[0]
+        // silently returns the wrong value instead of panicking.
+        let evals = vec![Goldilocks::new(1); 8];
+        evaluate_multilinear(&evals, &[Goldilocks::ZERO, Goldilocks::ONE]);
     }
 
     #[test]
