@@ -261,3 +261,28 @@ fn gadgets_of_other_patterns_are_inert() {
         ]
     )));
 }
+
+// ── Builder::put collision guard ────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "two gadgets collide")]
+fn put_panics_on_slot_row_collision() {
+    // Two gadgets placed on the same (slot, row) would otherwise have
+    // `SparseMatrix::set` silently push a second term into that row instead
+    // of overwriting or rejecting, mixing two gadgets' linear forms into one
+    // wrong constraint. This must fail loudly, in release builds too.
+    let mut b = Builder::new();
+    b.put(A0, 0, &[(CONST_IDX, one())]);
+    b.put(A0, 0, &[(CONST_IDX, one())]);
+}
+
+#[test]
+fn put_does_not_panic_on_distinct_rows_or_slots() {
+    let mut b = Builder::new();
+    b.put(A0, 0, &[(CONST_IDX, one())]);
+    b.put(A0, 1, &[(CONST_IDX, one())]);
+    b.put(B0, 0, &[(CONST_IDX, one())]);
+    assert_eq!(b.m[A0].entries[0].len(), 1);
+    assert_eq!(b.m[A0].entries[1].len(), 1);
+    assert_eq!(b.m[B0].entries[0].len(), 1);
+}

@@ -193,7 +193,14 @@ impl Builder {
     }
 
     fn put(&mut self, slot: usize, row: usize, form: Form) {
-        debug_assert!(
+        // `SparseMatrix::set` pushes rather than overwrites, so a collision
+        // does not panic on its own: it silently appends a second (col, val)
+        // term into the row, and `mul_vec` sums both when evaluating the
+        // gadget. A compiled-out `debug_assert!` would let two gadgets that
+        // collide on the same (slot, row) mix their linear forms into one
+        // wrong constraint in the release build's universal CCS matrix,
+        // rather than fail loudly at the point of the layout bug.
+        assert!(
             self.m[slot].entries[row].is_empty(),
             "slot {slot} already placed on row {row}: two gadgets collide"
         );
