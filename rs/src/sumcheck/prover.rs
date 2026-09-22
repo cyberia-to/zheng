@@ -35,9 +35,15 @@ impl SumcheckProver {
     ///
     /// `w` and `f` must both have length 2^num_vars.
     /// `claimed_sum` = Σ_{x ∈ {0,1}^num_vars} w[x]·f[x].
+    ///
+    /// Panics on a length mismatch or a non-power-of-two length. Both checks
+    /// used to be `debug_assert!`, which compiles out in release: `zip`
+    /// silently truncates to the shorter table, so a mismatch would produce
+    /// a `claimed_sum` computed over fewer terms than `num_vars` implies
+    /// instead of failing here, at the point of construction.
     pub fn new(w: Vec<Goldilocks>, f: Vec<Goldilocks>) -> Self {
-        debug_assert_eq!(w.len(), f.len());
-        debug_assert!(w.len().is_power_of_two());
+        assert_eq!(w.len(), f.len(), "SumcheckProver::new: w and f must be the same length");
+        assert!(w.len().is_power_of_two(), "SumcheckProver::new: w.len() must be a power of two");
         let num_vars = w.len().trailing_zeros() as usize;
         let claimed_sum = w.iter().zip(f.iter()).fold(Goldilocks::ZERO, |acc, (&wi, &fi)| {
             acc + wi * fi
@@ -156,15 +162,29 @@ impl OuterSumcheckProver {
     /// `eq_table` = eq_evals(τ) of length m = 2^log_m.
     /// `f_tables[i]` = per-row M_i·z evaluations, length m.
     /// `multisets`, `coeffs` come directly from the CCSInstance.
+    ///
+    /// Panics if `eq_table.len()` is not a power of two (or 1), or if any
+    /// `f_tables[i]` does not match `eq_table`'s length. Both checks used to
+    /// be `debug_assert!`, which compiles out in release: `compute_sum`
+    /// indexes every `f_tables[i]` by `0..eq_table.len()`, so a shorter
+    /// f_table would panic there instead of here, at the point of
+    /// construction, and a longer one would silently ignore its tail.
     pub fn new(
         eq_table: Vec<Goldilocks>,
         f_tables: Vec<Vec<Goldilocks>>,
         multisets: Vec<Vec<usize>>,
         coeffs: Vec<Goldilocks>,
     ) -> Self {
-        debug_assert!(eq_table.len().is_power_of_two() || eq_table.len() == 1);
+        assert!(
+            eq_table.len().is_power_of_two() || eq_table.len() == 1,
+            "OuterSumcheckProver::new: eq_table.len() must be a power of two (or 1)"
+        );
         for ft in &f_tables {
-            debug_assert_eq!(ft.len(), eq_table.len());
+            assert_eq!(
+                ft.len(),
+                eq_table.len(),
+                "OuterSumcheckProver::new: every f_table must match eq_table's length"
+            );
         }
         let num_vars = eq_table.len().trailing_zeros() as usize;
         let degree = multisets.iter().map(|ms| ms.len()).max().unwrap_or(1);
@@ -300,6 +320,18 @@ mod tests {
         let (w_final, f_final) = prover.final_claim();
         assert_eq!(w_final * f_final, prover.claimed_sum());
     }
+
+    #[test]
+    #[should_panic(expected = "w and f must be the same length")]
+    fn new_rejects_length_mismatch_in_release_too() {
+        SumcheckProver::new(vec![Goldilocks::ONE; 4], vec![Goldilocks::ONE; 2]);
+    }
+
+    #[test]
+    #[should_panic(expected = "w.len() must be a power of two")]
+    fn new_rejects_non_power_of_two_in_release_too() {
+        SumcheckProver::new(vec![Goldilocks::ONE; 3], vec![Goldilocks::ONE; 3]);
+    }
 }
 #[cfg(test)]
 mod pairing_tests {
@@ -331,5 +363,14 @@ mod pairing_tests {
             .fold(Goldilocks::ZERO, |a, (&w, &v)| a + w * v);
         assert_eq!(u.as_u64(), rev_paired.as_u64(), "fold is MSB-first");
         assert_ne!(u.as_u64(), lsb_paired.as_u64(), "pairing direction matters");
+    }
+
+    #[test]
+    #[should_panic(expected = "every f_table must match eq_table's length")]
+    fn new_rejects_f_table_length_mismatch_in_release_too() {
+        let g = Goldilocks::new;
+        let eq_t = eq_evals(&[g(10), g(20)]);
+        let short_f = vec![g(1), g(2)];
+        OuterSumcheckProver::new(eq_t, vec![short_f], vec![vec![0]], vec![Goldilocks::ONE]);
     }
 }
