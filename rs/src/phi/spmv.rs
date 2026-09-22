@@ -39,8 +39,17 @@ impl SparseGraph {
         }
     }
 
+    // `assert!`, not `debug_assert!`: this graph feeds the CCS matrix a
+    // settlement ticket is proved against (tru row 77 found the same gap
+    // in CsrBuilder::add). An out-of-range index that survives into
+    // release corrupts the proved computation instead of failing loudly
+    // at the point of insertion.
     pub fn add(&mut self, row: usize, col: usize, w: Goldilocks) {
-        debug_assert!(row < self.n && col < self.n);
+        assert!(
+            row < self.n && col < self.n,
+            "SparseGraph::add: index ({row}, {col}) out of bounds for {0}x{0} graph",
+            self.n
+        );
         self.edges.push((row, col, w));
     }
 
@@ -279,6 +288,20 @@ mod tests {
 
     fn g(v: u64) -> Goldilocks {
         Goldilocks::new(v)
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn add_rejects_out_of_range_row() {
+        let mut graph = SparseGraph::empty(3);
+        graph.add(3, 0, g(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn add_rejects_out_of_range_col() {
+        let mut graph = SparseGraph::empty(3);
+        graph.add(0, 3, g(1));
     }
 
     #[test]
