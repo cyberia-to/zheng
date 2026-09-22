@@ -108,8 +108,17 @@ impl SumcheckProver {
     /// Final evaluation claim after all rounds.
     ///
     /// Returns (w_eval, f_eval) at the final point. The product must equal current_claim.
+    ///
+    /// Panics if folding has not run to completion (`w_table.len() != 1`).
+    /// This used to be `debug_assert!`, which compiles out in release: called
+    /// early, it would silently return `w_table[0]`/`f_table[0]` from an
+    /// unfolded table instead of the true final evaluation.
     pub fn final_claim(&self) -> (Goldilocks, Goldilocks) {
-        debug_assert_eq!(self.w_table.len(), 1);
+        assert_eq!(
+            self.w_table.len(),
+            1,
+            "SumcheckProver::final_claim: called before folding reached a single element"
+        );
         (self.w_table[0], self.f_table[0])
     }
 
@@ -268,8 +277,16 @@ impl OuterSumcheckProver {
     }
 
     /// After all rounds: f_tables[i][0] = û_i(ρ_x) via MLE folding.
+    ///
+    /// Panics if folding has not run to completion (any `f_tables[i]` still
+    /// has more than one element). This used to be `debug_assert!`, which
+    /// compiles out in release: called early, it would silently return each
+    /// table's first element instead of the true final evaluation.
     pub fn matrix_evals(&self) -> Vec<Goldilocks> {
-        debug_assert!(self.f_tables.iter().all(|t| t.len() == 1));
+        assert!(
+            self.f_tables.iter().all(|t| t.len() == 1),
+            "OuterSumcheckProver::matrix_evals: called before folding reached a single element"
+        );
         self.f_tables.iter().map(|t| t[0]).collect()
     }
 }
@@ -299,6 +316,16 @@ mod tests {
         // after 2 rounds: single entry
         let (w_final, f_final) = prover.final_claim();
         assert_eq!(w_final * f_final, prover.claimed_sum());
+    }
+
+    #[test]
+    #[should_panic(expected = "called before folding reached a single element")]
+    fn final_claim_rejects_unfolded_table_in_release_too() {
+        let w = eq_evals(&[Goldilocks::new(3), Goldilocks::new(7)]);
+        let f = vec![Goldilocks::new(1); 4];
+        let prover = SumcheckProver::new(w, f);
+        // Zero rounds folded: w_table/f_table still have 4 entries, not 1.
+        let _ = prover.final_claim();
     }
 }
 #[cfg(test)]
@@ -331,5 +358,17 @@ mod pairing_tests {
             .fold(Goldilocks::ZERO, |a, (&w, &v)| a + w * v);
         assert_eq!(u.as_u64(), rev_paired.as_u64(), "fold is MSB-first");
         assert_ne!(u.as_u64(), lsb_paired.as_u64(), "pairing direction matters");
+    }
+
+    #[test]
+    #[should_panic(expected = "called before folding reached a single element")]
+    fn matrix_evals_rejects_unfolded_table_in_release_too() {
+        let g = Goldilocks::new;
+        let f = vec![g(1), g(2), g(3), g(4)];
+        let tau = vec![g(10), g(20)];
+        let eq_t = eq_evals(&tau);
+        let p = OuterSumcheckProver::new(eq_t, vec![f], vec![vec![0]], vec![Goldilocks::ONE]);
+        // Zero rounds folded: f_tables[0] still has 4 entries, not 1.
+        let _ = p.matrix_evals();
     }
 }
