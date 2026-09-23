@@ -754,15 +754,21 @@ mod tests {
         ));
     }
 
-    /// E2E: prover-active axis — commitment (r11-r14), point (r5) and value
-    /// (r7) bindings all hold and the proof round-trips.
+    /// Actual execution protocol binds an axis result to the public subject.
     #[test]
-    fn e2e_prover_active_axis_binding_roundtrip() {
-        let (trace, openings) = prover_active_axis_setup(0);
-        let stmt = zero_statement();
-        let params = ProofParams::default();
-        let trace_proof = commit(&trace, &[], &openings, &[], &stmt, &params).unwrap();
-        assert!(verify(&trace_proof, &stmt, &params).is_ok());
+    fn e2e_axis_execution_binds_subject_and_result() {
+        use crate::execution::{ExecutionNoun as N, prove_execution, verify_execution};
+        let axis = N::Pair(Box::new(N::Atom(0)), Box::new(N::Atom(2)));
+        let (statement, proof) = prove_execution(&axis, &[22], 100).unwrap();
+        assert_eq!(statement.public_output, vec![22]);
+        assert_eq!(statement.cycles, 1);
+        verify_execution(&statement, &proof).unwrap();
+        let mut forged = statement.clone();
+        forged.public_output[0] = 23;
+        assert!(verify_execution(&forged, &proof).is_err());
+        let mut swapped = statement.clone();
+        swapped.public_input[0] = 23;
+        assert!(verify_execution(&swapped, &proof).is_err());
     }
 
     /// Negative: a valid opening for a DIFFERENT commitment than the trace
@@ -774,7 +780,7 @@ mod tests {
         let stmt = zero_statement();
         let params = ProofParams::default();
         let err = commit(&trace_p, &[], &openings_q, &[], &stmt, &params);
-        assert!(matches!(err, Err(CommitError::AxisBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
     /// Negative: an opening whose claimed value differs from the result
@@ -786,7 +792,7 @@ mod tests {
         let stmt = zero_statement();
         let params = ProofParams::default();
         let err = commit(&trace, &[], &openings, &[], &stmt, &params);
-        assert!(matches!(err, Err(CommitError::AxisBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
     /// Negative: a corrupted opening proof (tampered final_poly byte) must be
@@ -794,47 +800,31 @@ mod tests {
     #[test]
     fn commit_rejects_tampered_axis_opening() {
         let (trace, mut openings) = prover_active_axis_setup(0);
-        if let Opening::Tensor { final_poly, .. } = &mut openings[0].opening {
-            final_poly[0] ^= 1;
+        if let Opening::TensorMerkle { row_combination, .. } = &mut openings[0].opening {
+            row_combination[0] ^= 1;
         } else {
-            panic!("Brakedown opening is Tensor");
+            panic!("current Brakedown opening must be TensorMerkle");
         }
         let stmt = zero_statement();
         let params = ProofParams::default();
         let err = commit(&trace, &[], &openings, &[], &stmt, &params);
-        assert!(matches!(err, Err(CommitError::AxisBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
-    /// Negative: splicing the axis group of one valid proof into another
-    /// valid proof must break verification. Both groups are self-consistent;
-    /// only the option-A linkage digest ties them to their own proof.
+    /// Opening substitution between two valid execution proofs must fail.
     #[test]
-    fn verify_rejects_spliced_axis_group() {
-        let stmt = zero_statement();
-        let params = ProofParams::default();
-
-        let (t1, o1) = prover_active_axis_setup(0);
-        let (t2, o2) = prover_active_axis_setup(7);
-        let p1 = commit(&t1, &[], &o1, &[], &stmt, &params).unwrap();
-        let p2 = commit(&t2, &[], &o2, &[], &stmt, &params).unwrap();
-        assert!(verify(&p1, &stmt, &params).is_ok());
-        assert!(verify(&p2, &stmt, &params).is_ok());
-
-        // The binding group holds the axis opening eq steps.
-        let b1 = p1.binding.as_ref().expect("axis proof has a binding group");
-        let b2 = p2.binding.as_ref().expect("axis proof has a binding group");
-        assert_ne!(
-            b1.accumulator.witness_commitment.as_bytes(),
-            b2.accumulator.witness_commitment.as_bytes(),
-            "the two binding groups differ (different noun commitments)"
-        );
-
+    fn verify_rejects_spliced_axis_execution_opening() {
+        use crate::execution::{ExecutionNoun as N, prove_execution, verify_execution};
+        let axis = N::Pair(Box::new(N::Atom(0)), Box::new(N::Atom(2)));
+        let (s1, p1) = prove_execution(&axis, &[22], 100).unwrap();
+        let (s2, p2) = prove_execution(&axis, &[29], 100).unwrap();
+        verify_execution(&s1, &p1).unwrap();
+        verify_execution(&s2, &p2).unwrap();
+        assert_ne!(p1.spartan.commitment, p2.spartan.commitment);
         let mut spliced = p1.clone();
-        spliced.binding = Some(b2.clone());
-        assert!(
-            verify(&spliced, &stmt, &params).is_err(),
-            "axis group spliced from another proof must not verify"
-        );
+        spliced.spartan.pcs_opening = p2.spartan.pcs_opening.clone();
+        assert!(verify_execution(&s1, &spliced).is_err());
+        assert!(verify_execution(&s1, &p2).is_err());
     }
 
     /// Fold a hand-built eq step sequence as the binding group next to a
@@ -958,21 +948,13 @@ mod tests {
     /// The zero-error rule accepts honest linear folds: the same raw route
     /// with all steps satisfied verifies.
     #[test]
-    fn verify_accepts_raw_satisfied_axis_steps() {
-        use crate::ccs::verifier_steps;
-        use lens::Transcript as LensTranscript;
-
-        let poly = MultilinearPoly::new(make_poly(&[5, 15, 25, 35]));
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![Goldilocks::ONE, Goldilocks::ZERO];
-        let value = poly.evaluate(&point);
-        let opening = {
-            let mut lt = LensTranscript::new(b"raw-axis-honest");
-            Brakedown::open(&poly, &point, &mut lt)
-        };
-
-        let steps = verifier_steps(&commitment, &point, value, &opening);
+    fn verify_accepts_nonempty_satisfied_linear_bindings() {
+        use crate::ccs::eq_step;
+        let steps: Vec<_> = [5, 15, 25, 35].into_iter()
+            .map(|v| eq_step(Goldilocks::new(v), Goldilocks::new(v))).collect();
+        assert_eq!(steps.len(), 4);
         let trace_proof = prove_raw_linear_steps(&steps);
+        assert_eq!(trace_proof.binding.as_ref().unwrap().accumulator.step_count, 4);
         assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
     }
 
@@ -1193,8 +1175,8 @@ mod tests {
     // ── look (pattern 17): public-root e2e and negatives ─────────────────────
     // The look chain (opening → value=r7 → point=r6 → leaf=dims[r5] → root =
     // r4/r11-r13) previously ended at the object's root limbs — witness data.
-    // Statement.bbg_root makes the root a public input; these tests exercise
-    // the full commit()/verify() pipeline for look for the first time.
+    // The recursive route is rejected before processing these openings.
+    // Direct BBG authentication is tested in BBG's look_e2e suite.
 
     /// Run `[17 [[1 ns] [1 key]]]` against a provider over `evals`; the
     /// object carries the solo root limbs. Returns (trace, openings, root).
@@ -1237,15 +1219,15 @@ mod tests {
         Statement { bbg_root: root, ..zero_statement() }
     }
 
-    /// E2E: a real look program against a committed state, its root public
-    /// in the Statement, round-trips through commit and verify.
+    /// Even an honest lookup cannot be certified by the retired recursive gadget.
     #[test]
-    fn e2e_look_roundtrip() {
+    fn commit_refuses_authenticated_look_until_recursive_constraints_exist() {
         let (trace, openings, root) = look_setup(&[10, 20, 30, 40], 2);
-        let stmt = look_statement(root);
-        let params = ProofParams::default();
-        let tp = commit(&trace, &[], &[], &openings, &stmt, &params).unwrap();
-        assert!(verify(&tp, &stmt, &params).is_ok());
+        assert!(matches!(openings[0].opening, Opening::TensorMerkle { .. }));
+        assert!(matches!(
+            commit(&trace, &[], &[], &openings, &look_statement(root), &ProofParams::default()),
+            Err(CommitError::UnsupportedRecursiveOpening)
+        ));
     }
 
     /// Negative: the public root names a different state — rejected at commit.
@@ -1255,7 +1237,7 @@ mod tests {
         let mut wrong = root;
         wrong[0] ^= 1;
         let err = commit(&trace, &[], &[], &openings, &look_statement(wrong), &ProofParams::default());
-        assert!(matches!(err, Err(CommitError::LookBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
     /// Negative: a VALID opening of a different state (its own consistent
@@ -1265,7 +1247,7 @@ mod tests {
         let (trace, _, root) = look_setup(&[10, 20, 30, 40], 2);
         let (_, other_openings, _) = look_setup(&[11, 21, 31, 41], 2);
         let err = commit(&trace, &[], &[], &other_openings, &look_statement(root), &ProofParams::default());
-        assert!(matches!(err, Err(CommitError::LookBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
     /// Negative: tampered leaves — the recomputed root diverges from both the
@@ -1275,7 +1257,7 @@ mod tests {
         let (trace, mut openings, root) = look_setup(&[10, 20, 30, 40], 2);
         openings[0].leaves.dims[3] = [Goldilocks::new(7); 4];
         let err = commit(&trace, &[], &[], &openings, &look_statement(root), &ProofParams::default());
-        assert!(matches!(err, Err(CommitError::LookBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
     /// Negative: look rows against the zero-root sentinel — a program that
@@ -1284,7 +1266,7 @@ mod tests {
     fn commit_rejects_look_without_public_root() {
         let (trace, openings, _) = look_setup(&[10, 20, 30, 40], 2);
         let err = commit(&trace, &[], &[], &openings, &zero_statement(), &ProofParams::default());
-        assert!(matches!(err, Err(CommitError::LookBinding)));
+        assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
     }
 
     /// Negative: a prover who folds a root-vs-statement binding for the wrong
@@ -1309,38 +1291,25 @@ mod tests {
         assert!(matches!(err, Err(VerifyError::LinearErrorNonzero)));
     }
 
-    /// Negative: the look eq-step group of one valid proof spliced into
-    /// another valid proof over the SAME state (same statement, different
-    /// keys read) breaks the option-A linkage.
+    /// The linkage digest prevents substitution between two satisfied binding groups.
+    /// This property applies to linear bindings; it does not certify look execution.
     #[test]
-    fn verify_rejects_spliced_look_group() {
+    fn verify_rejects_spliced_satisfied_linear_bindings() {
+        use crate::ccs::eq_step;
+        let p1 = prove_raw_linear_steps(&[eq_step(Goldilocks::ONE, Goldilocks::ONE)]);
+        let two = Goldilocks::new(2);
+        let p2 = prove_raw_linear_steps(&[eq_step(two, two)]);
+        let statement = zero_statement();
         let params = ProofParams::default();
-        let (t1, o1, root) = look_setup(&[10, 20, 30, 40], 2);
-        let (t2, o2, root2) = look_setup(&[10, 20, 30, 40], 0);
-        assert_eq!(root, root2, "same state, same public root");
-        let stmt = look_statement(root);
-        let p1 = commit(&t1, &[], &[], &o1, &stmt, &params).unwrap();
-        let p2 = commit(&t2, &[], &[], &o2, &stmt, &params).unwrap();
-        assert!(verify(&p1, &stmt, &params).is_ok());
-        assert!(verify(&p2, &stmt, &params).is_ok());
-
-        // Every eq step — opening, value/point/leaf and root/statement
-        // bindings — is in the ONE binding group; the root-chain rows are
-        // universal rows.
-        let b1 = p1.binding.as_ref().expect("look proof has a binding group");
-        let b2 = p2.binding.as_ref().expect("look proof has a binding group");
+        verify(&p1, &statement, &params).unwrap();
+        verify(&p2, &statement, &params).unwrap();
         assert_ne!(
-            b1.accumulator.witness_commitment.as_bytes(),
-            b2.accumulator.witness_commitment.as_bytes(),
-            "different keys read give different binding witnesses"
+            p1.binding.as_ref().unwrap().accumulator.witness_commitment,
+            p2.binding.as_ref().unwrap().accumulator.witness_commitment,
         );
-
         let mut spliced = p1.clone();
-        spliced.binding = Some(b2.clone());
-        assert!(
-            verify(&spliced, &stmt, &params).is_err(),
-            "look group spliced from another proof must not verify"
-        );
+        spliced.binding = p2.binding;
+        assert!(verify(&spliced, &statement, &params).is_err());
     }
 
     /// Real-trace guard for the pattern family: every universal row of a
