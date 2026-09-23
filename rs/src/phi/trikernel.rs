@@ -189,15 +189,7 @@ pub fn prove_phi_star(
         phi = trikernel_step(&phi, transition, sym, degree, teleport, params);
     }
     let statement = PhiStatement {
-        graph_commit: {
-            let mut buf = [0u8; 64];
-            buf[..32].copy_from_slice(&transition.commitment());
-            buf[32..].copy_from_slice(&sym.commitment());
-            *hemera_hash(&buf)
-                .as_bytes()
-                .first_chunk::<32>()
-                .unwrap_or(&[0u8; 32])
-        },
+        graph_commit: graph_commit(transition, sym),
         phi0_hash: vec_hash(phi0),
         phi_star_hash: vec_hash(&phi),
         iterations,
@@ -225,6 +217,15 @@ pub fn verify_phi_star(
     if phi0.len() != n || proof.phi_star.len() != n {
         return false;
     }
+    // The statement's graph_commit is what an outer/recursive verifier reads
+    // to know which graph this proof is about (PhiStatement::to_zheng folds
+    // it into Statement.output_hash); without this check a prover could
+    // label a proof over one (transition, sym) pair as if it were about a
+    // different one, and only the fold above would catch a real mismatch —
+    // silently, if that outer verifier never re-supplies the raw graphs.
+    if proof.statement.graph_commit != graph_commit(transition, sym) {
+        return false;
+    }
     if proof.diffusion_proofs.len() != proof.statement.iterations as usize {
         return false;
     }
@@ -243,6 +244,17 @@ pub fn verify_phi_star(
         phi = trikernel_step(&phi, transition, sym, degree, teleport, params);
     }
     phi == proof.phi_star
+}
+
+/// Content hash of the (transition, sym) graph pair a φ* proof is over.
+fn graph_commit(transition: &SparseGraph, sym: &SparseGraph) -> [u8; 32] {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(&transition.commitment());
+    buf[32..].copy_from_slice(&sym.commitment());
+    *hemera_hash(&buf)
+        .as_bytes()
+        .first_chunk::<32>()
+        .unwrap_or(&[0u8; 32])
 }
 
 fn vec_hash(v: &[Goldilocks]) -> [u8; 32] {
@@ -311,5 +323,20 @@ mod tests {
         p2.phi_star = bad;
         p2.statement.phi_star_hash = vec_hash(&p2.phi_star);
         assert!(!verify_phi_star(&t, &s, &deg, &tel, &phi0, &p2, &params));
+    }
+
+    #[test]
+    fn mislabeled_graph_commit_is_rejected() {
+        // A proof genuinely computed over (t, s) but whose exported
+        // statement claims to be about a different graph pair must not
+        // verify — graph_commit is what an outer/recursive verifier trusts
+        // to know which graph a proof is about (PhiStatement::to_zheng).
+        let (t, s, deg, tel) = cycle4();
+        let params = TriKernelParams::standard();
+        let phi0 = tel.clone();
+        let mut proof = prove_phi_star(&t, &s, &deg, &tel, &phi0, 5, &params).unwrap();
+        assert!(verify_phi_star(&t, &s, &deg, &tel, &phi0, &proof, &params));
+        proof.statement.graph_commit[0] ^= 1;
+        assert!(!verify_phi_star(&t, &s, &deg, &tel, &phi0, &proof, &params));
     }
 }
