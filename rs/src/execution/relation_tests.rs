@@ -169,6 +169,7 @@ fn noncanonical_bit_decomposition_cannot_forge_ordering() {
                 F::new((0xffff_ffff_0000_0001u64 >> k) & 1)
             }
             Op::Bit(a, k) => F::new((eval(a).as_u64() >> k) & 1),
+            Op::Secret(_) | Op::Look { .. } => unreachable!(),
             Op::Linear(a) => eval(a),
             Op::Product(a, b) => eval(a) * eval(b),
             Op::Inverse(a) => {
@@ -182,18 +183,17 @@ fn noncanonical_bit_decomposition_cannot_forge_ordering() {
     assert!(!rel.instance.is_satisfied_by(&CCSWitness { z }));
 }
 #[test]
-fn unselected_invalid_inverse_is_conservatively_rejected() {
-    // This program returns 7 in nox. The bounded circuit currently requires
-    // both arms' arithmetic to be defined, so refuses this valid execution.
+fn unselected_invalid_inverse_is_allowed_but_selected_error_fails() {
+    // Native nox does not evaluate the unselected arm.
     let p = pair(
         atom(4),
         pair(quote(0), pair(quote(7), pair(atom(8), quote(0)))),
     );
     let rel = compile_relation(&p, &SubjectShape::Atom).unwrap();
-    assert!(
-        !rel.instance
-            .is_satisfied_by(&rel.witness(&[F::ZERO]).unwrap())
-    );
+    let witness = rel.witness(&[F::ZERO]).unwrap();
+    assert!(rel.instance.is_satisfied_by(&witness));
+    assert_eq!(witness.z[rel.output_indices[0]], F::new(7));
+    compare(&p, 0);
 }
 #[test]
 fn symbolic_cons_expansion_is_bounded() {
@@ -266,4 +266,14 @@ fn compiled_trident_import_loop_branch_matches_native() {
             outcome => panic!("{outcome:?}"),
         }
     }
+}
+
+#[test]
+fn pair_equality_binds_every_digest_limb_and_matches_native() {
+    let made = op(3, axis(1), quote(9));
+    let other = op(3, quote(7), quote(9));
+    for x in [7, 8] {
+        compare(&op(9, made.clone(), other.clone()), x);
+    }
+    compare(&op(9, made, quote(7)), 7);
 }

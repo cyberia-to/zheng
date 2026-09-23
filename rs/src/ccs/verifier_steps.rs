@@ -3,21 +3,13 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! Brakedown verifier encoded as a sequence of m=1 CCS instances.
+//! Legacy Tensor-format equality rows, not a polynomial-opening verifier.
 //!
-//! Each step uses Z = [a, b, 1] (VZ_LEN = 3) so all steps are structurally
-//! uniform and fold into a single verifier accumulator via zheng's fold().
-//!
-//! Pattern 0 (axis) uses these steps as the sub-proof that a Brakedown
-//! opening is sound.
-//!
-//! Steps for a `num_vars`-variable opening:
-//!   (a) 4 commitment-binding eq steps: round_commitments[0][k] == commitment[k]
-//!   (b) 1 final-value eq step: final_poly[0] == value
-//!
-//! Fiat-Shamir transcript steps (num_vars × 20 × 24 Poseidon2 rows) are
-//! produced separately by `ccs::transcript::build_transcript_steps` as
-//! universal-step witnesses and fold into the Layer-1 accumulator.
+//! These rows compare commitment limbs and a residual value only. They do not
+//! establish proximity, Merkle authentication, or polynomial evaluation.
+//! Current Lens `TensorMerkle` openings are unsupported here, and the public
+//! trace commit API rejects recursive openings with `UnsupportedRecursiveOpening`.
+//! `eq_instance` and `eq_step` remain general linear binding primitives.
 
 use nebu::Goldilocks;
 
@@ -59,7 +51,7 @@ pub fn eq_step(a: Goldilocks, b: Goldilocks) -> (CCSInstance, CCSWitness) {
     (eq_instance(), CCSWitness { z: vec![a, b, Goldilocks::ONE] })
 }
 
-/// Encode the Brakedown verifier as a flat sequence of m=1 CCS steps.
+/// Extract legacy Tensor equality rows; this is not opening verification.
 ///
 /// All steps share the same CCS structure (2 matrices, VZ_LEN = 3) so they
 /// can be folded together into a single verifier accumulator.
@@ -151,107 +143,45 @@ mod tests {
         assert!(is_satisfied(&inst, &wit));
     }
 
-    // ── verifier_steps correctness ────────────────────────────────────────────
-
+    // The useful security property of these primitives is equality, not
+    // acceptance of a current Lens opening by five unconstrained comparisons.
     #[test]
-    fn all_steps_satisfied_on_valid_opening() {
-        let poly = gold_poly(&[1, 2, 3, 4]);
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
-        let value = poly.evaluate(&point);
-        let opening = open_poly(&poly, &point);
-
-        let steps = verifier_steps(&commitment, &point, value, &opening);
-        assert!(!steps.is_empty());
-        for (i, (inst, wit)) in steps.iter().enumerate() {
-            assert!(is_satisfied(inst, wit), "step {i} not satisfied");
+    fn commitment_limb_bindings_reject_each_changed_limb() {
+        let commitment = Brakedown::commit(&gold_poly(&[5, 6, 7, 8]));
+        for k in 0..4 {
+            let value = read_limb(commitment.as_bytes(), k);
+            let (instance, honest) = eq_step(value, value);
+            assert!(is_satisfied(&instance, &honest));
+            let (_, forged) = eq_step(value, value + Goldilocks::ONE);
+            assert!(!is_satisfied(&instance, &forged));
         }
     }
 
     #[test]
-    fn step_count_two_vars() {
-        // 4 binding + 1 final = 5
-        let poly = gold_poly(&[1, 2, 3, 4]);
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
-        let value = poly.evaluate(&point);
-        let opening = open_poly(&poly, &point);
-
-        let steps = verifier_steps(&commitment, &point, value, &opening);
-        assert_eq!(steps.len(), 5);
-    }
-
-    #[test]
-    fn step_count_four_vars() {
-        // 4 binding + 1 final = 5, regardless of num_vars
-        let poly = gold_poly(&(0u64..16).collect::<Vec<_>>());
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![
-            Goldilocks::new(2), Goldilocks::new(3),
-            Goldilocks::new(5), Goldilocks::new(7),
-        ];
-        let value = poly.evaluate(&point);
-        let opening = open_poly(&poly, &point);
-
-        let steps = verifier_steps(&commitment, &point, value, &opening);
-        assert_eq!(steps.len(), 5);
-    }
-
-    #[test]
-    fn uniform_matrix_structure_for_folding() {
-        // All steps must have identical matrix count so they fold together.
-        let poly = gold_poly(&[10, 20, 30, 40]);
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![Goldilocks::ONE, Goldilocks::ZERO];
-        let value = poly.evaluate(&point);
-        let opening = open_poly(&poly, &point);
-
-        let steps = verifier_steps(&commitment, &point, value, &opening);
-        let n_matrices = steps[0].0.matrices.len();
-        for (inst, _) in &steps {
-            assert_eq!(
-                inst.matrices.len(), n_matrices,
-                "non-uniform matrix count breaks fold compatibility"
-            );
+    fn equality_rows_have_one_uniform_folding_shape() {
+        let steps: Vec<_> = [0, 1, 42, 9999].into_iter()
+            .map(|v| eq_step(Goldilocks::new(v), Goldilocks::new(v))).collect();
+        for (instance, witness) in &steps {
+            assert_eq!((instance.num_rows, instance.num_cols), (1, 3));
+            assert_eq!(instance.matrices.len(), 2);
+            assert!(is_satisfied(instance, witness));
         }
+        // Exercise the real folding entry point, not just matrix counts.
+        let witnesses: Vec<_> = steps.into_iter().map(|(_, w)| w).collect();
+        let accumulator = crate::fold_all(&eq_instance(), &witnesses).unwrap();
+        assert_eq!(accumulator.step_count, 4);
     }
 
     #[test]
-    fn binding_steps_fail_on_wrong_commitment() {
-        let poly = gold_poly(&[5, 6, 7, 8]);
-        let commitment = Brakedown::commit(&poly);
-        // A commitment to a different polynomial serves as the "wrong" one.
-        let wrong = Brakedown::commit(&gold_poly(&[0, 0, 0, 0]));
-        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
-        let value = poly.evaluate(&point);
-        let opening = open_poly(&poly, &point);
-
-        let good = verifier_steps(&commitment, &point, value, &opening);
-        let bad = verifier_steps(&wrong, &point, value, &opening);
-
-        let good_binding = good[..4].iter().all(|(i, w)| is_satisfied(i, w));
-        let bad_binding = bad[..4].iter().all(|(i, w)| is_satisfied(i, w));
-        assert!(good_binding, "correct commitment: all binding steps satisfied");
-        assert!(!bad_binding, "wrong commitment: at least one binding step fails");
-    }
-
-    #[test]
-    fn final_step_fails_on_wrong_value() {
-        let poly = gold_poly(&[1, 2, 3, 4]);
-        let commitment = Brakedown::commit(&poly);
-        let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
-        let value = poly.evaluate(&point);
-        let opening = open_poly(&poly, &point);
-
-        let good_steps = verifier_steps(&commitment, &point, value, &opening);
-        let bad_steps = verifier_steps(
-            &commitment, &point, value + Goldilocks::ONE, &opening
-        );
-
-        let last_good = good_steps.last().unwrap();
-        let last_bad = bad_steps.last().unwrap();
-        assert!(is_satisfied(&last_good.0, &last_good.1));
-        assert!(!is_satisfied(&last_bad.0, &last_bad.1));
+    fn current_authenticated_opening_is_not_a_legacy_equality_proof() {
+        for vals in [vec![1, 2, 3, 4], (0..16).collect()] {
+            let poly = gold_poly(&vals);
+            let commitment = Brakedown::commit(&poly);
+            let point = vec![Goldilocks::ZERO; vals.len().ilog2() as usize];
+            let opening = open_poly(&poly, &point);
+            assert!(matches!(opening, Opening::TensorMerkle { .. }));
+            assert!(verifier_steps(&commitment, &point, poly.evaluate(&point), &opening).is_empty());
+        }
     }
 
     #[test]
