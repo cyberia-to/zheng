@@ -102,12 +102,19 @@ pub struct PhiProof {
     pub outer: Option<Proof>,
 }
 
+/// Conservative cap on `prove_phi_star`'s `iterations`: no known convergence
+/// schedule (κ < 1, λ₂ ≈ 0.13 on the bostrom measurement) needs more than a
+/// few dozen steps, and `Vec::with_capacity(iterations as usize)` must never
+/// allocate from an unbounded caller-supplied `u32` before this check exists.
+pub const MAX_ITERATIONS: u32 = 10_000;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum PhiError {
     EmptyGraph,
     DimMismatch,
     SpmvFailed,
     NotConverged,
+    TooManyIterations,
 }
 
 /// One tri-kernel step (host). Returns φ_{t+1}.
@@ -179,6 +186,9 @@ pub fn prove_phi_star(
     }
     if phi0.len() != n || degree.len() != n || teleport.len() != n || sym.n != n {
         return Err(PhiError::DimMismatch);
+    }
+    if iterations > MAX_ITERATIONS {
+        return Err(PhiError::TooManyIterations);
     }
     let mut phi = phi0.to_vec();
     let mut diffusion_proofs = Vec::with_capacity(iterations as usize);
@@ -311,5 +321,37 @@ mod tests {
         p2.phi_star = bad;
         p2.statement.phi_star_hash = vec_hash(&p2.phi_star);
         assert!(!verify_phi_star(&t, &s, &deg, &tel, &phi0, &p2, &params));
+    }
+
+    #[test]
+    fn prove_phi_star_rejects_oversized_iterations() {
+        let (t, s, deg, tel) = cycle4();
+        let params = TriKernelParams::standard();
+        let phi0 = tel.clone();
+        // near-u32::MAX would drive Vec::with_capacity(iterations as usize)
+        // into a multi-exabyte allocation attempt before this check exists.
+        match prove_phi_star(&t, &s, &deg, &tel, &phi0, u32::MAX, &params) {
+            Err(PhiError::TooManyIterations) => {}
+            Err(e) => panic!("expected TooManyIterations, got {e:?}"),
+            Ok(_) => panic!("expected TooManyIterations, got Ok"),
+        }
+        match prove_phi_star(&t, &s, &deg, &tel, &phi0, MAX_ITERATIONS + 1, &params) {
+            Err(PhiError::TooManyIterations) => {}
+            Err(e) => panic!("expected TooManyIterations, got {e:?}"),
+            Ok(_) => panic!("expected TooManyIterations, got Ok"),
+        }
+    }
+
+    #[test]
+    fn prove_phi_star_accepts_zero_iterations() {
+        let (t, s, deg, tel) = cycle4();
+        let params = TriKernelParams::standard();
+        let phi0 = tel.clone();
+        // 0 iterations is the cheap boundary of a valid call: no diffusion
+        // proofs, phi_star equals phi0.
+        let proof = prove_phi_star(&t, &s, &deg, &tel, &phi0, 0, &params).unwrap();
+        assert!(proof.diffusion_proofs.is_empty());
+        assert_eq!(proof.phi_star, phi0);
+        assert!(verify_phi_star(&t, &s, &deg, &tel, &phi0, &proof, &params));
     }
 }
