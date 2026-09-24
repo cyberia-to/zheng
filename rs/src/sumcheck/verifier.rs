@@ -19,15 +19,23 @@ pub struct SumcheckVerifier {
     num_vars: usize,
     round: usize,
     challenges: Vec<Goldilocks>,
+    max_degree: usize,
 }
 
 impl SumcheckVerifier {
-    pub fn new(claimed_sum: Goldilocks, num_vars: usize) -> Self {
+    /// `max_degree` bounds every round polynomial's reported `degree` and its
+    /// coefficient count (`max_degree + 1`). Without this bound a round
+    /// polynomial is only checked for the additive identity `g(0)+g(1) =
+    /// claim`, which an unbounded-degree polynomial satisfies for any claim
+    /// — the Schwartz-Zippel argument that makes a random challenge catch a
+    /// dishonest continuation requires the degree to be fixed in advance.
+    pub fn new(claimed_sum: Goldilocks, num_vars: usize, max_degree: usize) -> Self {
         Self {
             current_claim: claimed_sum,
             num_vars,
             round: 0,
             challenges: Vec::with_capacity(num_vars),
+            max_degree,
         }
     }
 
@@ -47,6 +55,9 @@ impl SumcheckVerifier {
         poly: &SumcheckPoly,
         transcript: &mut Transcript,
     ) -> Result<Goldilocks, VerifyError> {
+        if poly.degree as usize != self.max_degree || poly.coeffs.len() != self.max_degree + 1 {
+            return Err(VerifyError::SumcheckFailed { round: self.round });
+        }
         if poly.eval_0() + poly.eval_1() != self.current_claim {
             return Err(VerifyError::SumcheckFailed { round: self.round });
         }
@@ -82,7 +93,7 @@ mod tests {
 
     #[test]
     fn consistency_check_accepts_correct_sum() {
-        let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1);
+        let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1, 1);
         let mut transcript = Transcript::new();
 
         // f(t) = 4 + 2t: f(0)=4, f(1)=6, sum=10 ✓
@@ -95,7 +106,7 @@ mod tests {
 
     #[test]
     fn consistency_check_rejects_wrong_sum() {
-        let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1);
+        let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1, 1);
         let mut transcript = Transcript::new();
 
         // f(0)=3 + f(1)=5 = 8 ≠ 10 — should fail
@@ -104,6 +115,31 @@ mod tests {
             coeffs: vec![Goldilocks::new(3), Goldilocks::new(2)],
         };
         assert!(verifier.verify_round(&bad, &mut transcript).is_err());
+    }
+
+    #[test]
+    fn consistency_check_alone_cannot_catch_an_overhigh_degree() {
+        // Isolate the gap this fix closes: a degree-3 polynomial with the
+        // right g(0)+g(1) additive sum, checked against a verifier that
+        // expects degree 1. The additive identity alone (the check this
+        // struct ran before this fix) cannot tell degree 1 from degree 3 —
+        // c2 and c3 add to zero at both x=0 and x=1 by construction, so the
+        // identity holds regardless of them. Only an explicit degree/shape
+        // check distinguishes the two.
+        let over_degree = SumcheckPoly {
+            degree: 3,
+            coeffs: vec![
+                Goldilocks::new(4),
+                Goldilocks::new(2) - Goldilocks::new(9),
+                Goldilocks::new(9),
+                Goldilocks::ZERO,
+            ],
+        };
+        assert_eq!(over_degree.eval_0() + over_degree.eval_1(), Goldilocks::new(10));
+
+        let mut verifier = SumcheckVerifier::new(Goldilocks::new(10), 1, 1);
+        let mut transcript = Transcript::new();
+        assert!(verifier.verify_round(&over_degree, &mut transcript).is_err());
     }
 
     #[test]

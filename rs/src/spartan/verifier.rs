@@ -53,7 +53,12 @@ impl SpartanVerifier {
             .zip(error_evals.iter())
             .fold(Goldilocks::ZERO, |acc, (&w, &e)| acc + w * e);
 
-        let mut outer_verifier = SumcheckVerifier::new(e_claim, log_m);
+        // Outer round polynomials have degree (max multiset arity)+1 — the
+        // eq(τ,x) factor adds one degree to the widest constraint product
+        // G(x) = Σ_j c_j·∏_{i∈S_j} f_i(x). Same formula the prover uses to
+        // size its own round polynomial (OuterSumcheckProver::new/round_poly).
+        let outer_degree = instance.multisets.iter().map(Vec::len).max().unwrap_or(1) + 1;
+        let mut outer_verifier = SumcheckVerifier::new(e_claim, log_m, outer_degree);
         let (outer_final_claim, rho_x) =
             outer_verifier.verify_all(&proof.outer_sumcheck_polys, transcript)?;
 
@@ -98,8 +103,10 @@ impl SpartanVerifier {
         };
 
         // ── 8. Inner sumcheck verification ───────────────────────────────────
+        // Bilinear (w·f) round polynomials are always degree 2, independent
+        // of the instance (SumcheckProver::round_poly).
         let num_vars = proof.sumcheck_polys.len();
-        let mut verifier = SumcheckVerifier::new(batched_claim, num_vars);
+        let mut verifier = SumcheckVerifier::new(batched_claim, num_vars, 2);
         let (final_claim, eval_point) =
             verifier.verify_all(&proof.sumcheck_polys, transcript)?;
 
@@ -147,5 +154,49 @@ impl SpartanVerifier {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ccs::reg_t;
+    use crate::ccs::universal::{test_witness, universal_ccs};
+    use crate::spartan::prover::SpartanProver;
+
+    #[test]
+    fn rejects_forged_round_polynomial_degree() {
+        let witness = test_witness(&[(reg_t(0), 7), (reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]);
+        let instance = universal_ccs();
+        let zero = vec![Goldilocks::ZERO; instance.num_rows];
+
+        let mut pt = Transcript::new();
+        let proof = SpartanProver::prove(instance, &witness, &mut pt);
+        let mut vt = Transcript::new();
+        assert!(SpartanVerifier::verify(instance, &proof, &zero, &mut vt).is_ok());
+
+        // A round polynomial reports a higher `degree` and carries an extra
+        // (zero) coefficient past what this round allows. End to end, the
+        // transcript absorbs `degree` and every coefficient (transcript.rs),
+        // so this specific tamper already perturbs the derived challenges
+        // and breaks the honest proof's later numeric checks too — this test
+        // only confirms the fixed verifier still rejects it here, not that
+        // this integration path needed the new check to do so. The isolated
+        // gap (an unbounded-degree polynomial the additive identity alone
+        // cannot distinguish from the expected one) is demonstrated directly
+        // in sumcheck::verifier::tests::consistency_check_alone_cannot_catch_an_overhigh_degree.
+        let mut forged_outer = proof.clone();
+        if let Some(p) = forged_outer.outer_sumcheck_polys.first_mut() {
+            p.degree += 1;
+            p.coeffs.push(Goldilocks::ZERO);
+            let mut vt = Transcript::new();
+            assert!(SpartanVerifier::verify(instance, &forged_outer, &zero, &mut vt).is_err());
+        }
+
+        let mut forged_inner = proof.clone();
+        forged_inner.sumcheck_polys[0].degree = 3;
+        forged_inner.sumcheck_polys[0].coeffs.push(Goldilocks::ZERO);
+        let mut vt = Transcript::new();
+        assert!(SpartanVerifier::verify(instance, &forged_inner, &zero, &mut vt).is_err());
     }
 }
