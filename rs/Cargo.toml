@@ -24,3 +24,7 @@ serde = ["dep:serde", "nebu/serde", "lens/serde"]
 [dev-dependencies]
 serde_json = "1"
 postcard = { version = "1", features = ["alloc"] }
+
+[[example]]
+name = "legacy_wire_cost"
+required-features = ["serde"]
