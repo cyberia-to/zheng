@@ -4,12 +4,12 @@
 // crystal-domain: comp
 // ---
 //! Output layer. Interactive (stdout is a terminal): styled ANSI on stdout.
-//! Piped: a [[tape]] chunk stream on stdout (machine channel), each run ending
+//! Piped: a [[tade]] chunk stream on stdout (machine channel), each run ending
 //! with a `render::STATUS` exit-code chunk. Same data, two renderings.
 
 use std::io::{IsTerminal, Write};
 
-use tape::{encode_nested, kv, render, sigil, Chunk, Writer};
+use tade::{encode_nested, kv, render, sigil, Chunk, Writer};
 
 use crate::style::{self, paint};
 
@@ -24,7 +24,7 @@ fn color() -> bool {
     tty() && std::env::var_os("NO_COLOR").is_none()
 }
 
-/// Emit a titled report — styled table when interactive, tape STRUCT chunk when piped.
+/// Emit a titled report — styled table when interactive, tade STRUCT chunk when piped.
 pub fn report(title: &str, rows: &[Row]) {
     if tty() {
         print_report(title, rows, color());
@@ -53,7 +53,7 @@ fn print_report(title: &str, rows: &[Row], color: bool) {
     println!();
 }
 
-/// Emit a typed error — red line when interactive, tape error chunk when piped.
+/// Emit a typed error — red line when interactive, tade error chunk when piped.
 pub fn error(message: &str) {
     if tty() {
         println!("  {} {}", paint(color(), style::R, "✗"), paint(color(), style::R, message));

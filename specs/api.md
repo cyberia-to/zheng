@@ -233,3 +233,26 @@ let proof = zheng::decide(&acc, &params)?;
 ```
 
 see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion]] for composition protocol, [[lens]] for polynomial commitment
+
+### authenticated PCS wire format
+
+The Zheng 0.4 dependency profile uses Lens 0.2 and Nox 0.3. The default
+Brakedown decider uses Lens commitment version 2 and opening version 3,
+which authenticate the systematic data root and canonical unique columns.
+Commitment and opening versions are protocol boundaries; regenerate artifacts
+when migrating from the earlier profile. The separate public execution
+certificate remains `zheng-nox-public-execution-v1` with `PublicTensor`.
+
+With `serde`, the decider PCS opening is the complete Lens `TensorMerkle`
+variant. Serialization retains the row combination and every queried column,
+index, and Merkle authentication path. Deserialization rejects legacy `Tensor`
+and other PCS variants. Artifacts using the former indices-only encoding must
+be regenerated; dropping authenticated column data is forbidden.
+
+### recursive opening availability
+
+`commit` returns `CommitError::UnsupportedRecursiveOpening` when supplied
+axis or look openings. The retired `Tensor` recursive gadgets do not
+authenticate `TensorMerkle` columns or paths. The native decider PCS works;
+recursive axis/look support remains release-blocked until constrained
+authentication and its linkage to the trace are implemented.

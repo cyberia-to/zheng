@@ -63,6 +63,7 @@ for formal definitions, see reference/. for the hash primitive, see [[hemera]]. 
 | [[zheng/docs/explanation/sumcheck|sumcheck]] | the heart of the system — reducing exponential verification to logarithmic via the [[sumcheck protocol]] |
 | [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] | the trust anchor — commit to data, prove evaluations, bind the prover to a single polynomial |
 | [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR (legacy)]], each generation's insight and what it unlocks |
+| [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] | why the perfect lens is O(log N + λ) — the recursive tensor-decomposition derivation behind the numbers in specs/verifier.md and specs/api.md |
 
 ### architecture
 

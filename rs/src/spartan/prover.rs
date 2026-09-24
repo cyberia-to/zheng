@@ -31,6 +31,16 @@ impl SpartanProver {
         witness: &CCSWitness,
         transcript: &mut Transcript,
     ) -> Proof {
+        Self::prove_using::<Brakedown>(instance, witness, transcript)
+    }
+
+    /// Prove using an explicitly selected PCS. Callers must bind the protocol
+    /// and PCS identity in their transcript and respect its disclosure model.
+    pub fn prove_using<P: Lens<Goldilocks>>(
+        instance: &CCSInstance,
+        witness: &CCSWitness,
+        transcript: &mut Transcript,
+    ) -> Proof {
         // ── 1. Pad z to power-of-2 size for PCS ─────────────────────────────────
         let mut z_padded = witness.z.clone();
         pad_to_power_of_two(&mut z_padded, 64);
@@ -38,7 +48,7 @@ impl SpartanProver {
 
         // ── 2. Commit to z ───────────────────────────────────────────────────────
         let z_poly = MultilinearPoly::new(z_padded.clone());
-        let commitment = Brakedown::commit(&z_poly);
+        let commitment = P::commit(&z_poly);
         transcript.absorb_commitment(&commitment);
 
         // ── 3. Per-row matrix-vector products ────────────────────────────────────
@@ -46,15 +56,21 @@ impl SpartanProver {
         let m = instance.num_rows;
         let log_m = m.trailing_zeros() as usize; // 0 for m=1, 4 for m=16
 
-        let row_mv: Vec<Vec<Goldilocks>> = instance.matrices.iter().map(|matrix| {
-            (0..m).map(|r| {
-                matrix.entries.get(r).map_or(Goldilocks::ZERO, |row| {
-                    row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
-                        acc + coeff * z_padded.get(col).copied().unwrap_or(Goldilocks::ZERO)
+        let row_mv: Vec<Vec<Goldilocks>> = instance
+            .matrices
+            .iter()
+            .map(|matrix| {
+                (0..m)
+                    .map(|r| {
+                        matrix.entries.get(r).map_or(Goldilocks::ZERO, |row| {
+                            row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
+                                acc + coeff * z_padded.get(col).copied().unwrap_or(Goldilocks::ZERO)
+                            })
+                        })
                     })
-                })
-            }).collect::<Vec<Goldilocks>>()
-        }).collect();
+                    .collect::<Vec<Goldilocks>>()
+            })
+            .collect();
 
         // ── 4. Outer sumcheck: Σ_x eq(τ,x)·G(x) ────────────────────────────────
         // τ has log m components; empty for m=1 → 0 rounds, trivial output.
@@ -135,7 +151,7 @@ impl SpartanProver {
         let pcs_point: Vec<Goldilocks> = eval_point.iter().copied().rev().collect();
         let seed = transcript.squeeze_hash();
         let mut lt = LensTranscript::new(&seed);
-        let pcs_opening = Brakedown::open(&z_poly, &pcs_point, &mut lt);
+        let pcs_opening = P::open(&z_poly, &pcs_point, &mut lt);
 
         Proof {
             commitment,

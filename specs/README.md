@@ -11,6 +11,9 @@ five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 
 ## spec pages
 
+Implementation reviews and validation evidence are indexed in
+[audit](../audit/README.md).
+
 - [[lens]] — polynomial commitment (separate repo: ~/git/lens/)
 - [[sumcheck]] — the engine: O(N) prover reduces exponential sum to one evaluation
 - [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one Lens opening
