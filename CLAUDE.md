@@ -540,9 +540,14 @@ all files that have it — it is not decoration.
 
 ## what zheng is
 
-zheng (証 — proof/evidence) is the proof system for cyber. it implements the
-SuperSpartan IOP + Brakedown PCS + sumcheck protocol. zero
-trusted setup. post-quantum. sub-millisecond verification.
+zheng (証 — proof/evidence) is the native proof system for soft3/cyber.
+The folded SuperSpartan/Brakedown API checks legacy trace statements. The exact
+execution APIs authenticate public results through either a full-witness public
+certificate or the private Goldilocks/Hemera MPC-in-the-head protocol. Joy owns
+runtime orchestration; Trisha owns Triton/Neptune separately. Private proof costs
+are linear and security follows the explicit assumptions in
+`specs/native-private-ccs.md`; never transfer another profile's timing or security
+claims to this backend.
 
 ## components
 

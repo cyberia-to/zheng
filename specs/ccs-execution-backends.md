@@ -5,13 +5,16 @@ Release repair contract authorized by the owner, 2026-09-11.
 Zheng derives the global CCS, witness coordinates and public bindings from the
 canonical program and public subject shape. A backend receives that derived
 relation; the verifier never trusts matrices or a program digest from the prover.
-The public direct certificate and the private Triton checker are distinct formats.
+The public direct certificate and native private proof have distinct formats and
+disclosure contracts. Joy uses nox, Zheng and authenticated cyber state. Trisha
+owns execution and proving for Triton and Neptune independently.
 
 Pattern 16 accepts an atom witness. Its tag must be an atom and its check formula
 runs on `[witness, object]`; the returned atom must equal zero. Each active call
 consumes one prover input in native evaluation order. Inactive calls consume none.
 The honest prover rejects exhausted and excess witness streams. Witness values
-and intermediate columns are absent from the private statement and artifact.
+and intermediate columns remain secret-shared in the private proof. The public
+statement contains no secret witness stream.
 
 Branch selectors are constrained booleans. Each child activity is its parent
 activity multiplied by the selected-arm bit. Inverse validity, word ranges and
@@ -24,18 +27,25 @@ continuations still require further symbolic execution support.
 coordinates. `prepare_execution()` additionally computes a private witness on the
 prover. Stable transcript bytes use a separate private-execution domain.
 
-The Trisha backend emits a deterministic Triton program that materializes every
-column once, pins column 0 to one, pins public coordinates, and asserts every CCS
-row. The verifier regenerates this entire checker and its native program digest.
-Triton 7's default STARK proves the checker with fresh upstream ZK randomness.
-The proof is explicitly a Triton backend of the Zheng relation, not the legacy
-Spartan folding proof. Costs and supported-language limits must be reported as
-measured; this bridge does not imply full nox VM coverage or recursive execution.
+`execution::zk` proves the derived relation with native three-party arithmetic
+MPC-in-the-head over Goldilocks and Hemera. Its circuit checks every CCS row,
+column zero equal to one and every public coordinate. Each of 219 repetitions
+uses fresh OS randomness. All three committed views and output-share vectors
+are transcript-bound before Fiat–Shamir chooses the two opened views. The
+verifier reconstructs the complete first messages and rechecks every challenge.
+
+Protocol `zheng-ccs-mith-goldilocks-v1` has linear proof and verification costs.
+Its interactive error bound is `(2/3)^219 < 2^-128`; the noninteractive protocol
+also relies on the random-oracle and Hemera assumptions. The native implementation
+and its symbolic nox relation have no independent production-security audit.
+See [the complete private protocol](native-private-ccs.md) for encoding, allocation
+bounds and disclosure. This protocol is separate from the legacy Spartan folding
+proof; full dynamic nox coverage and recursive execution remain future work.
 
 State certificates must bind the program's actual namespace, key, value and all
 four root limbs. An unlinked query proof or native rerun cannot supply that binding.
 Public state evidence may disclose consumed public dimensions. Private state
-queries require their authentication inside the proved relation/checker; public
+queries require their authentication inside the proved relation; public
 state evidence must not be advertised as hiding query addresses or values.
 
 ## Public state format v1
@@ -64,10 +74,12 @@ the CCS, selects exactly one committed cell on an active path, equates the value
 to that cell, and equates all four actual root limbs to the expected root. The
 private witness contains the query coordinates; they are not separate public
 lookup records. Thus external verification authenticates only public tables,
-while the proved checker authenticates the actual hidden read and computation.
+while the native private proof authenticates the actual hidden read and computation.
 
 The first bounded implementation requires all ten public namespaces and at most
-2048 total table fields, with the existing32768 gate/row limit. Tables are public;
+2048 total table fields, with the existing 32768 gate/row limit. Tables are public;
 this does not disclose private BBG dimensions or implement hidden database state.
 Table contents, metadata and root are checked before verifier relation derivation.
-The generated checker inherits Triton ZK for private query/witness columns.
+The native private backend hides query and witness columns under its protocol
+assumptions. Its proof-size admission bound also applies. Public output and
+reduction count can disclose information about the selected read or branch.

@@ -1,11 +1,14 @@
-//! Checked public execution over a verifier-derived, unfolded CCS.
-//! This development protocol is not zero knowledge; see specs/execution.md.
+//! Checked nox execution over a verifier-derived, unfolded CCS.
+//! Public and private protocols have separate disclosure contracts; see
+//! specs/execution.md and specs/native-private-ccs.md.
 pub mod private;
 pub mod private_state;
 pub mod proof;
 pub mod public;
 pub mod relation;
 pub mod state;
+/// Native private CCS proofs over the soft3 field and hash.
+pub mod zk;
 /// Experimental opt-in tagged kernel; no production protocol dispatch.
 pub mod tagged;
 mod statement;
