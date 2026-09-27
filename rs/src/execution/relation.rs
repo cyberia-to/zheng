@@ -122,10 +122,9 @@ impl ExecutionRelation {
                 Op::Linear(a) => eval(a),
                 Op::Product(a, b) => eval(a) * eval(b),
                 Op::Bit(a, k) => F::new((eval(a).canonicalize().as_u64() >> k) & 1),
-                Op::Inverse(a) => {
-                    let v = eval(a);
-                    if v == F::ZERO { F::ZERO } else { v.inv() }
-                }
+                // Goldilocks inv(0) = 0. Always run the fixed exponent instead
+                // of exposing a secret-derived zero through a cheap shortcut.
+                Op::Inverse(a) => eval(a).inv(),
             };
             z.push(v);
         }
