@@ -1,8 +1,10 @@
 zheng (証 — proof/evidence in Japanese) implements constraints and proof protocols for [[nox]] and [[cyber]].
 
-**Public execution binding is available through `zheng::execution::{prove_execution, verify_execution}` and the default `joy prove` / `joy verify` commands.** The verifier reconstructs constraints from the public program, authenticates the complete witness, and checks every constraint together with the public input, output and reduction count. This is a bounded, public certificate with linear verification and full witness disclosure: it is neither succinct nor zero knowledge. See [the execution contract](specs/execution.md) and [validation evidence](audit/public-execution.md).
+Public execution binding is available through `zheng::execution::{prove_execution, verify_execution}` and the default `joy prove` / `joy verify` commands. The verifier reconstructs constraints from the public program, authenticates the complete witness, and checks every constraint together with public input, output and reduction count. These bounded public certificates have linear verification and disclose the witness. See [the execution contract](specs/execution.md) and [historical public validation](audit/public-execution.md).
 
-The existing folded trace API (`commit` / `verify`) and standalone `zheng` CLI remain legacy statement checks: success does **not** authenticate execution or its public output. Their Brakedown/SuperSpartan machinery must not be used to infer the guarantees of the new execution API, or vice versa. Private execution and state proofs remain incomplete.
+Native private proofs are available through `zheng::execution::zk::{prove, verify}`. Secret call/divine inputs and queries over authenticated public state use the existing nox relation with a three-party arithmetic MPC-in-the-head proof over Goldilocks and Hemera. Joy uses this backend for secret inputs and `--zk`; Trisha owns the separate Triton/Neptune stack. The native protocol fixes 219 repetitions, has linear proof size and verification cost, and relies on the stated Fiat–Shamir/random-oracle and Hemera assumptions. See [native private CCS](specs/native-private-ccs.md) and [execution/state integration](specs/ccs-execution-backends.md) for precise bounds and disclosure. Independent production-security review remains outstanding.
+
+The existing folded trace API (`commit` / `verify`) and standalone `zheng` CLI remain legacy statement checks. Execution and public-output authentication belong to the separate execution APIs above. Brakedown/SuperSpartan, the public full-witness certificate and native private proofs each have their own protocol contract.
 
 **φ* SpMV** (`rs/src/phi/`): multi-row CCS for sparse matvec + tri-kernel `prove_phi_star` / `verify_phi_star` — the domain-local core of provable consensus (see `specs/phi-spmv.md`).
 
@@ -15,6 +17,7 @@ VM                │ execution trace generation     │ nox
 IOP               │ constraint verification        │ superspartan
 core protocol     │ exponential sum → log rounds   │ sumcheck
 PCS               │ polynomial commitment          │ Brakedown
+private protocol  │ hidden CCS witness             │ arithmetic MPC-in-head
 ```
 
 ## dependency graph

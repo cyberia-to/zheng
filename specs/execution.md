@@ -41,7 +41,7 @@ verification against the original statement.
 | 11–14 | canonical 32-bit XOR/AND/NOT/variable left shift |
 | 15 | full structural Hemera hashing and final permutation |
 
-Private backends support atom call witnesses (16), with checked continuation.
+The native private backend supports atom call witnesses (16), with checked continuation.
 State backends authenticate lookups (17), including private query selection over
 complete public tables. Direct public stateless proving accepts no secret stream
 or unauthenticated lookup. See [backend contract](ccs-execution-backends.md).
@@ -60,13 +60,16 @@ Limits: 64 public inputs, 4096 program/symbolic noun nodes, 128 depth, 4096 symb
 calls, 32768 gates/rows (checked before constructing sparse matrices), 4096 output
 atoms. Hash round construction checks limits at permutation boundaries. The
 generic direct wrapper also caps matrix dimensions and total sparse entries.
+The native private backend separately caps circuit work and fixed-width proof
+size before allocation; see [its contract](native-private-ccs.md).
 
 ## Disclosure, complexity and assurance
 
 This is a full public algebraic witness certificate. It reveals every witness
 element and has linear verification/storage cost; it is not a succinct or
-zero-knowledge proof. Secret input and state requests are refused. No silent
-fallback to the legacy trace-statement format occurs.
+zero-knowledge proof. The stateless public API accepts public input; authenticated
+state execution and private proving have separate protocols. There is no silent
+fallback to the legacy trace-statement format.
 
 `PublicTensor` checks all raw columns under a domain-separated Merkle root.
 Binding needs no expander distance, injectivity or sampling assumption. Exact
@@ -75,17 +78,23 @@ the execution relation. Spartan remains a checked consistency transcript; its
 Goldilocks challenges alone must not be advertised as 128-bit soundness.
 See `lens/specs/public-tensor.md` for the commitment contract.
 
-This establishes the stated bounded relation, not a formal proof of the
-symbolic compiler's implementation or a reviewed production/private protocol.
-The separate Trisha backend proves the same verifier-derived relation using
-Triton7's randomized STARK, with every row and public coordinate asserted by a
-regenerated VM checker. Its distinct Joy format is `joy-nox-ccs-triton7-zk-v3`.
-This does not assert that Hemera's novel permutation has independent review.
+This establishes the stated bounded relation. The symbolic compiler and Hemera
+permutation still require independent security review.
+
+Private execution uses Zheng's native `zheng-ccs-mith-goldilocks-v1` protocol:
+219 repetitions of arithmetic MPC-in-the-head prove every row and every public
+coordinate while hiding the witness. The protocol has linear proof size and
+verification cost. Its stated interactive soundness bound and noninteractive
+random-oracle assumptions are specified in [native private CCS](native-private-ccs.md).
+This is a separate construction from the public Spartan consistency transcript.
+Trisha retains its own Triton/Neptune execution stack; Joy has no dependency on it.
 
 ## Joy integration
 
 Default stateless public `joy prove` and `Prover` use this format. Secret input
-selects the private backend; explicit state files select authenticated state execution. Proof-mode `--claim` and
+or explicit `--zk` selects native private proving; explicit state files select
+authenticated public execution or private queries according to that choice.
+Proof-mode `--claim` and
 `--input-values` compare verified values. `--proof` also binds the supplied
 program; self-contained verification uses the canonical embedded program.
 `--budget` is an upper limit on the certificate's declared budget.
@@ -94,6 +103,11 @@ program; self-contained verification uses the canonical embedded program.
 payload, capped at 32 MiB; trailing bytes and malformed new artifacts fail.
 Legacy artifacts require `--legacy-trace-statement` and refuse IO/state/secret
 constraints. Legacy library methods remain explicitly statement-only.
+
+Native private artifacts use `joy-nox-zheng-private-execution-v1` and `JOYZH001`,
+with a 256 MiB outer artifact cap. Their embedded native proof has a distinct
+`ZHMITH01` header and fixed-width canonical fields. Old foreign-backend private
+artifacts require regeneration; they cannot be relabeled as native proofs.
 
 Tests compare native nox with symbolic witnesses, include real compiled
 Trident imports/loops/branches, mutate intermediate/hash/bit witnesses and
