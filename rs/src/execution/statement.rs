@@ -198,8 +198,9 @@ impl ExecutionStatement {
     }
 }
 
-/// Input values are public. Secret-input proving is deliberately a separate,
-/// unavailable protocol until witness-hiding constraints/PCS are reviewed.
+/// Input values and the witness are public in this certificate. Secret-input
+/// proving uses [`super::private::prepare_execution`] and [`super::zk::prove`];
+/// see `specs/native-private-ccs.md` for its disclosure and security contract.
 pub fn prove_execution(
     program: &ExecutionNoun,
     input: &[u64],

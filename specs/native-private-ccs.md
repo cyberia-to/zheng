@@ -84,4 +84,22 @@ program, dimensions and reduction count remain visible, including any informatio
 their values reveal about branch choices. Private-state queries use complete
 authenticated public tables; database contents are not hidden by this protocol.
 
+### Local proving process
+
+Zero knowledge describes the proof transcript under the assumptions above.
+Local timing, cache, process-memory and dump observations require a separate
+threat model. Witness activity branches, native execution and hidden table
+indexing depend on private values. Field and runtime operations have no
+whole-engine constant-time guarantee. Symbolic inverse witnesses always evaluate
+the field inversion routine, including its defined zero-to-zero case; this
+removes one avoidable secret-dependent shortcut.
+
+Memory erasure is best effort. The backend wipes owned seed and view buffers.
+Private preparation still uses ordinary secret and witness vectors, the caller
+owns additional copies, and Hemera PRG state has no wiping destruction contract.
+Complete erasure requires secret-owned preparation buffers, explicit stream
+erasure in Hemera, and review of caller/runtime copies and temporary values.
+Full local side-channel hardening additionally requires oblivious private-state
+access and field/runtime analysis. These remain open implementation work.
+
 Reference: https://www.usenix.org/system/files/conference/usenixsecurity16/sec16_paper_giacomelli.pdf
