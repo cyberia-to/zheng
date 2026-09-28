@@ -1,0 +1,56 @@
+{
+  "zheng-node-cost": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+    "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+    "status": " M rs/src/execution/proof.rs\n M rs/src/execution/tagged/build.rs\n M rs/src/execution/tagged/hash.rs\n M rs/src/execution/tagged/mod.rs\n M rs/src/execution/tagged/word.rs\n M specs/props/dynamic-noun-memory.md\n?? rs/src/execution/tagged/node_cost.rs\n?? rs/src/execution/tagged/node_cost_tests.rs\n?? rs/src/execution/tagged/node_cost_tests/\n?? rs/src/execution/tagged/uint64.rs\n?? specs/noun-cost-component.md\n"
+  },
+  "nox": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/nox",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/nox",
+    "revision": "f8047c22cc6075d5171c0fbe520174e78e94ccb6",
+    "status": " M cli/main.rs\n M rs/benches/reduction.rs\n M rs/bound.rs\n M rs/brakedown_look.rs\n M rs/call.rs\n M rs/data/cost.rs\n M rs/data/inner.rs\n M rs/data/mod.rs\n M rs/data/reduction.rs\n M rs/encode.rs\n M rs/examples/dump_formulas.rs\n M rs/jets/admission.rs\n M rs/jets/admission_tests.rs\n M rs/jets/backends/cpu.rs\n M rs/jets/backends/honeycrisp.rs\n M rs/jets/decider.rs\n M rs/jets/formulas.rs\n M rs/jets/fri_fold.rs\n M rs/jets/merkle_verify.rs\n M rs/jets/mod.rs\n M rs/jets/ntt.rs\n M rs/jets/poly_eval.rs\n M rs/jets/registry.rs\n M rs/jets/state.rs\n M rs/lib.rs\n M rs/parallel.rs\n M rs/patterns/add.rs\n M rs/patterns/and.rs\n M rs/patterns/axis.rs\n M rs/patterns/branch.rs\n M rs/patterns/call.rs\n M rs/patterns/compose.rs\n M rs/patterns/cons.rs\n M rs/patterns/eq.rs\n M rs/patterns/hash.rs\n M rs/patterns/inv.rs\n M rs/patterns/look.rs\n M rs/patterns/lt.rs\n M rs/patterns/mod.rs\n M rs/patterns/mul.rs\n M rs/patterns/not.rs\n M rs/patterns/quote.rs\n M rs/patterns/shl.rs\n M rs/patterns/sub.rs\n M rs/patterns/xor.rs\n M rs/reduce.rs\n"
+  },
+  "strata": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/strata",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-clean/strata",
+    "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+    "status": ""
+  },
+  "hemera": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/hemera",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-clean/hemera",
+    "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+    "status": ""
+  },
+  "lens": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/lens",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-clean/lens",
+    "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+    "status": " M brakedown/src/public.rs\n M brakedown/src/tests.rs\n M cli/src/artifact.rs\n M core/src/fri.rs\n M core/src/lib.rs\n M core/tests/serde_roundtrip.rs\n"
+  },
+  "joy": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/joy",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/joy",
+    "revision": "ec83bd8d85b20a8bd20d2d14b0f25aab0f75e9fe",
+    "status": ""
+  },
+  "trident": {
+    "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/trident",
+    "physical_path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/trident",
+    "revision": "e9f5b83f929f95b2c36496fc3083605dcc73cddf",
+    "status": ""
+  },
+  "Cargo.toml": {
+    "sha256": "18e95b828c2c70ee939c465e2f8f5f5e75fea025c0417f8518c72d3108569012"
+  },
+  "Cargo.lock": {
+    "sha256": "26168c02c3fe288833db961e832a4b80d3a84c71c73015391f87a25329e79163"
+  },
+  "rs/Cargo.toml": {
+    "sha256": "623f4ee86597449f4de5355cc3adc79c4991027d2bc1a421b0ea5321d0dff83d"
+  },
+  "cli/Cargo.toml": {
+    "sha256": "3248bfd5123302011d19eaaa2863a1bfedfaf776a632bc267f047f980f3016a7"
+  }
+}

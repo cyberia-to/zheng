@@ -11,6 +11,10 @@ witness capture is algebraic noun/Cost derivation, followed by authenticated
 memory and transitions. Existing production proof contracts remain unchanged.
 This draft supplies no compiler execution proof or SH7/SH8 acceptance.
 
+The first local component's contract is [Internal noun and Cost
+component](../noun-cost-component.md). Authenticated memory and transitions
+remain planned.
+
 ## Baseline and ownership
 
 The API baseline is Zheng `b54b209b91b8bf99c2975c4c24493a2411c23079`.

@@ -1,0 +1,46 @@
+{
+  "utc": "2026-09-28T04:47:19.771201+00:00",
+  "checkouts": {
+    "nox": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/nox",
+      "head": "f8047c22cc6075d5171c0fbe520174e78e94ccb6",
+      "status": ""
+    },
+    "tade": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+      "head": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+      "status": ""
+    },
+    "lens": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-clean/lens",
+      "head": "17cafe91431977b738e5b72361187cd01ad93638",
+      "status": " M brakedown/src/public.rs\n M brakedown/src/tests.rs\n M cli/src/artifact.rs\n M core/src/fri.rs\n M core/src/lib.rs\n M core/tests/serde_roundtrip.rs\n",
+      "files": {
+        "brakedown/src/public.rs": {
+          "sha256": "2ad27aaaea48c8052ca1bcee664f47c025559eef460f078f83131511fdc01165",
+          "mtime_ns": 1790535213768096250
+        },
+        "brakedown/src/tests.rs": {
+          "sha256": "d1cb0162dcace6e9038f8ef54bd2d14a2a22d7b9292007bed25101a700957989",
+          "mtime_ns": 1790535213769357835
+        },
+        "cli/src/artifact.rs": {
+          "sha256": "07a09e47633baea3ece6ee0c2d05a171980df606a16550b1dfb2707d04a5dfa5",
+          "mtime_ns": 1790535213774015173
+        },
+        "core/src/fri.rs": {
+          "sha256": "17978ade5b2f344187ae2293e61f2871bb2a8e32db9684b2f4d7a6f9bab8c841",
+          "mtime_ns": 1790535213777894426
+        },
+        "core/src/lib.rs": {
+          "sha256": "5f293b77bb38eedc245d13e2a2e3683a40af4a00182be9cdd49bae6a1e449cf6",
+          "mtime_ns": 1790535213778148718
+        },
+        "core/tests/serde_roundtrip.rs": {
+          "sha256": "38009eacca04d66c9be90e3ac3b25819bbb101a1cf8e4648e9fc489300f080af",
+          "mtime_ns": 1790535213779102969
+        }
+      }
+    }
+  }
+}

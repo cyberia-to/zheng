@@ -1,7 +1,7 @@
 //! Native unsigned ordering and32-bit word operations, with active range checks.
 use super::{build::Builder, *};
 impl Builder {
-    fn word_bits(&mut self, value: Wire, active: Wire) -> Result<[Wire; 32], Error> {
+    pub(super) fn word_bits(&mut self, value: Wire, active: Wire) -> Result<[Wire; 32], Error> {
         // Mask before decomposing: inactive words have unique zero bits; active
         // values outside U32 cannot satisfy exact (nonwrapping) recomposition.
         let masked = self.mul(active, value)?;

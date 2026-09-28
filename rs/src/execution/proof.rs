@@ -210,6 +210,21 @@ pub fn verify(
     Ok(())
 }
 
+/// Adversarial component tests bypass the honest witness gate while preserving
+/// the exact production transcript. This helper is absent from library builds.
+#[cfg(test)]
+pub(crate) fn unchecked_test_proof(
+    instance: &CCSInstance,
+    witness: &CCSWitness,
+    statement: &[u8],
+    public: &[(usize, Goldilocks)],
+) -> DirectProof {
+    let mut transcript = transcript(instance, statement, public);
+    DirectProof {
+        spartan: SpartanProver::prove_using::<PublicTensor>(instance, witness, &mut transcript),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

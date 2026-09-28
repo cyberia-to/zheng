@@ -106,7 +106,7 @@ impl Builder {
                 .collect(),
         )
     }
-    fn atom_digest(&mut self, value: Wire) -> Result<[Wire; 4], Error> {
+    pub(super) fn atom_digest(&mut self, value: Wire) -> Result<[Wire; 4], Error> {
         if let Some(d) = self.atom_digests.get(&value) {
             return Ok(*d);
         }
@@ -125,7 +125,11 @@ impl Builder {
         self.atom_digests.insert(value, digest);
         Ok(digest)
     }
-    fn pair_digest(&mut self, left: [Wire; 4], right: [Wire; 4]) -> Result<[Wire; 4], Error> {
+    pub(super) fn pair_digest(
+        &mut self,
+        left: [Wire; 4],
+        right: [Wire; 4],
+    ) -> Result<[Wire; 4], Error> {
         if let Some(d) = self.pair_digests.get(&(left, right)) {
             return Ok(*d);
         }
