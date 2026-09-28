@@ -1,0 +1,71 @@
+[
+  {
+    "name": "first-cap",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--release",
+      "--locked",
+      "--offline",
+      "node_cost_tests::fixed_schema_fits_declared_cap_and_requires_public_read_premises",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/target-node-cost"
+    },
+    "base_revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+    "source_qualification": "Exploratory uncommitted intermediate source; exact intermediate source not retained. Not final validation.",
+    "log": "first-cap.log",
+    "log_sha256": "9fa15525bcfcc6b271ec5ce3e696c87ce9e1c2435cab79aa2e7cb2266bfcd87d"
+  },
+  {
+    "name": "focused-1",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--release",
+      "--locked",
+      "--offline",
+      "node_cost_tests",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/target-node-cost"
+    },
+    "base_revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+    "source_qualification": "Exploratory uncommitted intermediate source; exact intermediate source not retained. Not final validation.",
+    "log": "focused-1.log",
+    "log_sha256": "db0c689228e9c4b7def1a863f7acc8a74a2593af5c562182c0ab25b05587a8ea"
+  },
+  {
+    "name": "focused-2",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--release",
+      "--locked",
+      "--offline",
+      "node_cost_tests",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/target-node-cost"
+    },
+    "base_revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+    "source_qualification": "Exploratory uncommitted intermediate source; exact intermediate source not retained. Not final validation.",
+    "log": "focused-2.log",
+    "log_sha256": "4457d28a68c4115e2811adb1097a9903d7da4155edf09ccb06825f8a388900cd"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "base": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+  "source_files": {
+    "rs/src/execution/proof.rs": "63833926f9118428cb8f2dd2397652ab9d30d4fc56844f3c3a18e328be5a606a",
+    "rs/src/execution/tagged/build.rs": "1e9b7bfafd8009fb4dd00ee1e1713def5f6b09d8e135264c439a373196b0d3a7",
+    "rs/src/execution/tagged/hash.rs": "522131d754d536705bb3bd58253657d3cc2412ea1e8b87198e540360fe218fdb",
+    "rs/src/execution/tagged/mod.rs": "2f58bd30f3ebc5e29c870afa8c8b615f22e225e4f874b321107bea06f99b9bef",
+    "rs/src/execution/tagged/node_cost.rs": "a1b63e2e34a8b93305f3450f0db9b5d99103d555999119a1f7e237decc82a086",
+    "rs/src/execution/tagged/node_cost_tests.rs": "38f890419ec3298dfa02e8889c50ef7fae1e9dee26f3b76128dac3dace71967e",
+    "rs/src/execution/tagged/node_cost_tests/adversarial.rs": "56e8bb83d9cd6aec0d68b5df4cdd2a50f155d873d2fabca8e7b4be25d867cc1c",
+    "rs/src/execution/tagged/node_cost_tests/arithmetic.rs": "ba1a324c4420f3456d6c1b08c249c8559e6b07f75b693fabde8f89d182a3ca10",
+    "rs/src/execution/tagged/node_cost_tests/backend.rs": "ffaabdfe7f69941d934e21e1dd8df1a1306baf264696ad9aa6b2baa79a7698f6",
+    "rs/src/execution/tagged/uint64.rs": "f651a4853823d69ee308e72c3a74fbdab653da76b1ec63b4b21ceb844c2bf5d3",
+    "rs/src/execution/tagged/word.rs": "7781ea3ab15d212da6a8042de9309e40f53b8e154d6871da7e2c10c03a692c32",
+    "specs/noun-cost-component.md": "d493fe195d99309bcfd35ad1c89dbe895be4f202faa126a94b8221b2434c566b",
+    "specs/props/dynamic-noun-memory.md": "ca4fa674cafe1c88a11e793c3ab7380033a5d8f31608da413c8f74d2aafb1575"
+  },
+  "family_path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng"
+}

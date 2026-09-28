@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "rustfmt",
+    "--edition",
+    "2024",
+    "--check",
+    "--config",
+    "skip_children=true",
+    "rs/src/execution/proof.rs",
+    "rs/src/execution/tagged/build.rs",
+    "rs/src/execution/tagged/hash.rs",
+    "rs/src/execution/tagged/mod.rs",
+    "rs/src/execution/tagged/node_cost.rs",
+    "rs/src/execution/tagged/node_cost_tests.rs",
+    "rs/src/execution/tagged/node_cost_tests/adversarial.rs",
+    "rs/src/execution/tagged/node_cost_tests/arithmetic.rs",
+    "rs/src/execution/tagged/node_cost_tests/backend.rs",
+    "rs/src/execution/tagged/uint64.rs",
+    "rs/src/execution/tagged/word.rs"
+  ],
+  "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+  "start": "2026-09-28T04:44:08.952543+00:00",
+  "exit_code": 0,
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
