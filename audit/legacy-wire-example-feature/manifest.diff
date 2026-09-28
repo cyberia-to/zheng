@@ -1,0 +1,12 @@
+diff --git a/rs/Cargo.toml b/rs/Cargo.toml
+index 69e8781..730606e 100644
+--- a/rs/Cargo.toml
++++ b/rs/Cargo.toml
+@@ -26,3 +26,7 @@ serde = ["dep:serde", "nebu/serde", "lens/serde"]
+ [dev-dependencies]
+ serde_json = "1"
+ postcard = { version = "1", features = ["alloc"] }
++
++[[example]]
++name = "legacy_wire_cost"
++required-features = ["serde"]
