@@ -1,0 +1,272 @@
+{
+  "schema": 1,
+  "scope": "Existing serde-dependent example feature declaration; no runtime or dependency version changes",
+  "capture_revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+  "repair_worktree": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+  "clean_baseline_worktree": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+  "repaired_baseline_worktree": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng-baseline",
+  "source": {
+    "Cargo.toml": {
+      "git_base_sha256": "18e95b828c2c70ee939c465e2f8f5f5e75fea025c0417f8518c72d3108569012",
+      "repaired_sha256": "18e95b828c2c70ee939c465e2f8f5f5e75fea025c0417f8518c72d3108569012"
+    },
+    "Cargo.lock": {
+      "git_base_sha256": "26168c02c3fe288833db961e832a4b80d3a84c71c73015391f87a25329e79163",
+      "repaired_sha256": "26168c02c3fe288833db961e832a4b80d3a84c71c73015391f87a25329e79163"
+    },
+    "rs/Cargo.toml": {
+      "git_base_sha256": "623f4ee86597449f4de5355cc3adc79c4991027d2bc1a421b0ea5321d0dff83d",
+      "repaired_sha256": "bdc301d45a6202266fdebc48d550742a4cac75013eb356d3c77b34b5e58ce0d2"
+    },
+    "cli/Cargo.toml": {
+      "git_base_sha256": "3248bfd5123302011d19eaaa2863a1bfedfaf776a632bc267f047f980f3016a7",
+      "repaired_sha256": "3248bfd5123302011d19eaaa2863a1bfedfaf776a632bc267f047f980f3016a7"
+    },
+    "rs/examples/legacy_wire_cost.rs": {
+      "git_base_sha256": "3c603db78286f7e21f286c4df35262b9963683e021284cb488bb82fdd9c79a10",
+      "repaired_sha256": "3c603db78286f7e21f286c4df35262b9963683e021284cb488bb82fdd9c79a10"
+    },
+    "rs/src/types.rs": {
+      "git_base_sha256": "85c38f6441110acf5b24dcb9074b651ae4f7ebedf550238fb7b70a1ad208fc62",
+      "repaired_sha256": "85c38f6441110acf5b24dcb9074b651ae4f7ebedf550238fb7b70a1ad208fc62"
+    }
+  },
+  "repair_manifest_sha256": "bdc301d45a6202266fdebc48d550742a4cac75013eb356d3c77b34b5e58ce0d2",
+  "repair_diff_sha256": "8bc4dbb2502a2707410dda1c5f7f9ce41cbe0c7645996f1190d788cb6b715558",
+  "pins": {
+    "zheng-baseline": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng-baseline",
+      "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+      "status": " M rs/Cargo.toml\n"
+    },
+    "nox": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/nox",
+      "revision": "71b5860219f0e0810200946e4445e5fdf54269dd",
+      "status": ""
+    },
+    "hemera": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/hemera",
+      "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+      "status": ""
+    },
+    "lens": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/lens",
+      "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+      "status": ""
+    },
+    "strata": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/strata",
+      "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+      "status": ""
+    },
+    "tade": {
+      "path": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/tade",
+      "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+      "status": ""
+    }
+  },
+  "baseline_failure": {
+    "name": "clean-base-default",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--release",
+      "--locked",
+      "--offline",
+      "--",
+      "--test-threads=4"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:42:32.032634+00:00",
+    "exit_code": 101,
+    "end": "2026-09-28T04:42:37.911429+00:00",
+    "wall_seconds": 5.878620583040174,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-base-default.log",
+    "log_sha256": "1f92073c124f78510f25dd1e7c56847d1ef885f5e419da341356cd4faab4fc47"
+  },
+  "repaired_commands": [
+    {
+      "name": "repaired-base-check",
+      "argv": [
+        "cargo",
+        "check",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--release",
+        "--locked",
+        "--offline"
+      ],
+      "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng-baseline",
+      "env": {
+        "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-baseline"
+      },
+      "start": "2026-09-28T04:48:15.281641+00:00",
+      "exit_code": 0,
+      "end": "2026-09-28T04:48:21.172842+00:00",
+      "wall_seconds": 5.891047249955591,
+      "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/repaired-base-check.log",
+      "log_sha256": "ba22cbcf7bf27ea72845529fbcb7ffba28945debc8a46719fd08a78c24a2c3c2",
+      "selected_family_before": {
+        "zheng-baseline": {
+          "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+          "status": " M rs/Cargo.toml\n"
+        },
+        "nox": {
+          "revision": "71b5860219f0e0810200946e4445e5fdf54269dd",
+          "status": ""
+        },
+        "hemera": {
+          "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+          "status": ""
+        },
+        "lens": {
+          "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+          "status": ""
+        },
+        "strata": {
+          "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+          "status": ""
+        },
+        "tade": {
+          "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+          "status": ""
+        }
+      },
+      "selected_family_after": {
+        "zheng-baseline": {
+          "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+          "status": " M rs/Cargo.toml\n"
+        },
+        "nox": {
+          "revision": "71b5860219f0e0810200946e4445e5fdf54269dd",
+          "status": ""
+        },
+        "hemera": {
+          "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+          "status": ""
+        },
+        "lens": {
+          "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+          "status": ""
+        },
+        "strata": {
+          "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+          "status": ""
+        },
+        "tade": {
+          "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+          "status": ""
+        }
+      }
+    },
+    {
+      "name": "repaired-base-default",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--release",
+        "--locked",
+        "--offline",
+        "--",
+        "--test-threads=4"
+      ],
+      "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng-baseline",
+      "env": {
+        "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-baseline"
+      },
+      "start": "2026-09-28T04:48:21.349019+00:00",
+      "exit_code": 0,
+      "end": "2026-09-28T04:48:27.273266+00:00",
+      "wall_seconds": 5.924238999956287,
+      "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/repaired-base-default.log",
+      "log_sha256": "78647fd10273809a19fb558922d9d2de5da7af18f716e42b7d76e3d34e64167f",
+      "selected_family_before": {
+        "zheng-baseline": {
+          "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+          "status": " M rs/Cargo.toml\n"
+        },
+        "nox": {
+          "revision": "71b5860219f0e0810200946e4445e5fdf54269dd",
+          "status": ""
+        },
+        "hemera": {
+          "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+          "status": ""
+        },
+        "lens": {
+          "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+          "status": ""
+        },
+        "strata": {
+          "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+          "status": ""
+        },
+        "tade": {
+          "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+          "status": ""
+        }
+      },
+      "selected_family_after": {
+        "zheng-baseline": {
+          "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+          "status": " M rs/Cargo.toml\n"
+        },
+        "nox": {
+          "revision": "71b5860219f0e0810200946e4445e5fdf54269dd",
+          "status": ""
+        },
+        "hemera": {
+          "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+          "status": ""
+        },
+        "lens": {
+          "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+          "status": ""
+        },
+        "strata": {
+          "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+          "status": ""
+        },
+        "tade": {
+          "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+          "status": ""
+        }
+      }
+    }
+  ],
+  "default_counts": {
+    "passed": 215,
+    "failed": 0,
+    "ignored": 1
+  },
+  "warnings": {
+    "repaired_default": 0,
+    "repaired_check": 0
+  },
+  "logs": [
+    {
+      "file": "clean-base-default.log.gz",
+      "raw_sha256": "1f92073c124f78510f25dd1e7c56847d1ef885f5e419da341356cd4faab4fc47",
+      "gzip_sha256": "4b4b129816833800021a4f7aaa0605a01790b4a4587784a99f7c8670e96764e7",
+      "raw_bytes": 5186
+    },
+    {
+      "file": "repaired-base-check.log.gz",
+      "raw_sha256": "ba22cbcf7bf27ea72845529fbcb7ffba28945debc8a46719fd08a78c24a2c3c2",
+      "gzip_sha256": "b6b7de83d10ff6332757c876fdcba5fccf414e2b89691a333da55545fafca746",
+      "raw_bytes": 3727
+    },
+    {
+      "file": "repaired-base-default.log.gz",
+      "raw_sha256": "78647fd10273809a19fb558922d9d2de5da7af18f716e42b7d76e3d34e64167f",
+      "gzip_sha256": "1910b5b77515164ef0f8060aa1c10957978a4d495e46cc49414744304d689818",
+      "raw_bytes": 20898
+    }
+  ]
+}
