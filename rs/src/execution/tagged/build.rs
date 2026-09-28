@@ -4,6 +4,8 @@ pub(super) struct Builder {
     inputs: usize,
     ops: Vec<Op>,
     rows: Vec<(Linear, Linear, Linear)>,
+    gate_limit: usize,
+    pub(super) unresolved_reads: usize,
     nodes: usize,
     pub calls: usize,
     pub digests: BTreeMap<usize, [Wire; 4]>,
@@ -16,6 +18,8 @@ impl Builder {
             inputs,
             ops: vec![],
             rows: vec![(vec![(ZERO, F::ONE)], vec![(ONE, F::ONE)], vec![])],
+            gate_limit: MAX_GATES,
+            unresolved_reads: 0,
             nodes: 0,
             calls: 0,
             digests: BTreeMap::new(),
@@ -24,14 +28,14 @@ impl Builder {
         }
     }
     fn row(&mut self, a: Linear, b: Linear, c: Linear) -> Result<(), Error> {
-        if self.rows.len() >= MAX_GATES {
+        if self.rows.len() >= self.gate_limit {
             return Err(Error::Limit);
         }
         self.rows.push((a, b, c));
         Ok(())
     }
     pub fn alloc(&mut self, op: Op) -> Result<Wire, Error> {
-        if self.ops.len() >= MAX_GATES {
+        if self.ops.len() >= self.gate_limit {
             return Err(Error::Limit);
         }
         let wire = 2 + self.inputs + self.ops.len();
@@ -174,6 +178,9 @@ impl Builder {
         cost: Wire,
         max_cost: u64,
     ) -> Result<TaggedRelation, Error> {
+        if self.unresolved_reads != 0 {
+            return Err(Error::Unsupported("unresolved noun/Cost read premises"));
+        }
         fn depth(n: &Node, d: usize) -> Result<(), Error> {
             if d > MAX_DEPTH {
                 return Err(Error::Limit);
@@ -185,6 +192,17 @@ impl Builder {
             Ok(())
         }
         depth(&output, 0)?;
+        let parts = self.parts();
+        Ok(TaggedRelation {
+            instance: parts.instance,
+            inputs: parts.inputs,
+            output,
+            cost,
+            max_cost,
+            ops: parts.ops,
+        })
+    }
+    fn parts(self) -> Parts {
         let rows = self.rows.len().max(2).next_power_of_two();
         let cols = (2 + self.inputs + self.ops.len())
             .max(64)
@@ -195,7 +213,7 @@ impl Builder {
             matrices[1].entries[r] = b;
             matrices[2].entries[r] = c;
         }
-        Ok(TaggedRelation {
+        Parts {
             instance: CCSInstance {
                 matrices,
                 multisets: vec![vec![0, 1], vec![2]],
@@ -204,10 +222,32 @@ impl Builder {
                 num_cols: cols,
             },
             inputs: (2..2 + self.inputs).collect(),
-            output,
-            cost,
-            max_cost,
             ops: self.ops,
-        })
+        }
     }
+    #[cfg(test)]
+    pub(super) fn with_gate_limit(inputs: usize, limit: usize) -> Result<Self, Error> {
+        if limit == 0 || limit > MAX_GATES {
+            return Err(Error::Limit);
+        }
+        let mut builder = Self::new(inputs);
+        builder.gate_limit = limit;
+        Ok(builder)
+    }
+    #[cfg(test)]
+    pub(super) fn usage(&self) -> (usize, usize) {
+        (self.rows.len(), self.ops.len())
+    }
+    /// Tests bind every component input as a public premise. Production finish
+    /// keeps rejecting these unresolved reads; no resolver exists in this unit.
+    #[cfg(test)]
+    pub(super) fn component_parts(self) -> Parts {
+        self.parts()
+    }
+}
+
+pub(super) struct Parts {
+    pub instance: CCSInstance,
+    pub inputs: Vec<Wire>,
+    pub ops: Vec<Op>,
 }

@@ -7,10 +7,19 @@ use std::rc::Rc;
 mod build;
 mod eval;
 mod hash;
+// Kept internal until a constrained memory component can discharge its reads.
 #[cfg(test)]
 mod hash_tests;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "internal component has unresolved memory reads")
+)]
+mod node_cost;
+#[cfg(test)]
+mod node_cost_tests;
 #[cfg(test)]
 mod tests;
+mod uint64;
 mod word;
 #[cfg(test)]
 mod word_tests;
@@ -58,31 +67,7 @@ impl TaggedRelation {
     /// Produce a candidate witness; native errors still yield unsatisfied rows.
     /// This method is deliberately not the verifier.
     pub fn witness(&self, inputs: &[u64]) -> Result<CCSWitness, Error> {
-        if inputs.len() != self.inputs.len() {
-            return Err(Error::InputCount);
-        }
-        if inputs.iter().any(|&x| x >= nebu::field::P) {
-            return Err(Error::NonCanonical);
-        }
-        let mut z = vec![F::ONE, F::ZERO];
-        z.extend(inputs.iter().copied().map(F::new));
-        for op in &self.ops {
-            let v = match op {
-                Op::Linear(l) => l.iter().fold(F::ZERO, |v, &(i, c)| v + z[i] * c),
-                Op::Product(a, b) => z[*a] * z[*b],
-                Op::Bit(a, k) => F::new((z[*a].canonicalize().as_u64() >> k) & 1),
-                Op::Inverse(a) => {
-                    if z[*a] == F::ZERO {
-                        F::ZERO
-                    } else {
-                        z[*a].inv()
-                    }
-                }
-            };
-            z.push(v);
-        }
-        z.resize(self.instance.num_cols, F::ZERO);
-        Ok(CCSWitness { z })
+        candidate_witness(&self.instance, self.inputs.len(), &self.ops, inputs)
     }
     pub fn public_coordinates(
         &self,
@@ -127,6 +112,39 @@ impl TaggedRelation {
         };
         pins.into_iter().all(|(i, v)| witness.z[i] == v) && self.instance.is_satisfied_by(witness)
     }
+}
+
+fn candidate_witness(
+    instance: &CCSInstance,
+    input_count: usize,
+    ops: &[Op],
+    inputs: &[u64],
+) -> Result<CCSWitness, Error> {
+    if inputs.len() != input_count {
+        return Err(Error::InputCount);
+    }
+    if inputs.iter().any(|&x| x >= nebu::field::P) {
+        return Err(Error::NonCanonical);
+    }
+    let mut z = vec![F::ONE, F::ZERO];
+    z.extend(inputs.iter().copied().map(F::new));
+    for op in ops {
+        let v = match op {
+            Op::Linear(l) => l.iter().fold(F::ZERO, |v, &(i, c)| v + z[i] * c),
+            Op::Product(a, b) => z[*a] * z[*b],
+            Op::Bit(a, k) => F::new((z[*a].canonicalize().as_u64() >> k) & 1),
+            Op::Inverse(a) => {
+                if z[*a] == F::ZERO {
+                    F::ZERO
+                } else {
+                    z[*a].inv()
+                }
+            }
+        };
+        z.push(v);
+    }
+    z.resize(instance.num_cols, F::ZERO);
+    Ok(CCSWitness { z })
 }
 fn bind_output(node: &Node, noun: Option<&Noun>, pins: &mut Vec<(usize, F)>) -> Result<(), Error> {
     let (tag, value, left, right) = match noun {
