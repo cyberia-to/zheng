@@ -1,0 +1,121 @@
+[
+  {
+    "name": "final-default",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--locked",
+      "--release",
+      "execution::disclosed::"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng",
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "started_utc": "2026-10-02T01:28:24.613945+00:00",
+    "elapsed_ns": 7957703250,
+    "exit_code": 0,
+    "log_sha256": "31bfb6252aace0d86f7a7337707b8000f85d5c75667e66a34826b14c54e7b6bb"
+  },
+  {
+    "name": "allocation-default",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--locked",
+      "--release",
+      "--test",
+      "disclosed_evaluation_allocation"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng",
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "started_utc": "2026-10-02T01:28:32.572175+00:00",
+    "elapsed_ns": 41215750,
+    "exit_code": 0,
+    "log_sha256": "c6fc9fef114fcbcc6049acb0e4fa919accb9cda21846ef94081063f0a02d23b6"
+  },
+  {
+    "name": "final-all-features",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--locked",
+      "--release",
+      "--all-features",
+      "execution::disclosed::"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng",
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "started_utc": "2026-10-02T01:28:32.613679+00:00",
+    "elapsed_ns": 11176351417,
+    "exit_code": 0,
+    "log_sha256": "0e06bc027f84c56d7e701e247c079acf0195646624f1be5663d89d76ad08d820"
+  },
+  {
+    "name": "allocation-all-features",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--locked",
+      "--release",
+      "--all-features",
+      "--test",
+      "disclosed_evaluation_allocation"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng",
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "started_utc": "2026-10-02T01:28:43.790405+00:00",
+    "elapsed_ns": 36584459,
+    "exit_code": 0,
+    "log_sha256": "856878fc0afd0a5333f39ff98b3ba4647752e19a038f450854ec83e9daa29cc5"
+  },
+  {
+    "name": "check-all-targets",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "check",
+      "-p",
+      "zheng",
+      "--locked",
+      "--all-features",
+      "--all-targets"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng",
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "started_utc": "2026-10-02T01:28:43.827250+00:00",
+    "elapsed_ns": 6744384500,
+    "exit_code": 0,
+    "log_sha256": "89eb4b25986f59f78fde4e627eecf3fc0ef939b17f47326d0d9658e9a61955e2"
+  }
+]
