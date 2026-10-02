@@ -1,0 +1,20 @@
+{
+  "base_revision": "24a87077e7e2853d402b4dfc83eb9f9aa2f78ea7",
+  "files": {
+    "rs/src/execution/disclosed/mod.rs": "655c2e2a1109471898a0e1dd33be957e541fcf3e7a2510f093777db7ed859515",
+    "rs/src/execution/disclosed/evaluation.rs": "c549e51d455ce97868b031f0783fa2b0ea6a19ce8f1a3e3e978a4d38bc83a095",
+    "rs/src/execution/disclosed/evaluation/primitives.rs": "570546cf3afa462c0080ef5fce1dcbed1fa3753d94b6eb78ae1cf02de9e0499f",
+    "rs/src/execution/disclosed/evaluation/rules.rs": "3562e3cd07284d1dc81d7dac1bfc9d6511683195cedfb3842dcfd1805927ad4a",
+    "rs/src/execution/disclosed/evaluation/tests/adversarial.rs": "6a2eef6c29381a6ca411c3ce172963e5b8935f12bcb5b4d5a95b5ca131989f85",
+    "rs/src/execution/disclosed/evaluation/tests/differential.rs": "b5918bcc990b80ea77ed08975b9f0c829bd0cba94ee56b93d1ebee4843afd383",
+    "rs/src/execution/disclosed/evaluation/tests.rs": "bbe6f3bd38f6a29458d86cfe97231512b2ffbe538956ff095b5bfd4dc8eee7d2",
+    "rs/tests/disclosed_evaluation_allocation.rs": "e881fb832ab5b3d6d778f8ffaefbb1eea94d4084dc27141c76784c05bb3ea69c",
+    "specs/disclosed-evaluation-dag.md": "0adaedff8d1fe69d60dcf2f76c98ccbec2e71b192f3e6a1bede0519ff343944a"
+  },
+  "dependencies": {
+    "nox": "172811b7746cdcd6ab198a3ed976dc6c19f55d5b",
+    "hemera": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+    "strata": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+    "lens": "17cafe91431977b738e5b72361187cd01ad93638"
+  }
+}
