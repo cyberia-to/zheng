@@ -1,0 +1,63 @@
+   Compiling strata-core v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/core)
+   Compiling proc-macro2 v1.0.107
+   Compiling strata-ext v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/ext)
+   Compiling strata-proof v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/proof)
+   Compiling strata-compute v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/compute)
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+   Compiling strata-nebu v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/nebu/rs)
+   Compiling cyber-hemera v0.3.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/hemera/rs)
+   Compiling cyber-lens-core v0.1.2 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/core)
+   Compiling syn v3.0.5
+   Compiling serde_core v1.0.229
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling cyber-lens-brakedown v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/brakedown)
+   Compiling serde v1.0.229
+   Compiling thiserror v2.0.20
+   Compiling heapless v0.7.17
+   Compiling thiserror-impl v2.0.20
+   Compiling serde_derive v1.0.229
+   Compiling zmij v1.0.23
+   Compiling libc v0.2.189
+   Compiling byteorder v1.5.0
+   Compiling hash32 v0.2.1
+   Compiling strata-jali v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/jali/rs)
+   Compiling strata-genies v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/genies/rs)
+   Compiling strata-kuro v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/kuro/rs)
+   Compiling strata-trop v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/strata/trop/rs)
+   Compiling getrandom v0.3.4
+   Compiling serde_json v1.0.151
+   Compiling stable_deref_trait v1.2.1
+   Compiling cyber-lens-assayer v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/assayer)
+   Compiling cyber-lens-binius v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/binius)
+   Compiling cyber-lens-porphyry v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/porphyry)
+   Compiling cyber-lens-ikat v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/ikat)
+   Compiling cobs v0.3.0
+   Compiling itoa v1.0.18
+   Compiling cfg-if v1.0.5
+   Compiling memchr v2.8.3
+   Compiling postcard v1.1.3
+   Compiling cyber-lens v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/lens/src)
+   Compiling cyber-nox v0.3.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/nox/rs)
+   Compiling zeroize v1.9.0
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 14.28s
+     Running unittests src/lib.rs (target/release/deps/zheng-d5a2a92bfda7b5e2)
+
+running 12 tests
+test execution::disclosed::stream::tests::differential::parent_keeps_left_header_when_right_child_evicts_its_summary ... ok
+test execution::disclosed::stream::tests::adversarial::invalid_types_inverse_zero_and_service_invocations_poison ... ok
+test execution::disclosed::stream::tests::adversarial::wrong_keys_outputs_truncation_and_extra_roots_poison_or_reject ... ok
+test execution::disclosed::stream::tests::differential::cached_child_metrics_and_atom_facts_survive_noun_reset_and_slot_replacement ... ok
+test execution::disclosed::stream::tests::adversarial::stale_generations_empty_slots_wrong_keys_and_generation_overflow_reject ... ok
+test execution::disclosed::stream::tests::adversarial::exact_resource_caps_and_one_below_are_enforced_with_full_cached_charge ... ok
+test execution::disclosed::stream::tests::adversarial::selected_branch_and_computed_continuation_keys_survive_reset_and_reject_changes ... ok
+test execution::disclosed::stream::tests::adversarial::terminal_checks_every_particle_limb_exact_cost_budget_and_frame_claim ... ok
+test execution::disclosed::stream::tests::differential::saturated_unselected_dynamic_and_service_data_preserve_selected_derivation ... ok
+test execution::disclosed::stream::tests::differential::canonical_field_word_and_hash_boundaries_match_native ... ok
+test execution::disclosed::stream::tests::differential::all_native_rules_match_finite_dag_across_a_fresh_noun_table_per_event ... ok
+test execution::disclosed::stream::tests::adversarial::checked_metric_overflow_rejects_exponentially_shared_evaluations ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 243 filtered out; finished in 0.05s
+

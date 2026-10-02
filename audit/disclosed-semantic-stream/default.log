@@ -1,0 +1,47 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running unittests src/lib.rs (target/release/deps/zheng-d5a2a92bfda7b5e2)
+
+running 40 tests
+test execution::disclosed::evaluation::tests::adversarial::exact_and_one_below_resource_limits_fail_without_mutation ... ok
+test execution::disclosed::evaluation::tests::differential::repeated_prior_premises_count_expanded_occurrences_and_match_observer ... ok
+test execution::disclosed::evaluation::tests::adversarial::computed_continuation_binds_both_child_results_as_its_key ... ok
+test execution::disclosed::evaluation::tests::adversarial::premise_keys_arity_order_and_prior_frontier_are_authenticated ... ok
+test execution::disclosed::evaluation::tests::adversarial::equality_and_premise_keys_use_particles_across_duplicate_occurrences ... ok
+test execution::disclosed::memory::tests::all_cost_bits_and_dynamic_selector_are_authenticated_even_for_quoted_data ... ok
+test execution::disclosed::memory::tests::canonical_atom_and_particle_domains_reject_aliases ... ok
+test execution::disclosed::memory::tests::compact_values_preserve_canonicality_prior_order_limits_and_root_binding ... ok
+test execution::disclosed::evaluation::tests::adversarial::outputs_bind_ordered_topology_and_all_root_particle_limbs ... ok
+test execution::disclosed::evaluation::tests::differential::axis_zero_and_hash_have_distinct_native_results_and_logical_step_counts ... ok
+test execution::disclosed::evaluation::tests::adversarial::changing_the_selected_arm_rejects_even_when_the_forged_result_matches_it ... ok
+test execution::disclosed::memory::tests::duplicate_occurrences_preserve_content_identity_and_cost ... ok
+test execution::disclosed::memory::tests::ordered_topology_and_strict_prior_references_are_checked_atomically ... ok
+test execution::disclosed::memory::tests::views_reject_future_reads_and_bind_every_expected_root_limb ... ok
+test execution::disclosed::evaluation::tests::adversarial::malformed_formulas_invalid_types_and_inverse_zero_have_no_success_rule ... ok
+test execution::disclosed::stream::tests::adversarial::exact_resource_caps_and_one_below_are_enforced_with_full_cached_charge ... ok
+test execution::disclosed::memory::tests::saturated_u64_costs_do_not_wrap_or_reduce_in_the_field ... ok
+test execution::disclosed::memory::tests::record_and_buffer_limits_accept_exact_capacity_and_fail_closed_below ... ok
+test execution::disclosed::stream::tests::adversarial::invalid_types_inverse_zero_and_service_invocations_poison ... ok
+test execution::disclosed::stream::tests::adversarial::selected_branch_and_computed_continuation_keys_survive_reset_and_reject_changes ... ok
+test execution::disclosed::memory::tests::dynamic_metadata_survives_smaller_branch_arms_and_saturation ... ok
+test execution::disclosed::stream::tests::boundaries::malformed_enter_noun_indices_and_noncanonical_root_reject ... ok
+test execution::disclosed::stream::tests::adversarial::wrong_keys_outputs_truncation_and_extra_roots_poison_or_reject ... ok
+test execution::disclosed::evaluation::tests::adversarial::expanded_steps_and_exact_cost_overflow_reject_shared_derivations ... ok
+test execution::disclosed::evaluation::tests::differential::canonical_field_boundaries_and_large_valid_word_shifts_match_native ... ok
+test execution::disclosed::stream::tests::adversarial::stale_generations_empty_slots_wrong_keys_and_generation_overflow_reject ... ok
+test execution::disclosed::stream::tests::differential::cached_child_metrics_and_atom_facts_survive_noun_reset_and_slot_replacement ... ok
+test execution::disclosed::stream::tests::differential::parent_keeps_left_header_when_right_child_evicts_its_summary ... ok
+test execution::disclosed::stream::tests::boundaries::reused_summary_counts_its_entire_height_at_the_current_stack_depth ... ok
+test execution::disclosed::memory::tests::native_headers_and_every_cost_case_are_derived_from_prior_records ... ok
+test execution::disclosed::stream::tests::boundaries::hash_outputs_require_all_limbs_and_exact_pair_of_pairs_topology ... ok
+test execution::disclosed::stream::tests::boundaries::pair_arguments_and_wide_words_reject_at_the_primitive_boundary ... ok
+test execution::disclosed::evaluation::tests::differential::saturated_and_dynamic_unselected_metadata_preserves_cheap_execution ... ok
+test execution::disclosed::stream::tests::adversarial::terminal_checks_every_particle_limb_exact_cost_budget_and_frame_claim ... ok
+test execution::disclosed::stream::tests::differential::saturated_unselected_dynamic_and_service_data_preserve_selected_derivation ... ok
+test execution::disclosed::memory::tests::non_saturated_costs_above_the_field_keep_both_limbs_authenticated ... ok
+test execution::disclosed::evaluation::tests::differential::all_pure_patterns_match_native_values_costs_and_frame_boundaries ... ok
+test execution::disclosed::stream::tests::differential::canonical_field_word_and_hash_boundaries_match_native ... ok
+test execution::disclosed::stream::tests::differential::all_native_rules_match_finite_dag_across_a_fresh_noun_table_per_event ... ok
+test execution::disclosed::stream::tests::adversarial::checked_metric_overflow_rejects_exponentially_shared_evaluations ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 219 filtered out; finished in 0.05s
+

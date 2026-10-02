@@ -1,0 +1,9 @@
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 2.58s
+     Running tests/disclosed_stream_allocation.rs (target/release/deps/disclosed_stream_allocation-6d62ad46d3bd97d3)
+
+running 1 test
+test constructor_failures_are_fallible_and_events_need_no_allocations ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
