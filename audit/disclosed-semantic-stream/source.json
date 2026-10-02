@@ -1,0 +1,50 @@
+{
+  "base_revision": "e4959de00d3d12727877100e304d8dd155b0b0f5",
+  "files": {
+    "rs/src/execution/disclosed/mod.rs": "87e5154f99f24b7b4f99f24c2fa970187b349237457ae0f867eb5811d70c8021",
+    "rs/src/execution/disclosed/stream.rs": "0e4369e15e7153850bca1f3c22e61617d26961c563d66c1dd7b07131cfc060ae",
+    "rs/src/execution/disclosed/stream/facts.rs": "519da7e1b70b390b609d52c4a7764e8f577747867911bcb391419f3a729930b5",
+    "rs/src/execution/disclosed/stream/rules.rs": "aa9d0491db29ba2e8ba40ace33b4efc42a8d63b646868ccd8872ee6fc1ea6d58",
+    "rs/src/execution/disclosed/stream/tests.rs": "d72dbcdbd3d84ad83a2207e3414bd8fbbf61dbe8733f7d628b90cc1960226e31",
+    "rs/src/execution/disclosed/stream/tests/adversarial.rs": "e31c3d21a26f0113fa036c36fefd0746b67882efefbfb6cbf7b78fb9c7bce103",
+    "rs/src/execution/disclosed/stream/tests/boundaries.rs": "5c03e399f86819cca74f04a3403c61eb1ffa42f83281e2500460fc2256949721",
+    "rs/src/execution/disclosed/stream/tests/differential.rs": "2dd8adf64d4269744be3c92ff97234c785eacf4fab48af74319349ae4dda2705",
+    "rs/src/execution/disclosed/stream/types.rs": "104befcdbfc2ae0477dc077d4403fda723ba1bcecaa17e3e359bd1d16d636e25",
+    "rs/tests/disclosed_stream_allocation.rs": "adf8737f0ecb27d3dd10d6daa07cfe48973d256743ee9b46a327f0f58dbd8e9e",
+    "specs/disclosed-semantic-stream.md": "9285dfb922a675782976cf80cae1455e578fdd19d5232d118d77a579488c681a"
+  },
+  "dependencies": {
+    "nox": {
+      "revision": "172811b7746cdcd6ab198a3ed976dc6c19f55d5b",
+      "status": ""
+    },
+    "hemera": {
+      "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+      "status": ""
+    },
+    "strata": {
+      "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+      "status": ""
+    },
+    "lens": {
+      "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+      "status": ""
+    },
+    "bbg": {
+      "revision": "1d39975ad199b48c350fa4cc011cbf6f289480ee",
+      "status": ""
+    },
+    "honeycrisp": {
+      "revision": "ff735e6c262926bc9bab7534786a575020cbe442",
+      "status": ""
+    },
+    "neuron": {
+      "revision": "fd24e768d623604b67e20b4b93fa8e82c83ac373",
+      "status": ""
+    },
+    "tade": {
+      "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+      "status": ""
+    }
+  }
+}
