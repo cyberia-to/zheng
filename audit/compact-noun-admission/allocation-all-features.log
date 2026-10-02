@@ -1,0 +1,9 @@
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running tests/disclosed_memory_allocation.rs (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/target/release/deps/disclosed_memory_allocation-f2214be90d629cc1)
+
+running 2 tests
+test compact_value_admission_handles_allocation_failure_without_partial_records ... ok
+test failed_growth_preserves_validated_records_and_allows_retry ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

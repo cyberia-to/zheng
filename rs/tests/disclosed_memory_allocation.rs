@@ -76,3 +76,24 @@ fn failed_growth_preserves_validated_records_and_allows_retry() {
     }
     assert_eq!(memory.append(next), Ok(64));
 }
+
+#[test]
+fn compact_value_admission_handles_allocation_failure_without_partial_records() {
+    let mut memory = Memory::new(65, 65 * std::mem::size_of::<VerifiedNode>()).unwrap();
+    for count in [0, 64] {
+        for i in memory.len()..count {
+            memory.append_value(Value::Atom(u64::from(i))).unwrap();
+        }
+        let before_bytes = memory.buffer_bytes();
+        REFUSE.set(true);
+        let result = memory.append_value(Value::Atom(u64::from(count)));
+        REFUSE.set(false);
+        assert_eq!(result, Err(Error::Allocation));
+        assert_eq!(memory.len(), count);
+        assert_eq!(memory.buffer_bytes(), before_bytes);
+        assert_eq!(
+            memory.append_value(Value::Atom(u64::from(count))),
+            Ok(count)
+        );
+    }
+}

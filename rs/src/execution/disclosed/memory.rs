@@ -105,7 +105,28 @@ impl Memory {
         if definition.particle.iter().any(|&x| x >= nebu::field::P) {
             return Err(Error::NonCanonical);
         }
-        let (particle, cost) = match definition.value {
+        let derived = self.derive(definition.value)?;
+        if derived.particle != definition.particle {
+            return Err(Error::Particle);
+        }
+        if derived.cost != definition.cost {
+            return Err(Error::Cost);
+        }
+        self.insert(derived)
+    }
+
+    /// Compact disclosed input: derive header identity and Cost, then admit it.
+    /// The caller must bind resulting root particles to the expected statement.
+    pub fn append_value(&mut self, value: Value) -> Result<u32, Error> {
+        if self.len() == self.max_nodes {
+            return Err(Error::Limit);
+        }
+        let derived = self.derive(value)?;
+        self.insert(derived)
+    }
+
+    fn derive(&self, value: Value) -> Result<Definition, Error> {
+        let (particle, cost) = match value {
             Value::Atom(value) => {
                 if value >= nebu::field::P {
                     return Err(Error::NonCanonical);
@@ -121,12 +142,15 @@ impl Memory {
                 )
             }
         };
-        if particle != definition.particle {
-            return Err(Error::Particle);
-        }
-        if cost != definition.cost {
-            return Err(Error::Cost);
-        }
+        Ok(Definition {
+            value,
+            particle,
+            cost,
+        })
+    }
+
+    // Every caller supplies a complete locally derived definition.
+    fn insert(&mut self, definition: Definition) -> Result<u32, Error> {
         if self.nodes.len() == self.nodes.capacity() {
             let next = self
                 .nodes
