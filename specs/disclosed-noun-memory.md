@@ -10,6 +10,12 @@ all three before admitting the definition. Construction starts with an empty
 table. Every read resolves through this table, including the reads used for Cost
 derivation. There is no constructor from an unchecked table or supplied root.
 
+The compact `append_value` entry accepts only the atom or ordered prior indices
+and derives particle and Cost internally. It uses the same admission rules and
+validated storage as `append`. A transport can therefore omit redundant claimed
+metadata. Public root bindings must still compare the derived particles with
+the expected statement. Derived metadata is never a successful execution claim.
+
 ## Admission
 
 Atoms are canonical Goldilocks u64 values below p. Particle limbs are canonical

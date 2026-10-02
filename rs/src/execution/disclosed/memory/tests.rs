@@ -26,10 +26,52 @@ fn native(ar: &Reduction<N>, index: Order) -> Definition {
 
 fn import(ar: &Reduction<N>) -> Memory {
     let mut table = memory(ar.count());
+    let mut compact = memory(ar.count());
     for i in 0..ar.count() {
         assert_eq!(table.append(native(ar, i)), Ok(i));
+        assert_eq!(compact.append_value(native(ar, i).value), Ok(i));
+        assert_eq!(table.node(i), compact.node(i));
     }
     table
+}
+
+#[test]
+fn compact_values_preserve_canonicality_prior_order_limits_and_root_binding() {
+    let mut table = memory(2);
+    for invalid in [
+        Value::Atom(nebu::field::P),
+        Value::Atom(u64::MAX),
+        Value::Pair { left: 0, right: 0 },
+    ] {
+        assert!(table.append_value(invalid).is_err());
+        assert!(table.is_empty());
+    }
+    let zero = table.append_value(Value::Atom(0)).unwrap();
+    assert_eq!(
+        table.append_value(Value::Pair {
+            left: zero,
+            right: 1
+        }),
+        Err(Error::Reference)
+    );
+    let pair = table
+        .append_value(Value::Pair {
+            left: zero,
+            right: zero,
+        })
+        .unwrap();
+    assert_eq!(table.append_value(Value::Atom(1)), Err(Error::Limit));
+    let view = table.view(2).unwrap();
+    let expected = nox::data::hash::hash_pair(
+        &nox::data::hash::hash_atom(F::ZERO),
+        &nox::data::hash::hash_atom(F::ZERO),
+    )
+    .map(F::as_u64);
+    assert!(view.bind(pair, expected).is_ok());
+    assert_eq!(
+        view.bind(pair, view.get(zero).unwrap().particle()),
+        Err(Error::Particle)
+    );
 }
 
 fn atom(ar: &mut Reduction<N>, value: u64) -> Order {

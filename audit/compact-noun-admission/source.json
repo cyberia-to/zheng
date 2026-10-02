@@ -1,0 +1,22 @@
+{
+  "base_revision": "b6ee58895ad99fc08e2add7870f9b958171b0a75",
+  "files": {
+    "rs/src/execution/disclosed/memory.rs": {
+      "sha256": "3c0c6ac564779746f826f3224c33ee48729edf5f7f3cca396837496b6805091f",
+      "bytes": 5517
+    },
+    "rs/src/execution/disclosed/memory/tests.rs": {
+      "sha256": "f90f5d6e4343e4dd5374274dae208b6a3a0909bb514d81d9bbe061f7348e2656",
+      "bytes": 12598
+    },
+    "rs/tests/disclosed_memory_allocation.rs": {
+      "sha256": "3e9882ef459a01292dd1ceeee4536f4c056379e6c84b2afb6277db5c8f8b9888",
+      "bytes": 3571
+    },
+    "specs/disclosed-noun-memory.md": {
+      "sha256": "db1ad7c8137586f95e45b20f4d95ac8eb44b674d663f88e1849a05c28d4822d0",
+      "bytes": 5112
+    }
+  },
+  "scope": "local feature validation before commit"
+}
