@@ -1,0 +1,36 @@
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 7.25s
+     Running unittests src/lib.rs (target/release/deps/zheng-1111612169071eba)
+
+running 10 tests
+test execution::disclosed::memory::tests::views_reject_future_reads_and_bind_every_expected_root_limb ... ok
+test execution::disclosed::memory::tests::duplicate_occurrences_preserve_content_identity_and_cost ... ok
+test execution::disclosed::memory::tests::ordered_topology_and_strict_prior_references_are_checked_atomically ... ok
+test execution::disclosed::memory::tests::canonical_atom_and_particle_domains_reject_aliases ... ok
+test execution::disclosed::memory::tests::all_cost_bits_and_dynamic_selector_are_authenticated_even_for_quoted_data ... ok
+test execution::disclosed::memory::tests::record_and_buffer_limits_accept_exact_capacity_and_fail_closed_below ... ok
+test execution::disclosed::memory::tests::saturated_u64_costs_do_not_wrap_or_reduce_in_the_field ... ok
+test execution::disclosed::memory::tests::dynamic_metadata_survives_smaller_branch_arms_and_saturation ... ok
+test execution::disclosed::memory::tests::native_headers_and_every_cost_case_are_derived_from_prior_records ... ok
+test execution::disclosed::memory::tests::non_saturated_costs_above_the_field_keep_both_limbs_authenticated ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 226 filtered out; finished in 0.01s
+
+     Running tests/disclosed_memory_allocation.rs (target/release/deps/disclosed_memory_allocation-60f9cb7b77c480ff)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/execution_adversarial.rs (target/release/deps/execution_adversarial-b14d89ebf46c303f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/reaudit_private.rs (target/release/deps/reaudit_private-0f42d112d3bc40b6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

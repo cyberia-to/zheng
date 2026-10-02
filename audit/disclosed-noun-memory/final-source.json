@@ -1,0 +1,72 @@
+{
+  "base_revision": "633e5ba980db94ca10d9d6b67cf24d9d3aef63a7",
+  "state": "local uncommitted implementation; not a release input",
+  "files": {
+    "rs/examples/disclosed_memory_cost.rs": {
+      "bytes": 2498,
+      "sha256": "da608f51aa389a621485c46d966bceb900d742ed8fedb03d3091188aa671f708"
+    },
+    "rs/src/execution/disclosed/memory/cost.rs": {
+      "bytes": 2521,
+      "sha256": "381d58ad9dc909873a4145356c438b31913857a164e49091937f88eba9dcf4f2"
+    },
+    "rs/src/execution/disclosed/memory/identity.rs": {
+      "bytes": 771,
+      "sha256": "56ecb7cbc347cc6089ace1999e5cd80f86a3dd0e43f1dd2bfc6211328562d736"
+    },
+    "rs/src/execution/disclosed/memory/tests.rs": {
+      "bytes": 11292,
+      "sha256": "471838e4f453a13d931beb0281e142a34818f614a7e67ddf17825089211c239a"
+    },
+    "rs/src/execution/disclosed/memory.rs": {
+      "bytes": 4710,
+      "sha256": "bcce97dba223077a5810094df3f79a15c9b6eb229d9fe19ac3a113b73d6e1ce8"
+    },
+    "rs/src/execution/disclosed/mod.rs": {
+      "bytes": 152,
+      "sha256": "6934a97dc483cf036ad26a8c1316ecaf599c2fdce7468178d915169fcb3a917e"
+    },
+    "rs/src/execution/mod.rs": {
+      "bytes": 910,
+      "sha256": "407aeb450c055acfa8e1ee162b8d38ca56466a001cb13b8f9920008386b2a177"
+    },
+    "rs/tests/disclosed_memory_allocation.rs": {
+      "bytes": 2795,
+      "sha256": "b223401e0bbd6c2790c9a095cf42c2d52aa8234836e46245fee4f72bb28e1a56"
+    },
+    "specs/disclosed-noun-memory.md": {
+      "bytes": 4715,
+      "sha256": "daeb7901effaec139384e3555ff29a374b42928522dcb27df5e8b0a7ec0d6a02"
+    },
+    "specs/props/dynamic-noun-memory.md": {
+      "bytes": 11244,
+      "sha256": "66843b2d03ba5a24a8ea9dbca7dfb7407d7d1a19ffc1d5bc84d7c9830e6863d6"
+    }
+  },
+  "dependencies": {
+    "nox": {
+      "revision": "172811b7746cdcd6ab198a3ed976dc6c19f55d5b",
+      "status": ""
+    },
+    "hemera": {
+      "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+      "status": ""
+    },
+    "strata": {
+      "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+      "status": ""
+    },
+    "lens": {
+      "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+      "status": ""
+    },
+    "tade": {
+      "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+      "status": ""
+    },
+    "honeycrisp": {
+      "revision": "ff735e6c262926bc9bab7534786a575020cbe442",
+      "status": ""
+    }
+  }
+}

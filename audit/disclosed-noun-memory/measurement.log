@@ -1,0 +1,4 @@
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/examples/disclosed_memory_cost 50000`
+{"atoms":50000,"complete_admission_ns":576565334,"native_fixture_ns":582505625,"pairs":49999,"record_buffer_bytes":6399936,"record_storage_bytes":64,"records":99999,"scope":"native noun/Cost admission only; no execution certificate"}

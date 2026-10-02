@@ -1,0 +1,280 @@
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/rs)
+   Compiling zheng-cli v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/cli)
+    Finished `release` profile [optimized] target(s) in 6.64s
+     Running unittests src/lib.rs (target/release/deps/zheng-44e6bf37a187217e)
+
+running 229 tests
+test ccs::hash_binding::tests::empty_trace_yields_no_binding_steps ... ok
+test ccs::particle::tests::partial_round_spartan_prove_verify ... ok
+test ccs::particle::tests::partial_round_relaxed_nonzero_error_roundtrip ... ok
+test ccs::particle::tests::replay_yields_24_states ... ok
+test ccs::particle::tests::universal_row_rejects_wrong_next_state ... ok
+test ccs::particle::tests::universal_row_satisfied_by_all_real_full_rounds ... ok
+test ccs::root::tests::compress_is_order_sensitive ... ok
+test ccs::particle::tests::universal_row_satisfied_by_all_real_partial_rounds ... ok
+test ccs::root::tests::root_is_deterministic ... ok
+test ccs::root::tests::root_binds_every_leaf ... ok
+test ccs::selector::tests::add_constraint_evaluates_to_zero ... ok
+test ccs::selector::tests::add_constraint_nonzero_on_wrong_witness ... ok
+test ccs::selector::tests::empty_instance_evaluates_to_zero_rows ... ok
+test ccs::tests::axis_eval_point_addr_0_or_1_empty ... ok
+test ccs::tests::axis_eval_point_addr_2_is_one_bit ... ok
+test ccs::tests::axis_eval_point_addr_3_is_one_bit ... ok
+test ccs::tests::axis_eval_point_addr_5_is_two_bits ... ok
+test ccs::tests::build_axis_steps_from_trace_empty_trace ... ok
+test ccs::tests::build_from_two_row_trace_gives_one_step ... ok
+test ccs::root::tests::root_steps_match_native_and_satisfy ... ok
+test ccs::tests::interpreter_axis_rows_consume_no_openings ... ok
+test ccs::tests::look_openings_from_provider_correct_value_and_count ... ok
+test ccs::tests::witness_has_correct_length ... ok
+test ccs::transcript::tests::a_real_poseidon_squeeze_produces_satisfied_universal_rows ... ok
+test ccs::transcript::tests::current_authenticated_opening_has_no_legacy_transcript_rows ... ok
+test ccs::transcript::tests::transcript_steps_empty_for_non_tensor_opening ... ok
+test ccs::universal::tests::every_pattern_tag_has_a_satisfiable_row ... ok
+test ccs::universal::tests::gadgets_of_other_patterns_are_inert ... ok
+test ccs::universal::tests::hash_round_selector_binds_to_r14 ... ok
+test ccs::universal::tests::instance_shape ... ok
+test ccs::universal::tests::mismatched_r0_fails_even_with_satisfied_gadget ... ok
+test ccs::universal::tests::non_hash_row_cannot_arm_poseidon_gates ... ok
+test ccs::universal::tests::pattern_add_sub_mul ... ok
+test ccs::universal::tests::pattern_and_gadget ... ok
+test ccs::universal::tests::pattern_axis_budget_decrement ... ok
+test ccs::universal::tests::pattern_branch_selector_gadget ... ok
+test ccs::universal::tests::pattern_call_result_must_be_zero ... ok
+test ccs::universal::tests::pattern_eq_gadget ... ok
+test ccs::universal::tests::pattern_hash_round_counter_increments ... ok
+test ccs::universal::tests::pattern_inv_final_row_holds_the_inverse ... ok
+test ccs::universal::tests::pattern_lt_bits_are_boolean ... ok
+test ccs::universal::tests::pattern_not_gadget ... ok
+test ccs::universal::tests::pattern_quote_result_equals_body_in_row ... ok
+test ccs::universal::tests::pattern_shl_src_bit_propagation ... ok
+test ccs::universal::tests::pattern_xor_gadget ... ok
+test ccs::universal::tests::selector_gate_cannot_be_scaled ... ok
+test ccs::universal::tests::squeeze_boundary_pair_has_no_counter_constraint ... ok
+test ccs::universal::tests::unknown_tag_leaves_no_selector_and_fails ... ok
+test ccs::universal::tests::wrong_selector_for_r0_fails ... ok
+test ccs::verifier_steps::tests::commitment_limb_bindings_reject_each_changed_limb ... ok
+test ccs::verifier_steps::tests::current_authenticated_opening_is_not_a_legacy_equality_proof ... ok
+test ccs::verifier_steps::tests::eq_step_satisfied_when_equal ... ok
+test ccs::verifier_steps::tests::eq_step_trivial_zero_satisfied ... ok
+test ccs::verifier_steps::tests::eq_step_unsatisfied_when_different ... ok
+test ccs::verifier_steps::tests::equality_rows_have_one_uniform_folding_shape ... ok
+test ccs::verifier_steps::tests::non_tensor_opening_returns_empty ... ok
+test execution::budget_tests::cheap_paths_do_not_validate_inactive_inverse_words_or_calls ... ok
+test execution::budget_tests::exact_selected_budget_matches_native_nox_sequential_fallback ... ok
+test ccs::tests::look_steps_bind_value_point_leaf_and_root ... ok
+test execution::budget_tests::selected_branch_cost_can_fit_below_worst_case ... ok
+test execution::budget_tests::public_cost_budget_and_selected_branch_are_authenticated ... ok
+test execution::call_tests::call_checks_the_actual_private_witness_and_public_result ... ok
+test execution::call_tests::inactive_calls_do_not_consume_secrets_or_require_success ... ok
+test execution::call_tests::inactive_word_range_is_allowed_but_selected_invalid_word_fails ... ok
+test execution::disclosed::memory::tests::all_cost_bits_and_dynamic_selector_are_authenticated_even_for_quoted_data ... ok
+test execution::budget_tests::state_wrappers_use_selected_cost_with_the_same_public_bindings ... ok
+test execution::disclosed::memory::tests::canonical_atom_and_particle_domains_reject_aliases ... ok
+test execution::disclosed::memory::tests::duplicate_occurrences_preserve_content_identity_and_cost ... ok
+test execution::disclosed::memory::tests::dynamic_metadata_survives_smaller_branch_arms_and_saturation ... ok
+test execution::disclosed::memory::tests::native_headers_and_every_cost_case_are_derived_from_prior_records ... ok
+test execution::disclosed::memory::tests::ordered_topology_and_strict_prior_references_are_checked_atomically ... ok
+test execution::disclosed::memory::tests::record_and_buffer_limits_accept_exact_capacity_and_fail_closed_below ... ok
+test execution::disclosed::memory::tests::saturated_u64_costs_do_not_wrap_or_reduce_in_the_field ... ok
+test execution::disclosed::memory::tests::views_reject_future_reads_and_bind_every_expected_root_limb ... ok
+test execution::private_state_tests::forged_program_root_fails_even_when_provider_returns_requested_cell ... ok
+test execution::private_state_tests::hidden_namespace_and_index_select_exact_committed_cell ... ok
+test execution::proof::tests::binds_public_values_relation_and_statement ... ok
+test execution::proof::tests::rejects_invalid_relation_dimensions_and_public_indices ... ok
+test execution::proof::tests::rejects_proof_shape_and_noncanonical_openings ... ok
+test execution::proof::tests::verifier_pins_constant_even_when_zero_witness_satisfies_ccs ... ok
+test execution::proof::tests::verifier_rejects_unsatisfying_witness_without_prover_gate ... ok
+test execution::relation::hash::tests::atom_hash_matches_native_at_byte_and_field_boundaries ... ok
+test execution::relation::hash::tests::axis_zero_matches_structural_digest_without_extra_permutation ... ok
+test execution::disclosed::memory::tests::non_saturated_costs_above_the_field_keep_both_limbs_authenticated ... ok
+test execution::relation::hash::tests::pair_hash_authenticates_children_and_round_wires ... ok
+test execution::relation::hash::tests::partial_inverse_zero_is_constrained ... ok
+test execution::relation::tests::both_branch_arms_and_zero_test_are_constrained ... ok
+test execution::relation::tests::canonical_comparison_boundaries ... ok
+test execution::relation::tests::compiled_trident_import_loop_branch_matches_native ... ok
+test execution::relation::tests::inverse_and_zero_failure ... ok
+test execution::relation::tests::native_arithmetic_and_static_compose ... ok
+test execution::relation::tests::noncanonical_bit_decomposition_cannot_forge_ordering ... ok
+test execution::relation::tests::pair_equality_binds_every_digest_limb_and_matches_native ... ok
+test execution::relation::tests::relation_is_witness_independent_and_public_constant_must_be_pinned ... ok
+test execution::relation::tests::structural_aliases_are_shared_and_outputs_left_to_right ... ok
+test execution::relation::tests::symbolic_cons_expansion_is_bounded ... ok
+test execution::relation::tests::unselected_invalid_inverse_is_allowed_but_selected_error_fails ... ok
+test execution::relation::tests::unsupported_and_noncanonical_programs_fail_closed ... ok
+test execution::relation::tests::word_operations_match_nox_and_reject_large_operands ... ok
+test execution::state_tests::every_lookup_coordinate_and_root_limb_is_bound_to_execution ... ok
+test execution::state_tests::forged_lookup_value_cannot_be_authenticated_by_another_provider ... ok
+test execution::state_tests::inactive_lookup_needs_no_cell_but_cannot_hide_an_active_read ... ok
+test execution::tagged::hash_tests::absent_child_corruption_cannot_hide_behind_atom_hash_selection ... ok
+test execution::tagged::hash_tests::canonical_byte_decomposition_rejects_coherent_mod_p_aliases ... ok
+test execution::tagged::hash_tests::digest_memoization_is_stable_and_large_hashes_fail_at_gate_budget ... ok
+test execution::tagged::hash_tests::equality_gadget_checks_fourth_limb_when_first_three_match ... ok
+test execution::tagged::hash_tests::hash_optional_topology_is_selected_with_all_four_digest_limbs ... ok
+test execution::tagged::hash_tests::native_equality_covers_atoms_pairs_optional_shapes_and_association ... ok
+test execution::tagged::hash_tests::structural_axis_and_pattern_hash_match_native_framing_at_boundaries ... ok
+test execution::tagged::node_cost_tests::adversarial::all_digest_limbs_padding_tags_and_disabled_mandatory_ports_are_constrained ... ok
+test execution::tagged::node_cost_tests::adversarial::equal_particle_conflicting_cost_rejects_even_with_consistent_parent_arithmetic ... ok
+test execution::tagged::node_cost_tests::adversarial::forged_auxiliary_bits_inverse_and_requests_reject_with_public_inputs_unchanged ... ok
+test execution::relation::hash::tests::hash_output_is_authenticated_by_direct_proof ... ok
+test execution::tagged::node_cost_tests::adversarial::noncanonical_atom_alias_rejects_after_forged_digest_and_public_premises_are_updated ... ok
+test execution::tagged::node_cost_tests::adversarial::unused_pair_costs_remain_explicit_public_premises ... ok
+test execution::tagged::node_cost_tests::adversarial::forged_input_with_updated_public_premise_still_violates_rows ... ok
+test execution::tagged::node_cost_tests::arithmetic::branch_dynamic_propagates_from_smaller_arm_and_max_keeps_both_limbs ... ok
+test execution::tagged::node_cost_tests::arithmetic::limb_add_and_max_cross_field_modulus_and_saturate_exactly ... ok
+test execution::tagged::node_cost_tests::arithmetic::shared_native_dag_reaches_u64_saturation_without_tree_expansion ... ok
+test execution::tagged::node_cost_tests::backend::fixed_schema_is_identical_across_builds ... ok
+test execution::tagged::node_cost_tests::every_metadata_opcode_and_malformed_body_matches_native_cost ... ok
+test execution::tagged::node_cost_tests::exact_gate_cap_accepts_and_one_below_cannot_finish_partial_component ... ok
+test execution::tagged::node_cost_tests::fixed_schema_fits_declared_cap_and_requires_public_read_premises ... ok
+test execution::tagged::tests::arithmetic_nested_branches_and_nonzero_field_values_match_reference ... ok
+test execution::tagged::tests::equal_flattened_leaves_do_not_hide_output_association_or_padding ... ok
+test execution::tagged::tests::every_materialized_gate_coordinate_is_checked_independently_of_recipes ... ok
+test execution::tagged::tests::inactive_invalid_axis_is_gated_and_active_projection_is_unsatisfiable ... ok
+test execution::tagged::tests::inactive_inverse_atom_errors_and_cost_follow_selected_execution ... ok
+test execution::tagged::tests::mixed_atom_pair_branches_match_native_and_bind_topology ... ok
+test execution::tagged::tests::unsupported_and_resource_errors_do_not_claim_native_invalidity ... ok
+test execution::tagged::word_tests::composed_hash_words_nested_continuations_and_inactive_malformed_match_native ... ok
+test execution::tagged::word_tests::computed_continuations_stay_unsupported_even_when_native_happens_to_be_static ... ok
+test execution::tagged::word_tests::every_word_and_comparator_gate_rejects_single_wire_corruption ... ok
+test execution::tagged::word_tests::inactive_invalid_word_range_and_atom_shape_are_gated ... ok
+test execution::tagged::word_tests::quoted_composition_preserves_mixed_subjects_and_gates_projection ... ok
+test execution::tagged::word_tests::unsigned64_ordering_crosses_word_and_field_boundaries ... ok
+test execution::tagged::word_tests::words_match_native_xor_and_not_and_full_shift_amount ... ok
+test execution::zk::tests::every_opened_pair_reconstructs_the_original_views_and_outputs ... ok
+test execution::zk::tests::linear_relations_and_higher_degree_ccs_are_supported ... ok
+test execution::zk::tests::malformed_or_spliced_transcripts_fail_closed ... ok
+test execution::zk::tests::private_proofs_bind_relation_statement_and_every_public_coordinate ... ok
+test execution::zk::tests::relation_admission_precedes_proof_allocation ... ok
+test execution::zk::tests::two_view_distribution_matches_a_witness_free_simulator_over_f3 ... ok
+test execution::zk::tests::verifier_rejects_unsatisfied_and_zero_constant_witnesses_without_honest_gate ... ok
+test folding::decide::tests::decide_empty_accumulator_errors ... ok
+test folding::decide::tests::fold_then_decide_produces_valid_proof ... ok
+test folding::fold::tests::attack_satisfying_but_meaningless_witness_passes_for_any_statement ... ok
+test folding::fold::tests::attack_zeroed_constant_wire_satisfies_universal_instance ... ok
+test folding::fold::tests::first_fold_adopts_witness ... ok
+test folding::fold::tests::fold_step_is_deterministic ... ok
+test folding::fold::tests::fold_step_rejects_witness_with_wrong_register ... ok
+test folding::fold::tests::fold_step_rejects_witness_with_wrong_register_after_first_fold ... ok
+test folding::fold::tests::two_folds_increase_step_count ... ok
+test multilinear::tests::eq_evals_binary_point ... ok
+test multilinear::tests::eq_evals_sums_to_one ... ok
+test multilinear::tests::evals_to_coeffs_eval_matches ... ok
+test multilinear::tests::evals_to_coeffs_roundtrip ... ok
+test multilinear::tests::evaluate_multilinear_at_binary ... ok
+test multilinear::tests::fold_halves_table ... ok
+test phi::spmv::tests::prove_verify_spmv ... ok
+test phi::spmv::tests::prove_verify_spmv_large ... ok
+test phi::spmv::tests::spmv_ccs_satisfied ... ok
+test phi::spmv::tests::spmv_native_2x2 ... ok
+test phi::trikernel::tests::prove_verify_phi_star_cycle ... ok
+test phi::trikernel::tests::trikernel_step_preserves_mass ... ok
+test spartan::prover::tests::prove_verify_add_pattern ... ok
+test spartan::prover::tests::prove_verify_mul_pattern ... ok
+test sumcheck::prover::pairing_tests::outer_fold_pairs_challenges_msb_first ... ok
+test sumcheck::prover::tests::bilinear_sumcheck_consistent ... ok
+test sumcheck::verifier::tests::consistency_check_accepts_correct_sum ... ok
+test sumcheck::verifier::tests::consistency_check_rejects_wrong_sum ... ok
+test sumcheck::verifier::tests::prover_verifier_claim_consistent ... ok
+test tests::authenticated_recursive_openings_are_refused_until_constrained ... ok
+test tests::commit_rejects_forged_axis_result ... ok
+test tests::commit_rejects_look_root_mismatch ... ok
+test tests::commit_rejects_look_without_public_root ... ok
+test tests::commit_rejects_swapped_axis_commitment ... ok
+test tests::commit_rejects_swapped_hash_rate ... ok
+test tests::commit_rejects_swapped_look_opening ... ok
+test tests::commit_rejects_tampered_axis_opening ... ok
+test tests::commit_rejects_tampered_hash_rate ... ok
+test tests::commit_rejects_tampered_look_leaves ... ok
+test tests::commit_rejects_unknown_pattern_tag ... ok
+test tests::commit_verify_roundtrip ... ok
+test tests::e2e_authenticated_public_state_execution_roundtrip ... ok
+test tests::e2e_axis_accumulator_and_statement_binding_roundtrip ... ok
+test tests::e2e_axis_execution_binds_subject_and_result ... ok
+test tests::e2e_compose_roundtrip ... ok
+test tests::e2e_cons_roundtrip ... ok
+test tests::e2e_hash_accumulator_roundtrip ... ok
+test tests::e2e_statement_binding_rejects_focus_exceeded ... ok
+test tests::e2e_statement_binding_rejects_wrong_input_hash ... ok
+test tests::e2e_two_hash_blocks_roundtrip ... ok
+test tests::fold_add_multi_step_commit_verify ... ok
+test tests::fold_all_rejects_unsatisfied_eq_step ... ok
+test tests::fold_mixed_patterns_commit_verify ... ok
+test tests::group_count_independent_of_trace_length ... ok
+test tests::open_larger_than_witness_size ... ok
+test tests::open_pads_short_poly_to_point_size ... ok
+test tests::open_poly_longer_than_point_rejected ... ok
+test tests::open_verify_eval_roundtrip_six_vars ... ok
+test tests::open_verify_eval_roundtrip_small ... ok
+test tests::open_zero_vars_rejected ... ok
+test tests::real_call_trace_satisfies_and_roundtrips ... ok
+test tests::real_traces_satisfy_pattern_family ... ok
+test tests::verify_accepts_nonempty_satisfied_linear_bindings ... ok
+test tests::verify_eval_wrong_value_rejected ... ok
+test tests::verify_rejects_folded_forged_hash_digest ... ok
+test tests::verify_rejects_folded_forged_result_binding ... ok
+test tests::verify_rejects_folded_wrong_commitment_binding ... ok
+test tests::verify_rejects_folded_wrong_statement_root ... ok
+test tests::verify_rejects_foreign_group_layout ... ok
+test tests::verify_rejects_spliced_axis_execution_opening ... ok
+test tests::verify_rejects_spliced_hash_binding_group ... ok
+test tests::verify_rejects_spliced_state_execution_opening ... ok
+test tests::verify_rejects_tampered_eval_value ... ok
+test transcript::tests::commitment_domain_separation ... ok
+test transcript::tests::decode_field_accepts_p_minus_1 ... ok
+test transcript::tests::decode_field_rejects_noncanonical ... ok
+test transcript::tests::decode_fields_rejects_odd_length ... ok
+test transcript::tests::different_domains_different_challenges ... ok
+test transcript::tests::different_messages_different_challenges ... ok
+test transcript::tests::encode_decode_field_roundtrip ... ok
+test transcript::tests::encode_decode_fields_roundtrip ... ok
+test transcript::tests::multiple_squeezes_are_independent ... ok
+test transcript::tests::same_messages_same_challenge ... ok
+test transcript::tests::sumcheck_poly_encode_decode_roundtrip ... ok
+test types::tests::mul_vec_oob_column_returns_zero ... ok
+test execution::tagged::node_cost_tests::backend::existing_backend_binds_component_premises_and_rejects_forged_witnesses ... ok
+
+test result: ok. 229 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.04s
+
+     Running tests/disclosed_memory_allocation.rs (target/release/deps/disclosed_memory_allocation-fba455ef6fe31311)
+
+running 1 test
+test failed_growth_preserves_validated_records_and_allows_retry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/execution_adversarial.rs (target/release/deps/execution_adversarial-66971973b5f4383b)
+
+running 5 tests
+test noncanonical_openings_and_spliced_columns_are_rejected ... ok
+test execution_statement_authenticates_program_input_output_and_cost ... ok
+test odd_and_even_witness_dimensions_authenticate_public_values ... ok
+test untrusted_dimensions_and_round_degree_metadata_fail_closed ... ok
+test reproving_a_different_valid_execution_cannot_substitute_its_input_or_output ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/reaudit_private.rs (target/release/deps/reaudit_private-3fa8c37487f52be1)
+
+running 4 tests
+test measure_equal_statement_witness_timing ... ignored, diagnostic timing experiment; timing is not a portable test assertion
+test native_private_ccs_handles_constants_sparse_cancellation_and_degree_sixteen ... ok
+test private_verifier_rejects_dimension_bombs_and_excessive_sparse_expansion ... ok
+test generated_private_relations_match_native_success_failure_output_and_cost ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running unittests src/main.rs (target/release/deps/zheng-1223ef33cfb891a3)
+
+running 2 tests
+test capsule::tests::decode_rejects_garbage ... ok
+test capsule::tests::capsule_roundtrips ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests zheng
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
