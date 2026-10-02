@@ -1,0 +1,226 @@
+{
+  "base_revision": "633e5ba980db94ca10d9d6b67cf24d9d3aef63a7",
+  "commands": [
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "check",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--release",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "log": "check.log",
+      "sha256": "8c783c72e0c83a9be7649b8a2694980c27b4d82cf18fe72fa4d00e9f174de3b7",
+      "test_totals": null,
+      "source": "source.json"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "test",
+        "--workspace",
+        "--release",
+        "--locked",
+        "--offline",
+        "--all-features",
+        "--",
+        "--test-threads=2"
+      ],
+      "exit_code": 0,
+      "log": "all-features.log",
+      "sha256": "1da21b68092ed0c79fd3b5131d35bc16dfaedada9ecb3bcd692b82915ecaf02b",
+      "test_totals": {
+        "passed": 244,
+        "failed": 0,
+        "ignored": 1
+      },
+      "source": "source.json"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "test",
+        "--workspace",
+        "--release",
+        "--locked",
+        "--offline",
+        "--",
+        "--test-threads=2"
+      ],
+      "exit_code": 0,
+      "log": "default.log",
+      "sha256": "5c3a0f749d5cb1a31aa444a2f8fb2b4554b18a68a2aab98f1396788969d4841e",
+      "test_totals": {
+        "passed": 240,
+        "failed": 0,
+        "ignored": 1
+      },
+      "source": "final-source.json"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "check",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--release",
+        "--locked",
+        "--offline"
+      ],
+      "exit_code": 0,
+      "log": "final-check.log",
+      "sha256": "460c9001590046cf412a42ac9f597e25477c0e76ceef88db787b0a03d7c60d12",
+      "test_totals": null,
+      "source": "final-source.json"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "test",
+        "-p",
+        "zheng",
+        "--release",
+        "--locked",
+        "--offline",
+        "disclosed",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "log": "targeted.log",
+      "sha256": "6cb2f2631e52182e1508e3142038e8ef935d885df0d7c3415cdd9a2e791e8a9a",
+      "test_totals": {
+        "passed": 10,
+        "failed": 0,
+        "ignored": 0
+      },
+      "source": "intermediate exploratory log; final gates supersede"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "test",
+        "-p",
+        "zheng",
+        "--release",
+        "--locked",
+        "--offline",
+        "--test",
+        "disclosed_memory_allocation",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "log": "allocation.log",
+      "sha256": "d0f4047fa4192bd851b8f297c7d91fa1dd0473ddf0aadbf310b8b088dd88b626",
+      "test_totals": {
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "source": "intermediate exploratory log; final gates supersede"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "test",
+        "-p",
+        "zheng",
+        "--release",
+        "--locked",
+        "--offline",
+        "--all-features",
+        "disclosed",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "log": "final-targeted-all-features.log",
+      "sha256": "3399452fc12baf96d4f0a67d3eeeda70d3dbb521f62af36555eff2ff107f14bb",
+      "test_totals": {
+        "passed": 10,
+        "failed": 0,
+        "ignored": 0
+      },
+      "source": "final-source.json"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "test",
+        "-p",
+        "zheng",
+        "--release",
+        "--locked",
+        "--offline",
+        "--all-features",
+        "--test",
+        "disclosed_memory_allocation",
+        "--",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "log": "final-allocation-all-features.log",
+      "sha256": "15972eddef7981a607fcdccaa98166987daef35a89055b62bd7b3faa6797183c",
+      "test_totals": {
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "source": "final-source.json"
+    },
+    {
+      "command": [
+        "/Users/master/.cargo/bin/rustup",
+        "run",
+        "1.89.0",
+        "cargo",
+        "run",
+        "-p",
+        "zheng",
+        "--example",
+        "disclosed_memory_cost",
+        "--release",
+        "--locked",
+        "--offline",
+        "--",
+        "50000"
+      ],
+      "exit_code": 0,
+      "log": "measurement.log",
+      "sha256": "019c6dbeded0a5358ea634700d0744e7f80656a6130d85b2f6c5e1b94f31bfe2",
+      "test_totals": null,
+      "source": "measurement-source.json"
+    }
+  ],
+  "note": "All-features whole-workspace run compiled the initial eight component tests. Final targeted all-features and allocator gates cover the expanded final tests; default workspace and final all-targets check cover final source."
+}

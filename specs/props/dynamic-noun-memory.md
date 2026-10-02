@@ -11,9 +11,13 @@ witness capture is algebraic noun/Cost derivation, followed by authenticated
 memory and transitions. Existing production proof contracts remain unchanged.
 This draft supplies no compiler execution proof or SH7/SH8 acceptance.
 
-The first local component's contract is [Internal noun and Cost
-component](../noun-cost-component.md). Authenticated memory and transitions
-remain planned.
+The local CCS component's contract is [Internal noun and Cost
+component](../noun-cost-component.md). The compact disclosed route adds
+[Disclosed noun memory](../disclosed-noun-memory.md): a verifier-owned table
+checks native noun identities and derives Costs from prior validated records.
+It supplies exact public-memory reads without a separate CCS witness for every
+definition. Production execution certificates and transitions remain planned.
+The existing CCS component and its unresolved-read guard remain unchanged.
 
 ## Baseline and ownership
 
@@ -165,12 +169,21 @@ does not presume that its composed gadgets fit the current 32768-gate limit.
 
 ## Subsequent acceptance
 
-After noun/Cost derivation and authenticated memory, constrain Enter/Return,
-LIFO frames, branches, computed formulas, reservations/refunds and one final
-empty-stack completed state. Then adapt the existing Zheng proof backend with
-verifier-derived matrices and full public binding. Its current public backend
-discloses and checks the full witness; dynamic execution inherits no succinctness
-or zero-knowledge claim automatically.
+After noun/Cost derivation and authenticated memory, check the complete execution
+derivation: branches, computed formulas, LIFO invocation dependencies, exact
+cost and completed result. A compact disclosed semantic certificate may check
+these equations directly with a verifier-owned rule set. A postorder derivation
+DAG with strictly prior premises may share repeated successful subevaluations;
+each occurrence must still contribute to charged cost and expanded execution.
+Budget-independent sharing requires an explicit reservation/refund equivalence
+argument and adversarial tests before omitting budgets from its keys. Physical
+allocation, GC and cancellation telemetry do not follow from this semantic DAG.
+
+An algebraic profile may instead adapt the existing Zheng proof backend with
+verifier-derived matrices and full public binding. Both routes require complete
+statement and terminal-state checks. Dynamic execution inherits no succinctness
+or zero-knowledge claim automatically. Actual compiler census and bounded
+measurements decide whether either representation meets the workload limits.
 
 Joy integration binds exact program, structured subject, output topology,
 compiler JOB1 and extracted ART1. The full [SH7 gate](../../../trident/reference/self-hosting.md#sh7-native-proof-relation)
