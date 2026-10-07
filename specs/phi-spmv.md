@@ -7,7 +7,7 @@ status: draft
 
 # φ* SpMV circuit (zheng)
 
-implements the algebraic core of foculus [[provable consensus]]: sparse
+implements the algebraic core of [[tru/specs/proving|proving]] (the circuit behind foculus [[provable consensus]]): sparse
 matrix-vector multiply as multi-row CCS, then tri-kernel iteration proven
 by folding diffusion SpMVs.
 
@@ -54,7 +54,7 @@ re-runs the step and checks each diffusion proof.
 ## domain localization
 
 intended prove size is the ε-support domain (foculus finality), not planetary
-`N`. full-graph 1.4B constraint estimates in provable-consensus.md are this
+`N`. the full-graph 1.4B constraint estimate in `tru/specs/proving.md` is this
 module at scale (same SpMV CCS, larger n, more iterations, GPU prover).
 
 ## API
