@@ -45,6 +45,58 @@ use nebu::Goldilocks;
 use protocol::Setup;
 use wire::Parsed;
 
+/// The shape and proven bits of a zk proof for one statement.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Report {
+    /// `ℓ`: variables of the committed free half.
+    pub vars: usize,
+    /// `log2` of the masked relation's rows.
+    pub log_m: usize,
+    /// Outer round degree (`d + 1`).
+    pub degree: usize,
+    /// Matrices `t`.
+    pub matrices: usize,
+    /// Committed entries: `2^ℓ` plus the two masks.
+    pub entries: usize,
+    /// Commitment width `k`, data rows, `log2 N`, sampled columns.
+    pub k: usize,
+    pub rows: usize,
+    pub log_n: u32,
+    pub queries: usize,
+    /// Proven bits of the opening (`hiding::Config::security_bits`).
+    pub opening_bits: f64,
+    /// `−log2` of the masked Spartan error, `(log m·(d + 2) + 2ℓ + t + 3)/p³`
+    /// with `d + 1` the outer degree.
+    pub iop_bits: f64,
+}
+
+/// The report for a private statement under `params`.
+pub fn report(statement: &PrivateStatement, params: &HidingParams) -> Result<Report, String> {
+    let prepared = statement.prepare()?;
+    let public: Vec<(usize, Goldilocks)> =
+        prepared.public_coordinates.iter().map(|&(i, v)| (i, Goldilocks::new(v))).collect();
+    let s = Setup::new(&prepared.relation.instance, &with_constant(&public))?;
+    let cfg = hiding::Config::derive(params, s.entries())?;
+    let t = s.instance.matrices.len();
+    // outer: log m rounds of degree d+1, τ, ρ1; inner: ℓ rounds of degree 2,
+    // ρ2; γ batching (t − 1); λ
+    let terms = s.log_m * s.degree + s.log_m + 1 + 2 * s.layout.vars + 1 + (t - 1) + 1;
+    let p3 = 3.0 * (nebu::field::P as f64).log2();
+    Ok(Report {
+        vars: s.layout.vars,
+        log_m: s.log_m,
+        degree: s.degree,
+        matrices: t,
+        entries: s.entries(),
+        k: cfg.k,
+        rows: cfg.rows,
+        log_n: cfg.log_n,
+        queries: cfg.queries,
+        opening_bits: cfg.security_bits(),
+        iop_bits: p3 - (terms as f64).log2(),
+    })
+}
+
 /// Identifies the zk scheme inside an artifact.
 pub const FORMAT: &str = "zheng-nox-veil-execution-v1";
 
