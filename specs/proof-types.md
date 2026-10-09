@@ -60,14 +60,14 @@ every proof in the table is a [[zheng]] proof. no SNARKs, no trusted setup, no c
 
 ## the proof system
 
-[[cyber]] uses [[zheng]], built on the Whirlaway architecture: [[SuperSpartan]] IOP + [[Brakedown]] as the multilinear polynomial commitment scheme. no trusted setup, [[Hemera]]-only security (post-quantum), native [[Goldilocks field]] arithmetic.
+[[cyber]] uses [[zheng]]: a [[SuperSpartan]] IOP over CCS with challenges in Fp3 + one multilinear PCS opening (WHIR over Reed–Solomon, the shipped succinct profile). no trusted setup, [[Hemera]]-only security (post-quantum), native [[Goldilocks field]] arithmetic. bits per component: zheng `specs/soundness.md`.
 
 ```
 Property          │ SNARK         │ zheng (multilinear)
 ──────────────────┼───────────────┼─────────────────────
 Trusted setup     │ Required      │ NOT REQUIRED
 Quantum resistant │ No            │ Yes
-Proof size        │ ~200 bytes    │ ~60-157 KB
+Proof size        │ ~200 bytes    │ 16.1-71 KB measured
 Security basis    │ Discrete log  │ Hash only
 Field compatible  │ Specific      │ Any (Goldilocks)
 Prover (constr.)  │ O(N log N)    │ O(N) linear
@@ -79,11 +79,11 @@ Verifier          │ O(1) pairing  │ O(log² N) hash
 ```
 nox execution → trace (2ⁿ steps × registers)
   → encode as ONE multilinear polynomial f(x₁, ..., x_{n+m})
-  → Brakedown_commit(f) = C
+  → PCS_commit(f) = C                 (WHIR, hemera Merkle root)
   → SuperSpartan sumcheck: verify AIR constraints hold for all rows
   → reduces to: evaluate f at ONE random point r
-  → Brakedown_open(f, r) = (v, π)
-  → verifier: check sumcheck transcript + Brakedown_verify(C, r, v, π)
+  → PCS_open(f, r) = (v, π)
+  → verifier: check sumcheck transcript + PCS_verify(C, r, v, π)
 ```
 
 the [[nox]] VM's sixteen reduction patterns map to AIR transition constraints — each pattern becomes a polynomial equation relating register state before and after a reduction step. [[SuperSpartan]] handles AIR natively via CCS (Customizable Constraint Systems), with linear-time prover and logarithmic-time verifier.
@@ -99,14 +99,14 @@ zheng verification requires:
   1. Field arithmetic (patterns 5, 7, 8)
   2. Hash computation (pattern 15)
   3. Sumcheck verification (patterns 5, 7, 9 — field ops only)
-  4. Brakedown opening verification (pattern 15 + conditionals + poly_eval)
+  4. WHIR opening verification (pattern 15 for Merkle paths + conditionals + poly_eval)
 
 All are nox-native. QED.
 
 CONSEQUENCE:
   verify(proof) can itself be proven
   This enables recursive proof composition
-  O(1) verification regardless of computation size
+  (constant size in the number of steps comes from accumulation, not from this)
 ```
 
 the system closes on itself. no trusted external verifier remains.
@@ -120,7 +120,7 @@ zheng VERIFIER COMPONENTS       │ Layer 1 only │ With Layer 3 jets
 2. Fiat-Shamir challenges       │    ~30,000   │    ~5,000  (hash jet)
 3. Merkle verification          │   ~500,000   │   ~50,000  (merkle_verify jet)
 4. Constraint evaluation        │    ~10,000   │    ~3,000  (poly_eval jet)
-5. Brakedown verification        │    ~50,000   │   ~10,000  (fri_fold + ntt jets)
+5. PCS opening verification      │    ~50,000   │   ~10,000  (fri_fold + ntt jets)
 ────────────────────────────────┼──────────────┼──────────────────
 TOTAL                           │   ~600,000   │   ~70,000
 
@@ -132,7 +132,7 @@ Layer 3 jets make recursive composition practical.
 
 ```
 Level 0: Prove computation C → proof π₀
-Level 1: Prove verify(π₀) → proof π₁ (~100-200 KB)
+Level 1: Prove verify(π₀) → proof π₁ (goal ≤ 64 KB, measured TODO(F-numbers))
 Level 2: Prove verify(π₁) → proof π₂ (same size)
 
 AGGREGATION:
@@ -180,7 +180,7 @@ the graph sees edges and weights. the graph does not see authors. see [[cyber/id
 π_chain = zheng(verify(π₁) ∧ verify(π₂) ∧ verify(π₃) ∧ verify(π_B))
 ```
 
-one proof (~100-200 KB) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
+one proof (goal ≤ 64 KB, measured TODO(F-numbers)) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
 
 relays earn [[focus]] for proven delivery. no proof, no payment.
 
@@ -340,14 +340,14 @@ see [[proof_of_location]] for the full specification.
 │  IOP               SuperSpartan (CCS/AIR via sumcheck)  │
 │                     linear-time prover, log-time verifier│
 ├─────────────────────────────────────────────────────────┤
-│  PCS               Brakedown (multilinear polynomial commit)  │
-│                     290 μs verify, ~157 KiB proofs       │
+│  PCS               WHIR (multilinear, lens)             │
+│                     hash.tri: 16.1 KB, 7.96 ms verify    │
 ├─────────────────────────────────────────────────────────┤
 │  primitives         Hemera (hash), nox (VM),             │
 │                     Goldilocks field (arithmetic)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
-one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit trace via [[Brakedown]], verify constraints via [[sumcheck]], produce a [[zheng]] proof.
+one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit the witness via WHIR, verify constraints via [[sumcheck]], produce a [[zheng]] proof.
 
 see [[cyber/identity]] for authentication and anonymity, [[cyber/communication]] for delivery proofs, [[proof_of_location]] for anchor-free geolocation, [[BBG]] for polynomial commitment architecture, [[trident]] for verifiable AI, [[cybics]] for proof by simulation, [[cyber/security]] for formal guarantees

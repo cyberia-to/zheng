@@ -20,8 +20,9 @@ pub struct ProofGroup {
 /// (`ccs::universal_ccs`). `binding` folds the degree-1 opening bindings
 /// (axis, hash, look eq steps) under `ccs::eq_instance`; absent when the
 /// trace has none. The verifier derives both instances from these
-/// positions — the wire never carries a CCS instance. Size is ~4 KiB and
-/// independent of the trace length.
+/// positions — the wire never carries a CCS instance. Legacy fold
+/// (unsound; feature `legacy`, removed in phase 5): its size does not depend
+/// on the trace length, but it proves nothing sound (specs/decider.md).
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceProof {
@@ -107,7 +108,8 @@ pub enum LensBackend {
 
 // ── accumulator ──────────────────────────────────────────────────
 
-/// HyperNova running accumulator.
+/// Running accumulator of the legacy fold (unsound; feature `legacy`,
+/// removed in phase 5).
 ///
 /// error_evals[r] = Σ_j c_j · ∏_{i ∈ S_j} (M_i[row r] · z_folded) for each row r.
 /// For satisfying witnesses all entries are 0. Grows by num_rows scalars per fold group

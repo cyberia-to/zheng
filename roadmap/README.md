@@ -7,8 +7,8 @@ open proposals not yet in canonical spec. all other proposals are now in referen
 | proposal | status | target |
 |----------|--------|--------|
 | [[gpu-prover]] | draft | full pipeline in VRAM — 45-100x throughput on commodity GPU |
-| [[ring-aware-fhe]] | **in reference** → [[ring-pcs]] | native TFHE bootstrapping — ring-structured CCS + dedicated jets |
-| [[gravity-commitment]] | accepted | mass-weighted polynomial encoding — verification cost ∝ importance |
+| [[ring-aware-fhe]] | **in reference** → [[ring-pcs]]; composition section superseded (accumulation, phase 3) | native TFHE bootstrapping — ring-structured CCS + dedicated jets |
+| [[gravity-commitment]] | superseded — to be restated on the shipped RS/WHIR commitment | mass-weighted polynomial encoding — verification cost ∝ importance |
 
 ## lifecycle
 

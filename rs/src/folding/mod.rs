@@ -3,7 +3,10 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! HyperNova CCS folding: incremental accumulation + decider.
+//! Legacy CCS fold (unsound; feature `legacy`, removed in phase 5):
+//! incremental relaxed folding + decider. The verifier never checks the
+//! fold (a hemera commitment is not homomorphic) — see specs/decider.md
+//! §soundness. Accumulation (phase 3) replaces it.
 
 pub mod decide;
 pub mod fold;

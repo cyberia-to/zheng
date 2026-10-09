@@ -1,23 +1,22 @@
 # BBG integration
 
-the [[BBG]] (the authenticated state structure for [[cyber]]) uses Brakedown-based polynomial commitments for all indexes. the same Brakedown instance that serves as the [[zheng]] lens also handles state operations — one polynomial commitment scheme (PCS) for proofs and state.
+the [[BBG]] (the authenticated state structure for [[cyber]]) and [[zheng]] share one hash, [[hemera]], and one field, [[Goldilocks]]. a zheng statement about state names a state root; zheng itself authenticates every read against that root before the read becomes part of the relation.
 
-## shared primitives
+## how a proof reads state
 
-| operation | mechanism | constraints |
-|---|---|---|
-| EdgeSet membership | Brakedown evaluation proof | ~1,000 |
-| namespace completeness | sorted range bounds + Brakedown opens | ~10,000 |
-| cross-index consistency | [[LogUp]] via [[sumcheck]] | ~5,000 |
-| focus commitment | polynomial over (neuron, π) | ~1,000 |
-| balance commitment | polynomial over (neuron, balance) | ~1,000 |
+| step | mechanism |
+|---|---|
+| statement | `StateStatement`: the state root (four field limbs), and one public lookup per lookup site of the compiled relation (active flag, namespace, key, value) |
+| evidence | `StateEvidence`: the leaves fold to the root by hemera `compress4`; every carried table matches its leaf (a hash commitment of the padded fields, length in the header) |
+| check | the verifier authenticates the evidence first, then pins the active flag, root limbs, namespace, key and value of every read in the relation |
+| profiles | state-public v3 (envelope profile 3, witness disclosed), succinct state statements (profile 1), private state for the zk profile and the MPC-in-the-head fallback |
 
-[[LogUp]] lookup arguments use the [[sumcheck]] protocol — the same sumcheck that powers [[SuperSpartan]]. cross-index consistency (every edge appearing in neuron index, source index, and target index) reduces to a sumcheck over logarithmic multiplicities. one protocol, two uses.
+a read can be forged only by a hemera collision in the root fold or in a table commitment — the hash row of [[zheng/specs/soundness|the soundness ledger]]. limits: 4096 reads, 2^20 fields per table.
 
-## why this matters
+## what changes with the repair
 
-the unification of lens across proofs and state eliminates a translation layer. a [[zheng]] proof that verifies a state transition uses the same Brakedown commitment that the BBG uses to authenticate the state itself. the verifier does not need separate cryptographic machinery for "check the proof" and "check the state" — both reduce to Brakedown evaluation proofs over [[Goldilocks]] field elements hashed by [[hemera]].
+the old picture — one expander-code (Brakedown) commitment serving both the proof's opening and BBG's indexes, with evaluation proofs but without Merkle paths — is retired: that commitment had no real opening ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). today the state tables are carried whole and checked against their hash commitment, which is sound and linear in the table size. the [[soft3/proposals/proof-system-repair|proof-system repair]] migrates BBG's `QueryProof` onto the Reed–Solomon commitment that won the phase-2 bake-off (WHIR), so that a state query and a proof open the same kind of commitment, with Merkle paths, at a size polylogarithmic in the table rather than linear.
 
-this is also why batch verification works: multiple Brakedown openings (some from proofs, some from state queries) can be batched into a single verification pass. the amortized cost per opening drops as the batch grows.
+[[LogUp]] lookup arguments use the [[sumcheck]] protocol — the same sumcheck that powers [[SuperSpartan]]; cross-index consistency (every edge appearing in the neuron, source and target indexes) reduces to a sumcheck over logarithmic multiplicities.
 
-see [[recursion]] for how proofs compose, [[performance]] for constraint costs, [[trace-to-proof]] for the proving pipeline
+see [[recursion]] for accumulation and composition, [[performance]] for measured figures, [[trace-to-proof]] for the proving pipeline

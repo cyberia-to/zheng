@@ -31,7 +31,7 @@ s_p × (r0_t − p) = 0      for every p        (a non-zero s_p forces r0 = p)
 
 together: exactly one s_p is non-zero and it equals 1 — two non-zero selectors would need two values of r0, and the sum then fixes the survivor to 1. every other pattern's terms vanish identically, so multiplying C_p by s_p raises its degree by exactly one. Lagrange selectors interpolated over the 18 tag values would raise it by 17 — rejected for that reason. a row whose tag is outside 0..17 admits no selector and is unprovable.
 
-because one instance covers every row, one HyperNova accumulator and one decider cover the whole Layer-1 trace; the proof is ~4 KiB whatever the program (see [[decider]]).
+because one instance covers every row, the legacy fold (feature `legacy`, unsound) used one accumulator and one decider for the whole Layer-1 trace ([[decider]] §soundness). in the shipped design that role passes to the nox machine relation (`machine.md`, phase 3), accumulated step by step and decided by one WHIR opening; proof size goal ≤ 64 KB whatever the program, measured TODO(F-numbers).
 
 ### hash rows
 
@@ -508,7 +508,7 @@ call injects externally computed values into the trace. the constraint structure
 C_16(t) = r14_{t+1} − r14_t = 0   (status unchanged through hint)
 ```
 
-additional constraints depend on the hint category (e.g., Layer 1 state root verification, oracle value attestation). these are encoded as separate CCS instances composed with the main trace via the [[SuperSpartan]] folding mechanism.
+additional constraints depend on the hint category (e.g., Layer 1 state root verification, oracle value attestation). these are encoded as separate CCS instances composed with the main trace (accumulated with it under phase 3, `accumulation.md`).
 
 CCS decomposition for the base constraint (q = 2 terms, degree 1):
 - M_0: selects r14_{t+1} (z index 30)
@@ -528,14 +528,14 @@ BBG_root = Hemera(Lens.commit(BBG_poly) || Lens.commit(A) || Lens.commit(N))
 
 where `BBG_poly(index, key, t)` is the authenticated state polynomial committed via Brakedown (Lens). a look row proves: `BBG_poly(eval(r4)) = r6` under `BBG_root = r5`.
 
-two inline constraints bind the row to the folded sub-proof:
+two inline constraints bind the row to the composed sub-proof:
 
 ```
 C_17a(t) = r5_t − BBG_root_instance = 0      (root binding: r5 equals the instance BBG_root)
 C_17b(t) = eval_point_t − f(r4_t) = 0        (key binding: evaluation point derived from key r4)
 ```
 
-both are degree 1. the actual Brakedown opening — `Lens.verify(r5, eval(r4), r6, proof)` — is a separate CCS instance, folded in via HyperNova (identical mechanism to pattern 16 call). the folded sub-proof carries ~825 constraints (CCS jet + batch Brakedown).
+both are degree 1. the actual Brakedown opening — `Lens.verify(r5, eval(r4), r6, proof)` — is a separate CCS instance, composed alongside the trace (identical mechanism to pattern 16 call); its cost is the verifier-in-nox row of the budget table below.
 
 CCS decomposition for C_17a (q = 2 terms, degree 1):
 - M_0: selects r5_t (z index 5)
@@ -549,7 +549,7 @@ CCS decomposition for C_17a (q = 2 terms, degree 1):
 
 CCS decomposition for C_17b (degree 1): same shape as C_17a, selecting the evaluation point auxiliary register and the derived function of r4. the exact derivation of `eval(r4)` (how the BBG lookup key maps to a polynomial evaluation point) is specified in bbg/specs/indexes.md.
 
-the folded Brakedown sub-instance is not part of the main CCS trace — it is a separate CCS proof composed via HyperNova. constraint count for the folded sub-instance: ~825 (CCS jet + batch Brakedown, from verifier.md).
+the composed opening sub-instance is not part of the main CCS trace — it is a separate CCS proof, composed with the trace. its constraint count is that of the lens opening verifier as a nox program — not measured yet, TODO(F-numbers).
 
 ### hash pattern (15)
 
@@ -607,8 +607,6 @@ total per Poseidon2 round: 4 × w degree-2 constraints (S-box decomposition) + w
 | anonymous [[cyberlink]] | 15, 4, 9 | ~13,000 |
 | delivery (per hop) | 15, 7, 4 | ~60,000 |
 | private transfer (BBG) | 15, 7, 9 | ~50,000 |
-| recursive verification (generic) | 15, 5, 7, 4 | ~8,000 |
-| recursive verification (CCS jet + batch) | 5, 7 | ~825 |
-| recursive verification (+ algebraic FS) | 5, 7 | ~89 |
+| recursive verification (Spartan verifier + WHIR opening as a nox program) | 15, 5, 7, 4 | TODO(F-numbers) |
 
 see [[SuperSpartan]] for the IOP that verifies constraints, [[sumcheck]] for the reduction mechanism, [[nox]] for pattern definitions, [[transcript]] for Fiat-Shamir challenge derivation

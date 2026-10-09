@@ -8,6 +8,8 @@ origin: proof-horizons.md horizon 4
 ---
 # gravity commitment — mass-weighted polynomial encoding
 
+> superseded: written for the retired expander-code ("recursive Brakedown") lens; its figures were never measured and are removed. the idea is restated below for the shipped Reed–Solomon/WHIR commitment ([[soft3/proposals/proof-system-repair|proof-system repair]]).
+
 verification cost proportional to query importance, not data size. high-π particles verify faster. the proof system reflects the topology of attention.
 
 ## the observation
@@ -28,28 +30,30 @@ gravity encoding:
   sort rows by priority (π rank)
   encode top-k rows in first k coefficients of lower-degree polynomial
   remaining rows in higher-degree extension
-  opening lower-degree part: fewer Brakedown rounds
+  opening lower-degree part: fewer WHIR folding rounds, shorter Merkle paths
 ```
 
 ### layered commitment
 
 ```
-layer 0 (hot):    top 2⁸ rows   → degree 2⁸ polynomial  → 8 folding rounds
-layer 1 (warm):   next 2¹² rows → degree 2¹² polynomial → 12 folding rounds
-layer 2 (cold):   remaining     → degree 2²⁰ polynomial → 20 folding rounds
+layer 0 (hot):    top 2⁸ rows   → 8-variable multilinear polynomial
+layer 1 (warm):   next 2¹² rows → 12-variable multilinear polynomial
+layer 2 (cold):   remaining     → 20-variable multilinear polynomial
 
-hot opening:    ~1 KiB proof, ~10 μs verify
-warm opening:   ~3 KiB proof, ~50 μs verify
-cold opening:   ~8 KiB proof, ~200 μs verify
+each layer is its own Reed–Solomon commitment under its own hemera root.
+an opening's size and verify time grow with the layer's variable count
+(WHIR rounds, Merkle path depth), so hot openings are the cheapest.
+no figure is claimed until measured on the shipped parameters.
 ```
+
+for scale, the one measured WHIR opening at this time: a 2^10-slot witness opens inside a 15,921 B succinct proof verified in 7.96 ms, and a 2^20 relation in 71,081 B and 270 ms (`audit/succinct-profile-2026-10.md`). a hash-only opening carries Merkle paths, so a hot layer is cheaper than a cold one by a constant factor, not by orders of magnitude.
 
 ## application to bbg
 
-```
-top-1000 neuron balance:     ~1 KiB proof, ~10 μs
-obscure particle edge set:   ~8 KiB proof, ~200 μs
-average (power-law queries): ~3 KiB, ~30 μs
-```
+top-1000 neuron balances would sit in the hot layer and open cheapest;
+an obscure particle's edge set in the cold layer. the average cost under
+power-law queries is to be measured once the BBG `QueryProof` rides
+the shipped commitment.
 
 the proof system adapts to the information structure of the data. important facts are cheaper to verify.
 
@@ -66,7 +70,7 @@ the weight function is committed alongside the polynomial. weight changes (π up
 ## open questions
 
 1. **weight stability**: if π changes significantly between epochs, the layered structure must be re-committed. cost: one full re-encoding per epoch. acceptable if epochs are long (hours/days)
-2. **soundness per layer**: each layer has different degree bounds. Schwartz-Zippel analysis must account for the weakest layer (highest degree). 2²⁰ degree over |F| ≈ 2⁶⁴ gives 2⁴⁴ bits of security per round — sufficient
+2. **soundness per layer**: each layer has different degree bounds. Schwartz-Zippel analysis must account for the weakest layer (highest degree). 2²⁰ degree over |F| ≈ 2⁶⁴ would leave only about 44 bits per round, so challenges must come from Fp3 (|F| ≈ 2^192), as in every zheng profile
 3. **cross-layer queries**: querying a position that moved between layers requires opening the new layer. the verifier must know which layer contains the position — committed in the weight map
 
 see [[zheng-2]] for integrated architecture, [[algebraic-extraction]] for batch opening

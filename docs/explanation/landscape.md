@@ -57,29 +57,37 @@ the cost is proof size. FRI-based STARKs produce proofs in the range of
 takes 10-50 ms, an order of magnitude slower than pairing-based schemes.
 for on-chain verification where every byte costs gas, this matters.
 
-## multilinear STARKs
+## multilinear, hash-based proofs
 
-zheng represents the current frontier. it uses recursive Brakedown,
-a hash-based polynomial commitment scheme for [[multilinear
-polynomials]]. the interactive oracle proof is [[SuperSpartan]], which
-encodes constraints using the [[sumcheck protocol]] rather than
-univariate polynomial division. this is where zheng lives.
+zheng uses the multilinear route: the interactive oracle proof is
+[[SuperSpartan|Spartan]], which checks constraints with the [[sumcheck
+protocol]] rather than univariate polynomial division, and the
+commitment is [[WHIR]] — Reed–Solomon codes over Goldilocks committed
+with [[hemera]] Merkle trees and opened at one point of the cubic
+extension Fp3. WHIR won the phase-2 bake-off of the
+[[soft3/proposals/proof-system-repair|proof-system repair]]; the
+expander-code ("recursive Brakedown") commitment it replaces had no real
+opening and is retired.
 
-the shift from univariate to multilinear changes the economics. sumcheck
-requires no NTT and no FFT — the prover runs in linear time over the
-trace. recursive Brakedown achieves sub-millisecond verification while
-remaining purely hash-based. the proofs are transparent and post-quantum,
-like FRI-based STARKs, but verification speed competes with pairing-based
-schemes.
+the shift from univariate to multilinear changes the prover: sumcheck
+needs no FFT over the trace in the IOP. it does not change the size
+floor: a hash-only proof still carries a Merkle path for every query, so
+zheng's proofs sit in the same tens-of-kilobytes range as other hash-only
+systems. the proofs are transparent and post-quantum, like FRI-based
+STARKs.
 
 ## the tradeoff map
 
-| system | setup | post-quantum | proof size | verify time | prover cost |
-|---|---|---|---|---|---|
-| [[Groth16]] | trusted (per-circuit) | no | 128 bytes | ~1.5 ms | O(N log N) |
-| [[PLONK]] | universal ceremony | no | ~400 bytes | ~5 ms | O(N log N) |
-| univariate [[STARK]] (FRI) | transparent | yes | ~200 KiB | 10-50 ms | O(N log N) |
-| zheng (SuperSpartan + recursive Brakedown) | transparent | yes | ~157 KiB | ~1.0 ms | O(N log N) |
+| system | setup | post-quantum | proof size | verify time |
+|---|---|---|---|---|
+| [[Groth16]] | trusted (per-circuit) | no | 128 bytes | ~1.5 ms |
+| [[PLONK]] | universal ceremony | no | ~400 bytes | ~5 ms |
+| univariate [[STARK]] (FRI), production chains | transparent | yes | 150 KB – 1 MB | 10-50 ms |
+| zheng succinct (Spartan + WHIR), one hemera hash | transparent | yes | 15,921 B | 7.96 ms |
+| zheng succinct, 2^20-row relation | transparent | yes | 71,081 B | 270 ms |
+
+zheng's figures are measured (Apple M4 Max, shared machine,
+`audit/succinct-profile-2026-10.md`); the others are published figures.
 
 ## where the tradeoffs converge
 
@@ -89,32 +97,24 @@ that produce toxic waste) and quantum resistance (pairings that Shor's
 algorithm will eventually break). universal setups like PLONK soften
 the trust requirement without eliminating it.
 
-hash-based systems — all flavors of STARKs — trade larger proofs for
-transparency and post-quantum security. FRI-based STARKs proved this
-tradeoff viable. recursive Brakedown sharpens it: the same hash-based
-security model, but verification drops from tens of milliseconds to
-under one millisecond.
-
-zheng occupies the corner of the landscape labeled "transparent setup,
-post-quantum, fastest verification among hash-based systems." the cost
-is proof size: ~157 KiB at 128-bit security versus 128 bytes for
-Groth16. that is a real tradeoff, and for systems where each proof is
-stored individually on-chain, it matters.
+hash-based systems — STARKs and zheng alike — trade larger proofs for
+transparency and post-quantum security. zheng's goal inside that corner
+is a proof of any nox computation ≤ 64 KB, verified in ≤ 1 ms, constant
+in the number of steps. the size is met for small statements and missed
+by 11 % at 2^20 rows; the verification time is not met yet.
 
 ## why this corner suits cyber
 
-[[cyber]] does not store individual proofs on-chain. proofs are verified
-[[recursively]] — aggregated into tree structures, folded into epoch
-proofs, compressed until a single proof covers an entire block or an
-entire epoch. the intermediate proof sizes vanish into the recursion.
-what remains is verification speed, because the verifier runs inside
-[[nox]] at every recursion level.
+[[cyber]] needs transparency (no ceremonies to coordinate across a
+decentralized network) and post-quantum security (the foundation must
+survive quantum computing). it does not need the smallest possible
+proof per statement: long computations and many statements are combined
+by hash-based accumulation of Reed–Solomon evaluation claims (phase 3,
+ARC/WARP-style, in progress), decided by one WHIR opening — decider
+proof ≤ 64 KB goal, measured size TODO(F-numbers). recursion proper — a
+verifier written as a nox program — is kept for composition, not for
+size: in a hash-only world a proof of a proof carries its own Merkle
+paths again.
 
-sub-millisecond verification means cheap recursion. transparent setup
-means no ceremonies to coordinate across a decentralized network.
-post-quantum security means the cryptographic foundation survives the
-transition to quantum computing. zheng pays the proof-size cost that
-[[cyber]] can absorb and collects every property that cyber requires.
-
-the landscape has many valid positions. zheng chose the one that makes
-recursive composition fast, trustless, and future-proof.
+the landscape has many valid positions. zheng chose the one that is
+transparent, post-quantum and rests on one hash.

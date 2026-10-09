@@ -1,7 +1,7 @@
 //! Retired folded trace API — UNSOUND, compiled only with the `legacy` feature.
 //!
 //! `commit`, `open`, `verify_eval`, `verify`, `fold` and `decide` implement the
-//! 0.3.x "HyperNova over hemera + Brakedown" path. It must not be used for
+//! 0.3.x legacy fold over hemera + Brakedown. It must not be used for
 //! production. Its holes are recorded in `specs/decider.md` §soundness:
 //!
 //! - the fold is never checked by the verifier: hemera is not homomorphic,
@@ -83,10 +83,11 @@ pub(crate) fn fold_all(instance: &CCSInstance, witnesses: &[CCSWitness]) -> Resu
 /// Every Layer-1 row — each consecutive trace pair, each replayed
 /// Fiat-Shamir Poseidon2 round of an axis/look opening, each BBG root-chain
 /// compression — is a witness of the ONE universal step instance and folds
-/// into ONE HyperNova accumulator. The opening bindings (axis, hash, look eq
+/// into ONE legacy-fold accumulator. The opening bindings (axis, hash, look eq
 /// steps) fold into a second, degree-1 accumulator when present. Each is
 /// closed by one decider under a shared linkage digest. The proof is two
-/// groups at most and its size does not depend on the trace length.
+/// groups at most and its size does not depend on the trace length (the
+/// legacy fold is unsound; see the module documentation).
 ///
 /// `hash_aux` provides prover hints for Poseidon2 hash blocks (one per block).
 /// `axis_openings` provides Brakedown opening proofs for axis reads (one per axis row).
@@ -286,7 +287,7 @@ pub fn fold(
     fold_step(acc, instance, witness, transcript)
 }
 
-/// Run the SuperSpartan decider on an accumulated HyperNova state.
+/// Run the legacy SuperSpartan decider on an accumulated legacy-fold state.
 ///
 /// Produces the final proof from the accumulated CCS instance and witness,
 /// bound to the given statement via Fiat-Shamir. The proof carries a
