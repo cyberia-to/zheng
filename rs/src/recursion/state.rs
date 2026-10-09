@@ -159,11 +159,21 @@ pub fn absorb_free<O: Ops>(o: &mut O, d: &Dims, st: &State) -> (StateV<O::V>, [O
     (StateV::from_items(d, &vars), [dg[0], dg[1], dg[2], dg[3]])
 }
 
-/// The native digest.
-pub fn digest_native(st: &State) -> Digest {
+/// Whether every base item of a state is a base value (zero extension
+/// coefficients). The circuit absorbs a base item as one lane, so a state
+/// that fails this has no circuit counterpart.
+pub fn is_canonical(st: &State) -> bool {
+    st.items().iter().all(|&(v, ext)| ext || (v.c1 == nebu::Goldilocks::ZERO && v.c2 == nebu::Goldilocks::ZERO))
+}
+
+/// The native digest; `Err` when a base item holds an extension value (the
+/// native sponge stops hashing at the first failed check, so its output
+/// would be raw rate lanes, not a digest).
+pub fn digest_native(st: &State) -> Result<Digest, String> {
     let mut o = super::ops::Native::new();
     let d = digest(&mut o, st);
-    [d[0].c0, d[1].c0, d[2].c0, d[3].c0]
+    o.finish()?;
+    Ok([d[0].c0, d[1].c0, d[2].c0, d[3].c0])
 }
 
 /// The all-zero Fp3 word of a layout: its root and any leaf's opening.

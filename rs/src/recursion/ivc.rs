@@ -375,7 +375,8 @@ pub fn check_shapes(key: &Key, proof: &IvcProof) -> Result<(), String> {
         && s.acc.spot.len() == p.dims.spot
         && s.g.point.len() == p.dims.g
         && s.pn.point.len() == p.dims.pn
-        && s.pv.point.len() == p.dims.pv;
+        && s.pv.point.len() == p.dims.pv
+        && state::is_canonical(s);
     if shape_ok { Ok(()) } else { Err("recursion: state shape".into()) }
 }
 

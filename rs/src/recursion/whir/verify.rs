@@ -188,6 +188,10 @@ pub fn check_shape(cfg: &Config, inputs: usize, pf: &Proof) -> Result<(), String
     }
     let last = *wc.rounds.last().expect("a round");
     ok &= opens(&last, wc.rounds.len() == 1, &pf.final_open);
+    // nonces are field elements (absorbed as one limb)
+    let p = nebu::field::P;
+    ok &= pf.batch.comb_nonce < p && pf.final_nonce < p && pf.fold_nonces0.iter().all(|&x| x < p);
+    ok &= pf.rounds.iter().all(|rp| rp.query_nonce < p && rp.fold_nonces.iter().all(|&x| x < p));
     // a nonce no grinding reads must be zero (one encoding per proof)
     ok &= (cfg.comb_pow > 0 || pf.batch.comb_nonce == 0) && (last.query_pow > 0 || pf.final_nonce == 0);
     for (i, rp) in pf.rounds.iter().enumerate() {
