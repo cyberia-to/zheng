@@ -21,6 +21,26 @@ pub enum Public {
     Prefix(Vec<Fp3>),
     /// Length a power of two, at most `N`.
     Periodic(Vec<Fp3>),
+    /// A periodic pattern on rows `≥ start` (`start` a multiple of the
+    /// pattern length), zero below.
+    Region { pattern: Vec<Fp3>, start: usize },
+}
+
+/// `[y < s]` as a multilinear polynomial in `y` (lens order):
+/// `Σ_k [s_k = 1]·(1 − y_k)·Π_{i>k} eq(y_i, s_i)`, with `s < 2^{y.len()}`.
+pub fn less_than(y: &[Fp3], s: usize) -> Fp3 {
+    let mut acc = Fp3::ZERO;
+    let mut suffix = Fp3::ONE;
+    for k in (0..y.len()).rev() {
+        let bit = (s >> k) & 1 == 1;
+        if bit {
+            acc += suffix * (Fp3::ONE - y[k]);
+            suffix *= y[k];
+        } else {
+            suffix *= Fp3::ONE - y[k];
+        }
+    }
+    acc
 }
 
 /// The point of row `x` over `n` variables.
@@ -45,6 +65,11 @@ impl Public {
             Public::Periodic(v) => {
                 for (x, o) in out.iter_mut().enumerate() {
                     *o = v[x % v.len()];
+                }
+            }
+            Public::Region { pattern, start } => {
+                for (x, o) in out.iter_mut().enumerate().skip(*start) {
+                    *o = pattern[x % pattern.len()];
                 }
             }
         }
@@ -73,6 +98,12 @@ impl Public {
                 let bits = v.len().trailing_zeros() as usize;
                 let table = eq_table(&point[..bits]);
                 v.iter().zip(&table).fold(Fp3::ZERO, |a, (&x, &e)| a + x * e)
+            }
+            Public::Region { pattern, start } => {
+                let bits = pattern.len().trailing_zeros() as usize;
+                let table = eq_table(&point[..bits]);
+                let low = pattern.iter().zip(&table).fold(Fp3::ZERO, |a, (&x, &e)| a + x * e);
+                low * (Fp3::ONE - less_than(&point[bits..], start >> bits))
             }
         }
     }
@@ -157,6 +188,9 @@ mod tests {
             Public::Prefix((0..11).map(e).collect()),
             Public::Periodic((0..8).map(e).collect()),
             Public::constant(e(9)),
+            Public::Region { pattern: (0..4).map(e).collect(), start: 24 },
+            Public::Region { pattern: vec![e(3)], start: 0 },
+            Public::Region { pattern: (0..8).map(e).collect(), start: 56 },
         ] {
             let t = p.table(n);
             let mle = t.iter().zip(&weights).fold(Fp3::ZERO, |a, (&x, &w)| a + x * w);

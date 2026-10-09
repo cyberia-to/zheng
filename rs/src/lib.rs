@@ -31,6 +31,7 @@
 
 pub mod accumulate;
 pub mod air;
+pub mod machine;
 pub mod envelope;
 pub mod execution;
 pub mod field;

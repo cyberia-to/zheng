@@ -93,16 +93,22 @@ impl Instance {
     }
 }
 
+/// Absorb an accumulation configuration into a running transcript.
+pub fn bind(t: &mut Transcript, cfg: &AccConfig) {
+    t.absorb(b"zheng-acc-config-v1");
+    t.absorb(&cfg.whir.header());
+    t.absorb_u64(cfg.num_vars as u64);
+    t.absorb_u64(cfg.ood as u64);
+    t.absorb_u64(cfg.queries as u64);
+    t.absorb_u64(u64::from(cfg.query_pow));
+}
+
 /// The transcript every step and decider of one accumulation runs on:
 /// domain, the caller's context bytes and the configuration.
 pub fn transcript(domain: &[u8], context: &[u8], cfg: &AccConfig) -> Transcript {
     let mut t = Transcript::new(domain);
     t.absorb_u64(context.len() as u64);
     t.absorb(context);
-    t.absorb(&cfg.whir.header());
-    t.absorb_u64(cfg.num_vars as u64);
-    t.absorb_u64(cfg.ood as u64);
-    t.absorb_u64(cfg.queries as u64);
-    t.absorb_u64(u64::from(cfg.query_pow));
+    bind(&mut t, cfg);
     t
 }
