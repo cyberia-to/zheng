@@ -182,3 +182,28 @@ fn shipped_parameters_reach_128_bits_for_513_inputs() {
         );
     }
 }
+
+/// The accumulation parameters the audit reports (`--ignored --nocapture`).
+#[test]
+#[ignore]
+fn config_table() {
+    for r in [4u8, 6] {
+        let whir = WhirParams {
+            log_inv_rate: r,
+            pow_bits: 24,
+            ..WhirParams::default()
+        };
+        for vars in [13usize, 14, 16, 18, 20, 21] {
+            let c = AccConfig::derive(&whir, vars, 3, 64).unwrap();
+            let j = c.acc_claims();
+            // instance on the wire: root, flag, J claims of `vars` Fp3 + value
+            let wire = 32 + 1 + 4 + j * (4 + vars * 24 + 24);
+            // the same instance compressed: root, ρ, value, OOD points + values, t indices + values
+            let compressed = 32 + vars * 24 + 24 + c.ood * 48 + c.queries * (4 + 24);
+            eprintln!(
+                "rate 1/{} vars {vars}: {:?} t {} pow {} ood {} comb_pow(3) {} claims {j} instance {wire} B (compressible to {compressed} B) bits {:.2}",
+                1u32 << r, c.regime, c.queries, c.query_pow, c.ood, c.comb_pow_for(3), c.security_bits(3, 2 * j + 4)
+            );
+        }
+    }
+}
