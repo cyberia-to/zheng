@@ -1,7 +1,19 @@
 # Public execution certificates
 
-Implemented development protocol: `zheng-nox-public-execution-v2`.
-The owner authorized execution/output binding on 2026-09-11.
+Implemented protocols:
+
+- public profile v3, `zheng-nox-public-execution-v3`
+  (`certify_execution` / `verify_certificate`) — the default;
+- authenticated-state profile v3 (`state::certify_state_execution` /
+  `StateStatement::verify_certificate`);
+- both carried by the `ZHENGPF1` envelope (`zheng::envelope`, profiles 0
+  and 3; profile 2 carries native private proofs, profile 1 is reserved).
+
+Retired and read for one release: public v2 `zheng-nox-public-execution-v2`
+(`prove_execution` / `verify_execution`, a `DirectProof`) and state v1
+(`prove_state_execution` / `StateStatement::verify`). The owner authorized
+execution/output binding on 2026-09-11. Soundness of every profile is
+recorded in the [soundness ledger](soundness.md).
 
 ## Statement and relation
 
@@ -12,16 +24,25 @@ and derives a global CCS from the public program. Constants reference wire 0.
 Operands, intermediate values and output coordinates share global indices.
 Matrices depend on the program and subject shape, never witness values.
 
-The prover supplies a direct Spartan proof with a `PublicTensor` commitment
-and a complete authenticated evaluation table. The verifier fixes dimensions,
-sumcheck degrees, zero error and protocol/transcript domains. It authenticates
-all columns and then checks **every CCS row exactly**, constant wire 0=1, and
-all public input/output/cost coordinates against that same table. It accepts
-neither a prover-defined relation/error vector nor an unchecked fold.
+Profile v3: the prover supplies the witness values at every non-pinned
+position in index order, with the trailing zeros of the power-of-two padding
+removed (`Certificate`). The verifier places `z[0] = 1`, the inputs, the
+outputs and the cost wire itself, fills the remaining positions from the
+certificate, pads with zeros and checks **every CCS row exactly**. It rejects a
+certificate with a trailing zero, a value at or above p, or more values than
+the relation has free positions below its last referenced column. There is no
+commitment, sumcheck or challenge: soundness rests on the relation compiler
+alone. Every free position the certificate can change without rejection is a
+"don't care" wire whose every product term has a factor that is zero in the
+honest witness (`certificate::malleability`).
 
-The transcript binds the canonical statement, dimensions, full relation and
-public coordinate mapping. Program terms use tagged flat prefix encoding;
-integers are little-endian u64. Public vector limits apply during deserialization.
+Retired v2: a direct Spartan proof with a `PublicTensor` commitment and a
+complete authenticated evaluation table; the verifier authenticates all columns
+and checks the same rows. Its transcript binds the canonical statement,
+dimensions, full relation and public coordinate mapping and uses the 0.4.0
+challenge rule (`Transcript::new_v1`) so that existing artifacts still verify.
+Program terms use tagged flat prefix encoding. Public vector limits apply during
+deserialization.
 
 The verifier does not invoke native nox, generate a witness, or accept a
 trace from another computation. Prover-side native execution independently
@@ -71,12 +92,46 @@ zero-knowledge proof. The stateless public API accepts public input; authenticat
 state execution and private proving have separate protocols. There is no silent
 fallback to the legacy trace-statement format.
 
-`PublicTensor` checks all raw columns under a domain-separated Merkle root.
-Binding needs no expander distance, injectivity or sampling assumption. Exact
-CCS checking also removes small-field sumcheck error as a basis for accepting
-the execution relation. Spartan remains a checked consistency transcript; its
-Goldilocks challenges alone must not be advertised as 128-bit soundness.
-See `lens/specs/public-tensor.md` for the commitment contract.
+Profile v3 draws no challenge. In the retired v2, `PublicTensor` checks all raw
+columns under a domain-separated Merkle root and exact CCS checking removes
+small-field sumcheck error as a basis for acceptance; its Goldilocks Spartan
+transcript is a consistency check and must not be advertised as 128-bit
+soundness. See `lens/specs/public-tensor.md` for that commitment contract.
+
+## Authenticated-state profile v3
+
+`StateStatement` adds the state root (four field limbs), a 32-byte caller
+context, whether the root sits at the head of the subject, and one
+`PublicLookup` per lookup site of the compiled relation (active flag,
+namespace, key, value; inactive reads carry zeros). The verifier recompiles
+the relation for that subject shape, asks the caller's lookup — which MUST
+come from a state certificate already verified under `state_root` — for every
+active read, pins the active flag of every read and the root limbs, namespace,
+key and value of every active read, together with the constant, inputs (and
+the root when it sits in the subject), outputs and cost, and checks the
+certificate exactly as profile v3. At most `MAX_READS = 4096` reads. A root
+limb the program never computes on is bound through the reads' authentication;
+a limb it reads from the subject is also bound by the relation. The context is
+caller metadata that zheng carries and does not interpret.
+
+## Envelope
+
+`zheng::envelope::Envelope` is the one wire form: magic `ZHENGPF1`, version
+u16 little-endian (1), profile byte (0 public, 1 succinct reserved, 2 zk,
+3 state-public), then a canonical body — shortest-form LEB128 integers, field
+values below p, flags 0 or 1, every length bounded statically and by the
+remaining bytes before allocation, no trailing bytes. A wrong magic, an
+unknown version, an unknown or reserved profile, truncation and every
+noncanonical encoding fail at decoding; `Envelope::verify` runs the profile's
+verifier. The zk body binds a 32-byte context through `zk_statement_bytes`.
+
+## Legacy
+
+The 0.3.x folded trace API (`commit`, `open`, `verify_eval`, `verify`, `fold`,
+`decide`, the universal CCS, HyperNova folding, phi) compiles only with the
+cargo feature `legacy`, off by default. It is unsound — the fold is unchecked
+and the statement unbound ([decider](decider.md) §soundness) — and must not be
+used on a production path.
 
 This establishes the stated bounded relation. The symbolic compiler and Hemera
 permutation still require independent security review.
@@ -99,10 +154,11 @@ Proof-mode `--claim` and
 program; self-contained verification uses the canonical embedded program.
 `--budget` is an upper limit on the certificate's declared budget.
 
-`ExecutionArtifact` has a distinct `JOYEXEC2` header and canonical postcard
-payload, capped at 32 MiB; trailing bytes and malformed new artifacts fail.
-Legacy artifacts require `--legacy-trace-statement` and refuse IO/state/secret
-constraints. Legacy library methods remain explicitly statement-only.
+Joy's public `ExecutionArtifact` is the profile-0 envelope itself, capped at
+32 MiB. Joy's state artifact `JOYST002` carries the BBG state certificate and
+a profile-3 envelope. Joy reads `JOYEXEC2` (public v2) and `JOYST001`
+(state v1) for one release. Legacy trace artifacts require
+`--legacy-trace-statement` and refuse IO/state/secret constraints.
 
 Native private artifacts use `joy-nox-zheng-private-execution-v1` and `JOYZH001`,
 with a 256 MiB outer artifact cap. Their embedded native proof has a distinct
