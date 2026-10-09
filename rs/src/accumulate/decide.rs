@@ -63,8 +63,8 @@ pub fn verify_decider(
     proof: &DeciderProof,
     t: &mut Transcript,
 ) -> Result<(), String> {
-    if inst.claims.iter().any(|c| c.point.len() != cfg.num_vars) {
-        return Err("decide: claim dimension".into());
+    if inst.claims.iter().any(|c| c.point.len() != cfg.num_vars) || inst.claims.len() > cfg.max_claims.max(cfg.acc_claims()) {
+        return Err("decide: claim shape".into());
     }
     t.absorb(b"zheng-acc-decide-v1");
     inst.absorb(t);

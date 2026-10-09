@@ -58,7 +58,8 @@ pub(crate) fn fresh(cfg: &AccConfig, rng: &mut Rng, k: usize) -> Witnessed {
 }
 
 fn cfg(vars: usize, inputs: usize) -> AccConfig {
-    AccConfig::derive(&test_params(), vars, inputs, 64 + 2 * inputs).unwrap()
+    let probe = AccConfig::derive(&test_params(), vars, inputs, 2 * inputs).unwrap();
+    AccConfig::derive(&test_params(), vars, inputs, probe.acc_claims() + 2 * inputs).unwrap()
 }
 
 #[test]
@@ -206,4 +207,56 @@ fn config_table() {
             );
         }
     }
+}
+
+#[test]
+fn a_decider_below_128_bits_is_refused() {
+    let weak = WhirParams {
+        log_inv_rate: 1,
+        pow_bits: 0,
+        ..WhirParams::default()
+    };
+    let vars = 22;
+    let bits = lens::rspcs::WhirConfig::derive(&weak, vars).unwrap().security_bits();
+    assert!(bits < MIN_BITS, "the probe must be weak: {bits}");
+    assert!(AccConfig::derive(&weak, vars, 2, 8).is_err());
+}
+
+#[test]
+fn steps_and_deciders_refuse_more_claims_than_configured() {
+    let cfg = AccConfig::derive(&test_params(), 6, 2, 3).unwrap();
+    let mut rng = Rng::new(9);
+    let words: Vec<Witnessed> = vec![fresh(&cfg, &mut rng, 2), fresh(&cfg, &mut rng, 2)];
+    let inputs: Vec<&Witnessed> = words.iter().collect();
+    let mut tp = transcript(b"acc-test", b"", &cfg);
+    assert!(accumulate(&cfg, &inputs, &mut tp).is_err(), "4 claims > 3");
+    let big = AccConfig::derive(&test_params(), 6, 2, 4).unwrap();
+    let mut tp = transcript(b"acc-test", b"", &big);
+    let (acc, proof) = accumulate(&big, &inputs, &mut tp).unwrap();
+    let insts: Vec<&Instance> = words.iter().map(|w| &w.instance).collect();
+    let mut tv = transcript(b"acc-test", b"", &cfg);
+    assert!(verify_step(&cfg, &insts, &proof, &mut tv).is_err());
+    let mut td = transcript(b"d", b"", &cfg);
+    let dp = decide(&big, &acc, &mut td).unwrap();
+    let mut padded = acc.instance.clone();
+    let extra = padded.claims[0].clone();
+    while padded.claims.len() <= cfg.max_claims.max(cfg.acc_claims()) {
+        padded.claims.push(extra.clone());
+    }
+    let mut td = transcript(b"d", b"", &cfg);
+    assert!(verify_decider(&cfg, &padded, &dp, &mut td).is_err());
+}
+
+#[test]
+fn a_word_whose_data_is_not_its_instance_is_refused() {
+    let cfg = cfg(6, 2);
+    let mut rng = Rng::new(10);
+    let a = fresh(&cfg, &mut rng, 1);
+    let b = fresh(&cfg, &mut rng, 1);
+    let swapped = Witnessed {
+        instance: a.instance.clone(),
+        data: b.data,
+    };
+    let mut tp = transcript(b"acc-test", b"", &cfg);
+    assert!(accumulate(&cfg, &[&a, &swapped], &mut tp).is_err());
 }

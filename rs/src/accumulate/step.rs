@@ -63,6 +63,10 @@ fn shape_ok(cfg: &AccConfig, inputs: &[&Instance]) -> Result<(), String> {
     {
         return Err("acc: claim dimension".into());
     }
+    let j: usize = inputs.iter().map(|i| i.claims.len()).sum();
+    if j > cfg.max_claims {
+        return Err(format!("acc: {j} claims > {}", cfg.max_claims));
+    }
     Ok(())
 }
 
@@ -118,8 +122,12 @@ pub fn accumulate(
 ) -> Result<(Accumulator, AccProof), String> {
     let insts: Vec<&Instance> = inputs.iter().map(|w| &w.instance).collect();
     shape_ok(cfg, &insts)?;
-    if inputs.iter().any(|w| w.data.num_vars() != cfg.num_vars) {
-        return Err("acc: word size".into());
+    if inputs.iter().any(|w| {
+        w.data.num_vars() != cfg.num_vars
+            || w.data.is_ext() != w.instance.ext
+            || w.data.root() != w.instance.root.0
+    }) {
+        return Err("acc: a word's data disagrees with its instance".into());
     }
     t.absorb(b"zheng-acc-step-v1");
     t.absorb_u64(insts.len() as u64);

@@ -5,7 +5,8 @@
 //! Claim        exts point · ext value
 //! Instance     32 B root · u8 ext · u32 n · n × Claim
 //! AccProof     exts sumcheck · exts evals · u64s comb_nonce · 32 B root
-//!              · exts ood · u64s query_nonce · u32 m · m × (u8 ext · Opening)
+//!              · exts ood · u64s query_nonce · u32 m
+//!              · m × (u8 ext · u32 len · len B Opening)
 //! DeciderProof exts sumcheck · ext value · u8 ext · u32 n · n B WHIR proof
 //! ```
 
@@ -95,7 +96,8 @@ impl AccProof {
             bytes_field(w, &o.to_bytes());
         }
     }
-    /// Read a proof whose input words have the given symbol types.
+    /// Read a proof; each opening carries its own symbol-type byte (checked
+    /// against the input instance by the verifier).
     pub fn read(r: &mut Reader<'_>) -> R<Self> {
         let sumcheck = r.exts()?;
         let evals = r.exts()?;

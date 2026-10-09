@@ -16,8 +16,8 @@
 //! |---|---|---|
 //! | `γ` (claim batching) | `|Λ|·(J − 1)/|K|` | Schwartz–Zippel in `γ`, union over `Λ(C^m, δ)` |
 //! | sumcheck round `k` (`ℓ` rounds) | `|Λ|·2/|K|` | sumcheck (degree 2), union over `Λ(C^m, δ)` |
-//! | `r` (word combination) | `ε_mca(m−1) + |Λ|·(m − 1)/|K|`, minus `comb_pow` | BCGM Thm 9.2/Lemma 9.3 (powers generator, degree `m − 1`) with WHIR Lemma 4.13; Schwartz–Zippel in `r` |
-//! | OOD (`s` samples) | `(|Λ_1|²/2)·(2^ℓ/|K|)^s` | WHIR Lemma 4.25 (WARP Lemma 7.3 `ε_out`) |
+//! | `r` (word combination) | `ε_mca(m−1) + |Λ|·(m − 1)/|K|`, minus `comb_pow` | BCGM Thm 9.2/Lemma 9.3 (powers generator, degree `m − 1`) with the argument of WHIR Lemma 4.13 and BCGM Definition 3.14; Schwartz–Zippel in `r` |
+//! | OOD (`s` samples) | `(|Λ_1|²/2)·(2^ℓ/|K|)^s` | WHIR Lemma 4.25 |
 //! | spot checks (`t` positions) | `(1 − δ)^t`, minus `query_pow` | WARP Lemma 7.3 `ε_shift` |
 //!
 //! `ε_mca(d)` is `d` times lens's affine-line term (`soundness::mca_log2`):
@@ -51,6 +51,8 @@ pub struct AccConfig {
     pub comb_pow: u32,
     /// The largest number of input words per step this config admits.
     pub max_inputs: usize,
+    /// The largest number of claims (all inputs together) per step.
+    pub max_claims: usize,
 }
 
 /// Grinding budget of the combination challenge: the MCA error of an
@@ -58,10 +60,35 @@ pub struct AccConfig {
 /// steps grind more than WHIR's per-challenge budget.
 pub const COMB_POW_MAX: u32 = 32;
 
+/// Least `s` with `(|Λ|²/2)·(2^ℓ/|K|)^s ≤ 2^-128` (WHIR Lemma 4.25); 0 in
+/// unique decoding.
+fn ood_count(log_list: f64, num_vars: usize) -> Result<usize, String> {
+    if log_list == 0.0 {
+        return Ok(0);
+    }
+    let k = ext_field_bits();
+    (1..64)
+        .find(|&s| -(2.0 * log_list - 1.0 + s as f64 * (num_vars as f64 - k)) >= MIN_BITS)
+        .ok_or_else(|| "acc: no OOD count reaches the target".into())
+}
+
+/// Out-of-domain samples that bind a freshly committed word of `num_vars`
+/// variables under `whir` to at most one codeword of its list at WHIR's
+/// round-0 distance, except with probability `≤ 2^-128` (WHIR Lemma 4.25).
+/// Every protocol here answers them right after absorbing the word's root,
+/// so its later rounds reason about one codeword, not a list.
+pub fn fresh_ood(whir: &WhirParams, num_vars: usize) -> Result<usize, String> {
+    let wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("ood: whir: {e}"))?;
+    let spec = wc.rounds[0];
+    ood_count(proximity(spec.regime, spec.log_inv_rate, spec.log_domain).log_list, num_vars)
+}
+
 impl AccConfig {
     /// Parameters reaching [`MIN_BITS`] for up to `max_inputs` words per
     /// step and `max_claims` claims per step, grinding at most
-    /// `whir.pow_bits` per challenge.
+    /// `whir.pow_bits` per query challenge and [`COMB_POW_MAX`] before `r`.
+    /// Refused when WHIR itself (the decider) proves fewer than
+    /// [`MIN_BITS`] at `(whir, num_vars)`.
     pub fn derive(
         whir: &WhirParams,
         num_vars: usize,
@@ -69,21 +96,17 @@ impl AccConfig {
         max_claims: usize,
     ) -> Result<Self, String> {
         let wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("acc: whir: {e}"))?;
+        let whir_bits = wc.security_bits();
+        if whir_bits < MIN_BITS {
+            return Err(format!("acc: the decider's WHIR proves {whir_bits:.2} bits < {MIN_BITS}"));
+        }
         let spec = wc.rounds[0];
         let layout = LeafLayout::derive(whir, num_vars).map_err(|e| format!("acc: {e}"))?;
         let r = spec.log_inv_rate;
         let log_n = spec.log_domain;
         let prox = proximity(spec.regime, r, log_n);
         let budget = u32::from(whir.pow_bits);
-        let k = ext_field_bits();
-        // OOD: least s with (|Λ|²/2)·(2^ℓ/|K|)^s ≤ 2^-128
-        let ood = if prox.log_list == 0.0 {
-            0
-        } else {
-            (1..64)
-                .find(|&s| -(2.0 * prox.log_list - 1.0 + s as f64 * (num_vars as f64 - k)) >= MIN_BITS)
-                .ok_or("acc: no OOD count reaches the target")?
-        };
+        let ood = ood_count(prox.log_list, num_vars)?;
         let need = (MIN_BITS - f64::from(budget)).max(0.0);
         let queries = ((need / -prox.log_one_minus_delta).ceil() as usize).max(1);
         let query_pow = (MIN_BITS - queries as f64 * -prox.log_one_minus_delta)
@@ -99,6 +122,7 @@ impl AccConfig {
             query_pow,
             comb_pow: 0,
             max_inputs,
+            max_claims,
         };
         cfg.comb_pow = cfg.comb_pow_for(max_inputs);
         if cfg.comb_pow > COMB_POW_MAX || cfg.query_pow > budget {

@@ -39,7 +39,7 @@ mod wire;
 #[cfg(test)]
 mod tests;
 
-pub use config::{AccConfig, MIN_BITS};
+pub use config::{AccConfig, MIN_BITS, fresh_ood};
 pub use decide::{DeciderProof, decide, verify_decider};
 pub use step::{AccProof, Accumulator, accumulate, verify_step};
 
