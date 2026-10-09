@@ -29,6 +29,7 @@
 //! `specs/accumulation.md`; parameters and the round-by-round bound in
 //! [`config`].
 
+pub mod ccs;
 pub mod config;
 mod decide;
 mod step;

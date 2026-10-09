@@ -211,7 +211,7 @@ impl Layout {
     }
 }
 
-fn prologue<P: SuccinctPcs>(
+pub(crate) fn prologue<P: SuccinctPcs>(
     statement: &[u8],
     params: &P::Params,
     vars: usize,
@@ -239,7 +239,7 @@ fn opening_transcript(t: &mut Transcript) -> LensTranscript {
 }
 
 /// Lens points are LSB-first; the IOP's are MSB-first.
-fn pcs_point(r: &[Fp3]) -> Vec<Fp3> {
+pub(crate) fn pcs_point(r: &[Fp3]) -> Vec<Fp3> {
     r.iter().rev().copied().collect()
 }
 

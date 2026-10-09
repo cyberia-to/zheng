@@ -12,6 +12,8 @@
 mod choice;
 mod pcs;
 pub(crate) mod protocol;
+#[cfg(test)]
+mod fold_tests;
 
 pub use protocol::{SuccinctProof, prove as prove_relation, verify as verify_relation};
 pub use choice::{SMALL_MAX_VARS, params_for, prove_default};
