@@ -13,7 +13,8 @@ pub(crate) fn c(v: u64) -> Fp3 {
 }
 
 /// Per-slot `(tag, read, write)`; the slot is inactive where
-/// `read + write = 0` and its multiplicity must then be 0.
+/// `read + write = 0`, and its contribution `(read − write·M)·h` is then 0
+/// whatever its cells hold (bits rows reuse slot columns).
 pub(crate) struct SlotModes {
     pub tag: [Fp3; SLOTS],
     pub read: [Fp3; SLOTS],

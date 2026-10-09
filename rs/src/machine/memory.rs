@@ -34,5 +34,7 @@ pub(crate) fn constrain(v: &Vals<'_>, ch: &[Fp3], out: &mut Out<'_>) {
     let sum = ext(&h2[SUM..SUM + 3]);
     let next = ext(&n2[SUM..SUM + 3]);
     out.push(next - sum - delta);
+    // the cyclic transition alone forces Σ delta = 0; the pin fixes where
+    // the running sum starts so honest traces are canonical
     out.push(p[PUB_FIRST_ROW] * sum);
 }
