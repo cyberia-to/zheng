@@ -34,8 +34,25 @@ enum Value {
     Constant(F),
     Wire(usize),
     Pair(Box<Self>, Box<Self>),
+    /// A public linear form over existing wires: no wire of its own, no row.
+    /// Additions, MDS layers and bit packing are forms; only products,
+    /// inverses, bits, secrets, lookups and outputs allocate wires.
+    Linear(Linear),
 }
 type Linear = Vec<(usize, F)>;
+/// Sort by wire, merge duplicates, drop zero coefficients.
+fn normalize(mut l: Linear) -> Linear {
+    l.sort_by_key(|&(i, _)| i);
+    let mut out: Linear = Vec::with_capacity(l.len());
+    for (i, c) in l {
+        match out.last_mut() {
+            Some((j, k)) if *j == i => *k += c,
+            _ => out.push((i, c)),
+        }
+    }
+    out.retain(|&(_, c)| c != F::ZERO);
+    out
+}
 #[derive(Clone, Debug)]
 enum Op {
     Linear(Linear),
@@ -156,7 +173,8 @@ impl Builder {
         match v {
             Value::Constant(c) => Ok(vec![(0, *c)]),
             Value::Wire(i) => Ok(vec![(*i, F::ONE)]),
-            _ => Err(RelationError::Unsupported("atom required")),
+            Value::Linear(l) => Ok(l.clone()),
+            Value::Pair(..) => Err(RelationError::Unsupported("atom required")),
         }
     }
     fn alloc_linear(&mut self, l: Linear) -> Value {
@@ -176,7 +194,7 @@ impl Builder {
                 .into_iter()
                 .map(|(i, c)| (i, if negative { -c } else { c })),
         );
-        Ok(self.alloc_linear(l))
+        Ok(Value::Linear(normalize(l)))
     }
     fn nonzero(&mut self, v: &Value) -> Result<Value, RelationError> {
         let l = self.linear(v)?;

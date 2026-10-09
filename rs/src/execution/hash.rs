@@ -1,5 +1,8 @@
-//! Symbolic nox structural hashing. Every sponge lane is a constrained wire;
-//! native Hemera functions below derive only public linear-layer coefficients.
+//! Symbolic nox structural hashing. Every nonlinear sponge lane is a
+//! constrained wire; linear layers are public linear forms over those wires.
+//! A subtree that is constant in the program is hashed natively at compile
+//! time: the verifier derives the same constants from the same program, and
+//! the circuit it replaces had no witness freedom to begin with.
 use super::*;
 use hemera::field::Goldilocks as H;
 use std::sync::OnceLock;
@@ -47,9 +50,43 @@ impl Builder {
                         .map(|(i, c)| (i, c * coefficient)),
                 );
             }
-            out[row] = self.alloc_linear(terms);
+            out[row] = Value::Linear(normalize(terms));
         }
         Ok(out)
+    }
+
+    /// The field constant a value denotes, if it involves no wire.
+    fn constant_of(value: &Value) -> Option<F> {
+        match value {
+            Value::Constant(c) => Some(*c),
+            Value::Linear(l) if l.iter().all(|&(i, _)| i == 0) => {
+                Some(l.iter().fold(F::ZERO, |s, &(_, c)| s + c))
+            }
+            _ => None,
+        }
+    }
+
+    /// A value that is a constant noun — atoms may be constant linear forms.
+    fn static_value(value: &Value, depth: usize) -> Option<ExecutionNoun> {
+        if depth > MAX_DEPTH {
+            return None;
+        }
+        match value {
+            Value::Pair(a, b) => Some(ExecutionNoun::Pair(
+                Box::new(Self::static_value(a, depth + 1)?),
+                Box::new(Self::static_value(b, depth + 1)?),
+            )),
+            v => Self::constant_of(v).map(|c| ExecutionNoun::Atom(c.canonicalize().as_u64())),
+        }
+    }
+
+    fn native_digest(noun: &ExecutionNoun) -> [F; 4] {
+        match noun {
+            ExecutionNoun::Atom(a) => nox::data::hash::hash_atom(F::new(*a)),
+            ExecutionNoun::Pair(a, b) => {
+                nox::data::hash::hash_pair(&Self::native_digest(a), &Self::native_digest(b))
+            }
+        }
     }
 
     fn hash_inv(&mut self, value: &Value) -> Result<Value, RelationError> {
@@ -69,6 +106,15 @@ impl Builder {
     fn hash_permute(&mut self, input: State) -> Result<State, RelationError> {
         if self.ops.len() > 32768 || self.rows.len() > 32768 {
             return Err(RelationError::Limit);
+        }
+        // A permutation of constants is a constant: run it natively.
+        let constants: Option<Vec<F>> = input.iter().map(Self::constant_of).collect();
+        if let Some(constants) = constants {
+            let mut native: [H; 16] = core::array::from_fn(|i| H::new(constants[i].as_u64()));
+            hemera::permutation::permute(&mut native);
+            return Ok(core::array::from_fn(|i| {
+                Value::Constant(F::new(native[i].as_canonical_u64()))
+            }));
         }
         let mut state = self.hash_mds(&input, false)?;
         for round in 0..24 {
@@ -106,6 +152,9 @@ impl Builder {
     ) -> Result<[Value; 4], RelationError> {
         if depth > MAX_DEPTH || self.ops.len() > 32768 || self.rows.len() > 32768 {
             return Err(RelationError::Limit);
+        }
+        if let Some(noun) = Self::static_value(value, depth) {
+            return Ok(Self::native_digest(&noun).map(Value::Constant));
         }
         let mut state = zero_state();
         match value {
@@ -289,10 +338,9 @@ mod tests {
             unreachable!()
         };
         let mut z = vec![F::ONE, F::ZERO];
-        // Witness generation is shared with the relation; all inverse/selector
-        // witnesses are zero, except the final one-minus-selector wire.
+        // Witness generation is shared with the relation; all inverse and
+        // selector witnesses are zero (one-minus-selector is a form, not a wire).
         z.resize(2 + builder.ops.len(), F::ZERO);
-        *z.last_mut().unwrap() = F::ONE;
         let satisfies = |z: &[F]| {
             builder.rows.iter().all(|(a, b, c)| {
                 let eval =
