@@ -77,9 +77,26 @@ quiet machine. It **completed**:
 single-phase axis walk the same program's trace is shorter (rec-14: 61 →
 53 segments); rec-16 was not rerun on this branch.
 
-## not done
+## review, 2026-10-09
 
-- No independent review of the new constraints (the phase-3 review
-  covered the relation of #51).
-- The bit-flip scan (`tests/machine.rs`, ignored, ~6 min) was not rerun
-  on the new envelope form.
+Adversarial constraint review of `feat/machine-opcodes` 6aef021 (stand RV,
+mirrors R2). No under-constrained cell found; every tag polynomial's free
+column is restricted (B1 `R_OP` by the nine-op product, B2AR by the
+one-hot add/sub/mul, B2W by the next row's one-hot WBIT flags, EVAL's
+`TAG_B1 + t` by the authenticated tag atom). Tests
+`machine::tests_review` (branch `fix/machine-opcodes-review`, test-only
+forgery hooks in `run_ops.rs`): forged traces consistent in memory,
+digests and output are refused at exactly the attacked row — shl by
+`n ≥ 32` claiming the mod-32 shift (`cnt = 5`), word operands `≥ 2^32`
+(last WBIT row), lt's second operand aliased `w + p` (canonical check),
+CALL2 accepting a nonzero check, look under a subject with another root
+(LOOK row); tampers of the op chain EVAL → B1 → B2W, a self-referencing
+witness pair, a join over two cells and a 64th axis level break the
+relation; 604 constraints, degree ≤ 8 by finite differences (max 8);
+WBIT and AXW runs cross `2^6`-row segment boundaries in a proof that
+verifies, a forged boundary row is refused. Zerocheck ledger:
+`log2(|K|/603)` = 182.76 bits. Workspace: all tests pass.
+
+Bit-flip scan (`tests/machine.rs`, ignored) on the new envelope form:
+83,978 bytes, 671,824 flips, 669,352 decoded, 0 accepted, 455 s (load
+~60).
