@@ -7,6 +7,8 @@
 
 use nebu::Goldilocks;
 
+use crate::field::ChallengeField;
+
 pub use lens::{Commitment, Opening};
 
 // ── sumcheck ─────────────────────────────────────────────────────
@@ -16,15 +18,15 @@ pub use lens::{Commitment, Opening};
 /// coefficients ascending: g_i(X) = c_0 + c_1·X + … + c_d·X^d.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct SumcheckPoly {
+pub struct SumcheckPoly<F: ChallengeField = Goldilocks> {
     pub degree: u8,
-    pub coeffs: Vec<Goldilocks>,
+    pub coeffs: Vec<F>,
 }
 
-impl SumcheckPoly {
+impl<F: ChallengeField> SumcheckPoly<F> {
     /// evaluate via Horner's method.
-    pub fn eval(&self, x: Goldilocks) -> Goldilocks {
-        let mut r = Goldilocks::ZERO;
+    pub fn eval(&self, x: F) -> F {
+        let mut r = F::ZERO;
         for &c in self.coeffs.iter().rev() {
             r = r * x + c;
         }
@@ -32,13 +34,13 @@ impl SumcheckPoly {
     }
 
     /// g_i(0) — first consistency check term.
-    pub fn eval_0(&self) -> Goldilocks {
-        self.coeffs.first().copied().unwrap_or(Goldilocks::ZERO)
+    pub fn eval_0(&self) -> F {
+        self.coeffs.first().copied().unwrap_or(F::ZERO)
     }
 
     /// g_i(1) — second consistency check term.
-    pub fn eval_1(&self) -> Goldilocks {
-        self.coeffs.iter().copied().fold(Goldilocks::ZERO, |acc, c| acc + c)
+    pub fn eval_1(&self) -> F {
+        self.coeffs.iter().copied().fold(F::ZERO, |acc, c| acc + c)
     }
 }
 

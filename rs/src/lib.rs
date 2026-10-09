@@ -20,6 +20,7 @@
 //! `specs/soundness.md`.
 
 pub mod execution;
+pub mod field;
 pub mod multilinear;
 pub mod spartan;
 pub mod sumcheck;
@@ -36,6 +37,7 @@ pub mod legacy;
 #[cfg(feature = "legacy")]
 pub mod phi;
 
+pub use field::ChallengeField;
 pub use transcript::Transcript;
 pub use types::{CCSInstance, CCSWitness, Proof, SparseMatrix, SumcheckPoly, VerifyError};
 

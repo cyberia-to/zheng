@@ -71,7 +71,7 @@ pub(crate) fn linkage_digest(commitments: &[&Commitment]) -> [u8; 32] {
 /// Fold a sequence of witnesses of one instance into a fresh accumulator.
 pub(crate) fn fold_all(instance: &CCSInstance, witnesses: &[CCSWitness]) -> Result<Accumulator, CommitError> {
     let mut acc = Accumulator::blank(instance);
-    let mut transcript = Transcript::new();
+    let mut transcript = Transcript::new_v1();
     for w in witnesses {
         fold_step(&mut acc, instance, w, &mut transcript).map_err(|_| CommitError::TraceOverflow)?;
     }
@@ -274,7 +274,7 @@ pub fn verify(
 ///
 /// `transcript` must be shared across all fold calls within one CCS group so
 /// that beta challenges are chained (Fiat-Shamir binding). Start a fresh
-/// `Transcript::new()` at the beginning of each group and pass the same
+/// `Transcript::new_v1()` at the beginning of each group and pass the same
 /// instance throughout the group. Mixing instances or transcripts across groups
 /// breaks soundness.
 pub fn fold(

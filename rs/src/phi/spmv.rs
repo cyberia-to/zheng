@@ -187,7 +187,7 @@ pub fn prove_spmv(
     let stmt = SpmvStatement::new(graph, x, y);
     let zheng_stmt = stmt.to_zheng();
     let mut acc = blank_acc(&instance);
-    let mut t = Transcript::new();
+    let mut t = Transcript::new_v1();
     fold(&mut acc, &instance, &witness, &mut t).map_err(|_| SpmvError::FoldFailed)?;
     let proof =
         decide(&acc, &zheng_stmt, &ProofParams::default()).map_err(|_| SpmvError::DecideFailed)?;
@@ -225,7 +225,7 @@ pub fn verify_spmv(
     }
     let zheng_stmt = proof.statement.to_zheng();
     let mut acc = blank_acc(&instance);
-    let mut t = Transcript::new();
+    let mut t = Transcript::new_v1();
     if fold(&mut acc, &instance, &witness, &mut t).is_err() {
         return false;
     }
@@ -330,7 +330,7 @@ mod tests {
             let instance = spmv_ccs(&graph);
             let witness = spmv_witness(&graph, &x, &y);
             let mut acc = blank_acc(&instance);
-            let mut t = Transcript::new();
+            let mut t = Transcript::new_v1();
             fold(&mut acc, &instance, &witness, &mut t).unwrap();
             let zheng_stmt = proof.statement.to_zheng();
             let mut vt = Transcript::new_recursive();

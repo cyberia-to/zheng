@@ -47,7 +47,7 @@ pub struct AxisOpening {
     pub value: Goldilocks,
     /// Brakedown tensor opening proof.
     pub opening: Opening,
-    /// Bytes passed to `LensTranscript::new()` when `Brakedown::open` was called.
+    /// Bytes passed to `LensTranscript::new_v1()` when `Brakedown::open` was called.
     pub transcript_seed: Vec<u8>,
 }
 
@@ -64,7 +64,7 @@ pub struct LookOpening {
     pub value: Goldilocks,
     /// Brakedown tensor opening proof.
     pub opening: Opening,
-    /// Bytes passed to `LensTranscript::new()` when `Brakedown::open` was called.
+    /// Bytes passed to `LensTranscript::new_v1()` when `Brakedown::open` was called.
     pub transcript_seed: Vec<u8>,
     /// The 14 leaves of the BBG root preimage. The circuit recomputes the root
     /// from these (see [`root::root_from_leaves`]) and binds it to the trace

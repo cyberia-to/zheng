@@ -7,6 +7,7 @@
 
 use nebu::Goldilocks;
 
+use crate::field::ChallengeField;
 use crate::transcript::Transcript;
 use crate::types::{SumcheckPoly, VerifyError};
 
@@ -14,15 +15,15 @@ use crate::types::{SumcheckPoly, VerifyError};
 ///
 /// Each round receives g_i, checks g_i(0)+g_i(1) = current_claim,
 /// absorbs g_i into transcript, squeezes challenge r_i, advances claim.
-pub struct SumcheckVerifier {
-    current_claim: Goldilocks,
+pub struct SumcheckVerifier<F: ChallengeField = Goldilocks> {
+    current_claim: F,
     num_vars: usize,
     round: usize,
-    challenges: Vec<Goldilocks>,
+    challenges: Vec<F>,
 }
 
-impl SumcheckVerifier {
-    pub fn new(claimed_sum: Goldilocks, num_vars: usize) -> Self {
+impl<F: ChallengeField> SumcheckVerifier<F> {
+    pub fn new(claimed_sum: F, num_vars: usize) -> Self {
         Self {
             current_claim: claimed_sum,
             num_vars,
@@ -31,11 +32,11 @@ impl SumcheckVerifier {
         }
     }
 
-    pub fn current_claim(&self) -> Goldilocks {
+    pub fn current_claim(&self) -> F {
         self.current_claim
     }
 
-    pub fn challenges(&self) -> &[Goldilocks] {
+    pub fn challenges(&self) -> &[F] {
         &self.challenges
     }
 
@@ -44,14 +45,14 @@ impl SumcheckVerifier {
     /// Returns the challenge r_i on success.
     pub fn verify_round(
         &mut self,
-        poly: &SumcheckPoly,
+        poly: &SumcheckPoly<F>,
         transcript: &mut Transcript,
-    ) -> Result<Goldilocks, VerifyError> {
+    ) -> Result<F, VerifyError> {
         if poly.eval_0() + poly.eval_1() != self.current_claim {
             return Err(VerifyError::SumcheckFailed { round: self.round });
         }
         transcript.absorb_sumcheck_poly(self.round, poly);
-        let r = transcript.squeeze_challenge();
+        let r = F::squeeze(transcript);
         self.current_claim = poly.eval(r);
         self.challenges.push(r);
         self.round += 1;
@@ -61,9 +62,9 @@ impl SumcheckVerifier {
     /// Verify all rounds, returning (final_claim, evaluation_point).
     pub fn verify_all(
         &mut self,
-        polys: &[SumcheckPoly],
+        polys: &[SumcheckPoly<F>],
         transcript: &mut Transcript,
-    ) -> Result<(Goldilocks, Vec<Goldilocks>), VerifyError> {
+    ) -> Result<(F, Vec<F>), VerifyError> {
         if polys.len() != self.num_vars {
             return Err(VerifyError::SumcheckFailed { round: 0 });
         }

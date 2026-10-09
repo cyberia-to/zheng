@@ -15,6 +15,7 @@
 
 use nebu::Goldilocks;
 
+use crate::field::ChallengeField;
 use crate::multilinear::{evals_to_coeffs, fold_inplace, linear_ext};
 use crate::types::SumcheckPoly;
 
@@ -22,26 +23,24 @@ use crate::types::SumcheckPoly;
 ///
 /// w is the "weight" table (known to both prover and verifier).
 /// f is the "witness" table (committed; evaluations provided by the prover).
-pub struct SumcheckProver {
-    w_table: Vec<Goldilocks>,
-    f_table: Vec<Goldilocks>,
-    current_claim: Goldilocks,
+pub struct SumcheckProver<F: ChallengeField = Goldilocks> {
+    w_table: Vec<F>,
+    f_table: Vec<F>,
+    current_claim: F,
     num_vars: usize,
     round: usize,
 }
 
-impl SumcheckProver {
+impl<F: ChallengeField> SumcheckProver<F> {
     /// Create a new prover.
     ///
     /// `w` and `f` must both have length 2^num_vars.
     /// `claimed_sum` = Σ_{x ∈ {0,1}^num_vars} w[x]·f[x].
-    pub fn new(w: Vec<Goldilocks>, f: Vec<Goldilocks>) -> Self {
+    pub fn new(w: Vec<F>, f: Vec<F>) -> Self {
         debug_assert_eq!(w.len(), f.len());
         debug_assert!(w.len().is_power_of_two());
         let num_vars = w.len().trailing_zeros() as usize;
-        let claimed_sum = w.iter().zip(f.iter()).fold(Goldilocks::ZERO, |acc, (&wi, &fi)| {
-            acc + wi * fi
-        });
+        let claimed_sum = w.iter().zip(f.iter()).fold(F::ZERO, |acc, (&wi, &fi)| acc + wi * fi);
         Self {
             current_claim: claimed_sum,
             w_table: w,
@@ -52,7 +51,7 @@ impl SumcheckProver {
     }
 
     /// Initial claimed sum.
-    pub fn claimed_sum(&self) -> Goldilocks {
+    pub fn claimed_sum(&self) -> F {
         self.current_claim
     }
 
@@ -65,22 +64,20 @@ impl SumcheckProver {
     ///
     /// Returns a degree-2 polynomial g(t) such that g(0)+g(1) = current_claim.
     /// Evaluates at t=0,1,2.
-    pub fn round_poly(&self) -> SumcheckPoly {
+    pub fn round_poly(&self) -> SumcheckPoly<F> {
         let sz = self.w_table.len();
         let half = sz / 2;
-        let mut evals = [Goldilocks::ZERO; 3];
+        let points = [F::ZERO, F::ONE, F::from_base(Goldilocks::new(2))];
+        let mut evals = [F::ZERO; 3];
         for m in 0..half {
             let w_lo = self.w_table[m];
             let w_hi = self.w_table[m + half];
             let f_lo = self.f_table[m];
             let f_hi = self.f_table[m + half];
-            for (ti, t) in [Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::new(2)]
-                .iter()
-                .enumerate()
-            {
-                let wt = linear_ext(w_lo, w_hi, *t);
-                let ft = linear_ext(f_lo, f_hi, *t);
-                evals[ti] += wt * ft;
+            for (ti, &t) in points.iter().enumerate() {
+                let wt = linear_ext(w_lo, w_hi, t);
+                let ft = linear_ext(f_lo, f_hi, t);
+                evals[ti] = evals[ti] + wt * ft;
             }
         }
         let coeffs = evals_to_coeffs(&evals);
@@ -88,27 +85,22 @@ impl SumcheckProver {
     }
 
     /// Fold both tables with challenge r, advancing to the next round.
-    pub fn fold(&mut self, r: Goldilocks) {
+    pub fn fold(&mut self, r: F) {
         fold_inplace(&mut self.w_table, r);
         fold_inplace(&mut self.f_table, r);
         self.round += 1;
-        // Current claim after folding: g(r) = (1-r)*lo_sum + r*hi_sum (computed by verifier).
-        // Prover updates claim to g(r).
-        self.current_claim = {
-            // recompute as scalar product of the current (size-1 after all folds) tables
-            // or — more precisely — just the round poly evaluated at r
-            // We'll recompute from the folded tables
-            self.w_table
-                .iter()
-                .zip(self.f_table.iter())
-                .fold(Goldilocks::ZERO, |acc, (&wi, &fi)| acc + wi * fi)
-        };
+        // The new claim g(r) is the inner product of the folded tables.
+        self.current_claim = self
+            .w_table
+            .iter()
+            .zip(self.f_table.iter())
+            .fold(F::ZERO, |acc, (&wi, &fi)| acc + wi * fi);
     }
 
     /// Final evaluation claim after all rounds.
     ///
     /// Returns (w_eval, f_eval) at the final point. The product must equal current_claim.
-    pub fn final_claim(&self) -> (Goldilocks, Goldilocks) {
+    pub fn final_claim(&self) -> (F, F) {
         debug_assert_eq!(self.w_table.len(), 1);
         (self.w_table[0], self.f_table[0])
     }
@@ -116,9 +108,9 @@ impl SumcheckProver {
     /// Run all rounds, applying `challenge_fn` to each round polynomial to get the challenge.
     ///
     /// Returns the vector of round polynomials.
-    pub fn prove_all<F>(&mut self, mut challenge_fn: F) -> Vec<SumcheckPoly>
+    pub fn prove_all<C>(&mut self, mut challenge_fn: C) -> Vec<SumcheckPoly<F>>
     where
-        F: FnMut(&SumcheckPoly) -> Goldilocks,
+        C: FnMut(&SumcheckPoly<F>) -> F,
     {
         let mut polys = Vec::with_capacity(self.num_vars);
         while self.round < self.num_vars {
@@ -138,29 +130,29 @@ impl SumcheckProver {
 ///
 /// Round polynomials have degree (max|S_j|+1), evaluated at d+2 points.
 /// For m=1 (num_vars=0): prove_all returns []; matrix_evals returns f_tables[i][0].
-pub struct OuterSumcheckProver {
-    eq_table: Vec<Goldilocks>,
+pub struct OuterSumcheckProver<F: ChallengeField = Goldilocks> {
+    eq_table: Vec<F>,
     /// f_tables[i][r] = M_i[row r] · z — one entry per matrix, one slot per row.
-    pub f_tables: Vec<Vec<Goldilocks>>,
+    pub f_tables: Vec<Vec<F>>,
     multisets: Vec<Vec<usize>>,
-    coeffs: Vec<Goldilocks>,
+    coeffs: Vec<F>,
     degree: usize,
-    current_claim: Goldilocks,
+    current_claim: F,
     num_vars: usize,
     round: usize,
 }
 
-impl OuterSumcheckProver {
+impl<F: ChallengeField> OuterSumcheckProver<F> {
     /// Create a new prover.
     ///
     /// `eq_table` = eq_evals(τ) of length m = 2^log_m.
     /// `f_tables[i]` = per-row M_i·z evaluations, length m.
     /// `multisets`, `coeffs` come directly from the CCSInstance.
     pub fn new(
-        eq_table: Vec<Goldilocks>,
-        f_tables: Vec<Vec<Goldilocks>>,
+        eq_table: Vec<F>,
+        f_tables: Vec<Vec<F>>,
         multisets: Vec<Vec<usize>>,
-        coeffs: Vec<Goldilocks>,
+        coeffs: Vec<F>,
     ) -> Self {
         debug_assert!(eq_table.len().is_power_of_two() || eq_table.len() == 1);
         for ft in &f_tables {
@@ -182,58 +174,58 @@ impl OuterSumcheckProver {
     }
 
     fn compute_sum(
-        eq_table: &[Goldilocks],
-        f_tables: &[Vec<Goldilocks>],
+        eq_table: &[F],
+        f_tables: &[Vec<F>],
         multisets: &[Vec<usize>],
-        coeffs: &[Goldilocks],
-    ) -> Goldilocks {
-        let mut sum = Goldilocks::ZERO;
-        for r in 0..eq_table.len() {
-            let mut g_r = Goldilocks::ZERO;
+        coeffs: &[F],
+    ) -> F {
+        let mut sum = F::ZERO;
+        for (r, &eq) in eq_table.iter().enumerate() {
+            let mut g_r = F::ZERO;
             for (ms, &c) in multisets.iter().zip(coeffs.iter()) {
-                let mut prod = Goldilocks::ONE;
+                let mut prod = F::ONE;
                 for &i in ms {
-                    prod *= f_tables[i][r];
+                    prod = prod * f_tables[i][r];
                 }
-                g_r += c * prod;
+                g_r = g_r + c * prod;
             }
-            sum += eq_table[r] * g_r;
+            sum = sum + eq * g_r;
         }
         sum
     }
 
-    pub fn claimed_sum(&self) -> Goldilocks {
+    pub fn claimed_sum(&self) -> F {
         self.current_claim
     }
 
     /// Round polynomial h(t) = Σ_b eq_t(b) · G_t(b), evaluated at t=0,1,...,degree+1.
     ///
     /// Degree of h = degree+1. Interpolated from degree+2 evaluation points.
-    pub fn round_poly(&self) -> SumcheckPoly {
+    pub fn round_poly(&self) -> SumcheckPoly<F> {
         let sz = self.eq_table.len();
         let half = sz / 2;
         let num_pts = self.degree + 2;
-        let mut evals = vec![Goldilocks::ZERO; num_pts];
+        let mut evals = vec![F::ZERO; num_pts];
 
         for m_idx in 0..half {
             let eq_lo = self.eq_table[m_idx];
             let eq_hi = self.eq_table[m_idx + half];
-            let f_lo: Vec<Goldilocks> = self.f_tables.iter().map(|t| t[m_idx]).collect();
-            let f_hi: Vec<Goldilocks> = self.f_tables.iter().map(|t| t[m_idx + half]).collect();
+            let f_lo: Vec<F> = self.f_tables.iter().map(|t| t[m_idx]).collect();
+            let f_hi: Vec<F> = self.f_tables.iter().map(|t| t[m_idx + half]).collect();
 
             for (t_int, eval) in evals.iter_mut().enumerate() {
-                let t_val = Goldilocks::new(t_int as u64);
-                let one_minus_t = Goldilocks::ONE - t_val;
+                let t_val = F::from_base(Goldilocks::new(t_int as u64));
+                let one_minus_t = F::ONE - t_val;
                 let eq_t = one_minus_t * eq_lo + t_val * eq_hi;
-                let mut g_t = Goldilocks::ZERO;
+                let mut g_t = F::ZERO;
                 for (ms, &c) in self.multisets.iter().zip(self.coeffs.iter()) {
-                    let mut prod = Goldilocks::ONE;
+                    let mut prod = F::ONE;
                     for &i in ms {
-                        prod *= one_minus_t * f_lo[i] + t_val * f_hi[i];
+                        prod = prod * (one_minus_t * f_lo[i] + t_val * f_hi[i]);
                     }
-                    g_t += c * prod;
+                    g_t = g_t + c * prod;
                 }
-                *eval += eq_t * g_t;
+                *eval = *eval + eq_t * g_t;
             }
         }
 
@@ -242,7 +234,7 @@ impl OuterSumcheckProver {
     }
 
     /// Fold eq_table and all f_tables with challenge r, advancing one round.
-    pub fn fold(&mut self, r: Goldilocks) {
+    pub fn fold(&mut self, r: F) {
         fold_inplace(&mut self.eq_table, r);
         for ft in &mut self.f_tables {
             fold_inplace(ft, r);
@@ -253,9 +245,9 @@ impl OuterSumcheckProver {
     }
 
     /// Run all rounds, applying `challenge_fn` to get each challenge.
-    pub fn prove_all<F>(&mut self, mut challenge_fn: F) -> Vec<SumcheckPoly>
+    pub fn prove_all<C>(&mut self, mut challenge_fn: C) -> Vec<SumcheckPoly<F>>
     where
-        F: FnMut(&SumcheckPoly) -> Goldilocks,
+        C: FnMut(&SumcheckPoly<F>) -> F,
     {
         let mut polys = Vec::with_capacity(self.num_vars);
         while self.round < self.num_vars {
@@ -268,7 +260,7 @@ impl OuterSumcheckProver {
     }
 
     /// After all rounds: f_tables[i][0] = û_i(ρ_x) via MLE folding.
-    pub fn matrix_evals(&self) -> Vec<Goldilocks> {
+    pub fn matrix_evals(&self) -> Vec<F> {
         debug_assert!(self.f_tables.iter().all(|t| t.len() == 1));
         self.f_tables.iter().map(|t| t[0]).collect()
     }

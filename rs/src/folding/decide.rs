@@ -90,7 +90,7 @@ mod tests {
         let instance = universal_ccs().clone(); // add pattern
         let witness = make_witness(5, 3, 8); // 5+3=8 ✓
         let mut acc = zero_accumulator(&instance);
-        let mut t = Transcript::new();
+        let mut t = Transcript::new_v1();
         fold_step(&mut acc, &instance, &witness, &mut t).unwrap();
 
         let stmt = Statement {

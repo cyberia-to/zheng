@@ -73,7 +73,7 @@ fn row(tag: u64, vals: &[(usize, u64)]) -> CCSWitness {
 fn fold_universal(rows: &[CCSWitness]) -> ProofGroup {
     let instance = universal_ccs();
     let mut acc = Accumulator::blank(instance);
-    let mut transcript = Transcript::new();
+    let mut transcript = Transcript::new_v1();
     for w in rows {
         assert!(instance.is_satisfied_by(w));
         crate::folding::fold_step(&mut acc, instance, w, &mut transcript).unwrap();
@@ -220,7 +220,7 @@ fn prove_raw_linear_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
     .unwrap();
     let eq = eq_instance();
     let mut binding_acc = Accumulator::blank(&eq);
-    let mut transcript = Transcript::new();
+    let mut transcript = Transcript::new_v1();
     for (_, w) in steps {
         fold_step_unchecked(&mut binding_acc, &eq, w, &mut transcript).unwrap();
     }

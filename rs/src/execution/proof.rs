@@ -97,7 +97,9 @@ fn transcript(
     statement: &[u8],
     public: &[(usize, Goldilocks)],
 ) -> Transcript {
-    let mut t = Transcript::new();
+    // Retired profile: reproduce the 0.4.0 challenge rule so v2 public and
+    // v1 state artifacts stay verifiable for one release.
+    let mut t = Transcript::new_v1();
     t.absorb(b"zheng-direct-ccs-public-full-columns-v1");
     fn number(t: &mut Transcript, n: usize) {
         t.absorb(&(n as u64).to_le_bytes());
@@ -233,6 +235,9 @@ mod tests {
     use super::*;
     use crate::types::SparseMatrix;
 
+    const FROZEN_V1_DIGEST: &str =
+        "c6745fa9d65a39309760396d0f614dc78e79cdbb261186c063ab2c1f631a5065";
+
     fn relation() -> (CCSInstance, CCSWitness, Vec<(usize, Goldilocks)>) {
         // The public output z[3] must equal public input z[1] times z[2].
         let mut a = SparseMatrix::new(4, 64);
@@ -353,5 +358,32 @@ mod tests {
         instance.num_cols = 64;
         instance.matrices[0].entries[0][0].0 = 64;
         assert!(prove(&instance, &witness, b"", &public).is_err());
+    }
+
+    /// Frozen v2 artifact: a direct proof made by zheng 0.4.0 (before the wide
+    /// challenge rule) must still be reproduced — and therefore verified —
+    /// under `Transcript::new_v1`. The digest covers every proof field.
+    #[test]
+    fn direct_proofs_reproduce_the_frozen_v1_transcript() {
+        let (instance, witness, public) = relation();
+        let proof = prove(&instance, &witness, b"frozen-v1", &public).unwrap();
+        let mut h = hemera::Hasher::new();
+        h.update(proof.spartan.commitment.as_bytes());
+        for polys in [&proof.spartan.outer_sumcheck_polys, &proof.spartan.sumcheck_polys] {
+            for p in polys.iter() {
+                for c in &p.coeffs {
+                    h.update(&c.as_u64().to_le_bytes());
+                }
+            }
+        }
+        for e in &proof.spartan.matrix_evals {
+            h.update(&e.as_u64().to_le_bytes());
+        }
+        h.update(&proof.spartan.eval_value.as_u64().to_le_bytes());
+        if let lens::Opening::TensorMerkle { row_combination, .. } = &proof.spartan.pcs_opening {
+            h.update(row_combination);
+        }
+        assert_eq!(h.finalize().to_hex(), FROZEN_V1_DIGEST);
+        verify(&instance, &proof, b"frozen-v1", &public).unwrap();
     }
 }
