@@ -6,32 +6,173 @@ alias: recursive composition spec, proof recursion, IVC spec
 ---
 # recursion
 
-> superseded: this page described the legacy fold (feature `legacy`, unsound, removed in phase 5) as zheng's composition protocol; long computations are now accumulated (`accumulation.md`, `machine.md`, phase 3) and recursion proper is composition only.
+Incrementally verifiable computation over the nox machine
+(`rs/src/recursion/`). The step relation of step `i` proves its nox
+segment *and* that the verifier of step `i − 1` accepted: the verifier
+runs inside the step's trace as the recursion circuit. A proof of any
+number of steps is the last step's proof, the state it started from and
+one decider — its size does not depend on the number of steps.
 
-## two different things
+Constant size comes from this recursion, not from accumulation alone.
+Accumulation (`accumulation.md`) turns many evaluation claims into one
+decider, but every accumulation step leaves spot-check openings that
+someone must verify; without a verifier inside the next step the proof
+carries every step's openings and grows with the run
+(`audit/accumulation-2026-10.md` §6). Here each step's openings are
+checked by the next step's circuit and only the last step's travel.
 
-- accumulation — how a long computation gets a proof whose size and verification are constant in the number of steps. phase 3 (`accumulation.md`, `machine.md`, landing in this release): the nox machine is one uniform step relation; each step's Reed–Solomon evaluation claims are accumulated hash-based, ARC/WARP-style (ARC eprint 2024/1731, WARP 2025/753) — batch the claims with a sumcheck, commit one combined word, sample out-of-domain points, open a few query positions. the accumulator is one root plus a fixed number of claims; the decider is ONE WHIR opening (envelope profile 4). goal: ≤ 64 KB, verify ≤ 1 ms, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
-- recursion proper — proving a statement about proofs: a zheng verifier written as a nox program (the Trident verifier) and proven like any other program. it composes proofs (aggregate, attest that a set of proofs verified, cross a trust boundary). it is never the mechanism for size.
+## objects
 
-## composition through a verifier program
+- **parameters** (`Params`): WHIR parameters of every committed word, the
+  step size `2^n` rows (`n = 15`), `ℓ = n + 6` variables per word, the
+  accumulation configuration for four input words (`AccConfig::derive`
+  with `m = 4`).
+- **words**: Reed–Solomon codewords in WHIR's round-0 layout (lens
+  `LeafLayout`) under a field-native hemera Merkle tree: a leaf is the
+  duplex sponge (tag `LEAF`) over its symbols, a node is
+  `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`. Same code, domain and distance as a
+  lens commitment; only the hashing differs. The last accumulator is
+  committed with lens (`Whir::commit_ext`) for the decider.
+- **transcript**: an overwrite duplex sponge over hemera's permutation,
+  rate 9 lanes (three Fp3), capacity 7 lanes with a domain tag; an Fp3
+  item never straddles a block; challenges are output limbs (no byte
+  reduction); an index is the low bits of a limb `v ≠ p − 1`
+  (`p − 1 = 2^32·(2^32 − 1)`, so `v mod 2^k`, `k ≤ 32`, is exactly
+  uniform); grinding absorbs a nonce and requires the low bits of the next
+  limb to be zero.
+- **state** (`StateV`): context digest, steps verified, chain of
+  pre-committed roots, the first segment's first row and the last verified
+  segment's successor (nox columns), the accumulator (root, `(ρ, v)`, OOD
+  claims, spot claims `(ω^s, y)`), three deferred claims.
 
+## the step relation
+
+One AIR over `2^n` rows with three committed words of 64 columns:
+
+| word | columns | committed |
+|---|---|---|
+| a | nox phase 1 (64) | before the run's challenges (pre-commit) |
+| b | nox phase 2 (15) ‖ circuit phase 1 (49) | at the step |
+| c | circuit phase 2 (54) ‖ zero (10) | after the circuit's challenges |
+
+Constraints: the machine's (`machine.md`, with the run's memory
+challenges) and the circuit's (below, with the step's `(α_V, β_V)`).
+
+## the recursion circuit
+
+Four row kinds over the 49 + 54 circuit columns:
+
+- **ARITH**: four gates a row, `out = qm·x·(y + qs·z) + qa·x + qb·y +
+  qc·z + qk` over Fp3, each a compute, an assertion (`out` unused, the
+  value must be zero when `live`) or a free witness;
+- **PERM**: a hemera permutation in four rows (input and states after
+  rounds 0, 1; after rounds 2, 3 and the 16 partial-round inverses; after
+  rounds 20–22; the output) — 160 constraints of degree ≤ 8; the input
+  of a block is fixed by flags on the row before it: rate lanes kept,
+  zeroed or bound to memory; capacity chained, fresh with a tag, or a
+  Merkle node whose current digest comes from the previous output and
+  whose direction bit is a memory read;
+- **BITS**: a canonical 64-bit decomposition in four rows of 16 bits
+  (`hi = 2^32 − 1 ⇒ lo = 0`);
+- padding.
+
+Every row has 17 memory slots: a slot reads (`+1`) or writes (`−reads`)
+one Fp3 value at a fixed address; a logUp running sum over fingerprints
+`α_V − (addr + β_V·value)` closes cyclically. A permutation block reads or
+writes three lanes as one Fp3 (flag `WIDE`). The preprocessed columns —
+selectors, gate coefficients, addresses, multiplicities, block flags, the
+output row — are the circuit's key (107 columns); the public input is the
+state digest at the output row (four columns `x_j·[row = out]`).
+
+The program (`program::run`) is written once over `Ops` and run three
+ways: natively by the final verifier, by the prover's own check, and by
+the circuit builder, whose operation order fixes the layout. It absorbs
+the previous state (free witness), runs the step verifier on the previous
+proof, computes the initial state from the context's parts, selects
+`live ? verified : initial` element by element, and hashes the result.
+`live` is a column constant over the trace, 0 only in the base step:
+every assertion (gate assertions, Merkle roots, grinding) is multiplied
+by it, so the base step verifies a dummy proof and outputs the initial
+state. A base step anywhere but the first restarts the chain from the
+initial state; the final checks (step count = segments, chain = the
+pre-committed chain) then fail.
+
+## deferred claims
+
+The step verifier never evaluates a constraint. After the zerocheck it
+holds `G(point) = c` with
+
+```text
+point = (local[192], next[192], nox publics[31], key[107], public input[4],
+         α_V, β_V, μ1, μ2, μ3)
+G     = Σ_k μ1^{k mod B}·μ2^{⌊k/B⌋ mod B}·μ3^{⌊k/B²⌋}·C_k     (B³ ≥ #constraints)
 ```
-proof_A = prove(computation)
-proof_B = prove(verify_program(statement_A, proof_A))
+
+and the publics it was sent must equal the public columns:
+`Σ_j eq(γ_n, j)·nox_j(ρ ‖ bits(step)) ` over the run's global nox columns
+(`n + 32` row variables, 5 column variables) and `Σ_j eq(γ_v, j)·K_j(ρ)`
+over the key (`n` row and 7 column variables), `γ` drawn after the
+publics are absorbed. Each kind is one polynomial fixed by the statement
+(`G`, `P̄_nox`) or the parameters (`P̄_V`); the state carries one claim of
+each and every step folds its new claim in along the line through the
+two points: the prover sends the line polynomial at `2..=deg`, its values
+at 0 and 1 are the two claimed values, a challenge `r` gives the new
+point and value. The final verifier evaluates the three folded claims
+once (`Relation::g`, `Public::eval` of the global columns, the sparse
+key).
+
+## step protocol (`step::verify`)
+
+Transcript tag `STEP`:
+
+1. the public input `x = H(state)`;
+2. word a: root and OOD answers (points from the root alone, tag `PRE`;
+   the chain `D` absorbs root and answers); word b: root, OOD; `(α_V,
+   β_V)`; word c: root, OOD;
+3. nox boundary in (79) and out (79), the circuit's first row (103);
+4. `τ`, seeds; zerocheck (`n` rounds, degree 9); every column at `ρ` and
+   at its successor, the publics at `ρ`; `c = claim / eq(τ, ρ)`;
+5. `γ_n`, `γ_v`; the three line folds;
+6. the shift reduction (`air/shift.rs`) of the three words to one point
+   (`Σ ζ^w (a_w + β n_w)`, the last row's successor the boundary), the
+   three values; boundary claims at row 0;
+7. boundary continuity (`b_in = b_last` unless the first step), the
+   accumulation step over `(accumulator, a, b, c)` — `accumulation.md`
+   with instances not re-absorbed (the transcript binds them), positions
+   never deduplicated (every spot check opens its leaf in all four words
+   with a full path), spot points kept as `ω^s`.
+
+## IVC (`ivc::prove_run`, `ivc::verify`)
+
+```text
+pre       commit every segment's word a → D; (α, β) = H(statement, D);
+          nox phase 2 of every segment
+step i    circuit: verify step i−1 from state_{i−1} (base: none) → state_i;
+          prove segment i ‖ circuit with public input H(state_i)
+proof     state_{S−1}, step S−1's proof, the decider of its accumulator
+verify    the state's base items are base (else refused); step S−1
+          natively from x = H(state) → state_S; ctx, chain = D, step = S,
+          the cyclic boundary; the three deferred claims; the decider
 ```
 
-the cost of `proof_B` is the cost of proving the verifier program: the WHIR opening's hemera Merkle paths and the Spartan verifier's field arithmetic. it is a proof of an ordinary nox execution and goes through the same profiles (succinct, zk, or accumulated). measured cost of a verifier-in-nox proof: not built (no verifier relation; `audit/accumulation-2026-10.md` §7 estimates ≈ 2^17 rows per accumulation step).
+`verify(verify(π))`: a two-step proof is accepted only if the second
+step's circuit accepted the first step's proof (`tests/recursion.rs`).
 
-soundness: a composed proof is sound if the inner proof system is and the verifier program faithfully implements the verifier specified in [[execution]] — any discrepancy between the nox verifier and the specified one breaks it. the bits of each layer come from the [[soundness]] ledger; nothing beyond a union bound over the layers is claimed here.
+## soundness
 
-## the legacy fold (historical)
+Ledger rows: `soundness.md` § recursion. Every challenge is over Fp3;
+every round is ≥ 128 bits with grinding priced in
+(`params::tests::every_ledger_row_of_the_recursion_profile_reaches_128_bits`).
+The composition of the step relation with the verifier it contains rests
+on hemera behaving as a random oracle *inside* the circuit (the
+Fiat–Shamir transcript of step `i − 1` is recomputed by step `i`); no
+proof of recursive Fiat–Shamir knowledge soundness is claimed — the row
+is conjectured, as for every deployed recursive proof system.
 
-the 0.3/0.4 API folded every CCS instance into one running accumulator `A = (E, u, w, e)` with a homomorphic-style relaxed fold — cross-term `T`, challenge `β` from the transcript, `w' = w_acc + β·w_new`, `e' = e_acc + β·T + β²·e_new` — and recommitted `C' = hemera(w')`. a hash commitment is not homomorphic, so the verifier could never check that `C'` commits the folded witness, nor that `e'` was formed from `T`: the fold was unchecked, the statement unbound and the constant wire free ([[decider]] §soundness). a width-2 sliding window (fold `(row_t, row_{t+1})`) carried transition constraints, and a selector "universal CCS" padded heterogeneous instances to one shape. its per-fold and per-decider cost figures were never measured on a sound construction and are withdrawn. the code stays behind the `legacy` feature for one release.
+## not built
 
-## open questions
-
-1. machine relation width: which step relation (`machine.md`) keeps the per-step accumulation cost low while covering every nox pattern, including the multi-row hash.
-2. cross-algebra: whether F₂ or ring instances join the same accumulator (one RS code over Goldilocks today) or are proven separately and composed.
-3. the Trident verifier: verifier-in-nox cost, and which profile proves it.
-
-see [[verifier]] for the shipped verifiers, [[transcript]] for Fiat–Shamir, [[sumcheck]] for the core protocol, [[lens]] for polynomial commitment.
+- the decider inside a step (decider-as-relation): the final proof keeps
+  one native WHIR opening;
+- a wrap step proving the final verifier with a small non-accumulating
+  proof (the route to ≤ 64 KB, `audit/recursion-2026-10.md`);
+- an envelope profile for recursive proofs.

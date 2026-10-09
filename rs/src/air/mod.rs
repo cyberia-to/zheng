@@ -34,6 +34,10 @@ mod tests;
 
 pub use prove::{AirProof, SegmentProof, SegmentWords, commit_bound, prove, verify};
 pub use public::Public;
+pub(crate) use shift::prove as shift_prove;
+pub(crate) use zerocheck::prove as zerocheck_prove;
+#[cfg(test)]
+pub(crate) use zerocheck::interpolate as zerocheck_interpolate;
 
 use nebu::{Fp3, Goldilocks};
 

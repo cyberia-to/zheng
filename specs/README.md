@@ -34,7 +34,7 @@ Implementation reviews and validation evidence are indexed in
 - [[sumcheck]] — the engine: O(N) prover reduces an exponential sum to one evaluation
 - [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one PCS opening
 - accumulation and machine (`accumulation.md`, `machine.md`) — phase 3, landing in this release: hash-based accumulation of RS evaluation claims (ARC/WARP-style) and the nox step relation
-- [[recursion]] — superseded: the legacy fold; recursion proper is composition only
+- [[recursion]] — IVC over the nox machine: each step's relation verifies the previous step in-circuit; constant-size proofs (`rs/src/recursion/`, `audit/recursion-2026-10.md`)
 - [[accumulator]] — superseded: the legacy universal accumulator
 - [[decider]] — superseded: the legacy decider, kept for its soundness residuals
 - [[tensor]] — tensor compression for O(√N) prover memory
