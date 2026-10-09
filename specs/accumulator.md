@@ -16,10 +16,10 @@ phase 3 (`accumulation.md`, `machine.md`, landing in this release) accumulates R
 
 | quantity | status |
 |---|---|
-| accumulator size | constant in steps by construction; measured TODO(F-numbers) |
-| decider proof | goal ≤ 64 KB; measured TODO(F-numbers) |
-| decider verify | goal ≤ 1 ms; measured TODO(F-numbers) |
-| light-client checkpoint | state root + the decider proof; goal ≤ 64 KB, measured TODO(F-numbers) |
+| accumulator size | constant in steps: one root and 1 + s + t claims (38 at rate 1/64, 55 at 1/16); ≈ 1.6–2.1 KB compressed, 19–29 KB as encoded today |
+| decider proof | goal ≤ 64 KB; decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`) |
+| decider verify | goal ≤ 1 ms; decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments) |
+| light-client checkpoint | state root + the decider proof; goal ≤ 64 KB; decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`) |
 
 ## proof obligations
 

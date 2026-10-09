@@ -132,7 +132,7 @@ Layer 3 jets make recursive composition practical.
 
 ```
 Level 0: Prove computation C → proof π₀
-Level 1: Prove verify(π₀) → proof π₁ (goal ≤ 64 KB, measured TODO(F-numbers))
+Level 1: Prove verify(π₀) → proof π₁ (goal ≤ 64 KB; recursion not built (no verifier relation; `audit/accumulation-2026-10.md` §7 estimates ≈ 2^17 rows per accumulation step))
 Level 2: Prove verify(π₁) → proof π₂ (same size)
 
 AGGREGATION:
@@ -180,7 +180,7 @@ the graph sees edges and weights. the graph does not see authors. see [[cyber/id
 π_chain = zheng(verify(π₁) ∧ verify(π₂) ∧ verify(π₃) ∧ verify(π_B))
 ```
 
-one proof (goal ≤ 64 KB, measured TODO(F-numbers)) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
+one proof (goal ≤ 64 KB; not measured — needs recursion, not built) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
 
 relays earn [[focus]] for proven delivery. no proof, no payment.
 

@@ -70,7 +70,7 @@ with O(√N) memory, a phone with 4 GB RAM can prove:
 - N = 2³⁰ traces (1B steps): needs ~32 × √(2³⁰) ≈ 1 MB
 - versus standard: 16 GB (impossible on phone)
 
-combined with accumulation (`accumulation.md`, `machine.md`, phase 3): the nox machine is one uniform step relation, and each step's Reed–Solomon evaluation claims are accumulated hash-based (batched by a sumcheck, one combined word committed, out-of-domain samples, a few query openings). the accumulator is one root plus a fixed number of claims, so the prover never materializes the full trace and its memory is bounded by the step relation plus the accumulator; the decider is one WHIR opening at the end. measured prover memory and time on a phone: TODO(F-numbers).
+combined with accumulation (`accumulation.md`, `machine.md`, phase 3): the nox machine is one uniform step relation, and each step's Reed–Solomon evaluation claims are accumulated hash-based (batched by a sumcheck, one combined word committed, out-of-domain samples, a few query openings). the accumulator is one root plus a fixed number of claims, so the prover never materializes the full trace and its memory is bounded by the step relation plus the accumulator; the decider is one WHIR opening at the end. measured prover memory and time on a phone: not measured (desktop: 2^14-row segments, ~3 GB resident for a 1.57M-cycle run, `audit/accumulation-2026-10.md`).
 
 ## open questions
 

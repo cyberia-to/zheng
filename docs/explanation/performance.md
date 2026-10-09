@@ -22,7 +22,7 @@ any nox computation → a proof ≤ 64 KB, post-quantum (hash-only), verified in
 
 - size: one hash is inside the small-statement target; the 2^20 relation misses 64 KB by 11 %.
 - verification: not met at any size. the causes, in order: hemera's speed inside the WHIR opening (most of the verifier's work is Merkle paths), an unstructured Spartan verifier (the matrices are evaluated generically), and recompiling the relation from the program on every verification — a cached verifying key removes the last (the zk profile drops from 10.0 to 4.1 ms with one).
-- constant in the number of steps: comes with accumulation (phase 3, in progress); no measured figure yet — decider proof ≤ 64 KB goal, measured size TODO(F-numbers).
+- constant in the number of steps: comes with accumulation (phase 3, in progress); decider proof ≤ 64 KB goal; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 
 ## prover time
 

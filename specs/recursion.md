@@ -10,7 +10,7 @@ alias: recursive composition spec, proof recursion, IVC spec
 
 ## two different things
 
-- accumulation — how a long computation gets a proof whose size and verification are constant in the number of steps. phase 3 (`accumulation.md`, `machine.md`, landing in this release): the nox machine is one uniform step relation; each step's Reed–Solomon evaluation claims are accumulated hash-based, ARC/WARP-style (ARC eprint 2024/1731, WARP 2025/753) — batch the claims with a sumcheck, commit one combined word, sample out-of-domain points, open a few query positions. the accumulator is one root plus a fixed number of claims; the decider is ONE WHIR opening (envelope profile 4). goal: ≤ 64 KB, verify ≤ 1 ms, constant in steps; measured TODO(F-numbers).
+- accumulation — how a long computation gets a proof whose size and verification are constant in the number of steps. phase 3 (`accumulation.md`, `machine.md`, landing in this release): the nox machine is one uniform step relation; each step's Reed–Solomon evaluation claims are accumulated hash-based, ARC/WARP-style (ARC eprint 2024/1731, WARP 2025/753) — batch the claims with a sumcheck, commit one combined word, sample out-of-domain points, open a few query positions. the accumulator is one root plus a fixed number of claims; the decider is ONE WHIR opening (envelope profile 4). goal: ≤ 64 KB, verify ≤ 1 ms, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 - recursion proper — proving a statement about proofs: a zheng verifier written as a nox program (the Trident verifier) and proven like any other program. it composes proofs (aggregate, attest that a set of proofs verified, cross a trust boundary). it is never the mechanism for size.
 
 ## composition through a verifier program
@@ -20,7 +20,7 @@ proof_A = prove(computation)
 proof_B = prove(verify_program(statement_A, proof_A))
 ```
 
-the cost of `proof_B` is the cost of proving the verifier program: the WHIR opening's hemera Merkle paths and the Spartan verifier's field arithmetic. it is a proof of an ordinary nox execution and goes through the same profiles (succinct, zk, or accumulated). measured cost of a verifier-in-nox proof: TODO(F-numbers).
+the cost of `proof_B` is the cost of proving the verifier program: the WHIR opening's hemera Merkle paths and the Spartan verifier's field arithmetic. it is a proof of an ordinary nox execution and goes through the same profiles (succinct, zk, or accumulated). measured cost of a verifier-in-nox proof: not built (no verifier relation; `audit/accumulation-2026-10.md` §7 estimates ≈ 2^17 rows per accumulation step).
 
 soundness: a composed proof is sound if the inner proof system is and the verifier program faithfully implements the verifier specified in [[execution]] — any discrepancy between the nox verifier and the specified one breaks it. the bits of each layer come from the [[soundness]] ledger; nothing beyond a union bound over the layers is claimed here.
 

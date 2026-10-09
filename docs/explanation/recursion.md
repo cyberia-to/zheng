@@ -24,7 +24,7 @@ decider: one WHIR opening of the final accumulator
 
 this is hash-based accumulation of Reed–Solomon evaluation claims in the style of ARC (eprint 2024/1731) and WARP (eprint 2025/753): sound up to the list-decoding regime, resting on the random-oracle model only. the accumulator never grows; the decider proof is one opening.
 
-figures: none measured yet. decider proof ≤ 64 KB goal, measured size TODO(F-numbers); verification ≤ 1 ms goal, measured time TODO(F-numbers). the goal of the repair is any nox computation → a proof ≤ 64 KB, post-quantum, verified in ≤ 1 ms, constant in the number of steps.
+figures: decider proof ≤ 64 KB goal, decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`); verification ≤ 1 ms goal, decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments). accumulation alone does not make the proof constant: every step's openings travel until recursion is built. the goal of the repair is any nox computation → a proof ≤ 64 KB, post-quantum, verified in ≤ 1 ms, constant in the number of steps.
 
 ## what accumulation serves
 
@@ -32,7 +32,7 @@ figures: none measured yet. decider proof ≤ 64 KB goal, measured size TODO(F-n
 |---|---|
 | a long nox computation | accumulate every step, decide once |
 | [[fold mining]]: a cluster of tickets becomes one decider before minting | each ticket's claims and the cluster tree are accumulation steps; the root is one decider |
-| a [[light client]] accepts a checkpoint over many epochs | accumulate per epoch, decide at the checkpoint; the checkpoint is the state root plus the decider proof of the accumulator (≤ 64 KB goal, measured size TODO(F-numbers)) |
+| a [[light client]] accepts a checkpoint over many epochs | accumulate per epoch, decide at the checkpoint; the checkpoint is the state root plus the decider proof of the accumulator (≤ 64 KB goal, decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`)) |
 | a block of many transactions | the transactions' claims accumulate into one accumulator, one decider |
 
 none of these needs a proof of a proof.

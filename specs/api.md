@@ -81,7 +81,7 @@ let envelope = Envelope::from_bytes(&bytes)?;   // canonical decoding only
 envelope.verify(evidence.as_ref())?;            // runs the profile's verifier
 ```
 
-`Envelope::{Public, Succinct, Zk, StatePublic}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge}`. profile 4 (machine proof) lands with accumulation (`accumulation.md`, `machine.md`, phase 3 in this release); its API and sizes are not fixed yet — goal ≤ 64 KB, constant in steps, measured TODO(F-numbers).
+`Envelope::{Public, Succinct, Zk, StatePublic}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge}`. profile 4 (machine proof) lands with accumulation (`accumulation.md`, `machine.md`, phase 3 in this release); API: `machine::{prove, verify}`, `Envelope::Machine`; goal ≤ 64 KB, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 
 ## retired and legacy
 
