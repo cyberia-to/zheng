@@ -30,6 +30,7 @@
 //! `specs/soundness.md`.
 
 pub mod accumulate;
+pub mod air;
 pub mod envelope;
 pub mod execution;
 pub mod field;
