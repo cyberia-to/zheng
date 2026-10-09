@@ -42,6 +42,11 @@ pub(super) fn encode(envelope: &Envelope, w: &mut Writer) {
             free(certificate, w);
         }
         Envelope::Succinct { statement, proof } => super::succinct::encode(statement, proof, w),
+        Envelope::Machine {
+            params,
+            statement,
+            proof,
+        } => super::machine::encode(params, statement, proof, w),
     }
 }
 
@@ -92,6 +97,7 @@ pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
             certificate: read_free(r)?,
         }),
         Profile::Succinct => super::succinct::decode(r),
+        Profile::Machine => super::machine::decode(r),
     }
 }
 

@@ -252,3 +252,19 @@ pub fn merkle_program(levels: usize, root: Option<&ExecutionNoun>) -> ExecutionN
 pub fn tree_program(k: usize) -> ExecutionNoun {
     (0..k).fold(m_op(5, m_axis(2), m_quote(m_at(1))), |f, _| m_op(5, f.clone(), f))
 }
+
+/// Doubling recursion over a subject that carries its own formula:
+/// `f(n) = n = 0 ? 1 : f(n−1) + f(n−1)` on input `[n 0]`, so `f(n) = 2^n`
+/// after about `2^{n+1}` calls. A small program (tens of tokens) whose
+/// run grows exponentially, with nox depth about `4n`.
+pub fn rec_program() -> ExecutionNoun {
+    // inside F the subject is [n F]
+    let n = m_axis(2);
+    let me = m_axis(3);
+    let call = m_op(2, m_op(3, m_op(6, n.clone(), m_quote(m_at(1))), me.clone()), me);
+    let body = m_op(5, call.clone(), call);
+    let test = m_op(9, n, m_quote(m_at(0)));
+    let f = m_pr(m_at(4), m_pr(test, m_pr(m_quote(m_at(1)), body)));
+    // start: subject [x 0] → [x F], formula F
+    m_op(2, m_op(3, m_axis(2), m_quote(f.clone())), m_quote(f))
+}

@@ -3,7 +3,7 @@
 //! ```text
 //! magic    8 bytes  "ZHENGPF1"
 //! version  u16 LE   VERSION
-//! profile  u8       0 public · 1 succinct · 2 zk · 3 state-public
+//! profile  u8       0 public · 1 succinct · 2 zk · 3 state-public · 4 machine
 //! body              per profile, canonical (see `codec`)
 //! ```
 //!
@@ -19,6 +19,8 @@
 //!   key's digest);
 //! - state-public (3): execution statement, state root (4 field limbs),
 //!   root-in-subject flag, the reads, then the v3 certificate.
+//! - machine (4): WHIR parameters, the machine statement (program, inputs,
+//!   output noun, cycles, budget), then the machine proof (see `machine`).
 //!
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
@@ -28,6 +30,7 @@
 
 mod body;
 mod codec;
+mod machine;
 mod succinct;
 #[cfg(test)]
 mod tests;
@@ -58,6 +61,9 @@ pub enum Profile {
     Succinct = 1,
     Zk = 2,
     StatePublic = 3,
+    /// A nox run of any length: the uniform step relation, accumulation,
+    /// one decider.
+    Machine = 4,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +104,11 @@ pub enum Envelope {
     Succinct {
         statement: SuccinctStatement,
         proof: AnySuccinct,
+    },
+    Machine {
+        params: lens::WhirParams,
+        statement: crate::machine::MachineStatement,
+        proof: Box<crate::machine::MachineProof>,
     },
 }
 
@@ -161,6 +172,7 @@ impl Envelope {
             Self::Zk { .. } => Profile::Zk,
             Self::StatePublic { .. } => Profile::StatePublic,
             Self::Succinct { .. } => Profile::Succinct,
+            Self::Machine { .. } => Profile::Machine,
         }
     }
 
@@ -190,6 +202,7 @@ impl Envelope {
             1 => Profile::Succinct,
             2 => Profile::Zk,
             3 => Profile::StatePublic,
+            4 => Profile::Machine,
             other => return Err(EnvelopeError::UnknownProfile(other)),
         };
         let envelope = body::decode(profile, &mut r)?;
@@ -239,6 +252,11 @@ impl Envelope {
                 state.ok_or("state envelope: no state evidence")?,
             ),
             Self::Succinct { statement, proof } => succinct::verify(statement, proof, state),
+            Self::Machine {
+                params,
+                statement,
+                proof,
+            } => crate::machine::verify(statement, proof, params),
         }
     }
 }

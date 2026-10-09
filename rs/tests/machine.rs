@@ -126,8 +126,43 @@ fn a_merkle_path_and_a_multi_segment_run_prove() {
     lie.cycles += 1;
     lie.budget += 1;
     assert!(machine::verify(&lie, &parsed, &w).is_err());
+    // a self-referencing recursion (computed formulas all the way down)
+    let rec = common::rec_program();
+    let run = agrees(&rec, &[6], 9);
+    assert_eq!(statement::parse(&run.statement.output).unwrap(), N::Atom(64));
+    let p2 = machine::prove_run(&run, &w).unwrap();
+    machine::verify(&run.statement, &p2, &w).unwrap();
     // a segment's proof moved to another position does not verify
     let mut swapped = parsed.clone();
     swapped.air.segments.swap(1, 2);
     assert!(machine::verify(&run.statement, &swapped, &w).is_err());
+}
+
+#[test]
+fn the_machine_rides_the_envelope_as_profile_four() {
+    use zheng::envelope::{Envelope, Profile};
+    let w = whir();
+    let run = agrees(&common::parse(common::ADD), &[7, 5], machine::SEGMENT_LOG_ROWS);
+    let proof = machine::prove_run(&run, &w).unwrap();
+    let env = Envelope::Machine {
+        params: w,
+        statement: run.statement.clone(),
+        proof: Box::new(proof),
+    };
+    let bytes = env.to_bytes();
+    assert_eq!(bytes[10], Profile::Machine as u8);
+    let back = Envelope::from_bytes(&bytes).unwrap();
+    assert_eq!(back, env);
+    back.verify(&mut |_, _| None).unwrap();
+    // weak parameters in the header are refused by the policy
+    let mut weak = bytes.clone();
+    weak[11 + 1] = 1; // log_inv_rate 1
+    if let Ok(e) = Envelope::from_bytes(&weak) {
+        assert!(e.verify(&mut |_, _| None).is_err());
+    }
+    // truncation and trailing bytes are rejected
+    assert!(Envelope::from_bytes(&bytes[..bytes.len() - 1]).is_err());
+    let mut longer = bytes.clone();
+    longer.push(0);
+    assert!(Envelope::from_bytes(&longer).is_err());
 }
