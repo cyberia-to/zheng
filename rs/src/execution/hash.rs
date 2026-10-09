@@ -1,5 +1,6 @@
 //! Symbolic nox structural hashing. Every nonlinear sponge lane is a
-//! constrained wire; linear layers are public linear forms over those wires.
+//! constrained wire (a full-round S-box is one degree-7 row, a partial-round
+//! inverse three degree-2 rows); linear layers are public linear forms.
 //! A subtree that is constant in the program is hashed natively at compile
 //! time: the verifier derives the same constants from the same program, and
 //! the circuit it replaces had no witness freedom to begin with.
@@ -104,7 +105,7 @@ impl Builder {
     }
 
     fn hash_permute(&mut self, input: State) -> Result<State, RelationError> {
-        if self.ops.len() > 32768 || self.rows.len() > 32768 {
+        if self.ops.len() > 32768 || self.rows.len() + self.sbox.len() > 32768 {
             return Err(RelationError::Limit);
         }
         // A permutation of constants is a constant: run it natively.
@@ -133,11 +134,7 @@ impl Builder {
                     let rc = hemera::constants::ROUND_CONSTANTS_U64[offset + lane];
                     let value = self.add(&state[lane], &Value::Constant(F::new(rc)), false)?;
                     let x = self.linear(&value)?;
-                    let square = self.product(x.clone(), x.clone());
-                    let square = self.linear(&square)?;
-                    let cube = self.product(square.clone(), x);
-                    let fourth = self.product(square.clone(), square);
-                    state[lane] = self.product(self.linear(&cube)?, self.linear(&fourth)?);
+                    state[lane] = self.pow7(x);
                 }
             }
             state = self.hash_mds(&state, partial)?;
@@ -328,6 +325,7 @@ mod tests {
             inputs: 1,
             ops: vec![],
             rows: vec![],
+            sbox: vec![],
             calls: 0,
             active: Value::Constant(F::ONE),
             lookups: vec![],

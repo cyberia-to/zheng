@@ -9,8 +9,10 @@
   are hashed natively at compile time (the verifier derives the same
   constants from the same program). Same protocol
   (`zheng-nox-public-execution-v2`), same linear full-witness verification.
-  `hash.tri`: certificate 294,861 → 47,612 bytes, prove 460 → 81 ms,
-  verify 460 → 80 ms (M4 Max). Record: `audit/compact-relation-2026-10-09.md`.
+  The full-round S-box is one degree-7 CCS row (`Op::Pow7`; two extra
+  matrices, multiset `[3;7] − [4]`, only on programs with a hash).
+  `hash.tri`: certificate 294,861 → 15,608 bytes, prove 460 → 36 ms,
+  verify 460 → 30 ms (M4 Max). Record: `audit/compact-relation-2026-10-09.md`.
 
 ## [0.3.3] — 2026-09-09
 

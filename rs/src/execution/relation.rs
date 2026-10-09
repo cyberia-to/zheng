@@ -57,6 +57,8 @@ fn normalize(mut l: Linear) -> Linear {
 enum Op {
     Linear(Linear),
     Product(Linear, Linear),
+    /// x^7 in one wire: the hemera full-round S-box as a degree-7 CCS row.
+    Pow7(Linear),
     Inverse(Linear),
     Bit(Linear, usize),
     Secret(Linear),
@@ -138,6 +140,12 @@ impl ExecutionRelation {
                 }
                 Op::Linear(a) => eval(a),
                 Op::Product(a, b) => eval(a) * eval(b),
+                Op::Pow7(a) => {
+                    let x = eval(a);
+                    let x2 = x * x;
+                    let x4 = x2 * x2;
+                    x4 * x2 * x
+                }
                 Op::Bit(a, k) => F::new((eval(a).canonicalize().as_u64() >> k) & 1),
                 // Goldilocks inv(0) = 0. Always run the fixed exponent instead
                 // of exposing a secret-derived zero through a cheap shortcut.
@@ -155,7 +163,11 @@ impl ExecutionRelation {
 struct Builder {
     inputs: usize,
     ops: Vec<Op>,
+    /// Degree-2 rows: a · b = c.
     rows: Vec<(Linear, Linear, Linear)>,
+    /// Degree-7 rows: x^7 = wire. Kept apart so the CCS carries them in two
+    /// matrices of their own and the degree-2 rows stay three matrices.
+    sbox: Vec<(Linear, usize)>,
     calls: usize,
     active: Value,
     lookups: Vec<LookupCoordinates>,
@@ -185,6 +197,11 @@ impl Builder {
     fn product(&mut self, a: Linear, b: Linear) -> Value {
         let i = self.wire(Op::Product(a.clone(), b.clone()));
         self.rows.push((a, b, vec![(i, F::ONE)]));
+        Value::Wire(i)
+    }
+    fn pow7(&mut self, x: Linear) -> Value {
+        let i = self.wire(Op::Pow7(x.clone()));
+        self.sbox.push((x, i));
         Value::Wire(i)
     }
     fn add(&mut self, a: &Value, b: &Value, negative: bool) -> Result<Value, RelationError> {
@@ -378,6 +395,7 @@ fn compile_relation_internal(
         inputs: next - 1,
         ops: vec![],
         rows: vec![],
+        sbox: vec![],
         calls: 0,
         active: Value::Constant(F::ONE),
         lookups: vec![],
@@ -395,19 +413,36 @@ fn compile_relation_internal(
         Value::Wire(i) => i,
         _ => unreachable!(),
     };
-    let rows = b.rows.len().max(2).next_power_of_two();
+    let degree2 = b.rows.len();
+    let rows = (degree2 + b.sbox.len()).max(2).next_power_of_two();
     let cols = (next + b.ops.len()).max(64).next_power_of_two();
-    let mut matrices = vec![SparseMatrix::new(rows, cols); 3];
+    // Three matrices for a · b = c; two more, x^7 = w, only when a hash is
+    // in the program. A row of one kind is all-zero in the other kind's
+    // matrices, so each multiset vanishes on the rows that are not its own.
+    let kinds = if b.sbox.is_empty() { 3 } else { 5 };
+    let mut matrices = vec![SparseMatrix::new(rows, cols); kinds];
     for (r, (a, c, d)) in b.rows.into_iter().enumerate() {
         matrices[0].entries[r] = a;
         matrices[1].entries[r] = c;
         matrices[2].entries[r] = d;
     }
+    for (k, (x, i)) in b.sbox.into_iter().enumerate() {
+        matrices[3].entries[degree2 + k] = x;
+        matrices[4].entries[degree2 + k] = vec![(i, F::ONE)];
+    }
+    let (multisets, coeffs) = if kinds == 3 {
+        (vec![vec![0, 1], vec![2]], vec![F::ONE, -F::ONE])
+    } else {
+        (
+            vec![vec![0, 1], vec![2], vec![3; 7], vec![4]],
+            vec![F::ONE, -F::ONE, F::ONE, -F::ONE],
+        )
+    };
     Ok(ExecutionRelation {
         instance: CCSInstance {
             matrices,
-            multisets: vec![vec![0, 1], vec![2]],
-            coeffs: vec![F::ONE, -F::ONE],
+            multisets,
+            coeffs,
             num_rows: rows,
             num_cols: cols,
         },

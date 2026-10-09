@@ -32,23 +32,32 @@ digests are fixed by the program.
   The verifier derives the same constants from the same program; the circuit
   this replaces had no witness freedom.
 
-Per permutation with a wired input: 512 S-box product wires over eight full
-rounds (x², x³, x⁴, x⁷ — four is the minimum addition chain for 7 under
-degree-2 rows), 48 inverse/selector wires over sixteen partial rounds, zero
-MDS wires. Rows keep the same shape `a · b = c`; a row's linear forms may now
-carry up to thirty-two terms.
+- The full-round S-box is one degree-7 CCS row: `x^7 = w` with `x` a linear
+  form. The relation carries two matrix kinds — three matrices for the
+  degree-2 rows `a · b = c`, two for the degree-7 rows — with multisets
+  `[0,1] − [2] + [3,3,3,3,3,3,3] − [4]`; a row of one kind is all-zero in the
+  other kind's matrices. Programs without a hash keep the three-matrix
+  instance. Witness generation gained `Op::Pow7`.
+
+Per permutation with a wired input: 128 S-box wires over eight full rounds
+(one per lane), 48 inverse/selector wires over sixteen partial rounds, zero
+MDS wires — 176 instead of 1,120. A row's linear forms may carry up to
+thirty-two terms. The Spartan sumcheck degree rises from 2 to 7 on hash
+programs (`MAX_DEGREE` is 16); the Triton zk backend evaluates CCS
+multisets generically and is unaffected.
 
 ## Measured (joy 0.5.0 `main` 10844a8 built against this zheng, Apple M4 Max,
 release build, three runs each)
 
-| program | before | after |
-|---|---|---|
-| hash.tri prove | 460 ms | 81 ms |
-| hash.tri verify | 460 ms | 80 ms |
-| hash.tri certificate | 294,861 B | 47,612 B |
-| add.tri certificate | 2,290 B | 2,207 B |
+| program | before | linear forms + constants | + degree-7 S-box |
+|---|---|---|---|
+| hash.tri prove | 460 ms | 81 ms | 36 ms |
+| hash.tri verify | 460 ms | 80 ms | 30 ms |
+| hash.tri certificate | 294,861 B | 47,612 B | 15,608 B |
+| add.tri certificate | 2,290 B | 2,207 B | 2,207 B |
+| add.tri `--zk` (Triton) | 816 KB · 2.1 s | — | 768 KB · 0.9 s |
 
-The hash certificate moved from n = 2^15 to n = 2^12 columns. The "before"
+The hash certificate moved from n = 2^15 to n = 2^10 columns. The "before"
 numbers are the shipped joy 0.5.0 binary and the same source built against
 zheng 0.4.0 (`chore/coordinated-release-20260916`), measured 2026-10-08 on the
 same machine.
@@ -65,9 +74,9 @@ updated because the one-minus-selector value is now a form, not a wire.
 The certificate still discloses the full witness and verifies linearly; it
 is not succinct and not zero-knowledge. The next size levers, in order:
 
-1. degree-7 S-box rows (CCS multisets of degree 7) — one wire per lane per
-   full round instead of four; the hash certificate would fall to about
-   n = 2^10 (~15 KB);
+1. the Merkle paths of the `PublicTensor` opening (~5 KB of the 15.6 KB) —
+   the verifier rebuilds the whole tree and only compares them; dropping
+   them is a wire-format change (a new protocol string);
 2. a public/private witness split so the verifier evaluates the public
    prefix itself, and a verifying-key digest instead of absorbing every
    matrix entry;

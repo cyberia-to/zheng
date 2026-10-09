@@ -172,6 +172,11 @@ fn noncanonical_bit_decomposition_cannot_forge_ordering() {
             Op::Secret(_) | Op::Look { .. } => unreachable!(),
             Op::Linear(a) => eval(a),
             Op::Product(a, b) => eval(a) * eval(b),
+            Op::Pow7(a) => {
+                let x = eval(a);
+                let x2 = x * x;
+                x2 * x2 * x2 * x
+            }
             Op::Inverse(a) => {
                 let v = eval(a);
                 if v == F::ZERO { v } else { v.inv() }
