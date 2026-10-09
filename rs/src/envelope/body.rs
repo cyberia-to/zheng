@@ -35,20 +35,25 @@ pub(super) fn encode(envelope: &Envelope, w: &mut Writer) {
             statement,
             certificate,
         } => {
-            execution(&statement.execution, w);
-            for limb in statement.state_root {
-                w.varint(limb);
-            }
-            w.raw(&statement.context);
-            w.bool(statement.root_in_subject);
-            w.len(statement.reads.len());
-            for read in &statement.reads {
-                w.bool(read.active);
-                for v in [read.namespace, read.key, read.value] {
-                    w.varint(v);
-                }
-            }
+            state(statement, w);
             free(certificate, w);
+        }
+        Envelope::Succinct { statement, proof } => super::succinct::encode(statement, proof, w),
+    }
+}
+
+pub(super) fn state(statement: &StateStatement, w: &mut Writer) {
+    execution(&statement.execution, w);
+    for limb in statement.state_root {
+        w.varint(limb);
+    }
+    w.raw(&statement.context);
+    w.bool(statement.root_in_subject);
+    w.len(statement.reads.len());
+    for read in &statement.reads {
+        w.bool(read.active);
+        for v in [read.namespace, read.key, read.value] {
+            w.varint(v);
         }
     }
 }
@@ -70,42 +75,44 @@ pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
                 proof,
             })
         }
-        Profile::StatePublic => {
-            let execution = read_execution(r)?;
-            let mut state_root = [0u64; 4];
-            for limb in &mut state_root {
-                *limb = r.field()?;
-            }
-            let context = read_context(r)?;
-            let root_in_subject = r.bool()?;
-            let n = r.len(MAX_READS, 4)?;
-            let mut reads = Vec::with_capacity(n);
-            for _ in 0..n {
-                let active = r.bool()?;
-                let (namespace, key, value) = (r.field()?, r.field()?, r.field()?);
-                if !active && (namespace, key, value) != (0, 0, 0) {
-                    return Err(E::NonCanonical);
-                }
-                reads.push(PublicLookup {
-                    active,
-                    namespace,
-                    key,
-                    value,
-                });
-            }
-            Ok(Envelope::StatePublic {
-                statement: StateStatement {
-                    execution,
-                    state_root,
-                    context,
-                    root_in_subject,
-                    reads,
-                },
-                certificate: read_free(r)?,
-            })
-        }
-        Profile::Succinct => Err(E::ReservedProfile(Profile::Succinct)),
+        Profile::StatePublic => Ok(Envelope::StatePublic {
+            statement: read_state(r)?,
+            certificate: read_free(r)?,
+        }),
+        Profile::Succinct => super::succinct::decode(r),
     }
+}
+
+pub(super) fn read_state(r: &mut Reader) -> Result<StateStatement, E> {
+    let execution = read_execution(r)?;
+    let mut state_root = [0u64; 4];
+    for limb in &mut state_root {
+        *limb = r.field()?;
+    }
+    let context = read_context(r)?;
+    let root_in_subject = r.bool()?;
+    let n = r.len(MAX_READS, 4)?;
+    let mut reads = Vec::with_capacity(n);
+    for _ in 0..n {
+        let active = r.bool()?;
+        let (namespace, key, value) = (r.field()?, r.field()?, r.field()?);
+        if !active && (namespace, key, value) != (0, 0, 0) {
+            return Err(E::NonCanonical);
+        }
+        reads.push(PublicLookup {
+            active,
+            namespace,
+            key,
+            value,
+        });
+    }
+    Ok(StateStatement {
+        execution,
+        state_root,
+        context,
+        root_in_subject,
+        reads,
+    })
 }
 
 pub(super) fn execution(s: &ExecutionStatement, w: &mut Writer) {
@@ -129,7 +136,7 @@ pub(super) fn execution(s: &ExecutionStatement, w: &mut Writer) {
     w.varint(s.budget);
 }
 
-fn read_execution(r: &mut Reader) -> Result<ExecutionStatement, E> {
+pub(super) fn read_execution(r: &mut Reader) -> Result<ExecutionStatement, E> {
     let n = r.len(MAX_PROGRAM_NODES, 1)?;
     let mut program = Vec::with_capacity(n);
     for _ in 0..n {

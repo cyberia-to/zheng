@@ -3,7 +3,7 @@
 //! meaningless-witness and zeroed-constant attacks; see
 //! `retired_path_hole_*` in `rs/src/folding/fold.rs` (feature `legacy`).
 use nebu::Goldilocks as F;
-use zheng::envelope::{Envelope, EnvelopeError, MAGIC, Profile};
+use zheng::envelope::{Envelope, EnvelopeError, MAGIC};
 use zheng::execution::relation::{SubjectShape, compile_relation};
 use zheng::execution::state::certify_state_execution;
 use zheng::execution::{Certificate, ExecutionNoun, certificate, certify_execution, verify_certificate};
@@ -178,13 +178,7 @@ fn fixture_envelope_with_wrong_magic_version_or_profile_is_rejected() {
     let mut version = bytes.clone();
     version[8] = 2;
     assert_eq!(Envelope::from_bytes(&version), Err(EnvelopeError::UnsupportedVersion(2)));
-    let mut reserved = bytes.clone();
-    reserved[10] = 1;
-    assert_eq!(
-        Envelope::from_bytes(&reserved),
-        Err(EnvelopeError::ReservedProfile(Profile::Succinct))
-    );
-    for profile in [2u8, 3, 4] {
+    for profile in [1u8, 2, 3, 4] {
         let mut wrong = bytes.clone();
         wrong[10] = profile;
         let accepted = Envelope::from_bytes(&wrong).is_ok_and(|e| e.verify(&mut |_, _| None).is_ok());

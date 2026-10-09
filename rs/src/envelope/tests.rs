@@ -90,19 +90,13 @@ fn wrong_magic_version_and_profile_are_rejected() {
         bad[8..10].copy_from_slice(&version.to_le_bytes());
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnsupportedVersion(version)));
     }
-    let mut bad = bytes.clone();
-    bad[10] = 1;
-    assert_eq!(
-        Envelope::from_bytes(&bad),
-        Err(EnvelopeError::ReservedProfile(Profile::Succinct))
-    );
     for profile in [4u8, 0x80, 0xff] {
         let mut bad = bytes.clone();
         bad[10] = profile;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
     }
-    // a public body under the zk or state profile byte does not decode or verify
-    for profile in [2u8, 3] {
+    // a public body under another profile byte does not decode or verify
+    for profile in [1u8, 2, 3] {
         let mut bad = bytes.clone();
         bad[10] = profile;
         let accepted =
@@ -158,7 +152,7 @@ fn bound_ranges(envelope: &Envelope) -> Vec<(usize, usize)> {
             let context_end = HEADER_BYTES + roots + 32;
             vec![(0, HEADER_BYTES + roots), (context_end, context_end + reads)]
         }
-        Envelope::Zk { .. } => unreachable!(),
+        Envelope::Zk { .. } | Envelope::Succinct { .. } => unreachable!(),
     }
 }
 
@@ -170,6 +164,7 @@ fn facts(e: &Envelope) -> Envelope {
         Envelope::Public { statement, .. } => statement.budget = 0,
         Envelope::StatePublic { statement, .. } => statement.execution.budget = 0,
         Envelope::Zk { statement, .. } => statement.execution.budget = 0,
+        Envelope::Succinct { .. } => unreachable!(),
     }
     e
 }
