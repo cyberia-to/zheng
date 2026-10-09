@@ -81,7 +81,34 @@ let envelope = Envelope::from_bytes(&bytes)?;   // canonical decoding only
 envelope.verify(evidence.as_ref())?;            // runs the profile's verifier
 ```
 
-`Envelope::{Public, Succinct, Zk, StatePublic}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge}`. profile 4 (machine proof) lands with accumulation (`accumulation.md`, `machine.md`, phase 3 in this release); API: `machine::{prove, verify}`, `Envelope::Machine`; goal ≤ 64 KB, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
+`Envelope::{Public, Succinct, Zk, StatePublic, Machine, Recursive}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge}`. profile 4 (machine proof) lands with accumulation (`accumulation.md`, `machine.md`, phase 3 in this release); API: `machine::{prove, verify}`, `Envelope::Machine`; goal ≤ 64 KB, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
+
+### recursive (envelope profile 5)
+
+```rust
+use zheng::envelope::recursive;
+
+let envelope = recursive::prove(&program, &input, budget, &recursive::params())?; // Envelope::Recursive
+let bytes = envelope.to_bytes();
+Envelope::from_bytes(&bytes)?.verify(None)?;  // key derived once per process, then cached
+```
+
+body:
+
+```text
+format     u8      RECURSIVE_FORMAT = 1 (the IVC wire's version)
+params     8 B     WHIR header; decoding admits only recursive::ADMITTED
+                   (rate 1/16 — the shipped recursive::params() — or 1/64;
+                   folding 4, 24 grinding bits, steps of 2^15 rows)
+statement          program tokens, inputs, output tokens, cycles, budget
+                   (the machine statement, exactly as profile 4)
+proof      varint n ≤ MAX_PROOF_BYTES (1 MiB), then n bytes of
+           IvcProof::to_bytes: u8 log_rows · u64 start · u64 segments ·
+           chain · state · step · accumulation step · decider; fixed-width
+           LE, every limb a canonical Goldilocks value (< p)
+```
+
+decoding refuses a wrong format byte, a header outside the admitted sets, a step size other than the set's (checked before any key is derived), a proof that does not fill its length exactly, and trailing bytes after it (`rs/tests/recursive_envelope.rs`). the proof binds the whole statement, budget included (`MachineStatement::bytes` enters the step context). no serde: envelopes travel as bytes (no profile derives serde).
 
 ## retired and legacy
 

@@ -11,3 +11,4 @@ defined in [specs](../specs/README.md).
 - [zk profile, state binding and verifying keys, 2026-10](zk-profile-2026-10.md) — veil (succinct zk) against MPC-in-the-head, state evidence inside zheng, cached keys; raw numbers.
 - [Accumulation and the nox machine, 2026-10](accumulation-2026-10.md) — phase 3: step relation, accumulation, measurements against the gates, what is not done.
 - [Recursion (IVC over the nox machine), 2026-10](recursion-2026-10.md) — the step relation verifies the previous step in-circuit: constant 282–285 KB from 33 cycles to 1.57M cycles, bit-flip scan, gaps to 64 KB / 1 ms.
+- [Recursive envelope (profile 5), 2026-10](recursive-envelope-2026-10.md) — IVC proofs in `ZHENGPF1`: wire, rejection tests, profiles 1/4/5 on hash.tri and merkle-32.
