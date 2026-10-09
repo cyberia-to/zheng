@@ -59,7 +59,7 @@ fn zk_envelope() -> Envelope {
         &public,
     )
     .unwrap();
-    Envelope::Zk { statement, context, proof }
+    Envelope::Zk { statement, context, proof: ZkProof::Mith(proof) }
 }
 
 #[test]
