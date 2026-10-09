@@ -5,6 +5,7 @@
 use nebu::{Fp3, Goldilocks};
 
 use super::layout::*;
+use crate::air::num::Num;
 use crate::machine::hemera::{Tables, is_full};
 use crate::recursion::perm::{NODE_TAG, RATE, WIDTH};
 
@@ -20,33 +21,33 @@ pub struct CircuitAir {
     constraints: usize,
 }
 
-fn t() -> Fp3 {
-    Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO)
+fn t<T: Num>() -> T {
+    T::from_fp3(Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO))
 }
 
-fn ext3(c: &[Fp3]) -> Fp3 {
-    let t = t();
+fn ext3<T: Num>(c: &[T]) -> T {
+    let t = t::<T>();
     c[0] + t * c[1] + t * t * c[2]
 }
 
-fn c(v: u64) -> Fp3 {
-    Fp3::from_base(Goldilocks::new(v))
+fn c<T: Num>(v: u64) -> T {
+    T::from_u64(v)
 }
 
-fn pow7(x: Fp3) -> Fp3 {
+fn pow7<T: Num>(x: T) -> T {
     let x2 = x * x;
     let x3 = x2 * x;
     x3 * x2 * x2
 }
 
 /// Collects constraint values (or counts them).
-pub struct Sink<'a> {
-    pub buf: &'a mut [Fp3],
+pub struct Sink<'a, T = Fp3> {
+    pub buf: &'a mut [T],
     pub i: usize,
 }
 
-impl Sink<'_> {
-    fn push(&mut self, v: Fp3) {
+impl<T: Num> Sink<'_, T> {
+    fn push(&mut self, v: T) {
         if let Some(b) = self.buf.get_mut(self.i) {
             *b = v;
         }
@@ -56,16 +57,16 @@ impl Sink<'_> {
 
 /// One row's values: phase 1, phase 2, next row's, the preprocessed
 /// columns, the circuit's memory challenges.
-pub struct Row<'a> {
-    pub l1: &'a [Fp3],
-    pub l2: &'a [Fp3],
-    pub n1: &'a [Fp3],
-    pub n2: &'a [Fp3],
-    pub p: &'a [Fp3],
+pub struct Row<'a, T = Fp3> {
+    pub l1: &'a [T],
+    pub l2: &'a [T],
+    pub n1: &'a [T],
+    pub n2: &'a [T],
+    pub p: &'a [T],
     /// The public-input columns at this row.
-    pub pin: &'a [Fp3],
-    pub alpha: Fp3,
-    pub beta: Fp3,
+    pub pin: &'a [T],
+    pub alpha: T,
+    pub beta: T,
 }
 
 impl Default for CircuitAir {
@@ -118,26 +119,26 @@ impl CircuitAir {
     }
 
     /// `MDS·(s + rc_k)^7`.
-    fn full(&self, s: &[Fp3], k: usize) -> [Fp3; WIDTH] {
+    fn full<T: Num>(&self, s: &[T], k: usize) -> [T; WIDTH] {
         debug_assert!(is_full(k));
         let rc = &self.tables.rc[k];
-        let sb: Vec<Fp3> = (0..WIDTH).map(|i| pow7(s[i] + Fp3::from_base(rc[i]))).collect();
+        let sb: Vec<T> = (0..WIDTH).map(|i| pow7(s[i] + T::from_base(rc[i]))).collect();
         core::array::from_fn(|j| {
-            (0..WIDTH).fold(Fp3::ZERO, |a, i| a + Fp3::from_base(self.tables.mds[j][i]) * sb[i])
+            (0..WIDTH).fold(T::ZERO, |a, i| a + T::from_base(self.tables.mds[j][i]) * sb[i])
         })
     }
 
-    fn lin(&self, k: usize, i: usize, y4: &[Fp3], w: &[Fp3]) -> Fp3 {
+    fn lin<T: Num>(&self, k: usize, i: usize, y4: &[T], w: &[T]) -> T {
         let co = &self.partial[k][i];
-        let mut acc = Fp3::ZERO;
+        let mut acc = T::ZERO;
         for j in 0..16 {
             if co[j] != Goldilocks::ZERO {
-                acc += Fp3::from_base(co[j]) * y4[j];
+                acc += T::from_base(co[j]) * y4[j];
             }
         }
         for j in 0..k {
             if co[16 + j] != Goldilocks::ZERO {
-                acc += Fp3::from_base(co[16 + j]) * w[j];
+                acc += T::from_base(co[16 + j]) * w[j];
             }
         }
         acc
@@ -188,9 +189,9 @@ impl CircuitAir {
     }
 
     /// Every constraint of a row, in a fixed order.
-    pub fn eval(&self, r: &Row<'_>, out: &mut Sink<'_>) {
+    pub fn eval<T: Num>(&self, r: &Row<'_, T>, out: &mut Sink<'_, T>) {
         let (l, n, p) = (r.l1, r.n1, r.p);
-        let one = Fp3::ONE;
+        let one = T::ONE;
         let live = l[LIVE];
         out.push(n[LIVE] - live);
         out.push(live * (live - one));
@@ -211,31 +212,31 @@ impl CircuitAir {
         }
 
         // BITS
-        let b: [Fp3; 4] = core::array::from_fn(|k| p[pre::BITS + k]);
+        let b: [T; 4] = core::array::from_fn(|k| p[pre::BITS + k]);
         let any = b[0] + b[1] + b[2] + b[3];
-        let chunk = |row: &[Fp3]| (0..BITS_ROW).fold(Fp3::ZERO, |a, j| a + c(1 << j) * row[j]);
+        let chunk = |row: &[T]| (0..BITS_ROW).fold(T::ZERO, |a, j| a + c::<T>(1 << j) * row[j]);
         for &x in &l[..BITS_ROW] {
             out.push(any * x * (x - one));
         }
         let first3 = b[0] + b[1] + b[2];
         out.push(b[0] * (l[BACC] - chunk(l)));
         out.push(first3 * (n[BVAL] - l[BVAL]));
-        let scale = b[0] * c(1 << 16) + b[1] * c(1 << 32) + b[2] * c(1 << 48);
+        let scale = b[0] * c::<T>(1 << 16) + b[1] * c::<T>(1 << 32) + b[2] * c::<T>(1 << 48);
         out.push(first3 * (n[BACC] - l[BACC]) - scale * chunk(n));
         out.push(b[1] * (l[BLO] - l[BACC]));
         out.push((b[1] + b[2]) * (n[BLO] - l[BLO]));
         out.push(b[3] * (l[BACC] - l[BVAL]));
-        let two32inv = Fp3::from_base(Goldilocks::new(1 << 32).inv());
+        let two32inv = T::from_base(Goldilocks::new(1 << 32).inv());
         let hi = (l[BACC] - l[BLO]) * two32inv;
-        let max = c(0xFFFF_FFFF);
+        let max = c::<T>(0xFFFF_FFFF);
         out.push(b[3] * ((hi - max) * l[BMINV] - (one - l[BMAX])));
         out.push(b[3] * (hi - max) * l[BMAX]);
         out.push(b[3] * l[BMAX] * l[BLO]);
 
         // PERM
-        let ph: [Fp3; 4] = core::array::from_fn(|k| p[pre::PERM + k]);
-        let mdsx: Vec<Fp3> = (0..WIDTH)
-            .map(|j| (0..WIDTH).fold(Fp3::ZERO, |a, i| a + Fp3::from_base(self.tables.mds[j][i]) * l[PX + i]))
+        let ph: [T; 4] = core::array::from_fn(|k| p[pre::PERM + k]);
+        let mdsx: Vec<T> = (0..WIDTH)
+            .map(|j| (0..WIDTH).fold(T::ZERO, |a, i| a + T::from_base(self.tables.mds[j][i]) * l[PX + i]))
             .collect();
         let y1 = self.full(&mdsx, 0);
         let y2 = self.full(&l[PY1..PY1 + 16], 1);
@@ -252,12 +253,12 @@ impl CircuitAir {
             out.push(ph[1] * (l[PY4 + j] - y4[j]));
         }
         for k in 0..16 {
-            let u = self.lin(k, 0, y4c, wv) + Fp3::from_base(self.tables.rc[4 + k][0]);
+            let u = self.lin(k, 0, y4c, wv) + T::from_base(self.tables.rc[4 + k][0]);
             let w = wv[k];
             out.push(ph[1] * (u * w * u - u));
             out.push(ph[1] * (w * u * w - w));
         }
-        let z16: Vec<Fp3> = (0..WIDTH).map(|i| self.lin(16, i, y4c, wv)).collect();
+        let z16: Vec<T> = (0..WIDTH).map(|i| self.lin(16, i, y4c, wv)).collect();
         let y5 = self.full(&z16, 20);
         let y6 = self.full(&l[PY5..PY5 + 16], 21);
         let y7 = self.full(&l[PY6..PY6 + 16], 22);
@@ -279,7 +280,7 @@ impl CircuitAir {
         let (cont, fresh, node) = (p[pre::CONT], p[pre::FRESH], p[pre::NODE]);
         for j in RATE..WIDTH {
             out.push(cont * (nx[j] - o8[j]));
-            let init = if j == RATE { p[pre::TAGV] } else { Fp3::ZERO };
+            let init = if j == RATE { p[pre::TAGV] } else { T::ZERO };
             out.push(fresh * (nx[j] - init));
             out.push(node * nx[j]);
         }
@@ -288,7 +289,7 @@ impl CircuitAir {
             out.push(node * (one - bit) * (nx[j] - o8[j]));
             out.push(node * bit * (nx[4 + j] - o8[j]));
         }
-        out.push(node * (nx[8] - c(NODE_TAG)));
+        out.push(node * (nx[8] - c::<T>(NODE_TAG)));
         out.push(node * bit * (bit - one));
         let rc = p[pre::ROOTCHK];
         for j in 0..4 {
@@ -298,7 +299,7 @@ impl CircuitAir {
 
         // memory
         let vals = slot_values(l, p);
-        let mut delta = Fp3::ZERO;
+        let mut delta = T::ZERO;
         for (s, &val) in vals.iter().enumerate() {
             let fp = p[pre::ADDR + s] + r.beta * val;
             let h = ext3(&r.l2[3 * s..3 * s + 3]);
@@ -312,10 +313,10 @@ impl CircuitAir {
 }
 
 /// The value each memory slot of a row fingerprints (by row kind).
-pub fn slot_values(l: &[Fp3], p: &[Fp3]) -> [Fp3; SLOTS] {
-    let tt = t();
-    let wide = |j: usize| if j < pre::WIDES { p[pre::WIDE + j] } else { Fp3::ZERO };
-    let packed = |v: &[Fp3], j: usize| {
+pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {
+    let tt = t::<T>();
+    let wide = |j: usize| if j < pre::WIDES { p[pre::WIDE + j] } else { T::ZERO };
+    let packed = |v: &[T], j: usize| {
         let w = wide(j);
         v[j] + tt * w * v[j + 1] + tt * tt * w * v[j + 2]
     };
@@ -331,12 +332,12 @@ pub fn slot_values(l: &[Fp3], p: &[Fp3]) -> [Fp3; SLOTS] {
             l[LIVE]
         };
         let bv = if s < BITS_ROW { l[s] } else { l[BVAL] };
-        let p0 = if s < RATE { packed(&l[PX..PX + 16], s) } else { Fp3::ZERO };
+        let p0 = if s < RATE { packed(&l[PX..PX + 16], s) } else { T::ZERO };
         let p3 = match s {
             s if s < RATE => packed(&l[PY8..PY8 + 16], s),
             s if s < RATE + 4 => l[PRT + s - RATE],
             s if s == RATE + 4 => l[PBIT],
-            _ => Fp3::ZERO,
+            _ => T::ZERO,
         };
         arith * av + any * bv + ph0 * p0 + ph3 * p3
     })

@@ -1,23 +1,23 @@
 //! EVAL (dispatch) rows and the axis rows AX1 / AX2.
 
-use nebu::Fp3;
+use crate::air::num::Num;
 
 use super::air::{Out, c};
 use super::layout::*;
 use crate::air::Vals;
 
 /// `gate ⇒ next row is kind nk and n[col] = value` for every pair.
-pub(crate) fn go(out: &mut Out<'_>, n: &[Fp3], gate: Fp3, nk: usize, set: &[(usize, Fp3)]) {
-    out.push(gate * (Fp3::ONE - n[nk]));
+pub(crate) fn go<T: Num>(out: &mut Out<'_, T>, n: &[T], gate: T, nk: usize, set: &[(usize, T)]) {
+    out.push(gate * (T::ONE - n[nk]));
     for &(col, value) in set {
         out.push(gate * (n[col] - value));
     }
 }
 
-pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
+pub(crate) fn constrain<T: Num>(v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     let l = v.local;
     let n = v.next;
-    let one = Fp3::ONE;
+    let one = T::ONE;
     let ev = l[K_EVAL];
     let f = |i: usize| l[i];
     let key = |s: usize| l[slot(s, KEY)];
@@ -27,11 +27,11 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(ev * (key(0) - l[X]));
     out.push(ev * (key(1) - pay(0, 0)));
     let t = pay(1, 0);
-    let tag = OPS.iter().fold(Fp3::ZERO, |a, &(o, tg, _)| a + f(FLAG0 + o) * c(tg));
+    let tag = OPS.iter().fold(T::ZERO, |a, &(o, tg, _)| a + f(FLAG0 + o) * c::<T>(tg));
     out.push(ev * ((one - f(OP_WORD)) * t - tag));
     let gw = ev * f(OP_WORD);
-    out.push(gw * WORD_TAGS.iter().fold(one, |a, &w| a * (t - c(w))));
-    out.push(ev * ((l[D] - c(MAX_DEPTH + 1)) * l[E_DINV] - one));
+    out.push(gw * WORD_TAGS.iter().fold(one, |a, &w| a * (t - c::<T>(w))));
+    out.push(ev * ((l[D] - c::<T>(MAX_DEPTH + 1)) * l[E_DINV] - one));
     let b1ops = f(OP_ADD) + f(OP_SUB) + f(OP_MUL) + f(OP_EQ) + f(OP_LT) + f(OP_WORD) + f(OP_LOOK);
     let binary = f(OP_COMPOSE) + f(OP_CONS) + f(OP_BRANCH) + f(OP_CALL) + b1ops;
     let unary = f(OP_HASH) + f(OP_INV);
@@ -95,10 +95,10 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
             (D, a),
             (K, l[K]),
             (ALLOC, alloc),
-            (A_CNT, Fp3::ZERO),
+            (A_CNT, T::ZERO),
             (A_PH, one),
             (A_AH, one),
-            (A_OL, Fp3::ZERO),
+            (A_OL, T::ZERO),
         ],
     );
 
@@ -108,15 +108,15 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     let bit = l[A_BIT];
     let cnt = l[A_CNT];
     out.push(g * bit * (bit - one));
-    out.push(g * ((cnt - c(AXIS_LEVELS)) * l[A_C63] - one));
+    out.push(g * ((cnt - c::<T>(AXIS_LEVELS)) * l[A_C63] - one));
     for (e, i, k) in [(A_E30, A_I30, 30u64), (A_E62, A_I62, 62)] {
-        out.push(g * ((cnt - c(k)) * l[i] - (one - l[e])));
-        out.push(g * (cnt - c(k)) * l[e]);
+        out.push(g * ((cnt - c::<T>(k)) * l[i] - (one - l[e])));
+        out.push(g * (cnt - c::<T>(k)) * l[e]);
     }
     out.push(g * (key(0) - l[OBJ]));
     out.push(g * (one - n[K_AXW] - n[K_RET]));
     let child = pay(0, 0) + bit * (pay(0, 1) - pay(0, 0));
-    let next_x = c(2) * l[X] + bit;
+    let next_x = c::<T>(2) * l[X] + bit;
     let (ph, ah, ol) = (l[A_PH], l[A_AH], l[A_OL]);
     let s1 = g * n[K_AXW];
     out.push(s1 * (n[OBJ] - child));

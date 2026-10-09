@@ -24,8 +24,9 @@ use nebu::Fp3;
 
 use super::circuit::air::{CircuitAir, Row, Sink};
 use super::circuit::layout::{self as cl, PIN};
+use crate::air::num::Num;
 use crate::air::{Air, Public, Shape, Vals};
-use crate::machine::air::{Machine, PUBLICS};
+use crate::machine::air::{KConst, Machine, PUBLICS};
 use crate::machine::layout::{W1, W2};
 
 /// Columns of each committed word.
@@ -76,11 +77,11 @@ impl Relation {
     }
 
     /// The batching vector `μ1^a μ2^b μ3^c` of constraint `k = a + bB + cB²`.
-    pub fn mu(&self, seeds: &[Fp3]) -> Vec<Fp3> {
+    pub fn mu<T: Num>(&self, seeds: &[T]) -> Vec<T> {
         let b = self.base;
-        let pw = |x: Fp3| {
+        let pw = |x: T| {
             let mut v = Vec::with_capacity(b);
-            let mut c = Fp3::ONE;
+            let mut c = T::ONE;
             for _ in 0..b {
                 v.push(c);
                 c *= x;
@@ -93,13 +94,20 @@ impl Relation {
 
     /// Every constraint at one assignment.
     pub fn eval(&self, local: &[Fp3], next: &[Fp3], pubs: &[Fp3], ch_v: &[Fp3], out: &mut [Fp3]) {
+        self.eval_with(local, next, pubs, ch_v, &self.ch, &self.machine.constants.lift(), out);
+    }
+
+    /// [`Self::eval`] in any arithmetic, the run's challenges `ch` and the
+    /// statement constants `k` given as values of it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_with<T: Num>(&self, local: &[T], next: &[T], pubs: &[T], ch_v: &[T], ch: &[T; 2], k: &KConst<T>, out: &mut [T]) {
         let km = self.machine.shape().constraints;
         let v = Vals {
             local: &local[..W1 + W2],
             next: &next[..W1 + W2],
             publics: &pubs[..PUB_NOX],
         };
-        self.machine.eval(&v, &self.ch, &mut out[..km]);
+        self.machine.eval_with(&v, k, ch, &mut out[..km]);
         let row = Row {
             l1: &local[V1_AT..V1_AT + cl::V1],
             l2: &local[V2_AT..V2_AT + cl::V2],
@@ -116,13 +124,20 @@ impl Relation {
 
     /// `G` at a deferred point.
     pub fn g(&self, point: &[Fp3]) -> Fp3 {
+        self.g_with(point, &self.ch, &self.machine.constants.lift())
+    }
+
+    /// [`Self::g`] in any arithmetic (the circuit records it as a graph
+    /// whose inputs are the point, the run's challenges and the statement
+    /// constants).
+    pub fn g_with<T: Num>(&self, point: &[T], ch: &[T; 2], k: &KConst<T>) -> T {
         assert_eq!(point.len(), G_POINT);
         let (local, next, pubs) = (&point[..COLS], &point[COLS..2 * COLS], &point[2 * COLS..2 * COLS + PUBS]);
         let ch_v = &point[2 * COLS + PUBS..2 * COLS + PUBS + 2];
         let seeds = &point[2 * COLS + PUBS + 2..];
-        let mut out = vec![Fp3::ZERO; self.constraints];
-        self.eval(local, next, pubs, ch_v, &mut out);
-        out.iter().zip(self.mu(seeds)).fold(Fp3::ZERO, |a, (&c, m)| a + c * m)
+        let mut out = vec![T::ZERO; self.constraints];
+        self.eval_with(local, next, pubs, ch_v, ch, k, &mut out);
+        out.iter().zip(self.mu(seeds)).fold(T::ZERO, |a, (&c, m)| a + c * m)
     }
 }
 

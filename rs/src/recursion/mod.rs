@@ -20,6 +20,7 @@ pub mod circuit;
 pub mod gm;
 pub mod acc;
 pub mod whir;
+pub mod expr;
 pub mod params;
 pub mod program;
 pub mod relation;
