@@ -159,9 +159,10 @@ impl StateStatement {
     }
 }
 /// The statement, relation, witness and pinned coordinates of one honest
-/// state execution; shared by the v1 prover and the v3 certifier.
+/// state execution; shared by the v1 prover, the v3 certifier and the
+/// succinct profile.
 #[allow(clippy::type_complexity)]
-fn prepare(
+pub(super) fn prepare(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
