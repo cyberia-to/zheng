@@ -74,9 +74,12 @@ cycles); `rec-n`: a self-referencing doubling recursion `f(n) = 2^n` over
 | tree-1 | 7 | 1 × 2^7 | 93,284 | 6,492 | 36,258 | 50,521 | 46,993 | 4.97 |
 | tree-8 | 1,023 | 1 × 2^12 | 140,924 | 7,832 | 53,266 | 79,813 | 76,452 | 11.33 |
 | tree-12 | 16,383 | 3 × 2^14 | 383,938 | 25,096 | 266,248 | 92,581 | 160,347 | 40.15 |
-| rec-16 | 1,572,850 | 241 × 2^14 | — | — | — | — | not finished | — |
+| rec-16 | 1,572,850 | 241 × 2^14 | 26,949,860 | 2,015,728 | 24,842,210 | 91,909 | 5,914,223 | 3,927.30 |
 
-rec-16 (1.57M cycles, 3,948,544 rows) was started on the pre-review code
+rec-16 on the post-review code (75f3846, rerun 2026-10-09, load 7–72,
+`machine-opcodes-2026-10.md`): AIR 1,028 s, 241 steps 4,831 s, decider
+55 s, peak RSS 7.2 GB — it completes. The first attempt below is kept for
+the record. rec-16 (1.57M cycles, 3,948,544 rows) was started on the pre-review code
 (before fresh-word OOD answers): the AIR of all 241 segments took 1,483 s
 (24.7 min, 3.0 GB resident); its 241 accumulation steps were still running
 at the time of writing (log `/tmp/wpf/bench_rec16.log` on the stand machine).
@@ -185,7 +188,7 @@ external review.
 | gate | measured | verdict |
 |---|---|---|
 | merkle-32 proves | 145,500 B, verify 8.6 ms | proves; **misses ≤ 64 KB** (2.3×) |
-| a 10^6-step run proves | rec-16, 1,572,850 cycles: native agreement and trace built (`long_runs_agree_with_native_nox` checks rec-14, 393,202 cycles); its proof did not finish in this package | **not shown** |
+| a 10^6-step run proves | rec-16, 1,572,850 cycles: native agreement and trace built (`long_runs_agree_with_native_nox` checks rec-14, 393,202 cycles); proved and verified on the post-review code: 26.9 MB, prove 98.6 min, verify 3.9 s (rerun 2026-10-09, `machine-opcodes-2026-10.md`) | **met** (size and verify time far from the other gates) |
 | size independent of length, ≤ 64 KB | 83 KB (33 cycles) … 146 KB (merkle-32) … 384 KB (16,383 cycles) — linear in the number of segments (~96 KB per 2^14-row segment) | **missed** |
 | verify ≤ 1 ms | 5.4 ms (hash.tri) … 8.3–8.6 ms (merkle-32) … 40 ms (3 segments) | **missed** |
 | bit-flip scan of a full accumulated proof: 0 accepted | 668,744 flips, 0 accepted | **met** |

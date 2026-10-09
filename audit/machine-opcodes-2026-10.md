@@ -60,6 +60,23 @@ Trace rows (`ZHENG_DRY=1 machine_bench`, same programs):
   commit: `op` is restricted to the nine B1 opcodes by a degree-split
   product; a tampered `R_OP` / `R_OPY` cell is in the test list.
 
+## rec-16 on the post-review code (#51 head 75f3846)
+
+`ZHENG_TIMING=1 ZHENG_RATE=4 machine_bench rec-16` (rate 1/16, k = 4,
+grinding 24, segments of 2^14 rows), binary built from `feat/accumulation`
+75f3846 before this branch's changes, started 20:13 UTC, one run; load
+average 7–72 during the run (other agents), so times are upper bounds of a
+quiet machine. It **completed**:
+
+| cycles | rows | AIR | 241 accumulation steps | decider | prove total | proof B (air · acc · decider) | verify (median of 3) | peak RSS |
+|---|---|---|---|---|---|---|---|---|
+| 1,572,850 | 241 × 2^14 = 3,948,544 | 1,028 s | 4,831 s (~20 s/step) | 55 s | 5,914 s (98.6 min) | 26,949,860 (2,015,728 · 24,842,210 · 91,909) | 3,927 ms (AIR ~0.5 s, steps ~3.4 s, decider ~5 ms) | 7.2 GB |
+
+`/usr/bin/time`: 5,929 s real, 40,395 s user. The rec-16 row of
+`accumulation-2026-10.md` §3 is these numbers. With this branch's
+single-phase axis walk the same program's trace is shorter (rec-14: 61 →
+53 segments); rec-16 was not rerun on this branch.
+
 ## not done
 
 - No independent review of the new constraints (the phase-3 review
