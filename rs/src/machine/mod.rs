@@ -325,7 +325,9 @@ pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) ->
         .collect();
     let cfg = acc_config(whir, n)?;
     let mut t = transcript(st, n, proof.start);
+    let lap = timer();
     let words = uair::verify(&machines, whir, n as usize, &proof.air, &mut t)?;
+    lap("verify air");
     accumulate::bind(&mut t, &cfg);
     let mut acc: Option<accumulate::Instance> = None;
     for (pair, step) in words.iter().zip(&proof.accs) {
@@ -333,5 +335,8 @@ pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) ->
         inputs.extend(pair.iter());
         acc = Some(accumulate::verify_step(&cfg, &inputs, step, &mut t)?);
     }
-    accumulate::verify_decider(&cfg, acc.as_ref().expect("a segment"), &proof.decider, &mut t)
+    lap("verify steps");
+    let r = accumulate::verify_decider(&cfg, acc.as_ref().expect("a segment"), &proof.decider, &mut t);
+    lap("verify decider");
+    r
 }
