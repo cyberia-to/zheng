@@ -133,7 +133,7 @@ mod tests {
         let mut e = P;
         while e > 0 {
             if e & 1 == 1 {
-                power = power * base;
+                power *= base;
             }
             base = base * base;
             e >>= 1;
@@ -158,11 +158,13 @@ mod tests {
 
     #[test]
     fn declared_field_sizes_bound_the_true_sizes() {
-        // 2^63 ≤ p < 2^64, so floor(log2 p) = 63 and floor(log2 p³) = 191.
-        assert!(P >= 1 << 63);
-        let p = P as u128;
-        let p2 = p * p; // < 2^128
-        assert!(p2 >> 127 == 1, "p² ≥ 2^127");
+        // floor(log2 p) = 63: 2^63 ≤ p < 2^64.
+        let p = u128::from(P);
+        assert_eq!(p >> 63, 1);
+        // floor(log2 p³) = 191: p³ < 2^192 because p < 2^64, and
+        // p³ ≥ (p² >> 65) · 2^65 · p ≥ 2^191 when (p² >> 65) · p ≥ 2^126.
+        let high = (p * p) >> 65;
+        assert!(high * p >= 1u128 << 126);
         assert_eq!(<Goldilocks as ChallengeField>::LOG2_SIZE, 63);
         assert_eq!(<Fp3 as ChallengeField>::LOG2_SIZE, 191);
     }

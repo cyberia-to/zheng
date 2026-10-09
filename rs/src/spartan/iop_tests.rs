@@ -89,20 +89,19 @@ fn fp3_iop_rejects_tampered_messages() {
     let one = Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO);
 
     let mut bad = proof.clone();
-    bad.eval_value = bad.eval_value + one;
+    bad.eval_value += one;
     assert!(check(&bad).is_err(), "eval value");
     let mut bad = proof.clone();
-    bad.matrix_evals[0] = bad.matrix_evals[0] + one;
+    bad.matrix_evals[0] += one;
     assert!(check(&bad).is_err(), "matrix evaluation");
     for round in 0..proof.sumcheck_polys.len() {
         let mut bad = proof.clone();
-        bad.sumcheck_polys[round].coeffs[1] = bad.sumcheck_polys[round].coeffs[1] + one;
+        bad.sumcheck_polys[round].coeffs[1] += one;
         assert!(check(&bad).is_err(), "inner round {round}");
     }
     for round in 0..proof.outer_sumcheck_polys.len() {
         let mut bad = proof.clone();
-        bad.outer_sumcheck_polys[round].coeffs[2] =
-            bad.outer_sumcheck_polys[round].coeffs[2] + one;
+        bad.outer_sumcheck_polys[round].coeffs[2] += one;
         assert!(check(&bad).is_err(), "outer round {round}");
     }
     let mut short = proof.clone();

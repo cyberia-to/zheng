@@ -132,7 +132,7 @@ fn truncation_and_trailing_bytes_are_rejected() {
 /// statement. The certificate tail may hold "don't care" wires (see the
 /// malleability tests); the state context is caller metadata that zheng
 /// carries but does not interpret (joy binds program name and source hash).
-fn bound_ranges(envelope: &Envelope) -> Vec<core::ops::Range<usize>> {
+fn bound_ranges(envelope: &Envelope) -> Vec<(usize, usize)> {
     let len = |f: &dyn Fn(&mut codec::Writer)| {
         let mut w = codec::Writer::default();
         f(&mut w);
@@ -140,7 +140,7 @@ fn bound_ranges(envelope: &Envelope) -> Vec<core::ops::Range<usize>> {
     };
     match envelope {
         Envelope::Public { statement, .. } => {
-            vec![0..HEADER_BYTES + len(&|w| body::execution(statement, w))]
+            vec![(0, HEADER_BYTES + len(&|w| body::execution(statement, w)))]
         }
         Envelope::StatePublic { statement, .. } => {
             let roots = len(&|w| {
@@ -156,7 +156,7 @@ fn bound_ranges(envelope: &Envelope) -> Vec<core::ops::Range<usize>> {
                 }
             });
             let context_end = HEADER_BYTES + roots + 32;
-            vec![0..HEADER_BYTES + roots, context_end..context_end + reads]
+            vec![(0, HEADER_BYTES + roots), (context_end, context_end + reads)]
         }
         Envelope::Zk { .. } => unreachable!(),
     }
@@ -179,8 +179,8 @@ fn every_single_byte_change_of_header_and_statement_is_rejected() {
     for envelope in [public(), state()] {
         let bytes = envelope.to_bytes();
         let mut budget_only = 0;
-        for range in bound_ranges(&envelope) {
-            for i in range {
+        for (start, end) in bound_ranges(&envelope) {
+            for i in start..end {
                 for delta in [1u8, 0x80, 0xff] {
                     let mut bad = bytes.clone();
                     bad[i] ^= delta;
