@@ -112,7 +112,7 @@ parameters (rate 1/8, grinding 16):
 
 | total B | per-statement claim | 8 steps | decider | verify ms |
 |---|---|---|---|---|
-| 9,013,428 | 2,720 | 7,586,719 | 34,061 | 835 |
+| 8,906,708 | 2,748 | 7,464,447 | 35,277 | 1,171 |
 
 Against 512 independent succinct proofs (~16 KB each at the shipped
 parameters, ~8.2 MB): one WHIR opening instead of 512, the same order of
@@ -190,7 +190,7 @@ external review.
 | verify ≤ 1 ms | 5.4 ms (hash.tri) … 8.3–8.6 ms (merkle-32) … 40 ms (3 segments) | **missed** |
 | bit-flip scan of a full accumulated proof: 0 accepted | 668,744 flips, 0 accepted | **met** |
 | `verify(verify(π))` at depth 2 | not built | **missed** (§7) |
-| 512 tickets decide in one proof | 9.0 MB, verify 835 ms, one decider | met as an API; foculus wiring is another package |
+| 512 tickets decide in one proof | 8.9 MB, verify 1.17 s, one decider | met as an API; foculus wiring is another package |
 
 **Why size is linear.** Accumulation reduces `N` claims to one decider, but
 each step's proof (spot checks in every folded word) must be checked by
