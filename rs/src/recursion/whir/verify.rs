@@ -96,12 +96,12 @@ fn query_bits<O: Ops>(o: &mut O, t: &mut Sponge<O>, s: &RoundSpec) -> Vec<Vec<O:
 /// `Fold(f, α)` at the shift point of the leaf whose index has `bits`
 /// (lens `whir::fold::fold_leaf`): each step pairs `x` with `−x`,
 /// `f'(x²) = (f(x)+f(−x))/2 + α·(f(x)−f(−x))/(2x)`.
-fn fold_leaf<O: Ops>(o: &mut O, vals: &[O::V], alphas: &[O::V], log_n: u32, bits: &[O::V]) -> O::V {
+fn fold_leaf<O: Ops>(o: &mut O, vals: &[O::V], alphas: &[O::V], log_n: u32, x0_inv: O::V) -> O::V {
     let width = vals.len();
     let omega = root_of_unity(log_n);
     let leaves = (1usize << log_n) / width;
     let half = Goldilocks::new(2).inv();
-    let mut x0_inv = gm::pow_bits(o, omega.inv(), bits);
+    let mut x0_inv = x0_inv;
     let mut zeta_inv = omega.exp(leaves as u64).inv();
     let mut cur = vals.to_vec();
     let mut w = width;
@@ -127,30 +127,41 @@ fn fold_leaf<O: Ops>(o: &mut O, vals: &[O::V], alphas: &[O::V], log_n: u32, bits
     cur[0]
 }
 
-/// Open every query of round `spec`'s function (its words: the inputs
-/// when `roots.len() > 1` or it is `f_0`), combine with `coef`, fold.
+/// Open every query of round `spec`'s function (its trees: `(root, ext,
+/// words)`; the round-0 trees when it is `f_0`), combine the words with
+/// `coef`, fold; returns every query's folded value and shift point
+/// `ω^{jW}` (from `x = ω^j`: one power, an inverse, `k` squarings).
 #[allow(clippy::too_many_arguments)]
 fn open_fold<O: Ops>(
     o: &mut O,
     spec: &RoundSpec,
-    roots: &[([O::V; 4], bool)],
+    trees: &[([O::V; 4], bool, usize)],
     coef: &[O::V],
     bits: &[Vec<O::V>],
     open: &[Vec<LeafOpening>],
     alphas: &[O::V],
-) -> Vec<O::V> {
+) -> Vec<(O::V, O::V)> {
+    let width = 1usize << spec.fold;
+    let omega = root_of_unity(spec.log_domain);
     bits.iter()
         .zip(open)
         .map(|(b, ops)| {
             let mut leaf: Option<Vec<O::V>> = None;
-            for ((root, ext), (op, &c)) in roots.iter().zip(ops.iter().zip(coef)) {
-                let syms = verify_leaf(o, *ext, op, b, *root, "whir: opening");
-                leaf = Some(match leaf {
-                    None => syms,
-                    Some(acc) => acc.iter().zip(&syms).map(|(&a, &s)| o.mul_add(c, s, a)).collect(),
-                });
+            let mut c = coef.iter();
+            for (&(root, ext, members), op) in trees.iter().zip(ops) {
+                let syms = verify_leaf(o, ext, op, b, root, "whir: opening");
+                for part in syms.chunks(width).take(members) {
+                    let k = *c.next().expect("a coefficient per word");
+                    leaf = Some(match leaf {
+                        None => part.to_vec(),
+                        Some(acc) => acc.iter().zip(part).map(|(&a, &s)| o.mul_add(k, s, a)).collect(),
+                    });
+                }
             }
-            fold_leaf(o, &leaf.expect("a word"), alphas, spec.log_domain, b)
+            let x = gm::pow_bits(o, omega, b);
+            let x_inv = o.inv(x, "whir: a domain point is invertible");
+            let shift = gm::pow2k(o, x, spec.fold);
+            (fold_leaf(o, &leaf.expect("a word"), alphas, spec.log_domain, x_inv), shift)
         })
         .collect()
 }
@@ -161,15 +172,17 @@ pub fn check_shape(cfg: &Config, inputs: usize, pf: &Proof) -> Result<(), String
     let ell = wc.num_vars;
     let s0 = wc.rounds[0];
     let fold_n = |s: &RoundSpec| if s.fold_pow > 0 { s.fold } else { 0 };
-    let leaf_ok = |s: &RoundSpec, l: &LeafOpening, ext: Option<bool>| {
-        l.symbols.len() == 1 << s.fold
+    let leaf_ok = |s: &RoundSpec, l: &LeafOpening, m: usize, ext: Option<bool>| {
+        l.symbols.len() == m << s.fold
             && l.path.len() == s.log_leaves() as usize
             && (ext != Some(false) || l.symbols.iter().all(|x| x.c1 == Goldilocks::ZERO && x.c2 == Goldilocks::ZERO))
     };
     let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };
+    let one = [1usize];
     let opens = |s: &RoundSpec, first: bool, open: &[Vec<LeafOpening>]| {
+        let g: &[usize] = if first { &cfg.groups } else { &one };
         open.len() == q(s)
-            && open.iter().all(|ws| ws.len() == if first { inputs } else { 1 } && ws.iter().all(|l| leaf_ok(s, l, if first { None } else { Some(true) })))
+            && open.iter().all(|ws| ws.len() == g.len() && ws.iter().zip(g).all(|(l, &m)| leaf_ok(s, l, m, if first { None } else { Some(true) })))
     };
     let mut ok = inputs == cfg.inputs
         && pf.batch.sumcheck.len() == 2 * ell
@@ -231,7 +244,12 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[Inst
         g = o.mul(g, gamma);
     }
     let mut alphas = fold_rounds(o, t, &mut sigma, &pf.sumcheck0, &pf.fold_nonces0, s0.fold_pow);
-    let mut roots: Vec<([O::V; 4], bool)> = inputs.iter().map(|i| (i.root, i.ext)).collect();
+    let mut roots: Vec<([O::V; 4], bool, usize)> = Vec::with_capacity(cfg.groups.len());
+    let mut at = 0;
+    for &m in &cfg.groups {
+        roots.push((inputs[at].root, inputs[at].ext, m));
+        at += m;
+    }
     let mut prev_coef = coef;
     let mut prev = s0;
     for (i, rp) in pf.rounds.iter().enumerate() {
@@ -257,15 +275,13 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[Inst
             cons.push(Constraint { round: i, point: Point::Pow(z), coef: g });
             g = o.mul(g, gamma);
         }
-        let omega_l = root_of_unity(prev.log_leaves());
-        for (b, &v) in bits.iter().zip(&folded) {
+        for &(v, x) in &folded {
             sigma = o.mul_add(g, v, sigma);
-            let x = gm::pow_bits(o, omega_l, b);
             cons.push(Constraint { round: i, point: Point::Pow(x), coef: g });
             g = o.mul(g, gamma);
         }
         alphas.extend(fold_rounds(o, t, &mut sigma, &rp.sumcheck, &rp.fold_nonces, s.fold_pow));
-        roots = vec![(root, true)];
+        roots = vec![(root, true, 1)];
         prev_coef = vec![o.one()];
         prev = s;
     }
@@ -275,9 +291,7 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[Inst
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
     let folded = open_fold(o, &prev, &roots, &prev_coef, &bits, &pf.final_open, &pa);
-    let omega_l = root_of_unity(prev.log_leaves());
-    for (b, &v) in bits.iter().zip(&folded) {
-        let x = gm::pow_bits(o, omega_l, b);
+    for &(v, x) in &folded {
         let f = gm::horner(o, &fin, x);
         o.assert_eq(f, v, "whir: final queries");
     }

@@ -9,8 +9,9 @@
 //! round i   root · OOD answers · query nonce? · openings of round i−1 ·
 //!           folding sumcheck · fold nonces?
 //! final     polynomial · nonce? · openings of the last round
-//! openings  u32 leaf per query; per word: the symbols of every distinct
-//!           leaf, u32 count + siblings of the multi-opening
+//! openings  u32 leaf per query; per tree: the symbols of every distinct
+//!           leaf (every member's), u32 count + siblings of the
+//!           multi-opening
 //! ```
 
 use lens::PcsError;
@@ -50,6 +51,7 @@ fn queries(s: &RoundSpec) -> usize {
 }
 
 fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usize) {
+    // `ext`: per tree
     let leaves: Vec<usize> = open.iter().map(|q| q[0].leaf.expect("an opening knows its leaf")).collect();
     for &l in &leaves {
         w.u32(l);
@@ -77,9 +79,8 @@ fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usiz
     }
 }
 
-fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool]) -> R<Vec<Vec<LeafOpening>>> {
+fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usize]) -> R<Vec<Vec<LeafOpening>>> {
     let depth = s.log_leaves() as usize;
-    let width = 1usize << s.fold;
     let leaves: Vec<usize> = (0..queries(s)).map(|_| r.u32()).collect::<R<_>>()?;
     if leaves.iter().any(|&l| l >> depth != 0) {
         return Err(PcsError::Malformed);
@@ -88,7 +89,8 @@ fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool]) -> R<Vec<Vec<L
     distinct.sort_unstable();
     distinct.dedup();
     let mut per_word = Vec::with_capacity(ext.len());
-    for &x in ext {
+    for (&x, &m) in ext.iter().zip(members) {
+        let width = m << s.fold;
         let syms: Vec<Vec<Fp3>> = distinct
             .iter()
             .map(|_| if x { read_exts(r, width) } else { Ok(read_bases(r, width)?.into_iter().map(Fp3::from_base).collect()) })
@@ -106,7 +108,7 @@ fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool]) -> R<Vec<Vec<L
         .collect())
 }
 
-/// Write `p`, an opening of words whose symbol fields are `ext`.
+/// Write `p`, an opening whose round-0 trees have symbol fields `ext`.
 pub fn write(w: &mut Writer, cfg: &Config, ext: &[bool], p: &Proof) {
     let wc = &cfg.wc;
     exts(w, &p.batch.sumcheck);
@@ -132,13 +134,13 @@ pub fn write(w: &mut Writer, cfg: &Config, ext: &[bool], p: &Proof) {
     openings(w, &p.final_open, e, last.log_leaves() as usize);
 }
 
-/// Read an opening of words whose symbol fields are `ext`.
+/// Read an opening whose round-0 trees have symbol fields `ext`.
 pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
     let wc = &cfg.wc;
     let ell = wc.num_vars;
     let s0 = wc.rounds[0];
     let sumcheck = read_exts(r, 2 * ell)?;
-    let evals = read_exts(r, ext.len())?;
+    let evals = read_exts(r, cfg.inputs)?;
     let comb_nonce = read_nonce(r, cfg.comb_pow)?;
     let ood0 = read_exts(r, s0.ood)?;
     let sumcheck0 = read_exts(r, 2 * s0.fold)?;
@@ -149,8 +151,8 @@ pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
         let root = read_digest(r)?;
         let ood = read_exts(r, s.ood)?;
         let query_nonce = read_nonce(r, prev.query_pow)?;
-        let e: &[bool] = if i == 1 { ext } else { &[true] };
-        let open = read_openings(r, &prev, e)?;
+        let (e, g): (&[bool], &[usize]) = if i == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
+        let open = read_openings(r, &prev, e, g)?;
         let sc = read_exts(r, 2 * s.fold)?;
         let fold_nonces = read_nonces(r, &s)?;
         rounds.push(Round { root, ood, query_nonce, open, sumcheck: sc, fold_nonces });
@@ -158,8 +160,8 @@ pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
     let final_poly = read_exts(r, 1 << wc.final_vars)?;
     let last = *wc.rounds.last().expect("a round");
     let final_nonce = read_nonce(r, last.query_pow)?;
-    let e: &[bool] = if wc.rounds.len() == 1 { ext } else { &[true] };
-    let final_open = read_openings(r, &last, e)?;
+    let (e, g): (&[bool], &[usize]) = if wc.rounds.len() == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
+    let final_open = read_openings(r, &last, e, g)?;
     Ok(Proof {
         batch: BatchProof { sumcheck, evals, comb_nonce },
         ood0,

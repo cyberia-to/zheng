@@ -103,7 +103,7 @@ pub(crate) fn dummy_proof(k: &WrapKey) -> WrapProof {
         vals: vec![z; words],
         kv: if inner { vec![z; 2] } else { vec![] },
         wiring: if inner { vec![] } else { vec![z; 2 * k.vars() + 1] },
-        whir: whir::dummy(&k.cfg, k.inputs()),
+        whir: whir::dummy(&k.cfg),
     }
 }
 
@@ -137,8 +137,8 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
-    let (claims, inputs) = if committed { (2 * (fresh + 1) + 2, 4) } else { (fresh + 2, 1) };
-    let cfg = whir::Config::derive(&params.whir, vars, inputs, claims)?;
+    let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 2, &[1]) };
+    let cfg = whir::Config::derive(&params.whir, vars, groups, claims)?;
     let wiring = (!committed).then(|| wiring(&pre));
     let (kw, key_ext) = if committed {
         let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre);

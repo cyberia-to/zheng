@@ -5,7 +5,7 @@ use lens::rspcs::field::{add_scaled_eq, eq_table, fold_coeffs_ext, fold_evals_ex
 use lens::rspcs::whir::RoundSpec;
 use nebu::Fp3;
 
-use super::{BatchProof, Config, Proof, Round};
+use super::{BatchProof, Config, Proof, Round, Tree};
 use crate::accumulate::sumcheck::{self, Weight};
 use crate::recursion::sponge::ProverTranscript;
 use crate::recursion::word::{LeafOpening, Word};
@@ -69,14 +69,16 @@ fn queries(t: &mut ProverTranscript, s: &RoundSpec) -> Result<Vec<usize>, String
     t.indices(s.queries, s.log_leaves() as usize)
 }
 
-/// Prove the batched opening of `words` (each in round 0's layout) with
-/// `claims[i]` on word `i` (`(point, value)`, a univariate claim as its
-/// `pow` point).
-pub fn prove(cfg: &Config, t: &mut ProverTranscript, words: &[&Word], claims: &[Vec<(Vec<Fp3>, Fp3)>]) -> Result<Proof, String> {
+/// Prove the batched opening of the words of `trees` (each in round 0's
+/// layout, `cfg.groups` words a tree) with `claims[i]` on word `i`
+/// (`(point, value)`, a univariate claim as its `pow` point).
+pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims: &[Vec<(Vec<Fp3>, Fp3)>]) -> Result<Proof, String> {
     let wc = &cfg.wc;
     let ell = wc.num_vars;
+    let words: Vec<&Word> = trees.iter().flat_map(|tr| tr.members()).collect();
     let m = words.len();
-    if m != cfg.inputs || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
+    let shape: Vec<usize> = trees.iter().map(|tr| tr.members().len()).collect();
+    if m != cfg.inputs || shape != cfg.groups || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
         return Err("whir: input words".into());
     }
     // batch
@@ -145,7 +147,7 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, words: &[&Word], claims: &[
         idx.iter()
             .map(|&j| match prev_words {
                 Some(wd) => vec![wd.open(j)],
-                None => words.iter().map(|wd| wd.open(j)).collect(),
+                None => trees.iter().map(|tr| tr.open(j)).collect(),
             })
             .collect()
     };

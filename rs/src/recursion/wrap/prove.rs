@@ -191,16 +191,16 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
         claims.push(cs);
     }
     let mut kv = Vec::new();
-    let mut opened: Vec<&Word> = words.iter().collect();
+    let mut opened: Vec<&dyn whir::Tree> = words.iter().map(|w| w as &dyn whir::Tree).collect();
     if let Some(kw) = &k.kw {
         let zg: Vec<Fp3> = rho.iter().chain(&gk[..CBITS]).copied().collect();
-        for wd in &kw.words {
+        for wd in &kw.group.words {
             let v = ml_eval_ext(&wd.table(), &zg);
             t.absorb_ext(v);
             kv.push(v);
             claims.push(vec![(zg.clone(), v)]);
-            opened.push(wd);
         }
+        opened.push(&kw.group);
     }
     let mut wiring = Vec::new();
     if let Some(lambda) = lambda {

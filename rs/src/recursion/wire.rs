@@ -283,8 +283,8 @@ fn read_step(r: &mut Reader<'_>, p: &Params) -> R<StepProof> {
     })
 }
 
-fn decider_ext(k: &Key) -> [bool; 3] {
-    [true, k.key_ext, k.key_ext]
+fn decider_ext(k: &Key) -> [bool; 2] {
+    [true, k.key_ext]
 }
 
 pub(crate) fn decider(w: &mut Writer, d: &Decider, k: &Key) {

@@ -28,7 +28,7 @@ struct Case {
 fn case(ell: usize, rate: u8, k: u8, fin: u8, ext: &[bool]) -> Case {
     let whir = params(rate, k, fin);
     let claims_per = 3;
-    let cfg = Config::derive(&whir, ell, ext.len(), claims_per * ext.len()).unwrap();
+    let cfg = Config::derive(&whir, ell, &vec![1; ext.len()], claims_per * ext.len()).unwrap();
     let layout = cfg.layout(0);
     let mut words = Vec::new();
     let mut claims = Vec::new();
@@ -77,7 +77,7 @@ fn inputs<O: Ops>(o: &mut O, c: &Case) -> Vec<InstV<O::V>> {
 
 fn prove_case(c: &Case) -> Proof {
     let mut t = ProverTranscript::new(tag::STEP);
-    let words: Vec<&Word> = c.words.iter().collect();
+    let words: Vec<&dyn Tree> = c.words.iter().map(|w| w as &dyn Tree).collect();
     prove(&c.cfg, &mut t, &words, &c.claims).unwrap()
 }
 
@@ -140,4 +140,48 @@ fn a_wrong_claim_or_a_tampered_proof_is_refused() {
         let shape = check_shape(&c.cfg, 2, &p);
         assert!(shape.is_err() || check(&c, &p).is_err(), "tamper {i} accepted");
     }
+}
+
+#[test]
+fn words_under_one_tree_open_with_one_path() {
+    use crate::recursion::word::Group;
+    let ell = 10;
+    let whir = params(2, 4, 3);
+    let cfg = Config::derive(&whir, ell, &[1, 2], 9).unwrap();
+    let layout = cfg.layout(0);
+    let table = |w: u64| -> Vec<Goldilocks> { (0..1u64 << ell).map(|i| Goldilocks::new(i * (w + 3) + w)).collect() };
+    let single = Word::commit_base(layout, &table(0));
+    let group = Group::new(vec![Word::member_base(layout, &table(1)), Word::member_base(layout, &table(2))]);
+    let mut claims = Vec::new();
+    let mut uni = Vec::new();
+    for w in [&single, &group.words[0], &group.words[1]] {
+        let p: Vec<Fp3> = (0..ell as u64).map(|i| e(70 + i)).collect();
+        let z = e(500 + claims.len() as u64);
+        claims.push(vec![(p.clone(), ml_eval_ext(&w.table(), &p)), (pow_point(z, ell), w.univariate(z))]);
+        uni.push(vec![None, Some(z)]);
+    }
+    let mut t = ProverTranscript::new(tag::STEP);
+    let pf = prove(&cfg, &mut t, &[&single as &dyn Tree, &group], &claims).unwrap();
+    let run = |claims: &[Vec<(Vec<Fp3>, Fp3)>]| -> Result<(), String> {
+        let mut o = Native::batched();
+        let roots = [single.root(), group.root(), group.root()];
+        let ins: Vec<InstV<Fp3>> = roots
+            .iter()
+            .zip(claims)
+            .zip(&uni)
+            .map(|((r, cs), us)| InstV {
+                root: r.map(Fp3::from_base),
+                ext: false,
+                claims: cs.iter().zip(us).map(|((p, v), u)| match u { Some(x) => ClaimRef::Uni(*x, *v), None => ClaimRef::Multi(p.clone(), *v) }).collect(),
+            })
+            .collect();
+        let mut sp = Sponge::new(&mut o, tag::STEP);
+        verify(&mut o, &cfg, &mut sp, &ins, &pf);
+        o.finish()
+    };
+    run(&claims).unwrap();
+    let mut bad = claims.clone();
+    bad[2][0].1 += Fp3::ONE;
+    assert!(run(&bad).is_err());
+    assert_eq!(pf.rounds[0].open[0].len(), 2, "two trees opened per query");
 }

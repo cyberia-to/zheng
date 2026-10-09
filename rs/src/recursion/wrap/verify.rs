@@ -177,8 +177,8 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         let line = o.lerp(gk[CBITS], v[0], v[1]);
         o.assert_eq(line, kv, "wrap: key claim");
         let zg: Vec<O::V> = rho.iter().chain(&gk[..CBITS]).copied().collect();
-        for (h, &vh) in v.iter().enumerate() {
-            let root = kw.roots[h].map(|x| o.constant(Fp3::from_base(x)));
+        for &vh in &v {
+            let root = kw.root.map(|x| o.constant(Fp3::from_base(x)));
             inputs.push(InstV { root, ext: k.key_ext, claims: vec![ClaimRef::Multi(zg.clone(), vh)] });
         }
     }

@@ -41,7 +41,7 @@ use lens::rspcs::whir::{LeafLayout, RoundSpec, WhirConfig};
 use lens::WhirParams;
 use nebu::Fp3;
 
-use super::word::{Digest, LeafOpening};
+use super::word::{Digest, LeafOpening, Word};
 
 /// Bits every round must prove (grinding included).
 pub const MIN_BITS: f64 = 128.0;
@@ -54,8 +54,11 @@ pub struct Config {
     pub whir: WhirParams,
     /// lens's round schedule at `(whir, ℓ)`.
     pub wc: WhirConfig,
-    /// Input words.
+    /// Input words (polynomials).
     pub inputs: usize,
+    /// Input words per round-0 tree (a [`super::word::Group`] commits
+    /// several under one tree; one path opens them all).
+    pub groups: Vec<usize>,
     /// The most claims (all inputs together) a proof carries.
     pub claims: usize,
     /// Grinding before the combination challenge `r`.
@@ -63,12 +66,14 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn derive(whir: &WhirParams, num_vars: usize, inputs: usize, claims: usize) -> Result<Self, String> {
+    /// `groups`: input words per round-0 tree.
+    pub fn derive(whir: &WhirParams, num_vars: usize, groups: &[usize], claims: usize) -> Result<Self, String> {
         let wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("whir: {e}"))?;
-        if inputs == 0 || claims < inputs {
+        let inputs: usize = groups.iter().sum();
+        if inputs == 0 || groups.contains(&0) || claims < inputs {
             return Err("whir: every input word carries a claim".into());
         }
-        let mut c = Self { whir: *whir, wc, inputs, claims, comb_pow: 0 };
+        let mut c = Self { whir: *whir, wc, inputs, groups: groups.to_vec(), claims, comb_pow: 0 };
         c.comb_pow = (MIN_BITS + c.comb_log_err()).ceil().max(0.0) as u32;
         if c.comb_pow > COMB_POW_MAX {
             return Err(format!("whir: combination grinding {} > {COMB_POW_MAX}", c.comb_pow));
@@ -136,6 +141,37 @@ impl Config {
     }
 }
 
+/// A committed tree of one or more input words (the prover's side).
+pub trait Tree {
+    fn members(&self) -> Vec<&Word>;
+    fn root(&self) -> Digest;
+    fn open(&self, leaf: usize) -> LeafOpening;
+}
+
+impl Tree for Word {
+    fn members(&self) -> Vec<&Word> {
+        vec![self]
+    }
+    fn root(&self) -> Digest {
+        Word::root(self)
+    }
+    fn open(&self, leaf: usize) -> LeafOpening {
+        Word::open(self, leaf)
+    }
+}
+
+impl Tree for super::word::Group {
+    fn members(&self) -> Vec<&Word> {
+        self.words.iter().collect()
+    }
+    fn root(&self) -> Digest {
+        super::word::Group::root(self)
+    }
+    fn open(&self, leaf: usize) -> LeafOpening {
+        super::word::Group::open(self, leaf)
+    }
+}
+
 /// A claim on one input word (`Multi`: at a point; `Uni`: at `pow(x)`).
 pub use super::acc::{ClaimRef, InstV};
 
@@ -156,8 +192,8 @@ pub struct Round {
     pub root: Digest,
     pub ood: Vec<Fp3>,
     pub query_nonce: u64,
-    /// `open[q][w]`: query `q` in word `w` of the previous function (every
-    /// input word when it is `f_0`).
+    /// `open[q][w]`: query `q` in tree `w` of the previous function (every
+    /// round-0 tree when it is `f_0`, members' symbols concatenated).
     pub open: Vec<Vec<LeafOpening>>,
     pub sumcheck: Vec<Fp3>,
     pub fold_nonces: Vec<u64>,
@@ -179,16 +215,20 @@ pub struct Proof {
 
 /// An opening of the right shape, every value zero (circuit layouts are
 /// fixed by shapes alone).
-pub fn dummy(cfg: &Config, inputs: usize) -> Proof {
+pub fn dummy(cfg: &Config) -> Proof {
     let wc = &cfg.wc;
     let z = Fp3::ZERO;
-    let leaf = |s: &RoundSpec| LeafOpening {
-        symbols: vec![z; 1 << s.fold],
+    let leaf = |s: &RoundSpec, m: usize| LeafOpening {
+        symbols: vec![z; m << s.fold],
         path: vec![[nebu::Goldilocks::ZERO; 4]; s.log_leaves() as usize],
         leaf: Some(0),
     };
     let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };
-    let opens = |s: &RoundSpec, words: usize| vec![vec![leaf(s); words]; q(s)];
+    let opens = |s: &RoundSpec, first: bool| {
+        let one = [1usize];
+        let g: &[usize] = if first { &cfg.groups } else { &one };
+        vec![g.iter().map(|&m| leaf(s, m)).collect::<Vec<_>>(); q(s)]
+    };
     let fold_n = |s: &RoundSpec| if s.fold_pow > 0 { s.fold } else { 0 };
     let s0 = wc.rounds[0];
     let rounds = (1..wc.rounds.len())
@@ -198,7 +238,7 @@ pub fn dummy(cfg: &Config, inputs: usize) -> Proof {
                 root: [nebu::Goldilocks::ZERO; 4],
                 ood: vec![z; s.ood],
                 query_nonce: 0,
-                open: opens(&prev, if i == 1 { inputs } else { 1 }),
+                open: opens(&prev, i == 1),
                 sumcheck: vec![z; 2 * s.fold],
                 fold_nonces: vec![0; fold_n(&s)],
             }
@@ -206,13 +246,13 @@ pub fn dummy(cfg: &Config, inputs: usize) -> Proof {
         .collect();
     let last = *wc.rounds.last().expect("a round");
     Proof {
-        batch: BatchProof { sumcheck: vec![z; 2 * wc.num_vars], evals: vec![z; inputs], comb_nonce: 0 },
+        batch: BatchProof { sumcheck: vec![z; 2 * wc.num_vars], evals: vec![z; cfg.inputs], comb_nonce: 0 },
         ood0: vec![z; s0.ood],
         sumcheck0: vec![z; 2 * s0.fold],
         fold_nonces0: vec![0; fold_n(&s0)],
         rounds,
         final_poly: vec![z; 1 << wc.final_vars],
         final_nonce: 0,
-        final_open: opens(&last, if wc.rounds.len() == 1 { inputs } else { 1 }),
+        final_open: opens(&last, wc.rounds.len() == 1),
     }
 }

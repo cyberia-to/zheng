@@ -83,7 +83,7 @@ pub fn run<O: Ops>(o: &mut O, key: &Key, pubs: &Publics<O::V>, state: &State, st
     ins.extend(pubs.k.to_vec());
     let g = expr::compile(o, &key.g, &ins)[0];
     o.assert_eq(g, fin.g.value, "final: deferred constraints");
-    decide::verify(o, &key.dcfg, &fin.acc, &fin.pv, key.kw.roots, key.key_ext, p.n, dec);
+    decide::verify(o, &key.dcfg, &fin.acc, &fin.pv, key.kw.root, key.key_ext, p.n, dec);
     fin.pn
 }
 

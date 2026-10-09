@@ -142,8 +142,9 @@ impl WrapKey {
         if self.inner() { 4 } else { 1 }
     }
     /// Symbol fields of the opened words.
+    /// Symbol fields of the opened trees (round 0).
     pub fn exts(&self) -> Vec<bool> {
-        if self.inner() { vec![false, false, self.key_ext, self.key_ext] } else { vec![false] }
+        if self.inner() { vec![false, false, self.key_ext] } else { vec![false] }
     }
     pub fn vars(&self) -> usize {
         self.params.n + CBITS

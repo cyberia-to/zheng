@@ -149,6 +149,16 @@ impl Word {
     }
 
     /// Commit a Goldilocks table of `2^ℓ` entries under `layout`.
+    /// A base word without its own tree (a member of a [`Group`]).
+    pub fn member_base(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
+        let num_vars = evals.len().trailing_zeros() as usize;
+        assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
+        let mut coeffs = evals.to_vec();
+        mobius_base(&mut coeffs);
+        let code = encode_base(&coeffs, layout.log_domain);
+        Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new() }
+    }
+
     pub fn commit_base(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
@@ -231,6 +241,50 @@ impl Word {
         let leaves = 1usize << self.layout.log_leaves();
         let width = 1usize << self.layout.log_width;
         let symbols = (0..width).map(|t| self.symbol(j + t * leaves)).collect();
+        let mut path = Vec::with_capacity(self.levels.len() - 1);
+        let mut idx = j;
+        for level in &self.levels[..self.levels.len() - 1] {
+            path.push(level[idx ^ 1]);
+            idx >>= 1;
+        }
+        LeafOpening { symbols, path, leaf: Some(j) }
+    }
+}
+
+/// Words committed under one tree: leaf `j` is the leaf sponge over every
+/// member's symbols of leaf `j` in member order (one path opens them all).
+pub struct Group {
+    pub words: Vec<Word>,
+    pub layout: LeafLayout,
+    levels: Vec<Vec<Digest>>,
+}
+
+impl Group {
+    /// Members of one layout and one symbol field (built with
+    /// [`Word::member_base`] or committed alone; their own trees unused).
+    pub fn new(words: Vec<Word>) -> Self {
+        let layout = words[0].layout;
+        let ext = words[0].is_ext();
+        assert!(words.iter().all(|w| w.layout == layout && w.is_ext() == ext), "group members");
+        let leaves = 1usize << layout.log_leaves();
+        let width = 1usize << layout.log_width;
+        let m = words.len();
+        let digests = leaf_digests(leaves, width * m, ext, |j, t| words[t / width].symbol(j + (t % width) * leaves));
+        let mut levels = vec![digests];
+        while levels.last().expect("level").len() > 1 {
+            let next = parents(levels.last().expect("level"));
+            levels.push(next);
+        }
+        Self { words, layout, levels }
+    }
+    pub fn root(&self) -> Digest {
+        self.levels.last().expect("root")[0]
+    }
+    /// Leaf `j` of every member (concatenated) and the group's path.
+    pub fn open(&self, j: usize) -> LeafOpening {
+        let leaves = 1usize << self.layout.log_leaves();
+        let width = 1usize << self.layout.log_width;
+        let symbols = self.words.iter().flat_map(|w| (0..width).map(move |t| w.symbol(j + t * leaves))).collect();
         let mut path = Vec::with_capacity(self.levels.len() - 1);
         let mut idx = j;
         for level in &self.levels[..self.levels.len() - 1] {
