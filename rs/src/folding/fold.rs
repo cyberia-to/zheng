@@ -276,7 +276,7 @@ mod tests {
     //    not just "some computed e"): every gated row is 0×(anything)=0, and
     //    every ungated row is a homogeneous linear relation among witness
     //    columns with no independent additive constant, so it is 0=0 too.
-    //    `attack_zeroed_constant_wire_satisfies_universal_instance` proves
+    //    `retired_path_hole_zeroed_constant_wire_satisfies_universal_instance` proves
     //    this directly against `is_satisfied_by`, then shows the (correctly
     //    working) new gate cannot reject it — because it is not lying about
     //    its own error, the relation itself is silent on it — and that
@@ -290,7 +290,7 @@ mod tests {
     // both closed: a witness that is genuinely, honestly satisfying (a real
     // solution of the CCS) but corresponds to no real nox execution and no
     // relationship to the Statement still decides and verifies for ANY
-    // Statement — `attack_satisfying_but_meaningless_witness_passes_for_any_statement`.
+    // Statement — `retired_path_hole_meaningless_witness_passes_for_any_statement`.
     // That is the recursion-milestone residual: no gate on one entry point
     // closes it, because there is nothing internally inconsistent to catch.
 
@@ -340,7 +340,7 @@ mod tests {
     /// public/private witness split, or an extra fixed-point PCS opening) —
     /// out of scope for this fix; recorded in `specs/decider.md` §soundness.
     #[test]
-    fn attack_zeroed_constant_wire_satisfies_universal_instance() {
+    fn retired_path_hole_zeroed_constant_wire_satisfies_universal_instance() {
         use crate::folding::decide::decide;
         use crate::types::{ProofGroup, ProofParams, Statement, TraceProof};
 
@@ -388,7 +388,7 @@ mod tests {
     /// needs a verifier-checked fold over N real steps (the recursion
     /// milestone) — not a per-witness gate, however strict.
     #[test]
-    fn attack_satisfying_but_meaningless_witness_passes_for_any_statement() {
+    fn retired_path_hole_meaningless_witness_passes_for_any_statement() {
         use crate::folding::decide::decide;
         use crate::types::{ProofGroup, ProofParams, Statement, TraceProof};
 

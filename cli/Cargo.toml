@@ -10,9 +10,15 @@ edition = "2024"
 description = "zheng command-line interface"
 license = "Cyber"
 
+# The CLI drives the retired folded trace API only; it builds with
+# `--features legacy` (unsound — see zheng/specs/soundness.md).
+[features]
+legacy = ["zheng/legacy"]
+
 [[bin]]
 name = "zheng"
 path = "src/main.rs"
+required-features = ["legacy"]
 
 [dependencies]
 zheng = { version = "0.4.0", path = "../rs" }

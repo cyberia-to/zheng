@@ -14,7 +14,9 @@ use nebu::{field::P, Goldilocks};
 
 use lens::Commitment;
 
-use crate::types::{Statement, SumcheckPoly};
+#[cfg(feature = "legacy")]
+use crate::types::Statement;
+use crate::types::SumcheckPoly;
 
 // ── domain separators ─────────────────────────────────────────────
 // absorbed before the corresponding phase message. unique per phase.
@@ -24,8 +26,11 @@ const DOM_COMMIT: &[u8]    = b"\x02commit";
 const DOM_SUMCHECK: u8     = 0x03;
 const DOM_EVAL: &[u8]      = b"\x04eval";
 const DOM_PCS_OPEN: &[u8]  = b"\x05pcs-open";
+#[cfg(feature = "legacy")]
 const DOM_RECURSE: &[u8]   = b"\x06recurse";
+#[cfg(feature = "legacy")]
 const DOM_STATEMENT: &[u8] = b"\x07statement";
+#[cfg(feature = "legacy")]
 const DOM_LINKAGE: &[u8]   = b"\x08linkage";
 
 // ── transcript ───────────────────────────────────────────────────
@@ -48,7 +53,8 @@ impl Transcript {
         Self { hasher }
     }
 
-    /// Create a transcript for recursive (inner) proofs.
+    /// Create a transcript for recursive (inner) proofs. Legacy only.
+    #[cfg(feature = "legacy")]
     pub fn new_recursive() -> Self {
         let mut hasher = Hasher::new();
         hasher.update(DOM_RECURSE);
@@ -119,6 +125,7 @@ impl Transcript {
     ///
     /// Must be called at the same point in both prover and verifier transcripts
     /// to bind the proof to a specific program/input/output identity.
+    #[cfg(feature = "legacy")]
     pub fn absorb_statement(&mut self, s: &Statement) {
         self.absorb(DOM_STATEMENT);
         self.absorb(&s.program_hash);
@@ -134,6 +141,7 @@ impl Transcript {
     /// group in a TraceProof, binding the groups to each other (option A
     /// linkage of the axis design): a group spliced in from another proof
     /// changes the digest and breaks every group's Fiat-Shamir chain.
+    #[cfg(feature = "legacy")]
     pub fn absorb_linkage(&mut self, digest: &[u8; 32]) {
         self.absorb(DOM_LINKAGE);
         self.absorb(digest);
@@ -241,6 +249,7 @@ mod tests {
         assert_ne!(c1.as_u64(), c2.as_u64());
     }
 
+    #[cfg(feature = "legacy")]
     #[test]
     fn different_domains_different_challenges() {
         let mut t1 = Transcript::new();

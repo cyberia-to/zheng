@@ -7,6 +7,7 @@
 
 use nebu::Goldilocks;
 
+#[cfg(feature = "legacy")]
 use lens::brakedown::Brakedown;
 use lens::{Lens, Transcript as LensTranscript};
 
@@ -19,7 +20,8 @@ use crate::types::{CCSInstance, Proof, VerifyError};
 pub struct SpartanVerifier;
 
 impl SpartanVerifier {
-    /// Verify that `proof` attests to a satisfying witness for `instance`.
+    /// Verify with Brakedown — the retired PCS of the legacy path (`legacy`).
+    #[cfg(feature = "legacy")]
     ///
     /// The transcript must already have the statement and accumulator public
     /// data absorbed before this call (done by `lib.rs::verify()`).

@@ -11,6 +11,7 @@
 
 use nebu::Goldilocks;
 
+#[cfg(feature = "legacy")]
 use lens::brakedown::Brakedown;
 use lens::{Lens, MultilinearPoly, Transcript as LensTranscript};
 
@@ -23,7 +24,8 @@ use crate::types::{CCSInstance, CCSWitness, Proof};
 pub struct SpartanProver;
 
 impl SpartanProver {
-    /// Prove that `witness` satisfies `instance`.
+    /// Prove with Brakedown — the retired PCS of the legacy path (`legacy`).
+    #[cfg(feature = "legacy")]
     ///
     /// The proof is non-interactive via the Fiat-Shamir `transcript`.
     pub fn prove(
@@ -164,7 +166,7 @@ impl SpartanProver {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy"))]
 mod tests {
     use super::*;
     use crate::ccs::reg_t;

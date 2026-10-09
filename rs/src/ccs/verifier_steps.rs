@@ -168,7 +168,7 @@ mod tests {
         }
         // Exercise the real folding entry point, not just matrix counts.
         let witnesses: Vec<_> = steps.into_iter().map(|(_, w)| w).collect();
-        let accumulator = crate::fold_all(&eq_instance(), &witnesses).unwrap();
+        let accumulator = crate::legacy::fold_all(&eq_instance(), &witnesses).unwrap();
         assert_eq!(accumulator.step_count, 4);
     }
 
