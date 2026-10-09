@@ -210,11 +210,13 @@ fn transcript(st: &MachineStatement, log_rows: u32, start: u64) -> Transcript {
 
 /// Accumulation over `2^log_rows`-row segments: words of
 /// `log_rows + log2(W1)` variables, up to three inputs (the accumulator and
-/// a segment's two words) carrying two claims each.
+/// a segment's two words, each with its OOD answers, its own claim and the
+/// previous segment's boundary claim).
 pub fn acc_config(whir: &WhirParams, log_rows: u32) -> Result<AccConfig, String> {
     let vars = log_rows as usize + layout::W1.trailing_zeros() as usize;
-    let probe = AccConfig::derive(whir, vars, 3, 4)?;
-    AccConfig::derive(whir, vars, 3, probe.acc_claims() + 4)
+    let word = accumulate::fresh_ood(whir, vars)? + 2;
+    let probe = AccConfig::derive(whir, vars, 3, 2 * word)?;
+    AccConfig::derive(whir, vars, 3, probe.acc_claims() + 2 * word)
 }
 
 fn timer() -> impl Fn(&str) {
@@ -323,7 +325,7 @@ pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) ->
         .collect();
     let cfg = acc_config(whir, n)?;
     let mut t = transcript(st, n, proof.start);
-    let words = uair::verify(&machines, n as usize, &proof.air, &mut t)?;
+    let words = uair::verify(&machines, whir, n as usize, &proof.air, &mut t)?;
     accumulate::bind(&mut t, &cfg);
     let mut acc: Option<accumulate::Instance> = None;
     for (pair, step) in words.iter().zip(&proof.accs) {

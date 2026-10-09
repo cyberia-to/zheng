@@ -36,6 +36,11 @@ pub struct SegmentProof {
 pub struct AirProof {
     pub roots1: Vec<Commitment>,
     pub roots2: Vec<Commitment>,
+    /// Per word, its answers `f̂(ζ_j)` to the out-of-domain samples drawn
+    /// right after its root (`accumulate::fresh_ood`): each fresh word is
+    /// bound to one codeword of its list before any challenge it feeds.
+    pub ood1: Vec<Vec<Fp3>>,
+    pub ood2: Vec<Vec<Fp3>>,
     pub segments: Vec<SegmentProof>,
 }
 
@@ -71,29 +76,69 @@ fn fold_cols(gamma: &[Fp3], vals: impl IntoIterator<Item = Fp3>) -> Fp3 {
         .fold(Fp3::ZERO, |a, (&e, v)| a + e * v)
 }
 
-/// Commit a word (column-major, `padded` columns); the root only.
-pub fn commit_root(whir: &WhirParams, trace: &Trace, padded: usize) -> Commitment {
-    Whir::commit(whir, &trace.column_major(padded)).0
+/// Commit a word (column-major, `padded` columns), absorb its root and
+/// answer `s` out-of-domain samples; returns the root and the claims.
+pub fn commit_bound(
+    whir: &WhirParams,
+    trace: &Trace,
+    padded: usize,
+    s: usize,
+    t: &mut Transcript,
+) -> (Commitment, Vec<Claim>) {
+    let (root, data) = Whir::commit(whir, &trace.column_major(padded));
+    t.absorb(root.as_bytes());
+    let vars = data.num_vars();
+    let claims = (0..s)
+        .map(|_| {
+            let z = t.squeeze_fp3();
+            let y = data.univariate(z);
+            t.absorb_fp3(y);
+            Claim::univariate(z, vars, y)
+        })
+        .collect();
+    (root, claims)
+}
+
+/// The verifier's side of [`commit_bound`].
+fn absorb_bound(root: &Commitment, answers: &[Fp3], vars: usize, t: &mut Transcript) -> Vec<Claim> {
+    t.absorb(root.as_bytes());
+    answers
+        .iter()
+        .map(|&y| {
+            let z = t.squeeze_fp3();
+            t.absorb_fp3(y);
+            Claim::univariate(z, vars, y)
+        })
+        .collect()
 }
 
 /// The words' instances: claims gathered per word across segments.
 fn instances(
-    roots1: &[Commitment],
-    roots2: &[Commitment],
+    roots: [&[Commitment]; 2],
+    bound: [Vec<Vec<Claim>>; 2],
     own: Vec<[Claim; 2]>,
     boundary: Vec<[Claim; 2]>,
 ) -> Vec<SegmentWords> {
-    let s = roots1.len();
+    let s = roots[0].len();
     (0..s)
         .map(|i| {
             let from = &boundary[(i + s - 1) % s];
-            [0, 1].map(|w| Instance {
-                root: if w == 0 { roots1[i] } else { roots2[i] },
-                ext: false,
-                claims: vec![own[i][w].clone(), from[w].clone()],
+            [0, 1].map(|w| {
+                let mut claims = bound[w][i].clone();
+                claims.push(own[i][w].clone());
+                claims.push(from[w].clone());
+                Instance {
+                    root: roots[w][i],
+                    ext: false,
+                    claims,
+                }
             })
         })
         .collect()
+}
+
+fn word_vars(n: usize, wp: usize) -> usize {
+    n + wp.trailing_zeros() as usize
 }
 
 /// Prove segments `w1s` (equal row counts); `phase2(i, challenges)` builds
@@ -120,20 +165,21 @@ pub fn prove<A: Air>(
     }
     let n = rows.trailing_zeros() as usize;
     let wp = s.padded_width();
+    let nood = crate::accumulate::fresh_ood(whir, word_vars(n, wp))?;
     prologue(s, n, segs, t);
-    let roots1: Vec<Commitment> = w1s.iter().map(|w| commit_root(whir, w, wp)).collect();
-    for r in &roots1 {
-        t.absorb(r.as_bytes());
-    }
+    let (roots1, bound1): (Vec<Commitment>, Vec<Vec<Claim>>) =
+        w1s.iter().map(|w| commit_bound(whir, w, wp, nood, t)).unzip();
     let ch = squeeze_vec(t, s.challenges);
     let w2s: Vec<Trace> = (0..segs).map(|i| phase2(i, &ch)).collect();
     if w2s.iter().any(|w| w.width != s.w2 || w.rows() != rows) {
         return Err("air: phase-2 trace shape".into());
     }
-    let roots2: Vec<Commitment> = w2s.iter().map(|w| commit_root(whir, w, wp)).collect();
-    for r in &roots2 {
-        t.absorb(r.as_bytes());
-    }
+    let (roots2, bound2): (Vec<Commitment>, Vec<Vec<Claim>>) =
+        w2s.iter().map(|w| commit_bound(whir, w, wp, nood, t)).unzip();
+    let answers = |b: &[Vec<Claim>]| -> Vec<Vec<Fp3>> {
+        b.iter().map(|cs| cs.iter().map(|c| c.value).collect()).collect()
+    };
+    let (ood1, ood2) = (answers(&bound1), answers(&bound2));
     let mut segments = Vec::with_capacity(segs);
     let mut own = Vec::with_capacity(segs);
     let mut bound = Vec::with_capacity(segs);
@@ -145,11 +191,13 @@ pub fn prove<A: Air>(
         own.push(claims);
         bound.push(bclaims);
     }
-    let words = instances(&roots1, &roots2, own, bound);
+    let words = instances([&roots1, &roots2], [bound1, bound2], own, bound);
     Ok((
         AirProof {
             roots1,
             roots2,
+            ood1,
+            ood2,
             segments,
         },
         w2s,
@@ -256,26 +304,43 @@ fn boundary_claims(b: &[Goldilocks], w1: usize, n: usize, cbits: usize, t: &mut 
 /// instance (the openings are left to accumulation).
 pub fn verify<A: Air>(
     airs: &[A],
+    whir: &WhirParams,
     n: usize,
     proof: &AirProof,
     t: &mut Transcript,
 ) -> Result<Vec<SegmentWords>, String> {
     let segs = proof.segments.len();
-    if segs == 0 || airs.len() != segs || proof.roots1.len() != segs || proof.roots2.len() != segs {
+    if segs == 0
+        || airs.len() != segs
+        || [proof.roots1.len(), proof.roots2.len(), proof.ood1.len(), proof.ood2.len()]
+            .iter()
+            .any(|&l| l != segs)
+    {
         return Err("air: segment count".into());
     }
     let s = airs[0].shape();
     let w = s.w1 + s.w2;
     let wp = s.padded_width();
     let cbits = wp.trailing_zeros() as usize;
+    let vars = word_vars(n, wp);
+    let nood = crate::accumulate::fresh_ood(whir, vars)?;
+    if proof.ood1.iter().chain(&proof.ood2).any(|a| a.len() != nood) {
+        return Err("air: OOD answers".into());
+    }
     prologue(s, n, segs, t);
-    for r in &proof.roots1 {
-        t.absorb(r.as_bytes());
-    }
+    let bound1: Vec<Vec<Claim>> = proof
+        .roots1
+        .iter()
+        .zip(&proof.ood1)
+        .map(|(r, a)| absorb_bound(r, a, vars, t))
+        .collect();
     let ch = squeeze_vec(t, s.challenges);
-    for r in &proof.roots2 {
-        t.absorb(r.as_bytes());
-    }
+    let bound2: Vec<Vec<Claim>> = proof
+        .roots2
+        .iter()
+        .zip(&proof.ood2)
+        .map(|(r, a)| absorb_bound(r, a, vars, t))
+        .collect();
     let mut own = Vec::with_capacity(segs);
     let mut bound = Vec::with_capacity(segs);
     for (air, sp) in airs.iter().zip(&proof.segments) {
@@ -325,5 +390,5 @@ pub fn verify<A: Air>(
         ]);
         bound.push(boundary_claims(&sp.boundary, s.w1, n, cbits, t));
     }
-    Ok(instances(&proof.roots1, &proof.roots2, own, bound))
+    Ok(instances([&proof.roots1, &proof.roots2], [bound1, bound2], own, bound))
 }

@@ -34,7 +34,14 @@ pub struct ClaimProof {
     pub outer: reduce::CompressedRounds<Fp3>,
     pub inner: reduce::CompressedRounds<Fp3>,
     pub witness_eval: Fp3,
+    /// Answers `ŵ(ζ_j)` to the out-of-domain samples drawn right after the
+    /// root (`fresh_ood`): the word is bound to one codeword of its list
+    /// before the IOP's challenges.
+    pub ood: Vec<Fp3>,
 }
+
+/// Domain separation of a claim proof from a succinct-profile proof.
+const CLAIM_DOMAIN: &[u8] = b"zheng-ccs-claim-v1";
 
 /// Every statement's claim proof, the accumulation steps and one decider.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,25 +74,36 @@ pub fn prove_claim(
     let half = 1usize << layout.vars;
     let (root, data) = Whir::commit(whir, &zp[..half]);
     let mut t = prologue::<Whir>(&st.bytes, whir, layout.vars, instance.num_rows, &root);
+    t.absorb(CLAIM_DOMAIN);
+    let mut claims = Vec::new();
+    let mut ood = Vec::new();
+    for _ in 0..super::fresh_ood(whir, layout.vars)? {
+        let z = t.squeeze_fp3();
+        let y = data.univariate(z);
+        t.absorb_eval(y);
+        claims.push(Claim::univariate(z, layout.vars, y));
+        ood.push(y);
+    }
     let (proof, point) = iop::prove::<Fp3>(&relabelled, &zp, &mut t);
     let (outer, inner) = reduce::compress_proof(&proof);
     let cpoint = pcs_point(&point[1..]);
     let witness_eval = ml_eval_base(&zp[..half], &cpoint);
-    let claim = Claim {
+    claims.push(Claim {
         point: cpoint,
         value: witness_eval,
-    };
+    });
     let cp = ClaimProof {
         root,
         matrix_evals: proof.matrix_evals,
         outer,
         inner,
         witness_eval,
+        ood,
     };
     let instance = Instance {
         root,
         ext: false,
-        claims: vec![claim],
+        claims,
     };
     Ok((cp, Witnessed { instance, data }))
 }
@@ -99,6 +117,16 @@ pub fn verify_claim(whir: &WhirParams, st: &Statement<'_>, proof: &ClaimProof) -
         return Err("fold: row count".into());
     }
     let mut t = prologue::<Whir>(&st.bytes, whir, layout.vars, instance.num_rows, &proof.root);
+    t.absorb(CLAIM_DOMAIN);
+    if proof.ood.len() != super::fresh_ood(whir, layout.vars)? {
+        return Err("fold: OOD answers".into());
+    }
+    let mut claims = Vec::new();
+    for &y in &proof.ood {
+        let z = t.squeeze_fp3();
+        t.absorb_eval(y);
+        claims.push(Claim::univariate(z, layout.vars, y));
+    }
     let r = reduce::reduce::<Fp3>(
         instance,
         &proof.matrix_evals,
@@ -113,13 +141,14 @@ pub fn verify_claim(whir: &WhirParams, st: &Statement<'_>, proof: &ClaimProof) -
     if r.claim != layout.weight(instance, &r) * z_eval {
         return Err("fold: spartan final claim".into());
     }
+    claims.push(Claim {
+        point: pcs_point(rest),
+        value: proof.witness_eval,
+    });
     Ok(Instance {
         root: proof.root,
         ext: false,
-        claims: vec![Claim {
-            point: pcs_point(rest),
-            value: proof.witness_eval,
-        }],
+        claims,
     })
 }
 
@@ -137,8 +166,9 @@ fn fold_transcript(statements: &[Statement<'_>], cfg: &AccConfig) -> LensTranscr
 /// The accumulation config of statements whose witnesses have `vars`
 /// variables, folded `chunk` at a time.
 pub fn config(whir: &WhirParams, vars: usize, chunk: usize) -> Result<AccConfig, String> {
-    let probe = AccConfig::derive(whir, vars, chunk + 1, chunk + 1)?;
-    AccConfig::derive(whir, vars, chunk + 1, probe.acc_claims() + chunk)
+    let word = super::fresh_ood(whir, vars)? + 1;
+    let probe = AccConfig::derive(whir, vars, chunk + 1, chunk * word)?;
+    AccConfig::derive(whir, vars, chunk + 1, probe.acc_claims() + chunk * word)
 }
 
 /// Prove every statement's claim, accumulate `chunk` at a time, decide once.
@@ -200,7 +230,7 @@ pub fn verify_folded(
         .zip(&proof.claims)
         .map(|(st, cp)| verify_claim(whir, st, cp))
         .collect::<Result<Vec<_>, _>>()?;
-    let vars = insts[0].claims[0].point.len();
+    let vars = insts[0].claims.last().expect("a claim").point.len();
     let cfg = config(whir, vars, chunk)?;
     let mut t = fold_transcript(statements, &cfg);
     let mut acc: Option<Instance> = None;
@@ -225,6 +255,7 @@ impl ClaimProof {
             }
         }
         w.ext(self.witness_eval);
+        w.exts(&self.ood);
     }
 }
 

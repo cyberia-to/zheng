@@ -1,7 +1,8 @@
 //! Canonical bytes of an AIR proof (lens wire conventions).
 //!
 //! ```text
-//! u32 S · S × 32 B roots1 · S × 32 B roots2 · S × segment
+//! u32 S · S × 32 B roots1 · S × 32 B roots2 · S × exts ood1 · S × exts ood2
+//! · S × segment
 //! segment: u32 w + w × u64 boundary · u32 R · R × exts round
 //!          · exts local · exts next · exts shift · ext v1 · ext v2
 //! ```
@@ -50,6 +51,9 @@ impl AirProof {
         for r in self.roots1.iter().chain(&self.roots2) {
             w.digest(&r.0);
         }
+        for a in self.ood1.iter().chain(&self.ood2) {
+            w.exts(a);
+        }
         for s in &self.segments {
             s.write(w);
         }
@@ -58,10 +62,14 @@ impl AirProof {
         let s = r.count(64)?;
         let roots1 = (0..s).map(|_| r.digest().map(Commitment)).collect::<Result<_, _>>()?;
         let roots2 = (0..s).map(|_| r.digest().map(Commitment)).collect::<Result<_, _>>()?;
+        let ood1 = (0..s).map(|_| r.exts()).collect::<Result<_, _>>()?;
+        let ood2 = (0..s).map(|_| r.exts()).collect::<Result<_, _>>()?;
         let segments = (0..s).map(|_| SegmentProof::read(r)).collect::<Result<_, _>>()?;
         Ok(Self {
             roots1,
             roots2,
+            ood1,
+            ood2,
             segments,
         })
     }

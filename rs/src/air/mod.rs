@@ -32,7 +32,7 @@ mod zerocheck;
 #[cfg(test)]
 mod tests;
 
-pub use prove::{AirProof, SegmentProof, SegmentWords, commit_root, prove, verify};
+pub use prove::{AirProof, SegmentProof, SegmentWords, commit_bound, prove, verify};
 pub use public::Public;
 
 use nebu::{Fp3, Goldilocks};

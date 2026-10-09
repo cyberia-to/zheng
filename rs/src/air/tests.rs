@@ -138,14 +138,15 @@ fn toy_air_with_a_valid_trace_verifies_and_decides() {
         prove(std::slice::from_ref(&air), &whir, std::slice::from_ref(&w1), |_, ch| toy_phase2(&w1, ch), &mut tp)
             .unwrap();
     let mut tv = lens::Transcript::new(b"toy");
-    let insts = verify(std::slice::from_ref(&air), n, &proof, &mut tv).unwrap();
+    let insts = verify(std::slice::from_ref(&air), &whir, n, &proof, &mut tv).unwrap();
     assert_eq!(insts, words);
     let wp = air.shape().padded_width();
     let data = |t: &Trace| <lens::Whir as lens::MultilinearPcs>::commit(&whir, &t.column_major(wp)).1;
     let [a, b] = words[0].clone();
     let x1 = crate::accumulate::Witnessed { instance: a, data: data(&w1) };
     let x2 = crate::accumulate::Witnessed { instance: b, data: data(&w2s[0]) };
-    let cfg = AccConfig::derive(&whir, x1.data.num_vars(), 4, 64).unwrap();
+    let cfg = AccConfig::derive(&whir, x1.data.num_vars(), 4, 256).unwrap();
+    assert!(insts[0][0].claims.len() > 2, "fresh-word OOD claims ride along");
     let mut ap = transcript(b"toy-acc", b"", &cfg);
     let (acc, aproof) = accumulate(&cfg, &[&x1, &x2], &mut ap).unwrap();
     let dproof = decide(&cfg, &acc, &mut ap).unwrap();
@@ -160,16 +161,16 @@ fn toy_air_with_a_valid_trace_verifies_and_decides() {
         prove(std::slice::from_ref(&air), &whir, std::slice::from_ref(&bad), |_, ch| toy_phase2(&bad, ch), &mut tb)
             .unwrap();
     let mut tbv = lens::Transcript::new(b"toy");
-    assert!(verify(std::slice::from_ref(&air), n, &bp, &mut tbv).is_err());
+    assert!(verify(std::slice::from_ref(&air), &whir, n, &bp, &mut tbv).is_err());
     // a forged column value at ρ, a forged boundary
     let mut forged = proof.clone();
     forged.segments[0].local[0] += Fp3::ONE;
     let mut tf = lens::Transcript::new(b"toy");
-    assert!(verify(std::slice::from_ref(&air), n, &forged, &mut tf).is_err());
+    assert!(verify(std::slice::from_ref(&air), &whir, n, &forged, &mut tf).is_err());
     let mut forged = proof.clone();
     forged.segments[0].boundary[1] += Goldilocks::ONE;
     let mut tf = lens::Transcript::new(b"toy");
-    let r = verify(std::slice::from_ref(&air), n, &forged, &mut tf);
+    let r = verify(std::slice::from_ref(&air), &whir, n, &forged, &mut tf);
     // a forged boundary either breaks the zerocheck or yields a false claim
     // on row 0 that the opening (decider) rejects
     if let Ok(i) = r {
