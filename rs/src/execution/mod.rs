@@ -21,6 +21,8 @@ mod statement_wire;
 pub mod tagged;
 /// Verifying keys: compiled relations cached by program key.
 pub mod vk;
+/// The zk profile: succinct proofs that hide the witness (secret inputs).
+pub mod veil;
 /// Native private CCS proofs over the soft3 field and hash.
 pub mod zk;
 

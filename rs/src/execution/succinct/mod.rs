@@ -11,7 +11,7 @@
 
 mod choice;
 mod pcs;
-mod protocol;
+pub(crate) mod protocol;
 
 pub use protocol::{SuccinctProof, prove as prove_relation, verify as verify_relation};
 pub use choice::{SMALL_MAX_VARS, params_for, prove_default};
