@@ -87,13 +87,13 @@ fn wrong_magic_version_and_profile_are_rejected() {
         bad[8..10].copy_from_slice(&version.to_le_bytes());
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnsupportedVersion(version)));
     }
-    for profile in [4u8, 0x80, 0xff] {
+    for profile in [5u8, 0x80, 0xff] {
         let mut bad = bytes.clone();
         bad[10] = profile;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
     }
     // a public body under another profile byte does not decode or verify
-    for profile in [1u8, 2, 3] {
+    for profile in [1u8, 2, 3, 4] {
         let mut bad = bytes.clone();
         bad[10] = profile;
         let accepted =
