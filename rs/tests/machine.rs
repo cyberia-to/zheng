@@ -166,3 +166,65 @@ fn the_machine_rides_the_envelope_as_profile_four() {
     longer.push(0);
     assert!(Envelope::from_bytes(&longer).is_err());
 }
+
+/// Every bit of a full machine envelope (WHIR header, statement, AIR
+/// messages, accumulation step, decider) flipped, decoded and verified:
+/// none accepted. Long: `cargo test --release --test machine -- --ignored`.
+#[test]
+#[ignore]
+fn bit_flip_scan_of_a_full_machine_envelope() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use zheng::envelope::Envelope;
+    let w = zheng::execution::succinct::params_for(20);
+    let run = agrees(&common::parse(common::ADD), &[7, 5], machine::SEGMENT_LOG_ROWS);
+    let proof = machine::prove_run(&run, &w).unwrap();
+    let env = Envelope::Machine {
+        params: w,
+        statement: run.statement.clone(),
+        proof: Box::new(proof),
+    };
+    let bytes = env.to_bytes();
+    let accepted = AtomicUsize::new(0);
+    let decoded = AtomicUsize::new(0);
+    let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let t = std::time::Instant::now();
+    std::thread::scope(|s| {
+        for k in 0..workers {
+            let (bytes, accepted, decoded) = (&bytes, &accepted, &decoded);
+            s.spawn(move || {
+                for i in (k..bytes.len()).step_by(workers) {
+                    for bit in 0..8 {
+                        let mut b = bytes.clone();
+                        b[i] ^= 1 << bit;
+                        if let Ok(e) = Envelope::from_bytes(&b) {
+                            decoded.fetch_add(1, Ordering::Relaxed);
+                            if e.verify(&mut |_, _| None).is_ok() {
+                                accepted.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+    println!(
+        "machine envelope add.tri: {} bytes, {} flips, {} decoded, {} accepted, {:.0} s",
+        bytes.len(),
+        bytes.len() * 8,
+        decoded.load(Ordering::Relaxed),
+        accepted.load(Ordering::Relaxed),
+        t.elapsed().as_secs_f64()
+    );
+    assert_eq!(accepted.load(Ordering::Relaxed), 0);
+}
+
+/// Long runs agree with native nox (the machine trace is built and checked
+/// for output and cycles; proving them is measured by `machine_bench`).
+#[test]
+fn long_runs_agree_with_native_nox() {
+    let run = agrees(&common::rec_program(), &[14], machine::SEGMENT_LOG_ROWS);
+    assert_eq!(run.statement.cycles, 393_202);
+    assert_eq!(statement::parse(&run.statement.output).unwrap(), N::Atom(1 << 14));
+    let run = agrees(&common::tree_program(14), &[3], machine::SEGMENT_LOG_ROWS);
+    assert_eq!(run.statement.cycles, 4 * (1 << 14) - 1);
+}
