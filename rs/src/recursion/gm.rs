@@ -255,6 +255,38 @@ pub fn pow_bits<O: Ops>(o: &mut O, omega: Goldilocks, bits: &[O::V]) -> O::V {
     acc.unwrap_or_else(|| o.one())
 }
 
+/// `Σ_i c_i x^i` (Horner).
+pub fn horner<O: Ops>(o: &mut O, coeffs: &[O::V], x: O::V) -> O::V {
+    let mut acc: Option<O::V> = None;
+    for &c in coeffs.iter().rev() {
+        acc = Some(match acc {
+            None => c,
+            Some(a) => o.mul_add(a, x, c),
+        });
+    }
+    acc.unwrap_or_else(|| o.zero())
+}
+
+/// The multilinear polynomial with monomial coefficients `coeffs` (index
+/// bit `k` ↔ variable `k`) at `point`: `f(x) = f_even(x_2..) + x_1·f_odd(x_2..)`.
+pub fn monomial<O: Ops>(o: &mut O, coeffs: &[O::V], point: &[O::V]) -> O::V {
+    assert_eq!(coeffs.len(), 1 << point.len());
+    let mut cur = coeffs.to_vec();
+    for &r in point {
+        cur = cur.chunks(2).map(|p| o.mul_add(r, p[1], p[0])).collect();
+    }
+    cur[0]
+}
+
+/// `x^{2^k}`.
+pub fn pow2k<O: Ops>(o: &mut O, x: O::V, k: usize) -> O::V {
+    let mut y = x;
+    for _ in 0..k {
+        y = o.mul(y, y);
+    }
+    y
+}
+
 /// The symbol of `syms` (coset order) at position `Σ bits_j 2^j`.
 pub fn mux<O: Ops>(o: &mut O, syms: &[O::V], bits: &[O::V]) -> O::V {
     assert_eq!(syms.len(), 1 << bits.len());
@@ -301,6 +333,12 @@ mod tests {
         assert_eq!(pow_bits(&mut o, w, &bits), Fp3::from_base(w.exp(13)));
         let syms: Vec<Fp3> = (0..8).map(e).collect();
         assert_eq!(mux(&mut o, &syms, &bits[..3]), e(5));
+        let cs: Vec<Fp3> = (0..8).map(e).collect();
+        assert_eq!(horner(&mut o, &cs, x), lens::rspcs::field::univariate_ext(&cs, x));
+        assert_eq!(monomial(&mut o, &cs, &a[..3]), lens::rspcs::field::coeff_ml_eval(&cs, &a[..3]));
+        let x2 = x * x;
+        let x4 = x2 * x2;
+        assert_eq!(pow2k(&mut o, x, 3), x4 * x4);
         assert!(o.error.is_none());
     }
 }

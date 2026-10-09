@@ -21,6 +21,9 @@ pub type Digest = [Goldilocks; 4];
 enum Data {
     Base { evals: Vec<Goldilocks>, coeffs: Vec<Goldilocks>, code: Vec<Goldilocks> },
     Ext { evals: Vec<Fp3>, coeffs: Vec<Fp3>, code: Vec<Fp3> },
+    /// A word committed from its coefficients alone (a WHIR round's
+    /// folded function): no evaluation table.
+    Coeffs { coeffs: Vec<Fp3>, code: Vec<Fp3> },
 }
 
 /// A committed word: message, codeword and tree.
@@ -133,7 +136,9 @@ impl Word {
             Data::Base { code, .. } => {
                 leaf_digests(leaves, width, false, |j, t| Fp3::from_base(code[j + t * leaves]))
             }
-            Data::Ext { code, .. } => leaf_digests(leaves, width, true, |j, t| code[j + t * leaves]),
+            Data::Ext { code, .. } | Data::Coeffs { code, .. } => {
+                leaf_digests(leaves, width, true, |j, t| code[j + t * leaves])
+            }
         };
         let mut levels = vec![digests];
         while levels.last().expect("level").len() > 1 {
@@ -163,31 +168,62 @@ impl Word {
         Self::build(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code })
     }
 
+    /// Commit an Fp3 polynomial given by its `2^ℓ` monomial coefficients.
+    pub fn commit_coeffs(layout: LeafLayout, coeffs: Vec<Fp3>) -> Self {
+        let num_vars = coeffs.len().trailing_zeros() as usize;
+        assert!(coeffs.len().is_power_of_two() && layout.log_domain as usize > num_vars);
+        let code = encode_ext(&coeffs, layout.log_domain);
+        Self::build(num_vars, layout, Data::Coeffs { coeffs, code })
+    }
+
+    /// The monomial coefficients, lifted to Fp3.
+    pub fn coeffs(&self) -> Vec<Fp3> {
+        match &self.data {
+            Data::Base { coeffs, .. } => coeffs.iter().map(|&x| Fp3::from_base(x)).collect(),
+            Data::Ext { coeffs, .. } | Data::Coeffs { coeffs, .. } => coeffs.clone(),
+        }
+    }
+
     pub fn root(&self) -> Digest {
         self.levels.last().expect("root")[0]
     }
     pub fn is_ext(&self) -> bool {
-        matches!(self.data, Data::Ext { .. })
+        !matches!(self.data, Data::Base { .. })
     }
-    /// The table, lifted to Fp3.
+    /// The table, lifted to Fp3 (a word committed from coefficients has
+    /// none: its table is computed from them).
     pub fn table(&self) -> Vec<Fp3> {
         match &self.data {
             Data::Base { evals, .. } => evals.iter().map(|&x| Fp3::from_base(x)).collect(),
             Data::Ext { evals, .. } => evals.clone(),
+            Data::Coeffs { coeffs, .. } => {
+                // zeta transform: f(b) = Σ_{S ⊆ b} c_S
+                let mut t = coeffs.clone();
+                let mut h = 1;
+                while h < t.len() {
+                    for i in 0..t.len() {
+                        if i & h != 0 {
+                            t[i] = t[i] + t[i ^ h];
+                        }
+                    }
+                    h <<= 1;
+                }
+                t
+            }
         }
     }
     /// `f̂(z)` (out-of-domain answers).
     pub fn univariate(&self, z: Fp3) -> Fp3 {
         match &self.data {
             Data::Base { coeffs, .. } => univariate_base(coeffs, z),
-            Data::Ext { coeffs, .. } => univariate_ext(coeffs, z),
+            Data::Ext { coeffs, .. } | Data::Coeffs { coeffs, .. } => univariate_ext(coeffs, z),
         }
     }
     /// Codeword symbol `s`.
     pub fn symbol(&self, s: usize) -> Fp3 {
         match &self.data {
             Data::Base { code, .. } => Fp3::from_base(code[s]),
-            Data::Ext { code, .. } => code[s],
+            Data::Ext { code, .. } | Data::Coeffs { code, .. } => code[s],
         }
     }
     /// Leaf `j`: its symbols in coset order and its sibling path.
