@@ -74,18 +74,27 @@ fn main() {
             v.push(t3.elapsed().as_secs_f64() * 1e3);
         }
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let prep = ivc::prepare(&run.statement, &whir, parsed.log_rows, parsed.start, parsed.segments, parsed.chain).expect("prepare");
+        let mut vp = Vec::new();
+        for _ in 0..5 {
+            let t3 = Instant::now();
+            ivc::verify_prepared(&prep, &parsed).expect("verify");
+            vp.push(t3.elapsed().as_secs_f64() * 1e3);
+        }
+        vp.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let segs = run.segments();
         let parts: Vec<String> = proof.sizes(p).iter().map(|(k, v)| format!("{k} {v}")).collect();
         println!("{name}: parts {}", parts.join(" · "));
         println!(
-            "{name}: cycles {} · {} steps of 2^{n} rows · proof {} B · run {:.0} ms · prove {:.0} ms ({:.0} ms/step) · verify median {:.2} ms",
+            "{name}: cycles {} · {} steps of 2^{n} rows · proof {} B · run {:.0} ms · prove {:.0} ms ({:.0} ms/step) · verify median {:.2} ms (prepared {:.2} ms)",
             run.statement.cycles,
             segs,
             bytes.len(),
             t_run.as_secs_f64() * 1e3,
             t_prove.as_secs_f64() * 1e3,
             t_prove.as_secs_f64() * 1e3 / segs as f64,
-            v[2]
+            v[2],
+            vp[2]
         );
     }
 }

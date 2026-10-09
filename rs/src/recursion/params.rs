@@ -99,10 +99,17 @@ mod tests {
     /// proves ≥ 128 bits (`specs/soundness.md` § recursion).
     #[test]
     fn every_ledger_row_of_the_recursion_profile_reaches_128_bits() {
+        for rate in [4u8, 6] {
+            rows_at(rate);
+        }
+    }
+
+    fn rows_at(rate: u8) {
         let mut whir = crate::execution::succinct::params_for(20);
-        whir.log_inv_rate = 4;
+        whir.log_inv_rate = rate;
         whir.pow_bits = 24;
         let p = Params::new(&whir, 15).unwrap();
+        eprintln!("rate 1/{}", 1u32 << rate);
         let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
         let mut rows = p.cfg.terms(INPUTS, j);
         rows.push(("decider whir".into(), lens::Whir::security_bits(&whir, p.vars)));
@@ -123,5 +130,33 @@ mod tests {
             assert!(*bits >= 128.0, "{name}: {bits}");
         }
         eprintln!("t {} s {} query_pow {} comb_pow {} fresh {} J {j} base {} g_deg {}", p.cfg.queries, p.cfg.ood, p.cfg.query_pow, p.cfg.comb_pow_for(INPUTS), p.fresh, p.base, p.g_deg);
+    }
+}
+
+#[cfg(test)]
+mod levers {
+    use super::*;
+
+    /// Queries the size levers buy (printed; `cargo test -- --ignored`).
+    #[test]
+    #[ignore = "prints the parameter table of audit/recursion-2026-10.md"]
+    fn parameter_levers() {
+        for (rate, pow, k) in [(4u8, 24u8, 4u8), (4, 30, 4), (4, 24, 5), (5, 24, 4), (6, 24, 4), (6, 30, 4)] {
+            let mut whir = crate::execution::succinct::params_for(20);
+            whir.log_inv_rate = rate;
+            whir.pow_bits = pow;
+            whir.folding_factor = k;
+            match Params::new(&whir, 15) {
+                Ok(p) => {
+                    let wc = lens::rspcs::WhirConfig::derive(&whir, p.vars).unwrap();
+                    let q: Vec<usize> = wc.rounds.iter().map(|r| r.queries).collect();
+                    eprintln!(
+                        "rate 1/{} pow {pow} k {k}: acc t {} depth {} · decider rounds {} queries {:?} final vars {} · bits {:.2}",
+                        1 << rate, p.cfg.queries, p.cfg.layout.log_leaves(), wc.rounds.len(), q, wc.final_vars, wc.security_bits()
+                    );
+                }
+                Err(e) => eprintln!("rate 1/{} pow {pow} k {k}: {e}", 1 << rate),
+            }
+        }
     }
 }
