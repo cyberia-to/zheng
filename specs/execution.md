@@ -6,8 +6,13 @@ Implemented protocols:
   (`certify_execution` / `verify_certificate`) — the default;
 - authenticated-state profile v3 (`state::certify_state_execution` /
   `StateStatement::verify_certificate`);
-- both carried by the `ZHENGPF1` envelope (`zheng::envelope`, profiles 0
-  and 3; profile 2 carries native private proofs, profile 1 is reserved).
+- the succinct profile, `zheng-nox-succinct-execution-v1`
+  (`succinct::prove` / `succinct::verify`, `succinct::prove_state` /
+  `succinct::verify_state`) — the same statements with the witness
+  committed instead of disclosed;
+- all carried by the `ZHENGPF1` envelope (`zheng::envelope`, profiles 0
+  and 3 for the certificates, 1 for the succinct profile; profile 2 carries
+  native private proofs).
 
 Retired and read for one release: public v2 `zheng-nox-public-execution-v2`
 (`prove_execution` / `verify_execution`, a `DirectProof`) and state v1
@@ -114,14 +119,72 @@ limb the program never computes on is bound through the reads' authentication;
 a limb it reads from the subject is also bound by the relation. The context is
 caller metadata that zheng carries and does not interpret.
 
+## Succinct profile (envelope profile 1)
+
+Same statements as public v3 and state v3; the verifier derives the relation
+and every pinned coordinate exactly as they do. The witness is committed with
+a multilinear PCS over Goldilocks (`lens::MultilinearPcs`, a type parameter:
+WHIR id 1, TensorRs id 2) and never sent.
+
+Layout. Let `P` be the pinned columns (`z[0] = 1`, inputs, outputs, cost,
+and for state statements every read coordinate) and `W` the other columns
+some row reads, both in index order. With `ℓ = ⌈log2 max(|W|, |P|, 2)⌉` the
+verifier relabels the CCS columns into `z' = (w ‖ p)`, `|w| = |p| = 2^ℓ`:
+`w` = the values of `W` then zeros, `p` = the values of `P` then zeros.
+Columns no row reads are dropped. `z̃'(r_0, r') = (1 − r_0)·w̃(r') +
+r_0·p̃(r')` with `r_0` the top index bit; the verifier computes
+`p̃(r') = Σ_j p_j·eq(r', j)` from the statement. Only `w` is committed, so a
+pinned value cannot be changed by the prover — this is the statement binding
+once the witness leaves the wire.
+
+Protocol, on the zheng transcript (`Transcript::new`, wide challenges):
+
+1. absorb `"zheng-succinct-v1"`, the statement's `transcript_bytes` (length
+   prefixed), the PCS id, its parameter header, `ℓ` and the row count `m`;
+2. `root = PCS.commit(w)`, absorbed with `absorb_commitment`;
+3. Spartan over Fp3 (`spartan::iop::prove::<Fp3>` on the relabelled CCS):
+   `τ`, the outer sumcheck (`log m` rounds, degree `d + 1`), the matrix
+   evaluations `M̃_i(ρ_x)`, `γ`, the inner sumcheck (`ℓ + 1` rounds, degree
+   2). Round polynomials travel without their linear coefficient; the
+   verifier restores `c_1 = claim − 2c_0 − Σ_{i≥2} c_i`
+   (`spartan::reduce`), so it absorbs and checks the same polynomials;
+4. a lens transcript `Transcript::new("zheng-succinct-pcs-v1")` absorbs one
+   32-byte squeeze of the zheng transcript; the PCS opens `w̃` at `r'`
+   (reversed: lens points are LSB-first) and returns `v = w̃(r')`;
+5. the verifier checks `claim = weight·((1 − r_0)·v + r_0·p̃(r'))`, where
+   `weight = Σ_i γ^i M̃_i(ρ_x, r)` is computed from the relation it compiled,
+   then the opening at `(root, ℓ, r', v)`.
+
+Policy (`succinct::admit`): the parameters must be in range (WHIR rate 1/2 …
+1/64, folding factor 1 … 6, grinding ≤ 32, final variables ≤ 16; TensorRs
+rate 1/2 … 1/64, grinding ≤ 32), ask for a target of at least 128 bits, and
+lens's proven `security_bits(params, ℓ)` must be ≥ 128. The prover refuses
+the same parameters. The composed bound is in the [soundness ledger](soundness.md).
+The shipped choice (`succinct::prove_default` / `params_for`, used by `joy
+prove --succinct`) is WHIR at rate 1/64, folding factor 4, 24 grinding bits,
+Johnson decoding, final polynomial ≤ 2^8, for both size classes — the
+smallest ≥ 128-bit proof in the bake-off
+(`audit/succinct-profile-2026-10.md`). A verifier admits any in-range
+parameters that meet the policy, not only the shipped ones.
+
+Body (profile 1): PCS id (u8), its parameter header (WHIR 8 bytes, TensorRs
+6), statement kind (0 execution, 1 state), the statement in the profile-0 or
+profile-3 encoding, the root (32 bytes, canonical limbs), `t` matrix
+evaluations, the outer rounds (count, width, values), the inner rounds
+(count, width 2 implied), `v`, then the PCS proof bytes after its parameter
+header (lens's canonical encoding; the header is restored before parsing).
+Fp3 values are three fixed 8-byte canonical limbs. Shapes — `t`, round
+counts and widths, the proof's internal lengths — are checked by the
+verifier against the relation it compiled and the configuration lens derives.
+
 ## Envelope
 
 `zheng::envelope::Envelope` is the one wire form: magic `ZHENGPF1`, version
-u16 little-endian (1), profile byte (0 public, 1 succinct reserved, 2 zk,
+u16 little-endian (1), profile byte (0 public, 1 succinct, 2 zk,
 3 state-public), then a canonical body — shortest-form LEB128 integers, field
 values below p, flags 0 or 1, every length bounded statically and by the
 remaining bytes before allocation, no trailing bytes. A wrong magic, an
-unknown version, an unknown or reserved profile, truncation and every
+unknown version, an unknown profile, truncation and every
 noncanonical encoding fail at decoding; `Envelope::verify` runs the profile's
 verifier. The zk body binds a 32-byte context through `zk_statement_bytes`.
 

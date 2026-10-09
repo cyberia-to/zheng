@@ -1,6 +1,6 @@
 zheng (証 — proof/evidence in Japanese) implements constraints and proof protocols for [[nox]] and [[cyber]].
 
-Public execution binding is available through `zheng::execution::{certify_execution, verify_certificate}` (profile v3) and the default `joy prove` / `joy verify` commands. The verifier reconstructs constraints from the public program, places the constant, public input, output and reduction count itself, fills the remaining witness positions from the certificate and checks every constraint exactly. Authenticated-state execution has the same profile (`execution::state::certify_state_execution`). These bounded public certificates have linear verification and disclose the witness. Every proof travels in one envelope, `zheng::envelope` (magic `ZHENGPF1`, version, profile byte). See [the execution contract](specs/execution.md), [the soundness ledger](specs/soundness.md) and [historical public validation](audit/public-execution.md).
+Public execution binding is available through `zheng::execution::{certify_execution, verify_certificate}` (profile v3) and the default `joy prove` / `joy verify` commands. The verifier reconstructs constraints from the public program, places the constant, public input, output and reduction count itself, fills the remaining witness positions from the certificate and checks every constraint exactly. Authenticated-state execution has the same profile (`execution::state::certify_state_execution`). These bounded public certificates have linear verification and disclose the witness. The succinct profile (`execution::succinct`, `joy prove --succinct`) proves the same statements with the witness committed by WHIR and opened once after a Spartan IOP over Fp3; see [its bake-off](audit/succinct-profile-2026-10.md). Every proof travels in one envelope, `zheng::envelope` (magic `ZHENGPF1`, version, profile byte). See [the execution contract](specs/execution.md), [the soundness ledger](specs/soundness.md) and [historical public validation](audit/public-execution.md).
 
 Native private proofs are available through `zheng::execution::zk::{prove, verify}`. Secret call/divine inputs and queries over authenticated public state use the existing nox relation with a three-party arithmetic MPC-in-the-head proof over Goldilocks and Hemera. Joy uses this backend for secret inputs and `--zk`; Trisha owns the separate Triton/Neptune stack. The native protocol fixes 219 repetitions, has linear proof size and verification cost, and relies on the stated Fiat–Shamir/random-oracle and Hemera assumptions. See [native private CCS](specs/native-private-ccs.md) and [execution/state integration](specs/ccs-execution-backends.md) for precise bounds and disclosure. Independent production-security review remains outstanding.
 
@@ -16,7 +16,7 @@ field             │ arithmetic substrate           │ nebu
 VM                │ execution trace generation     │ nox
 IOP               │ constraint verification        │ superspartan
 core protocol     │ exponential sum → log rounds   │ sumcheck
-PCS               │ polynomial commitment          │ none in profile v3; Brakedown (legacy)
+PCS               │ polynomial commitment          │ none in profile v3; WHIR (lens) in the succinct profile; Brakedown (legacy)
 private protocol  │ hidden CCS witness             │ arithmetic MPC-in-head
 ```
 
