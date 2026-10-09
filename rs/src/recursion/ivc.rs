@@ -58,6 +58,8 @@ pub struct IvcProof {
 pub struct Key {
     pub params: Params,
     pub pre: Pre,
+    /// The key's nonzero entries per column (`P̄_V` evaluations).
+    pub sparse: Vec<Vec<(u32, Fp3)>>,
 }
 
 fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
@@ -84,7 +86,12 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
     if out2 != out {
         return Err("recursion: the circuit layout moved".into());
     }
-    let k = Arc::new(Key { params: p, pre });
+    let sparse = pre
+        .cols
+        .iter()
+        .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
+        .collect();
+    let k = Arc::new(Key { params: p, pre, sparse });
     cache.lock().expect("key cache").insert((whir.header(), n), k.clone());
     Ok(k)
 }
@@ -122,7 +129,7 @@ fn digest_vals(d: &[Fp3; 4]) -> Digest {
 }
 
 /// The context's parts for a run.
-fn parts(p: &Params, key: &Pre, rel: &Relation, global: &[Public], sd: Digest, chain: Digest) -> CtxParts {
+fn parts(p: &Params, key: &[Vec<(u32, Fp3)>], rel: &Relation, global: &[Public], sd: Digest, chain: Digest) -> CtxParts {
     CtxParts {
         statement: sd,
         chain,
@@ -204,7 +211,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let ch = run_challenges(sd, chain);
     let global = Machine::new(run.constants.clone(), &run.init, run.start, 0, segs << n).publics;
     let rels: Vec<Relation> = (0..segs).map(|i| Relation::new(run.machine(i), ch)).collect();
-    let ctx_parts = parts(p, &k.pre, &rels[0], &global, sd, chain);
+    let ctx_parts = parts(p, &k.sparse, &rels[0], &global, sd, chain);
     let mut carry = Fp3::ZERO;
     let mut n2s = Vec::with_capacity(segs);
     for i in 0..segs {
@@ -246,10 +253,11 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
             b_out: &b_out,
             v1: &v1,
             key: &k.pre,
+            sparse: &k.sparse,
         };
         let (pf, data, _) = prove::prove(p, &input, &st, x, &acc, i + 1 == segs)?;
         // the prover checks its own step
-        let mut o = Native::new();
+        let mut o = Native::batched();
         let next = step::verify(&mut o, p, &st, x.map(Fp3::from_base), &pf);
         o.finish().map_err(|e| format!("step {i}: {e}"))?;
         acc = data;
@@ -267,21 +275,29 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     Ok(IvcProof { log_rows: n as u32, start: run.start as u64, segments: segs as u64, chain, state, step, decider })
 }
 
-/// Verify a recursive proof of `st` under `whir`.
-pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Result<(), String> {
-    let lap = timer();
-    let n = proof.log_rows as usize;
+/// The statement-side work of a verification: everything that depends on
+/// the statement and the proof's header only (reused across proofs of the
+/// same run).
+pub struct Prepared {
+    pub key: Arc<Key>,
+    pub header: (u32, u64, u64, Digest),
+    rel: Relation,
+    global: Vec<Public>,
+    ctx: Digest,
+}
+
+/// Prepare the verification of proofs of `st` with this header.
+pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u64, segments: u64, chain: Digest) -> Result<Prepared, String> {
+    let n = log_rows as usize;
     if !(10..=20).contains(&n) {
         return Err("recursion: step size".into());
     }
-    let k = key(whir, n)?;
-    let p = &k.params;
+    let key = key(whir, n)?;
     let derived = st.derive()?;
-    let (segs, start) = (proof.segments as usize, proof.start as usize);
-    if segs == 0 || segs > 1 << 32 || !start.is_multiple_of(BLOCK) || start <= derived.entries.len() || start + BLOCK > segs << n {
+    let (segs, st_row) = (segments as usize, start as usize);
+    if segs == 0 || segs > 1 << 32 || !st_row.is_multiple_of(BLOCK) || st_row <= derived.entries.len() || st_row + BLOCK > segs << n {
         return Err("recursion: geometry".into());
     }
-    step::check_shape(p, &proof.step)?;
     let constants = Constants {
         fml0: derived.fml0,
         obj0: derived.obj0,
@@ -290,11 +306,31 @@ pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Res
         cycles: st.cycles,
     };
     let init = statement::init_columns(&derived.entries);
-    let sd = statement_digest(st, n, proof.start, proof.segments);
-    let ch = run_challenges(sd, proof.chain);
-    let global = Machine::new(constants.clone(), &init, start, 0, segs << n).publics;
-    let rel = Relation::new(Machine::new(constants, &init, start, 0, 1 << n), ch);
-    let ctx = state::ctx_native(&parts(p, &k.pre, &rel, &global, sd, proof.chain));
+    let sd = statement_digest(st, n, start, segments);
+    let ch = run_challenges(sd, chain);
+    let global = Machine::new(constants.clone(), &init, st_row, 0, segs << n).publics;
+    let rel = Relation::new(Machine::new(constants, &init, st_row, 0, 1 << n), ch);
+    let ctx = state::ctx_native(&parts(&key.params, &key.sparse, &rel, &global, sd, chain));
+    Ok(Prepared { key, header: (log_rows, start, segments, chain), rel, global, ctx })
+}
+
+/// Verify a recursive proof of `st` under `whir`.
+pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Result<(), String> {
+    let prep = prepare(st, whir, proof.log_rows, proof.start, proof.segments, proof.chain)?;
+    verify_prepared(&prep, proof)
+}
+
+/// Verify against a preparation whose header must be the proof's.
+pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> {
+    let lap = timer();
+    if prep.header != (proof.log_rows, proof.start, proof.segments, proof.chain) {
+        return Err("recursion: header".into());
+    }
+    let k = &prep.key;
+    let p = &k.params;
+    let n = p.n;
+    let (rel, global, ctx) = (&prep.rel, &prep.global, prep.ctx);
+    step::check_shape(p, &proof.step)?;
     let s = &proof.state;
     let shape_ok = s.b_first.len() == p.dims.boundary
         && s.b_last.len() == p.dims.boundary
@@ -309,7 +345,7 @@ pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Res
     }
     lap("setup");
     let x = state::digest_native(s);
-    let mut o = Native::new();
+    let mut o = Native::batched();
     let fin = step::verify(&mut o, p, s, x.map(Fp3::from_base), &proof.step);
     o.finish()?;
     lap("step");
@@ -325,10 +361,10 @@ pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Res
     if rel.g(&fin.g.point) != fin.g.value {
         return Err("recursion: deferred constraints".into());
     }
-    if pbar_nox(&global, &fin.pn.point, n) != fin.pn.value {
+    if pbar_nox(global, &fin.pn.point, n) != fin.pn.value {
         return Err("recursion: deferred nox publics".into());
     }
-    if pbar_v(&k.pre, &fin.pv.point, n) != fin.pv.value {
+    if pbar_v(&k.sparse, &fin.pv.point, n) != fin.pv.value {
         return Err("recursion: deferred circuit key".into());
     }
     lap("deferred");

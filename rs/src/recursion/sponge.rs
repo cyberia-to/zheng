@@ -143,28 +143,44 @@ impl<O: Ops> Sponge<O> {
     }
 }
 
-/// The prover's grinding: the least nonce whose check passes on a copy of
-/// the native transcript.
+/// The prover's grinding: the least nonce whose check passes on the
+/// native transcript (the check's block input built once, permutations
+/// batched).
 pub fn grind(t: &Sponge<super::ops::Native>, bits: u32) -> u64 {
-    use super::ops::Native;
     if bits == 0 {
         return 0;
     }
+    let mut base = t.clone_native();
+    let mut o = super::ops::Native::new();
+    if base.used + 1 > RATE {
+        base.flush(&mut o);
+    }
+    let lane = base.used;
+    let mut items = base.pending.clone();
+    items.push(In::Free(Fp3::ZERO, false));
+    for _ in base.used + 1..RATE {
+        items.push(In::Zero);
+    }
+    let template = base.chain.input(&items);
+    let mask = (1u64 << bits) - 1;
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16) as u64;
     let batch = 1u64 << 12;
-    let mut base = 0u64;
+    let mut start = 0u64;
     loop {
         let found = std::thread::scope(|s| {
             let hs: Vec<_> = (0..threads)
                 .map(|w| {
                     s.spawn(move || {
-                        let start = base + w * batch;
-                        (start..start + batch).find(|&n| {
-                            let mut o = Native::new();
-                            let mut c = t.clone_native();
-                            c.grind_check(&mut o, bits, n);
-                            o.error.is_none()
-                        })
+                        let from = start + w * batch;
+                        let mut states: Vec<[Goldilocks; 16]> = (from..from + batch)
+                            .map(|n| {
+                                let mut x = template;
+                                x[lane] = Goldilocks::new(n);
+                                x
+                            })
+                            .collect();
+                        super::perm::permute_many(&mut states);
+                        states.iter().position(|y| y[0].as_u64() & mask == 0).map(|i| from + i as u64)
                     })
                 })
                 .collect();
@@ -173,7 +189,7 @@ pub fn grind(t: &Sponge<super::ops::Native>, bits: u32) -> u64 {
         if let Some(n) = found {
             return n;
         }
-        base += threads * batch;
+        start += threads * batch;
     }
 }
 

@@ -75,6 +75,8 @@ fn main() {
         }
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let segs = run.segments();
+        let parts: Vec<String> = proof.sizes(p).iter().map(|(k, v)| format!("{k} {v}")).collect();
+        println!("{name}: parts {}", parts.join(" · "));
         println!(
             "{name}: cycles {} · {} steps of 2^{n} rows · proof {} B · run {:.0} ms · prove {:.0} ms ({:.0} ms/step) · verify median {:.2} ms",
             run.statement.cycles,

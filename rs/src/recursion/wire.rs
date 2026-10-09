@@ -206,10 +206,12 @@ fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], depth: usize, e
                     paths[q].push(sib_of(anc));
                 }
             }
-            next.push((idx >> 1, perm::head(&perm::node_state(l, r))));
+            next.push((idx >> 1, perm::node_input(l, r)));
             i += step;
         }
-        nodes = next;
+        let mut states: Vec<[Goldilocks; 16]> = next.iter().map(|x| x.1).collect();
+        perm::permute_many(&mut states);
+        nodes = next.iter().zip(&states).map(|(x, s)| (x.0, perm::head(s))).collect();
     }
     if it.next().is_some() {
         return Err(PcsError::Merkle);
@@ -280,6 +282,25 @@ fn read_step(r: &mut Reader<'_>, p: &Params) -> R<StepProof> {
 }
 
 impl IvcProof {
+    /// Bytes of each part: header, state, step (AIR part), accumulation
+    /// step, decider.
+    pub fn sizes(&self, p: &Params) -> [(&'static str, usize); 5] {
+        let len = |f: &dyn Fn(&mut Writer)| {
+            let mut w = Writer::default();
+            f(&mut w);
+            w.buf.len()
+        };
+        let all = len(&|w| step(w, &self.step, p));
+        let acc = len(&|w| acc_proof(w, &self.step.acc, p));
+        [
+            ("header", 1 + 8 + 8 + 32),
+            ("state", len(&|w| state(w, &self.state))),
+            ("step", all - acc),
+            ("accumulation", acc),
+            ("decider", len(&|w| self.decider.write(w, true))),
+        ]
+    }
+
     pub fn to_bytes(&self, p: &Params) -> Vec<u8> {
         let mut w = Writer::default();
         w.u8(self.log_rows as u8);

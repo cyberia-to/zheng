@@ -95,6 +95,19 @@ pub trait Ops {
 #[derive(Default)]
 pub struct Native {
     pub error: Option<String>,
+    /// Defer leaf-and-path chains and hash them in batches at
+    /// [`Native::finish`] (the final verifier); off, every permutation is
+    /// computed at once.
+    pub batch: bool,
+    deferred: Vec<(Vec<NOp>, [Goldilocks; 4], &'static str)>,
+}
+
+/// A deferred chain operation: a block's rate lanes (`None` keeps) or a
+/// Merkle node.
+#[derive(Clone)]
+enum NOp {
+    Block([Option<Goldilocks>; RATE]),
+    Node(bool, [Goldilocks; 4]),
 }
 
 /// A chain's state after its last block (`None` before the first).
@@ -102,19 +115,101 @@ pub struct Native {
 pub struct NChain {
     tag: u64,
     state: Option<[Goldilocks; WIDTH]>,
+    ops: Option<Vec<NOp>>,
+}
+
+impl NChain {
+    /// The permutation input a block of `items` would have (the prover's
+    /// grinding; no checks).
+    pub fn input(&self, items: &[In<Fp3>]) -> [Goldilocks; WIDTH] {
+        let mut s = self.state.unwrap_or_else(|| {
+            let mut s = [Goldilocks::ZERO; WIDTH];
+            s[RATE] = Goldilocks::new(self.tag);
+            s
+        });
+        let fresh = self.state.is_none();
+        let mut lane = 0;
+        for it in items {
+            match *it {
+                In::Var(v, ext) | In::Free(v, ext) => {
+                    s[lane] = v.c0;
+                    if ext {
+                        s[lane + 1] = v.c1;
+                        s[lane + 2] = v.c2;
+                    }
+                }
+                In::Zero => s[lane] = Goldilocks::ZERO,
+                In::Keep => {
+                    if fresh {
+                        s[lane] = Goldilocks::ZERO;
+                    }
+                }
+            }
+            lane += it.width();
+        }
+        s
+    }
 }
 
 impl Native {
     pub fn new() -> Self {
         Self::default()
     }
+    /// A native interpreter that batches Merkle openings.
+    pub fn batched() -> Self {
+        Self { batch: true, ..Self::default() }
+    }
     fn fail(&mut self, what: &str) {
         if self.error.is_none() {
             self.error = Some(what.to_string());
         }
     }
-    /// `Ok` when no check failed.
-    pub fn finish(&self) -> Result<(), String> {
+    /// Hash the deferred openings; `Ok` when no check failed.
+    pub fn finish(&mut self) -> Result<(), String> {
+        let jobs = core::mem::take(&mut self.deferred);
+        if self.error.is_none() && !jobs.is_empty() {
+            let mut fresh = [Goldilocks::ZERO; WIDTH];
+            fresh[RATE] = Goldilocks::new(super::perm::tag::LEAF);
+            let mut states = vec![fresh; jobs.len()];
+            let longest = jobs.iter().map(|j| j.0.len()).max().unwrap_or(0);
+            for k in 0..longest {
+                let idx: Vec<usize> = (0..jobs.len()).filter(|&q| k < jobs[q].0.len()).collect();
+                let mut batch: Vec<[Goldilocks; WIDTH]> = idx
+                    .iter()
+                    .map(|&q| {
+                        let prev = states[q];
+                        match &jobs[q].0[k] {
+                            NOp::Block(l) => {
+                                let mut x = prev;
+                                for (i, v) in l.iter().enumerate() {
+                                    match v {
+                                        Some(v) => x[i] = *v,
+                                        None if k == 0 => x[i] = Goldilocks::ZERO,
+                                        None => {}
+                                    }
+                                }
+                                x
+                            }
+                            NOp::Node(right, sib) => {
+                                let cur = [prev[0], prev[1], prev[2], prev[3]];
+                                let (l, r) = if *right { (*sib, cur) } else { (cur, *sib) };
+                                perm::node_input(l, r)
+                            }
+                        }
+                    })
+                    .collect();
+                perm::permute_many(&mut batch);
+                for (&q, s) in idx.iter().zip(batch) {
+                    states[q] = s;
+                }
+            }
+            for (s, j) in states.iter().zip(&jobs) {
+                if [s[0], s[1], s[2], s[3]] != j.1 {
+                    self.fail(j.2);
+                    break;
+                }
+            }
+        }
         match &self.error {
             None => Ok(()),
             Some(e) => Err(format!("recursion: {e}")),
@@ -151,9 +246,35 @@ impl Ops for Native {
         x
     }
     fn chain(&mut self, tag: u64) -> NChain {
-        NChain { tag, state: None }
+        let ops = (self.batch && tag == super::perm::tag::LEAF).then(Vec::new);
+        NChain { tag, state: None, ops }
     }
     fn permute(&mut self, c: &mut NChain, items: &[In<Fp3>]) {
+        if let Some(ops) = &mut c.ops {
+            let mut l = [None; RATE];
+            let mut lane = 0;
+            for it in items {
+                match *it {
+                    In::Var(v, ext) | In::Free(v, ext) => {
+                        if ext {
+                            l[lane] = Some(v.c0);
+                            l[lane + 1] = Some(v.c1);
+                            l[lane + 2] = Some(v.c2);
+                        } else {
+                            if base_of(v).is_none() {
+                                self.error.get_or_insert_with(|| "a base lane holds an extension value".into());
+                            }
+                            l[lane] = Some(v.c0);
+                        }
+                    }
+                    In::Zero => l[lane] = Some(Goldilocks::ZERO),
+                    In::Keep => {}
+                }
+                lane += it.width();
+            }
+            ops.push(NOp::Block(l));
+            return;
+        }
         let mut s = match c.state {
             Some(s) => s,
             None => {
@@ -207,6 +328,13 @@ impl Ops for Native {
         Fp3::new(s[lane], s[lane + 1], s[lane + 2])
     }
     fn node(&mut self, c: &mut NChain, bit: Fp3, sibling: [Goldilocks; 4]) {
+        if let Some(ops) = &mut c.ops {
+            if bit != Fp3::ONE && bit != Fp3::ZERO {
+                self.error.get_or_insert_with(|| "a Merkle direction is not a bit".into());
+            }
+            ops.push(NOp::Node(bit == Fp3::ONE, sibling));
+            return;
+        }
         let s = c.state.expect("a block");
         let cur = [s[0], s[1], s[2], s[3]];
         let right = if bit == Fp3::ONE {
@@ -221,6 +349,13 @@ impl Ops for Native {
         c.state = Some(if self.error.is_none() { perm::node_state(l, r) } else { perm::node_input(l, r) });
     }
     fn digest_eq(&mut self, c: &NChain, root: [Fp3; 4], what: &'static str) {
+        if let Some(ops) = &c.ops {
+            match root.iter().map(|r| base_of(*r)).collect::<Option<Vec<_>>>() {
+                Some(r) => self.deferred.push((ops.clone(), [r[0], r[1], r[2], r[3]], what)),
+                None => self.fail(what),
+            }
+            return;
+        }
         let s = c.state.expect("a block");
         if (0..4).any(|i| Fp3::from_base(s[i]) != root[i]) {
             self.fail(what);

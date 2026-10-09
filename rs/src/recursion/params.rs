@@ -89,3 +89,39 @@ impl Params {
         SEEDS
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lens::MultilinearPcs;
+
+    /// Every round of the recursion profile at its shipped parameters
+    /// proves ≥ 128 bits (`specs/soundness.md` § recursion).
+    #[test]
+    fn every_ledger_row_of_the_recursion_profile_reaches_128_bits() {
+        let mut whir = crate::execution::succinct::params_for(20);
+        whir.log_inv_rate = 4;
+        whir.pow_bits = 24;
+        let p = Params::new(&whir, 15).unwrap();
+        let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
+        let mut rows = p.cfg.terms(INPUTS, j);
+        rows.push(("decider whir".into(), lens::Whir::security_bits(&whir, p.vars)));
+        let k = lens::rspcs::soundness::ext_field_bits();
+        let log2 = |x: usize| (x as f64).log2();
+        rows.push(("zerocheck μ (structured powers)".into(), k - log2(SEEDS * (p.base - 1))));
+        rows.push(("zerocheck round (degree 9)".into(), k - log2(10)));
+        rows.push(("constraint line fold".into(), k - log2(p.g_deg)));
+        rows.push(("nox public line fold".into(), k - log2(p.pn_deg)));
+        rows.push(("circuit key line fold".into(), k - log2(p.pv_deg)));
+        rows.push(("column batching γ_n, γ_v".into(), k - log2(cl::pre::LOG)));
+        // circuit memory: T slot accesses per step
+        let t = cl::SLOTS << p.n;
+        rows.push(("circuit memory α".into(), k - log2(t)));
+        rows.push(("circuit memory β (pairs)".into(), k - 2.0 * log2(t) + 1.0));
+        for (name, bits) in &rows {
+            eprintln!("{name:40} {bits:8.2}");
+            assert!(*bits >= 128.0, "{name}: {bits}");
+        }
+        eprintln!("t {} s {} query_pow {} comb_pow {} fresh {} J {j} base {} g_deg {}", p.cfg.queries, p.cfg.ood, p.cfg.query_pow, p.cfg.comb_pow_for(INPUTS), p.fresh, p.base, p.g_deg);
+    }
+}

@@ -59,6 +59,7 @@ pub struct StepInput<'a> {
     pub b_out: &'a [Goldilocks],
     pub v1: &'a Trace,
     pub key: &'a Pre,
+    pub sparse: &'a [Vec<(u32, Fp3)>],
 }
 
 fn line(a: &[Fp3], b: &[Fp3], x: u64) -> Vec<Fp3> {
@@ -74,18 +75,13 @@ pub fn pbar_nox(global: &[Public], point: &[Fp3], n: usize) -> Fp3 {
 }
 
 /// `P̄_V(z, γ) = Σ_x eq(z, x) Σ_j eq(γ, j)·K_j(x)` over the circuit key.
-pub fn pbar_v(key: &Pre, point: &[Fp3], n: usize) -> Fp3 {
+pub fn pbar_v(key: &[Vec<(u32, Fp3)>], point: &[Fp3], n: usize) -> Fp3 {
     let (z, g) = point.split_at(n);
     let ez = eq_table(z);
     let eg = eq_table(g);
     let mut acc = Fp3::ZERO;
-    for (col, &w) in key.cols.iter().zip(&eg) {
-        let mut s = Fp3::ZERO;
-        for (&k, &e) in col.iter().zip(&ez) {
-            if k != Fp3::ZERO {
-                s += k * e;
-            }
-        }
+    for (col, &w) in key.iter().zip(&eg) {
+        let s = col.iter().fold(Fp3::ZERO, |a, &(x, k)| a + k * ez[x as usize]);
         acc += w * s;
     }
     acc
@@ -186,7 +182,7 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     }
     let _ = t.squeeze_ext();
     let point_v: Vec<Fp3> = rho.iter().chain(&gamma_v).copied().collect();
-    let fold_pv: Vec<Fp3> = (2..=p.pv_deg as u64).map(|j| pbar_v(w.key, &line(&st.pv.point, &point_v, j), n)).collect();
+    let fold_pv: Vec<Fp3> = (2..=p.pv_deg as u64).map(|j| pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n)).collect();
     for &v in &fold_pv {
         t.absorb_ext(v);
     }
@@ -318,6 +314,7 @@ fn prove_acc(
     last: bool,
 ) -> Result<(AccProof, AccData, AccV<Fp3>), String> {
     let cfg = &p.cfg;
+    let lap = super::ivc::timer_pub("      acc ");
     let gamma = t.squeeze_ext();
     let mut g = Fp3::ONE;
     let weights: Vec<Weight> = claims
@@ -334,10 +331,12 @@ fn prove_acc(
         })
         .collect();
     let (msgs, rho, evals) = sumcheck::prove(t, tables.to_vec(), &weights, p.vars);
+    lap("sumcheck");
     for &e in &evals {
         t.absorb_ext(e);
     }
     let comb_nonce = t.grind(cfg.comb_pow_for(4));
+    lap("grind");
     let r = t.squeeze_ext();
     let coef = [Fp3::ONE, r, r * r, r * r * r];
     let mut gt = vec![Fp3::ZERO; 1 << p.vars];
@@ -356,6 +355,7 @@ fn prove_acc(
         let wd = Word::commit_ext(cfg.layout, &gt);
         (wd.root(), AccData::Word(wd))
     };
+    lap("commit");
     t.absorb_all(&root);
     let mut ood = Vec::with_capacity(cfg.ood);
     let mut ood_claims = Vec::with_capacity(cfg.ood);
@@ -370,7 +370,9 @@ fn prove_acc(
         ood.push(y);
         ood_claims.push((z, y));
     }
+    lap("ood");
     let query_nonce = t.grind(cfg.query_pow);
+    lap("grind");
     let symbols = t.indices(cfg.queries, cfg.layout.log_domain as usize)?;
     let omega = root_of_unity(cfg.layout.log_domain);
     let mut openings = Vec::with_capacity(cfg.queries);
