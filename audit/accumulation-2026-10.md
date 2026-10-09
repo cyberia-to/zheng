@@ -235,7 +235,8 @@ decider at these parameters).
 - Constant proof size and ≤ 1 ms verification (follow from recursion).
 - The 64 KB bound for merkle-32 (levers in §6).
 - Opcodes lt, xor/and/not/shl, call, look; axis addresses ≥ 2^32 (refused,
-  never proven wrongly).
+  never proven wrongly) — done on `feat/machine-opcodes`,
+  `machine-opcodes-2026-10.md`.
 - The arena capacity of `nox::Reduction<N>` is not modelled; the budget
   equivalence relies on nox's `bound()` being an upper bound (review checked
   the covered opcodes).
