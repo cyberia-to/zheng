@@ -57,19 +57,22 @@ index, returned value and every root limb to the exact lookup wires. Inactive
 records use a canonical zero payload and supply no cell evidence. The verifier
 requires exactly the derived record count; namespace is in 0..9.
 
-The state owner authenticates complete public dimension tables under versioned
-systematic Lens commitments and checks their ordered 14-leaf Hemera root. Only
-then may its cell accessor supply expected values to Zheng's state verifier.
-This is public execution: no secret input is accepted, all proof columns and
-queried dimension tables are disclosed. The API callback is an authentication
-boundary, not a proof supplied by the prover. Joy embeds and validates the
-certificate before calling the state verifier. All file/wire formats are bounded.
+Zheng authenticates the complete public dimension tables itself
+(`state_evidence::StateEvidence`): every carried table must match its leaf
+(versioned systematic Lens commitment) and the ordered 14 leaves must fold to
+the statement's own root before any read is answered from them. This is public
+execution: no secret input is accepted, all proof columns and queried dimension
+tables are disclosed. Joy embeds the BBG certificate and hands its evidence to
+zheng; it performs no authentication of its own. All file/wire formats are bounded.
 
 ## Private queries over authenticated public state
 
-A private-state backend may authenticate complete public dimension tables first,
-then derive the CCS from the canonical program, public shape, expected root and
-those exact tables. Each look constrains the namespace and index selector inside
+The private-state path (`private_state`) takes the same evidence:
+`PrivateStateStatement::prepare`, `verify_veil` and `verify_mith` authenticate
+it under the statement's own root (all ten namespaces required) before the
+tables become relation constants, and only zheng can build `PublicStateTables`
+(its fields are crate-private). The verifier then derives the CCS from the
+canonical program, public shape, expected root and those exact tables. Each look constrains the namespace and index selector inside
 the CCS, selects exactly one committed cell on an active path, equates the value
 to that cell, and equates all four actual root limbs to the expected root. The
 private witness contains the query coordinates; they are not separate public

@@ -133,7 +133,8 @@ anything on zheng's behalf: evidence for another root, without the table a
 read names, or with a value its leaf does not commit is rejected. The layout
 is BBG's (`bbg/rs/src/root.rs`, `certificate.rs`); `StateCertificate::evidence`
 converts, and both repositories pin the frozen root vectors. The prover takes
-the same evidence and states the root it authenticates.
+the same evidence and states the root it authenticates. The private-state path
+takes the same evidence (`specs/ccs-execution-backends.md`).
 
 The statement carries no caller context. Under the public profiles the
 witness is disclosed, so whoever holds a certificate can re-certify the same

@@ -159,6 +159,22 @@ unsatisfying witness refused by the prover), `tests/veil_profile.rs`
 (agreement with the public profile and with MITH, envelope binding of the
 context and the statement, scheme byte).
 
+## follow-up: private-state authentication in zheng
+
+`PublicStateTables` (the ten tables a private state relation embeds) had
+public fields and was built by the caller (joy `zk_state`) from a certificate
+the caller checked. Now its fields are crate-private and it is built only by
+`StateEvidence::private_tables(root)`, which authenticates the evidence under
+the root and requires namespaces 0..9 (≤ 2048 fields).
+`PrivateStateStatement::prepare(&evidence)`, `verify_veil` and `verify_mith`
+take the evidence; `private_state::prepare_execution` takes it and states its
+root. Test `private_state_tests::every_private_state_verifier_authenticates_the_evidence_itself`:
+for both schemes, the honest proof verifies and a statement naming another
+root, foreign evidence, a statement re-rooted to it, a table altered under
+the honest leaves, a leaf altered to match it and a missing table are all
+rejected by zheng alone. Joy's `zk_state` hands over the certificate's
+evidence; its private-state tests (veil by default) pass.
+
 ## suites
 
 | suite | result |
@@ -175,9 +191,11 @@ context and the statement, scheme byte).
 - The zk opening is unique-decoding Ligero: ~0.91 bits per query, so the
   opening is ~62 KB at 128 bits — at the proposal's 64 KB ceiling for one
   hash, larger than the succinct profile (~16 KB with WHIR).
-- State statements in the zk profile: joy's private state queries use veil
-  through the relation-level API (its tables are relation constants); a
-  `StateStatement` zk variant does not exist.
+- State statements in the zk profile: private state queries (`private_state`,
+  hidden namespace and key) prove with veil or MITH and are verified by
+  `PrivateStateStatement::verify_veil` / `verify_mith`, which authenticate the
+  tables themselves (follow-up below); a zk variant of the public-read
+  `StateStatement` does not exist.
 - Prover constant time: not addressed (hemera's keyed XOF runs in constant
   time; the field arithmetic, NTTs and sumcheck do not).
 - Verify ≤ 1 ms: 4.1 ms with a cached key at this fixture (opening 3.8 ms).
