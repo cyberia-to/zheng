@@ -16,19 +16,17 @@ fn add_mul() -> N {
     let add = pair(N::Atom(5), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
     pair(N::Atom(7), pair(add, pair(N::Atom(0), N::Atom(2))))
 }
-fn cell(ns: u64, key: u64) -> Option<u64> {
-    ((ns, key) == (2, 11)).then_some(42)
+/// cell(2, 11) = 42.
+fn evidence() -> StateEvidence {
+    let mut body = vec![0u64; 9];
+    body[8] = 42;
+    StateEvidence::with_tables(vec![crate::execution::state_evidence::StateTable::with_body(2, &body)])
 }
-const ROOT: [u64; 4] = [1, 2, 3, 4];
 
-/// Verify as a deployment does: state reads come from a state certificate
-/// verified under the envelope's own root, which answers only for ROOT.
+/// Verify as a deployment does: zheng authenticates the evidence under the
+/// envelope's own root.
 fn verify_authenticated(e: &Envelope) -> Result<(), String> {
-    let root = match e {
-        Envelope::StatePublic { statement, .. } => statement.state_root,
-        _ => ROOT,
-    };
-    e.verify(&mut |ns, key| if root == ROOT { cell(ns, key) } else { None })
+    e.verify(Some(&evidence()))
 }
 
 fn public() -> Envelope {
@@ -39,8 +37,7 @@ fn public() -> Envelope {
 fn state() -> Envelope {
     let program = pair(N::Atom(7), pair(pair(N::Atom(17), pair(quote(2), quote(11))), quote(3)));
     let (statement, certificate) =
-        certify_state_execution(&program, &[], 1000, ROOT, true, [9; 32], &mut cell)
-            .unwrap();
+        certify_state_execution(&program, &[], 1000, true, &evidence()).unwrap();
     Envelope::StatePublic { statement, certificate }
 }
 
@@ -75,7 +72,7 @@ fn every_live_profile_round_trips_canonically_and_verifies() {
         let back = Envelope::from_bytes(&bytes).unwrap();
         assert_eq!(back, envelope);
         assert_eq!(back.to_bytes(), bytes, "one encoding per value");
-        back.verify(&mut cell).unwrap();
+        back.verify(Some(&evidence())).unwrap();
     }
 }
 
@@ -100,7 +97,7 @@ fn wrong_magic_version_and_profile_are_rejected() {
         let mut bad = bytes.clone();
         bad[10] = profile;
         let accepted =
-            Envelope::from_bytes(&bad).map(|e| e.verify(&mut cell).is_ok()).unwrap_or(false);
+            Envelope::from_bytes(&bad).map(|e| e.verify(Some(&evidence())).is_ok()).unwrap_or(false);
         assert!(!accepted, "profile {profile}");
     }
 }
@@ -124,8 +121,7 @@ fn truncation_and_trailing_bytes_are_rejected() {
 
 /// Byte ranges every change of which must be rejected: the header and the
 /// statement. The certificate tail may hold "don't care" wires (see the
-/// malleability tests); the state context is caller metadata that zheng
-/// carries but does not interpret (joy binds program name and source hash).
+/// malleability tests).
 fn bound_ranges(envelope: &Envelope) -> Vec<(usize, usize)> {
     let len = |f: &dyn Fn(&mut codec::Writer)| {
         let mut w = codec::Writer::default();
@@ -149,8 +145,7 @@ fn bound_ranges(envelope: &Envelope) -> Vec<(usize, usize)> {
                     [r.namespace, r.key, r.value].iter().for_each(|&v| w.varint(v));
                 }
             });
-            let context_end = HEADER_BYTES + roots + 32;
-            vec![(0, HEADER_BYTES + roots), (context_end, context_end + reads)]
+            vec![(0, HEADER_BYTES + roots + reads)]
         }
         Envelope::Zk { .. } | Envelope::Succinct { .. } => unreachable!(),
     }
@@ -204,10 +199,10 @@ fn zk_context_and_proof_bytes_are_bound() {
     let mut other = context;
     other[0] ^= 1;
     let moved = Envelope::Zk { statement: statement.clone(), context: other, proof: proof.clone() };
-    assert!(moved.verify(&mut cell).is_err());
+    assert!(moved.verify(Some(&evidence())).is_err());
     let mut forged = statement.clone();
     forged.execution.public_output[0] += 1;
-    assert!(Envelope::Zk { statement: forged, context, proof }.verify(&mut cell).is_err());
+    assert!(Envelope::Zk { statement: forged, context, proof }.verify(Some(&evidence())).is_err());
 }
 
 #[test]

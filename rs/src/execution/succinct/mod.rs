@@ -21,6 +21,7 @@ pub use lens::rspcs::whir::Decoding;
 pub use lens::{MultilinearPcs, TensorRs, TensorRsParams, Whir, WhirParams};
 
 use super::state::{self, StateStatement};
+use super::state_evidence::StateEvidence;
 use super::{ExecutionNoun, ExecutionStatement};
 use nebu::Goldilocks;
 
@@ -65,28 +66,18 @@ pub fn verify<P: SuccinctPcs>(
     )
 }
 
-/// Prove an authenticated-state execution with a committed witness. The
-/// lookup callback MUST answer from `state_root`.
-#[allow(clippy::too_many_arguments)]
+/// Prove an authenticated-state execution with a committed witness; the
+/// statement's root is the root `evidence` authenticates.
 pub fn prove_state<P: SuccinctPcs>(
     params: &P::Params,
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
-    state_root: [u64; 4],
     root_in_subject: bool,
-    context: [u8; 32],
-    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    evidence: &StateEvidence,
 ) -> Result<(StateStatement, SuccinctProof<P>), String> {
-    let (statement, relation, witness, public) = state::prepare(
-        program,
-        input,
-        budget,
-        state_root,
-        root_in_subject,
-        context,
-        lookup,
-    )?;
+    let (statement, relation, witness, public) =
+        state::prepare(program, input, budget, root_in_subject, evidence)?;
     let proof = protocol::prove::<P>(
         params,
         &relation.instance,
@@ -97,16 +88,15 @@ pub fn prove_state<P: SuccinctPcs>(
     Ok((statement, proof))
 }
 
-/// Verify a succinct state proof. The callback MUST answer from a state
-/// certificate already verified against `statement.state_root`; it is
-/// consulted for every active read before anything else is checked.
+/// Verify a succinct state proof: `evidence` is authenticated under
+/// `statement.state_root` and every active read against it before anything
+/// else is checked.
 pub fn verify_state<P: SuccinctPcs>(
     statement: &StateStatement,
     proof: &SuccinctProof<P>,
-    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    evidence: &StateEvidence,
 ) -> Result<(), String> {
-    let relation = statement.relation()?;
-    let public = statement.bindings(&relation, lookup)?;
+    let (relation, public) = statement.authenticated_bindings(evidence)?;
     protocol::verify::<P>(
         &relation.instance,
         &with_constant(public),

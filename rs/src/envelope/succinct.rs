@@ -27,6 +27,7 @@ use super::body::{execution, read_execution, read_state, state};
 use super::codec::{Reader, Writer};
 use super::{Envelope, EnvelopeError as E};
 use crate::execution::state::StateStatement;
+use crate::execution::state_evidence::StateEvidence;
 use crate::execution::succinct::{SuccinctPcs, SuccinctProof};
 use crate::execution::ExecutionStatement;
 use crate::spartan::reduce::CompressedRounds;
@@ -234,13 +235,16 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
 pub(super) fn verify(
     statement: &SuccinctStatement,
     any: &AnySuccinct,
-    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    state: Option<&StateEvidence>,
 ) -> Result<(), String> {
     use crate::execution::succinct as s;
+    let evidence = || state.ok_or_else(|| "succinct state proof: no state evidence".to_string());
     match (statement, any) {
         (SuccinctStatement::Execution(st), AnySuccinct::Whir(p)) => s::verify(st, p),
         (SuccinctStatement::Execution(st), AnySuccinct::Tensor(p)) => s::verify(st, p),
-        (SuccinctStatement::State(st), AnySuccinct::Whir(p)) => s::verify_state(st, p, lookup),
-        (SuccinctStatement::State(st), AnySuccinct::Tensor(p)) => s::verify_state(st, p, lookup),
+        (SuccinctStatement::State(st), AnySuccinct::Whir(p)) => s::verify_state(st, p, evidence()?),
+        (SuccinctStatement::State(st), AnySuccinct::Tensor(p)) => {
+            s::verify_state(st, p, evidence()?)
+        }
     }
 }

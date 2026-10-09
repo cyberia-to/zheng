@@ -47,7 +47,6 @@ pub(super) fn state(statement: &StateStatement, w: &mut Writer) {
     for limb in statement.state_root {
         w.varint(limb);
     }
-    w.raw(&statement.context);
     w.bool(statement.root_in_subject);
     w.len(statement.reads.len());
     for read in &statement.reads {
@@ -89,7 +88,6 @@ pub(super) fn read_state(r: &mut Reader) -> Result<StateStatement, E> {
     for limb in &mut state_root {
         *limb = r.field()?;
     }
-    let context = read_context(r)?;
     let root_in_subject = r.bool()?;
     let n = r.len(MAX_READS, 4)?;
     let mut reads = Vec::with_capacity(n);
@@ -109,7 +107,6 @@ pub(super) fn read_state(r: &mut Reader) -> Result<StateStatement, E> {
     Ok(StateStatement {
         execution,
         state_root,
-        context,
         root_in_subject,
         reads,
     })

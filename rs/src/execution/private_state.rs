@@ -16,7 +16,6 @@ impl PrivateStateStatement {
         StateStatement {
             execution: self.execution.clone(),
             state_root: self.root,
-            context: [0; 32],
             root_in_subject: self.root_in_subject,
             reads: vec![],
         }

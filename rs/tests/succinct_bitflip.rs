@@ -11,7 +11,7 @@ use zheng::execution::succinct::{self, TensorRs, TensorRsParams, Whir, WhirParam
 
 fn scan(envelope: &Envelope) -> (usize, usize) {
     let bytes = envelope.to_bytes();
-    assert!(Envelope::from_bytes(&bytes).unwrap().verify(&mut |_, _| None).is_ok());
+    assert!(Envelope::from_bytes(&bytes).unwrap().verify(None).is_ok());
     let accepted = AtomicUsize::new(0);
     let total = bytes.len() * 8;
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -24,7 +24,7 @@ fn scan(envelope: &Envelope) -> (usize, usize) {
                     let (i, bit) = (flip / 8, 1u8 << (flip % 8));
                     bad[i] ^= bit;
                     let ok = Envelope::from_bytes(&bad)
-                        .is_ok_and(|e| e.verify(&mut |_, _| None).is_ok());
+                        .is_ok_and(|e| e.verify(None).is_ok());
                     if ok {
                         eprintln!("accepted flip: byte {i} bit {}", flip % 8);
                         accepted.fetch_add(1, Ordering::Relaxed);

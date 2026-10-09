@@ -16,8 +16,7 @@
 //!   `ZHMITH01` proof bytes (length-prefixed); the proof's statement bytes
 //!   are [`zk_statement_bytes`];
 //! - state-public (3): execution statement, state root (4 field limbs),
-//!   32-byte context, root-in-subject flag, the reads, then the v3
-//!   certificate.
+//!   root-in-subject flag, the reads, then the v3 certificate.
 //!
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
@@ -33,6 +32,7 @@ mod tests;
 
 use crate::execution::private::PrivateStatement;
 use crate::execution::state::StateStatement;
+use crate::execution::state_evidence::StateEvidence;
 use crate::execution::zk::{self, PrivateProof};
 use crate::execution::{Certificate, ExecutionStatement, verify_certificate};
 use core::fmt;
@@ -149,11 +149,11 @@ impl Envelope {
         Ok(envelope)
     }
 
-    /// Verify the proof against its own statement. `lookup` answers state
-    /// reads for the state profiles (3, and 1 with a state statement) and MUST come from a state
-    /// certificate already verified under that statement's root; the other
+    /// Verify the proof against its own statement. The state profiles (3,
+    /// and 1 with a state statement) need `state`: zheng authenticates it
+    /// under the statement's root and every read against it; the other
     /// profiles never consult it.
-    pub fn verify(&self, lookup: &mut dyn FnMut(u64, u64) -> Option<u64>) -> Result<(), String> {
+    pub fn verify(&self, state: Option<&StateEvidence>) -> Result<(), String> {
         match self {
             Self::Public {
                 statement,
@@ -181,8 +181,11 @@ impl Envelope {
             Self::StatePublic {
                 statement,
                 certificate,
-            } => statement.verify_certificate(certificate, lookup),
-            Self::Succinct { statement, proof } => succinct::verify(statement, proof, lookup),
+            } => statement.verify_certificate(
+                certificate,
+                state.ok_or("state envelope: no state evidence")?,
+            ),
+            Self::Succinct { statement, proof } => succinct::verify(statement, proof, state),
         }
     }
 }

@@ -1,10 +1,20 @@
 //! Public authenticated-state execution: lookup coordinates pinned in a
 //! verifier-derived CCS. Profile v3 (`certify_state_execution`,
 //! `StateStatement::verify_certificate`) checks a certificate exactly;
-//! profile v1 (`prove_state_execution`, `StateStatement::verify`) is retired
-//! and read for one release. Lookup authentication belongs to the state owner
-//! and must precede verification.
+//! profile v1 (`prove_state_execution`, `StateStatement::verify_v1`) is
+//! retired and read for one release.
+//!
+//! Every verifier takes the [`StateEvidence`] of the reads and
+//! authenticates it against the statement's own `state_root` before any
+//! read is pinned: no caller authenticates anything on zheng's behalf.
+//!
+//! The statement carries no caller context. Under the public profiles the
+//! witness is disclosed, so anyone holding a certificate can re-certify the
+//! same execution under any label: no relation can bind one. The retired v1
+//! transcript did absorb a 32-byte context; `verify_v1` takes it as an
+//! argument so that old proofs keep verifying.
 use super::relation::{ExecutionRelation, SubjectShape, compile_relation};
+use super::state_evidence::{AuthenticatedState, StateEvidence};
 use super::{Certificate, DirectProof, ExecutionNoun, ExecutionStatement, certificate, proof};
 use crate::types::CCSWitness;
 use nebu::Goldilocks as F;
@@ -26,7 +36,6 @@ pub struct PublicLookup {
 pub struct StateStatement {
     pub execution: ExecutionStatement,
     pub state_root: [u64; 4],
-    pub context: [u8; 32],
     /// Compiler state ABI places the root in the subject head. Raw formulas
     /// may instead construct the root explicitly inside their program.
     pub root_in_subject: bool,
@@ -70,10 +79,20 @@ impl StateStatement {
             .map_err(|e| format!("unsupported state execution relation: {e:?}"))?;
         Ok(relation)
     }
+    /// The statement bytes every transcript-bearing profile absorbs.
     pub fn transcript_bytes(&self) -> Vec<u8> {
-        let mut bytes = b"zheng-nox-public-state-execution-v1".to_vec();
+        self.domain_bytes(b"zheng-nox-public-state-execution-v2", None)
+    }
+    /// The retired v1 statement bytes, with the caller context v1 absorbed.
+    pub fn transcript_bytes_v1(&self, context: &[u8; 32]) -> Vec<u8> {
+        self.domain_bytes(b"zheng-nox-public-state-execution-v1", Some(context))
+    }
+    fn domain_bytes(&self, domain: &[u8], context: Option<&[u8; 32]>) -> Vec<u8> {
+        let mut bytes = domain.to_vec();
         bytes.extend(self.execution.transcript_bytes());
-        bytes.extend(self.context);
+        if let Some(context) = context {
+            bytes.extend(context);
+        }
         for v in self.state_root {
             bytes.extend(v.to_le_bytes());
         }
@@ -90,8 +109,11 @@ impl StateStatement {
     pub(crate) fn bindings(
         &self,
         relation: &ExecutionRelation,
-        lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+        state: &AuthenticatedState<'_>,
     ) -> Result<Vec<(usize, F)>, String> {
+        if state.root() != self.state_root {
+            return Err("state evidence authenticated under another root".into());
+        }
         if self.reads.len() != relation.lookups.len() {
             return Err("state lookup count mismatch".into());
         }
@@ -120,7 +142,7 @@ impl StateStatement {
             if read.namespace > 9
                 || read.key >= nebu::field::P
                 || read.value >= nebu::field::P
-                || lookup(read.namespace, read.key) != Some(read.value)
+                || state.cell(read.namespace, read.key) != Some(read.value)
             {
                 return Err("state cell authentication failed".into());
             }
@@ -133,28 +155,37 @@ impl StateStatement {
         }
         Ok(coordinates.into_iter().collect())
     }
-    /// Profile v3. The callback MUST answer from a state certificate already
-    /// verified against this exact `state_root`; it is consulted for every
-    /// active read before any row is checked.
+    /// The relation and pinned coordinates after authenticating `evidence`
+    /// under this statement's root and every active read against it.
+    pub(crate) fn authenticated_bindings(
+        &self,
+        evidence: &StateEvidence,
+    ) -> Result<(ExecutionRelation, Vec<(usize, F)>), String> {
+        let state = evidence.authenticate(self.state_root)?;
+        let relation = self.relation()?;
+        let public = self.bindings(&relation, &state)?;
+        Ok((relation, public))
+    }
+    /// Profile v3: authenticate `evidence` under `state_root`, every active
+    /// read against it, then check every row exactly.
     pub fn verify_certificate(
         &self,
         certificate: &Certificate,
-        lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+        evidence: &StateEvidence,
     ) -> Result<(), String> {
-        let relation = self.relation()?;
-        let public = self.bindings(&relation, lookup)?;
+        let (relation, public) = self.authenticated_bindings(evidence)?;
         certificate::verify(&relation.instance, certificate, &public).map_err(|e| e.to_string())
     }
-    /// Profile v1 (retired, read for one release). The callback MUST read
-    /// authenticated values from this exact state_root.
-    pub fn verify(
+    /// Profile v1 (retired, read for one release) under the context its
+    /// transcript absorbed.
+    pub fn verify_v1(
         &self,
+        context: &[u8; 32],
         proof: &DirectProof,
-        lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+        evidence: &StateEvidence,
     ) -> Result<(), String> {
-        let relation = self.relation()?;
-        let public = self.bindings(&relation, lookup)?;
-        proof::verify(&relation.instance, proof, &self.transcript_bytes(), &public)
+        let (relation, public) = self.authenticated_bindings(evidence)?;
+        proof::verify(&relation.instance, proof, &self.transcript_bytes_v1(context), &public)
             .map_err(|e| e.to_string())
     }
 }
@@ -166,11 +197,11 @@ pub(super) fn prepare(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
-    state_root: [u64; 4],
     root_in_subject: bool,
-    context: [u8; 32],
-    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    evidence: &StateEvidence,
 ) -> Result<(StateStatement, ExecutionRelation, CCSWitness, Vec<(usize, F)>), String> {
+    let state_root = evidence.root()?;
+    let state = evidence.authenticate(state_root)?;
     let mut statement = StateStatement {
         execution: ExecutionStatement {
             program: ExecutionStatement::encode_program(program)?,
@@ -180,7 +211,6 @@ pub(super) fn prepare(
             budget,
         },
         state_root,
-        context,
         root_in_subject,
         reads: vec![],
     };
@@ -190,9 +220,7 @@ pub(super) fn prepare(
             if root.map(|v| v.as_u64()) != state_root {
                 return None;
             }
-            lookup(ns.as_u64(), key.as_u64())
-                .filter(|&v| v < nebu::field::P)
-                .map(F::new)
+            state.cell(ns.as_u64(), key.as_u64()).map(F::new)
         })
         .map_err(|e| format!("state execution witness: {e:?}"))?;
     let value = |i: usize| witness.z[i].as_u64();
@@ -219,28 +247,28 @@ pub(super) fn prepare(
             }
         });
     }
-    let public = statement.bindings(&relation, lookup)?;
+    let public = statement.bindings(&relation, &state)?;
     Ok((statement, relation, witness, public))
 }
 
 /// State profile v1 (Spartan + PublicTensor). Public only: the direct proof
 /// discloses all columns. Retained to produce and read `JOYST001` for one
-/// release; new artifacts use [`certify_state_execution`].
+/// release; new artifacts use [`certify_state_execution`]. `context` enters
+/// the v1 transcript only.
 pub fn prove_state_execution(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
-    state_root: [u64; 4],
     root_in_subject: bool,
-    context: [u8; 32],
-    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    context: &[u8; 32],
+    evidence: &StateEvidence,
 ) -> Result<(StateStatement, DirectProof), String> {
     let (statement, relation, witness, public) =
-        prepare(program, input, budget, state_root, root_in_subject, context, lookup)?;
+        prepare(program, input, budget, root_in_subject, evidence)?;
     let proof = proof::prove(
         &relation.instance,
         &witness,
-        &statement.transcript_bytes(),
+        &statement.transcript_bytes_v1(context),
         &public,
     )
     .map_err(|e| e.to_string())?;
@@ -251,19 +279,18 @@ pub fn prove_state_execution(
 /// positions. The verifier pins z[0] = 1, the inputs (and the root when it
 /// sits in the subject), the outputs, the cost and every lookup coordinate
 /// — active flag, root limbs, namespace, key, value — after authenticating
-/// each active read through the caller's state certificate, then checks
-/// every CCS row exactly. No commitment, sumcheck or challenge.
+/// the evidence under the statement's root and each active read against
+/// it, then checks every CCS row exactly. No commitment, sumcheck or
+/// challenge. The statement's root is the root `evidence` authenticates.
 pub fn certify_state_execution(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
-    state_root: [u64; 4],
     root_in_subject: bool,
-    context: [u8; 32],
-    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    evidence: &StateEvidence,
 ) -> Result<(StateStatement, Certificate), String> {
     let (statement, relation, witness, public) =
-        prepare(program, input, budget, state_root, root_in_subject, context, lookup)?;
+        prepare(program, input, budget, root_in_subject, evidence)?;
     let certificate =
         certificate::certify(&relation.instance, &witness, &public).map_err(|e| e.to_string())?;
     Ok((statement, certificate))

@@ -6,6 +6,7 @@ use nebu::Goldilocks as F;
 use zheng::envelope::{Envelope, EnvelopeError, MAGIC};
 use zheng::execution::relation::{SubjectShape, compile_relation};
 use zheng::execution::state::certify_state_execution;
+use zheng::execution::state_evidence::{StateEvidence, StateTable};
 use zheng::execution::{Certificate, ExecutionNoun, certificate, certify_execution, verify_certificate};
 use zheng::types::CCSWitness;
 
@@ -46,7 +47,7 @@ fn public(program: &str, input: &[u64]) -> Envelope {
 
 fn rejected(envelope: &Envelope) -> bool {
     let bytes = envelope.to_bytes();
-    Envelope::from_bytes(&bytes).map_or(true, |e| e.verify(&mut |_, _| None).is_err())
+    Envelope::from_bytes(&bytes).map_or(true, |e| e.verify(None).is_err())
 }
 
 #[test]
@@ -152,19 +153,23 @@ fn fixture_wrong_state_root_is_rejected() {
     let q = |v| pair(ExecutionNoun::Atom(1), ExecutionNoun::Atom(v));
     let read = pair(ExecutionNoun::Atom(17), pair(q(2), q(11)));
     let program = pair(ExecutionNoun::Atom(7), pair(read, q(3)));
-    const ROOT: [u64; 4] = [1, 2, 3, 4];
-    let table = |root: [u64; 4]| move |ns, key| (root == ROOT && (ns, key) == (2, 11)).then_some(42);
-    let (statement, certificate) =
-        certify_state_execution(&program, &[], 1000, ROOT, true, [0; 32], &mut table(ROOT)).unwrap();
+    let state = |value: u64| {
+        let mut body = vec![0u64; 9];
+        body[8] = value;
+        StateEvidence::with_tables(vec![StateTable::with_body(2, &body)])
+    };
+    let (statement, certificate) = certify_state_execution(&program, &[], 1000, true, &state(42)).unwrap();
     let honest = Envelope::StatePublic { statement: statement.clone(), certificate: certificate.clone() };
-    honest.verify(&mut table(ROOT)).unwrap();
+    honest.verify(Some(&state(42))).unwrap();
+    // no evidence, or evidence for another state, is rejected by zheng itself
+    assert!(honest.verify(None).is_err());
+    assert!(honest.verify(Some(&state(43))).is_err());
     for limb in 0..4 {
         let mut wrong = statement.clone();
-        wrong.state_root[limb] += 1;
-        let root = wrong.state_root;
+        wrong.state_root[limb] = (wrong.state_root[limb] + 1) % P;
         let envelope = Envelope::StatePublic { statement: wrong, certificate: certificate.clone() };
         let decoded = Envelope::from_bytes(&envelope.to_bytes()).unwrap();
-        assert!(decoded.verify(&mut table(root)).is_err(), "limb {limb}");
+        assert!(decoded.verify(Some(&state(42))).is_err(), "limb {limb}");
     }
 }
 
@@ -181,7 +186,7 @@ fn fixture_envelope_with_wrong_magic_version_or_profile_is_rejected() {
     for profile in [1u8, 2, 3, 4] {
         let mut wrong = bytes.clone();
         wrong[10] = profile;
-        let accepted = Envelope::from_bytes(&wrong).is_ok_and(|e| e.verify(&mut |_, _| None).is_ok());
+        let accepted = Envelope::from_bytes(&wrong).is_ok_and(|e| e.verify(None).is_ok());
         assert!(!accepted, "profile {profile}");
     }
 }
