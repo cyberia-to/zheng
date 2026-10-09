@@ -36,6 +36,8 @@ mod trace;
 mod tests;
 #[cfg(test)]
 mod tests_ops;
+#[cfg(test)]
+mod tests_review;
 
 pub use exec::{Hints, MachineError};
 pub use execute::{execute, execute_hinted, execute_with};

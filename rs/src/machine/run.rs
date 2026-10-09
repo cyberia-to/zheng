@@ -330,11 +330,12 @@ fn ret(
         F_B2LOOK => run_ops::look(b, dg, ctx, r, x, val, fobj, parent, cyc)?,
         F_CALL1 => run_ops::call(b, ctx, r, p, val, cyc)?,
         F_CALL2 => {
-            match b.entry(val) {
-                Some(Entry::Atom(0)) => {}
+            let v = match b.entry(val) {
+                Some(Entry::Atom(0)) => 0,
+                Some(Entry::Atom(v)) if run_ops::call_accept() => v,
                 _ => return Err(MachineError::Native("call rejected")),
-            }
-            b.read(r, 1, TAG_ATOM, val, [0, 0, 0, 0]);
+            };
+            b.read(r, 1, TAG_ATOM, val, [v, 0, 0, 0]);
             State::Ret { val: x, k: parent }
         }
         F_UHASH => {

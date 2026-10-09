@@ -21,6 +21,35 @@ thread_local! {
     pub(crate) static ALIAS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// Test-only forgeries: each builds a trace that is consistent everywhere
+/// (memory, digests, output) except at the one constraint it attacks.
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Forge {
+    None,
+    /// lt's second operand as its alias `w + p`.
+    LtAliasW,
+    /// shl by `n ≥ 32` returns `u·2^(n mod 32) mod 2^32` with `z = 1`.
+    ShlWrap,
+    /// a word opcode on an operand `≥ 2^32` (nox: type error).
+    WordWide,
+    /// CALL2 accepts a check that returned a nonzero atom.
+    CallAccept,
+    /// look reads the statement's table under a subject with another root.
+    LookRoot,
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static FORGE: std::cell::Cell<Forge> = const { std::cell::Cell::new(Forge::None) };
+}
+
+/// Whether the test-only forgery `f` is on.
+#[cfg(test)]
+fn forging(f: Forge) -> bool {
+    FORGE.with(std::cell::Cell::get) == f
+}
+
 /// `v + p` when the alias hook is on and `v + p < 2^64`, else `v`.
 pub(crate) fn alias(v: u64) -> u64 {
     #[cfg(test)]
@@ -28,6 +57,42 @@ pub(crate) fn alias(v: u64) -> u64 {
         return v + nebu::field::P;
     }
     v
+}
+
+fn word_wide() -> bool {
+    #[cfg(test)]
+    return forging(Forge::WordWide);
+    #[cfg(not(test))]
+    false
+}
+
+fn shl_wrap() -> bool {
+    #[cfg(test)]
+    return forging(Forge::ShlWrap);
+    #[cfg(not(test))]
+    false
+}
+
+fn lt_alias_w() -> bool {
+    #[cfg(test)]
+    return forging(Forge::LtAliasW);
+    #[cfg(not(test))]
+    false
+}
+
+fn look_root() -> bool {
+    #[cfg(test)]
+    return forging(Forge::LookRoot);
+    #[cfg(not(test))]
+    false
+}
+
+/// CALL2 accepts a nonzero check result (test-only forgery).
+pub(crate) fn call_accept() -> bool {
+    #[cfg(test)]
+    return forging(Forge::CallAccept);
+    #[cfg(not(test))]
+    false
 }
 
 /// What a run carries besides the trace: its hints, the authenticated
@@ -45,7 +110,8 @@ pub(crate) struct Ctx<'a> {
 
 /// The result of a word opcode or lt on atoms `u`, `w` (nox semantics).
 pub(crate) fn word_result(op: u64, u: u64, w: u64) -> Result<u64, MachineError> {
-    if op != T_LT && (u > WORD_MASK || w > WORD_MASK) {
+    let wide = word_wide();
+    if op != T_LT && !wide && (u > WORD_MASK || w > WORD_MASK) {
         return Err(MachineError::Native("type error: word expected"));
     }
     Ok(match op {
@@ -53,7 +119,8 @@ pub(crate) fn word_result(op: u64, u: u64, w: u64) -> Result<u64, MachineError> 
         T_XOR => u ^ w,
         T_AND => u & w,
         T_NOT => !w & WORD_MASK,
-        _ if w >= 32 => 0,
+        _ if w >= 32 && !shl_wrap() => 0,
+        _ if w >= 32 => (u << (w & 31)) & WORD_MASK,
         _ => (u << w) & WORD_MASK,
     })
 }
@@ -74,37 +141,45 @@ pub(crate) fn word(
     b.read(r, 2, TAG_ATOM, val, [wa, 0, 0, 0]);
     b.set(r, R_OP, op);
     let lt_u = if op == T_LT { alias(ua) } else { ua };
+    let lt_w = if op == T_LT && lt_alias_w() {
+        wa + nebu::field::P
+    } else {
+        wa
+    };
     let res = if op == T_LT {
-        u64::from(lt_u >= wa)
+        u64::from(lt_u >= lt_w)
     } else {
         word_result(op, ua, wa)?
     };
     let id = b.fresh();
     b.alloc_noun(r, 3, id, Entry::Atom(res));
-    wbit_rows(b, op, [ua, lt_u], wa, res, parent, cyc);
+    wbit_rows(b, op, [ua, lt_u], [wa, lt_w], res, parent, cyc);
     Ok(State::Ret { val: id, k: parent })
 }
 
-/// `u = [value, its 64-bit form]` (the form differs only under the test
-/// alias hook).
-fn wbit_rows(b: &mut Builder, op: u64, u: [u64; 2], wa: u64, res: u64, k: u64, cyc: u64) {
+/// `u`, `w` = `[value, its 64-bit form]` (the forms differ only under the test
+/// alias hooks).
+fn wbit_rows(b: &mut Builder, op: u64, u: [u64; 2], w: [u64; 2], res: u64, k: u64, cyc: u64) {
     let [ua, lt_u] = u;
+    let [wa, lt_w] = w;
+    let wrap = shl_wrap();
+    let sh = if wrap { wa & 31 } else { wa };
     let flag = WOPS.iter().find(|&&(_, t)| t == op).expect("word op").0;
-    let (ci, hi2) = if op == T_SHL && wa < 32 {
-        let t = u128::from(ua) << wa;
+    let (ci, hi2) = if op == T_SHL && sh < 32 {
+        let t = u128::from(ua) << sh;
         ((t as u64) & WORD_MASK, ((t >> 32) as u64) * 2)
     } else {
         (0, 0)
     };
     let rs = match op {
-        T_LT => [lt_u & WORD_MASK, wa & WORD_MASK, lt_u >> 32, wa >> 32],
+        T_LT => [lt_u & WORD_MASK, lt_w & WORD_MASK, lt_u >> 32, lt_w >> 32],
         T_SHL => [ua, wa, ci, hi2],
         _ => [ua, wa, res, 0],
     };
     let one = Goldilocks::ONE;
     // shl
     let (mut pw, mut q) = (one, g(2));
-    let z = u64::from(wa < 32);
+    let z = u64::from(wa < 32 || wrap);
     // lt: canonical checks and comparisons so far
     let (mut na, mut oa, mut nb, mut ob) = (1u64, 0u64, 1u64, 0u64);
     let (mut ll, mut lh, mut eh) = (0u64, 0u64, 1u64);
@@ -127,7 +202,15 @@ fn wbit_rows(b: &mut Builder, op: u64, u: [u64; 2], wa: u64, res: u64, k: u64, c
                 b.setf(r, G_Q, q);
                 indicator(b, r, G_I5, G_V5, cnt, 5);
                 b.set(r, G_Z, z);
-                b.setf(r, G_ZI, inv_or_zero(g(wa >> 5)));
+                b.setf(
+                    r,
+                    G_ZI,
+                    if wrap {
+                        Goldilocks::ZERO
+                    } else {
+                        inv_or_zero(g(wa >> 5))
+                    },
+                );
                 b.set(r, G_CI, ci);
                 b.set(r, G_HI, hi2);
                 if bits[1] == 1 {
@@ -205,7 +288,7 @@ pub(crate) fn look(
     b.read(r, 2, TAG_ATOM, val, [key, 0, 0, 0]);
     let auth = ctx.auth.ok_or(unavailable.clone())?;
     let (limbs, root) = root_limbs(b, fobj).ok_or(unavailable.clone())?;
-    if ns > 9 || limbs != ctx.root {
+    if ns > 9 || (limbs != ctx.root && !look_root()) {
         return Err(unavailable);
     }
     let value = auth.cell(ns, key).ok_or(unavailable)?;
