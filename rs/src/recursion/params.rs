@@ -116,7 +116,13 @@ mod tests {
         let k = lens::rspcs::soundness::ext_field_bits();
         let log2 = |x: usize| (x as f64).log2();
         rows.push(("zerocheck μ (structured powers)".into(), k - log2(SEEDS * (p.base - 1))));
+        rows.push(("zerocheck τ".into(), k - log2(p.n)));
         rows.push(("zerocheck round (degree 9)".into(), k - log2(10)));
+        // shift reduction: rounds of degree 2, ζ over three words (degree
+        // 2), β (degree 1), column batching of 64 columns (6 variables)
+        rows.push(("shift round (degree 2)".into(), k - log2(2)));
+        rows.push(("shift batching ζ, β".into(), k - log2(2)));
+        rows.push(("shift / boundary column batching".into(), k - log2(CBITS)));
         rows.push(("constraint line fold".into(), k - log2(p.g_deg)));
         rows.push(("nox public line fold".into(), k - log2(p.pn_deg)));
         rows.push(("circuit key line fold".into(), k - log2(p.pv_deg)));
