@@ -26,7 +26,8 @@ pub const PUB_PART: usize = 12;
 pub const PUB_OUT: usize = 13;
 pub const PUB_CONT: usize = 14;
 pub const PUB_RC: usize = 15;
-pub const PUBLICS: usize = PUB_RC + 16;
+pub const PUB_INIT_P2: usize = PUB_RC + 16;
+pub const PUBLICS: usize = PUB_INIT_P2 + 1;
 
 /// Statement constants the constraints read.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,6 +40,9 @@ pub struct Constants {
     /// Digest of the expected output noun.
     pub output: [Goldilocks; 4],
     pub cycles: u64,
+    /// Digest of the state root noun `[r0 [r1 [r2 r3]]]` every look's
+    /// subject must carry at axis 2 (zero without state: no look holds).
+    pub root: [Goldilocks; 4],
 }
 
 /// The machine AIR for one statement and trace geometry.
@@ -77,11 +81,11 @@ fn region(pattern: impl Fn(usize) -> Fp3, start: usize) -> Public {
 
 impl Machine {
     /// The AIR of rows `[offset, offset + rows)` of a trace whose init
-    /// entries are `init` (`(tag, p0, p1)`) and whose region starts at
+    /// entries are `init` (`(tag, p0, p1, p2)`) and whose region starts at
     /// `start` (all global row indices).
     pub fn new(
         constants: Constants,
-        init: &[(u64, u64, u64)],
+        init: &[(u64, u64, u64, u64)],
         start: usize,
         offset: usize,
         rows: usize,
@@ -115,6 +119,7 @@ impl Machine {
                 start,
             ));
         }
+        publics.push(pre(&|i| init[i].3));
         let publics = publics.iter().map(|p| p.window(offset, rows)).collect();
         let mut m = Self {
             constants,
