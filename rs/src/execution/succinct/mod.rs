@@ -22,7 +22,7 @@ pub use lens::{MultilinearPcs, TensorRs, TensorRsParams, Whir, WhirParams};
 
 use super::state::{self, StateStatement};
 use super::state_evidence::StateEvidence;
-use super::{ExecutionNoun, ExecutionStatement};
+use super::{ExecutionNoun, ExecutionStatement, VerifyingKey};
 use nebu::Goldilocks;
 
 /// Identifies the succinct profile inside an artifact.
@@ -30,6 +30,15 @@ pub const FORMAT: &str = "zheng-nox-succinct-execution-v1";
 
 fn with_constant(public: Vec<(usize, Goldilocks)>) -> Vec<(usize, Goldilocks)> {
     core::iter::once((0, Goldilocks::ONE)).chain(public).collect()
+}
+
+/// The bytes the transcript absorbs first: the verifying key's digest,
+/// then the statement. The proof is bound to the relation it was made for.
+pub fn keyed_statement(vk: &VerifyingKey, statement: &[u8]) -> Vec<u8> {
+    let mut bytes = b"zheng-vk".to_vec();
+    bytes.extend_from_slice(&vk.digest());
+    bytes.extend_from_slice(statement);
+    bytes
 }
 
 /// Run `program` on `input` within `budget` and prove the execution with a
@@ -41,12 +50,13 @@ pub fn prove<P: SuccinctPcs>(
     budget: u64,
 ) -> Result<(ExecutionStatement, SuccinctProof<P>), String> {
     let (statement, relation, witness, public) = super::statement::prepare(program, input, budget)?;
+    let vk = VerifyingKey::new(statement.program_key(), relation);
     let proof = protocol::prove::<P>(
         params,
-        &relation.instance,
+        &vk.relation().instance,
         &witness.z,
         &with_constant(public),
-        &statement.transcript_bytes(),
+        &keyed_statement(&vk, &statement.transcript_bytes()),
     )?;
     Ok((statement, proof))
 }
@@ -56,12 +66,23 @@ pub fn verify<P: SuccinctPcs>(
     statement: &ExecutionStatement,
     proof: &SuccinctProof<P>,
 ) -> Result<(), String> {
-    let relation = statement.relation()?;
-    let public = statement.bindings(&relation)?;
+    verify_with(statement, proof, None)
+}
+
+/// [`verify`] with an optional cached key: when given, it must have been
+/// derived for this statement's program key (else the proof is rejected)
+/// and the relation is not recompiled.
+pub fn verify_with<P: SuccinctPcs>(
+    statement: &ExecutionStatement,
+    proof: &SuccinctProof<P>,
+    vk: Option<&VerifyingKey>,
+) -> Result<(), String> {
+    let vk = statement.keyed(vk)?;
+    let public = statement.bindings(vk.relation())?;
     protocol::verify::<P>(
-        &relation.instance,
+        &vk.relation().instance,
         &with_constant(public),
-        &statement.transcript_bytes(),
+        &keyed_statement(&vk, &statement.transcript_bytes()),
         proof,
     )
 }
@@ -78,12 +99,13 @@ pub fn prove_state<P: SuccinctPcs>(
 ) -> Result<(StateStatement, SuccinctProof<P>), String> {
     let (statement, relation, witness, public) =
         state::prepare(program, input, budget, root_in_subject, evidence)?;
+    let vk = VerifyingKey::new(statement.program_key(), relation);
     let proof = protocol::prove::<P>(
         params,
-        &relation.instance,
+        &vk.relation().instance,
         &witness.z,
         &with_constant(public),
-        &statement.transcript_bytes(),
+        &keyed_statement(&vk, &statement.transcript_bytes()),
     )?;
     Ok((statement, proof))
 }
@@ -96,11 +118,21 @@ pub fn verify_state<P: SuccinctPcs>(
     proof: &SuccinctProof<P>,
     evidence: &StateEvidence,
 ) -> Result<(), String> {
-    let (relation, public) = statement.authenticated_bindings(evidence)?;
+    verify_state_with(statement, proof, evidence, None)
+}
+
+/// [`verify_state`] with an optional cached key (see [`verify_with`]).
+pub fn verify_state_with<P: SuccinctPcs>(
+    statement: &StateStatement,
+    proof: &SuccinctProof<P>,
+    evidence: &StateEvidence,
+    vk: Option<&VerifyingKey>,
+) -> Result<(), String> {
+    let (vk, public) = statement.keyed_bindings(evidence, vk)?;
     protocol::verify::<P>(
-        &relation.instance,
+        &vk.relation().instance,
         &with_constant(public),
-        &statement.transcript_bytes(),
+        &keyed_statement(&vk, &statement.transcript_bytes()),
         proof,
     )
 }

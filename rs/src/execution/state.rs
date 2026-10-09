@@ -20,6 +20,9 @@ use crate::types::CCSWitness;
 use nebu::Goldilocks as F;
 use std::collections::BTreeMap;
 
+/// A verifying key borrowed from the caller's cache or derived in place.
+type Keyed<'a> = std::borrow::Cow<'a, super::VerifyingKey>;
+
 /// Bound on the reads a state statement may carry.
 pub const MAX_READS: usize = 4096;
 
@@ -55,11 +58,15 @@ impl StateStatement {
         input.extend(self.execution.inputs());
         input
     }
-    pub(crate) fn relation(&self) -> Result<ExecutionRelation, String> {
+    fn validate(&self) -> Result<(), String> {
         self.execution.validate_bounds()?;
         if self.state_root.iter().any(|&v| v >= nebu::field::P) || self.reads.len() > MAX_READS {
             return Err("invalid state execution bounds".into());
         }
+        Ok(())
+    }
+    pub(crate) fn relation(&self) -> Result<ExecutionRelation, String> {
+        self.validate()?;
         let mut shape = SubjectShape::Atom;
         for _ in &self.execution.public_input {
             shape = SubjectShape::Pair(Box::new(SubjectShape::Atom), Box::new(shape));
@@ -79,6 +86,17 @@ impl StateStatement {
             .map_err(|e| format!("unsupported state execution relation: {e:?}"))?;
         Ok(relation)
     }
+    /// What the relation depends on, hashed: see [`super::vk`].
+    pub fn program_key(&self) -> [u8; 32] {
+        super::vk::program_key(
+            &self.execution.program,
+            self.execution.public_input.len(),
+            super::vk::StatementKind::State {
+                root_in_subject: self.root_in_subject,
+            },
+        )
+    }
+
     /// The statement bytes every transcript-bearing profile absorbs.
     pub fn transcript_bytes(&self) -> Vec<u8> {
         self.domain_bytes(b"zheng-nox-public-state-execution-v2", None)
@@ -166,6 +184,24 @@ impl StateStatement {
         let public = self.bindings(&relation, &state)?;
         Ok((relation, public))
     }
+    /// The verifying key (from `vk` when derived for this statement, else
+    /// compiled) and the pinned coordinates after authentication.
+    pub(crate) fn keyed_bindings<'a>(
+        &self,
+        evidence: &StateEvidence,
+        vk: Option<&'a super::VerifyingKey>,
+    ) -> Result<(Keyed<'a>, Vec<(usize, F)>), String> {
+        let state = evidence.authenticate(self.state_root)?;
+        let key = match vk {
+            Some(vk) => {
+                self.validate()?;
+                std::borrow::Cow::Borrowed(vk.check(self.program_key())?)
+            }
+            None => std::borrow::Cow::Owned(super::VerifyingKey::for_state(self)?),
+        };
+        let public = self.bindings(key.relation(), &state)?;
+        Ok((key, public))
+    }
     /// Profile v3: authenticate `evidence` under `state_root`, every active
     /// read against it, then check every row exactly.
     pub fn verify_certificate(
@@ -175,6 +211,18 @@ impl StateStatement {
     ) -> Result<(), String> {
         let (relation, public) = self.authenticated_bindings(evidence)?;
         certificate::verify(&relation.instance, certificate, &public).map_err(|e| e.to_string())
+    }
+    /// [`Self::verify_certificate`] with a cached key derived for this
+    /// statement's program key (any other key is rejected).
+    pub fn verify_certificate_with(
+        &self,
+        certificate: &Certificate,
+        evidence: &StateEvidence,
+        vk: &super::VerifyingKey,
+    ) -> Result<(), String> {
+        let (key, public) = self.keyed_bindings(evidence, Some(vk))?;
+        certificate::verify(&key.relation().instance, certificate, &public)
+            .map_err(|e| e.to_string())
     }
     /// Profile v1 (retired, read for one release) under the context its
     /// transcript absorbed.

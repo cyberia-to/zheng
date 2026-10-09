@@ -149,6 +149,26 @@ impl ExecutionStatement {
         Ok(result.into_iter().collect())
     }
 
+    /// What the relation depends on, hashed: see [`super::vk`].
+    pub fn program_key(&self) -> [u8; 32] {
+        super::vk::program_key(&self.program, self.public_input.len(), super::vk::StatementKind::Execution)
+    }
+
+    /// The relation from `vk` when it was derived for this statement's
+    /// program key, compiled otherwise; bounds are always checked.
+    pub(crate) fn keyed<'a>(
+        &self,
+        vk: Option<&'a super::VerifyingKey>,
+    ) -> Result<std::borrow::Cow<'a, super::VerifyingKey>, String> {
+        match vk {
+            Some(vk) => {
+                self.validate_bounds()?;
+                Ok(std::borrow::Cow::Borrowed(vk.check(self.program_key())?))
+            }
+            None => Ok(std::borrow::Cow::Owned(super::VerifyingKey::for_execution(self)?)),
+        }
+    }
+
     /// Stable encoding independent of serde, usize width and JSON formatting.
     pub fn transcript_bytes(&self) -> Vec<u8> {
         let mut bytes = b"zheng-nox-public-execution-v2".to_vec();
@@ -288,6 +308,23 @@ pub fn verify_certificate(
         &relation.instance,
         certificate,
         &statement.bindings(&relation)?,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// [`verify_certificate`] with a cached verifying key: `vk` must have been
+/// derived for this statement's program key, or the statement is rejected.
+pub fn verify_certificate_with(
+    statement: &ExecutionStatement,
+    certificate: &super::certificate::Certificate,
+    vk: &super::VerifyingKey,
+) -> Result<(), String> {
+    statement.validate_bounds()?;
+    let relation = vk.check(statement.program_key())?.relation();
+    super::certificate::verify(
+        &relation.instance,
+        certificate,
+        &statement.bindings(relation)?,
     )
     .map_err(|e| e.to_string())
 }

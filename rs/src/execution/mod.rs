@@ -19,6 +19,8 @@ pub mod succinct;
 mod statement_wire;
 /// Experimental opt-in tagged kernel; no production protocol dispatch.
 pub mod tagged;
+/// Verifying keys: compiled relations cached by program key.
+pub mod vk;
 /// Native private CCS proofs over the soft3 field and hash.
 pub mod zk;
 
@@ -27,8 +29,9 @@ pub use proof::DirectProof;
 pub use relation::ExecutionNoun;
 pub use statement::{
     ExecutionStatement, MAX_DEPTH, MAX_INPUTS, MAX_OUTPUTS, MAX_PROGRAM_NODES, NounToken, certify_execution, prove_execution, verify_certificate,
-    verify_execution,
+    verify_certificate_with, verify_execution,
 };
+pub use vk::VerifyingKey;
 
 #[cfg(test)]
 mod call_tests;
