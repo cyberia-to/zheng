@@ -15,7 +15,10 @@
 //! The key words are fixed by the parameters (anyone derives them from
 //! the circuit layout): exact codewords with roots in the key.
 
-use nebu::Fp3;
+use lens::rspcs::whir::LeafLayout;
+use nebu::{Fp3, Goldilocks};
+
+use super::circuit::trace::Pre;
 
 use super::acc::{ClaimRef, InstV};
 use super::ops::{Arith, Ops};
@@ -37,6 +40,32 @@ pub struct Decider {
 pub struct KeyWords {
     pub words: [Word; 2],
     pub roots: [Digest; 2],
+}
+
+impl KeyWords {
+    /// The key's columns as two words of 64 columns (column-major, the row
+    /// the low variables) in `layout`; whether an entry leaves the base
+    /// field.
+    pub fn commit(layout: LeafLayout, n: usize, pre: &Pre) -> (Self, bool) {
+        const WORD: usize = 64;
+        let rows = 1usize << n;
+        let ext = pre.cols.iter().flatten().any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO);
+        let words = [0, 1].map(|h| {
+            let mut t = vec![Fp3::ZERO; WORD * rows];
+            for c in 0..WORD {
+                if let Some(col) = pre.cols.get(WORD * h + c) {
+                    t[c * rows..(c + 1) * rows].copy_from_slice(col);
+                }
+            }
+            if ext {
+                Word::commit_ext(layout, &t)
+            } else {
+                Word::commit_base(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
+            }
+        });
+        let roots = [words[0].root(), words[1].root()];
+        (Self { words, roots }, ext)
+    }
 }
 
 /// Absorb the instance the decider proves (generic over the interpreter).
@@ -98,6 +127,11 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &whir::Config, acc: &AccV<O::V>, pv: &Clai
     let roots = key_roots.map(|r| r.map(|x| o.constant(Fp3::from_base(x))));
     let ins = inputs(acc, roots, key_ext, &pv.point[..n + 6], v);
     whir::verify(o, cfg, &mut t, &ins, &pf.whir);
+}
+
+/// A decider of the right shape (key derivation).
+pub fn dummy(cfg: &whir::Config) -> Decider {
+    Decider { key: [Fp3::ZERO; 2], whir: whir::dummy(cfg, 3) }
 }
 
 /// Shape of a decider proof.

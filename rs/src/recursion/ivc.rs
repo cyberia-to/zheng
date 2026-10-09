@@ -107,34 +107,12 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
         .iter()
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
-    let (kw, key_ext) = key_words(&p, &pre);
+    let (kw, key_ext) = KeyWords::commit(p.cfg.layout, p.n, &pre);
     let dcfg = whir::Config::derive(&p.whir, p.vars, 3, p.cfg.acc_claims() + 2)?;
     let g = g_graph(&p);
     let k = Arc::new(Key { params: p, pre, sparse, kw, key_ext, dcfg, g });
     cache.lock().expect("key cache").insert((whir.header(), n), k.clone());
     Ok(k)
-}
-
-/// The key's columns as two words of 64 columns (column-major, the row
-/// the low variables), in the accumulator's layout.
-fn key_words(p: &Params, pre: &Pre) -> (KeyWords, bool) {
-    let rows = 1usize << p.n;
-    let ext = pre.cols.iter().flatten().any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO);
-    let words = [0, 1].map(|h| {
-        let mut t = vec![Fp3::ZERO; WORD * rows];
-        for c in 0..WORD {
-            if let Some(col) = pre.cols.get(WORD * h + c) {
-                t[c * rows..(c + 1) * rows].copy_from_slice(col);
-            }
-        }
-        if ext {
-            Word::commit_ext(p.cfg.layout, &t)
-        } else {
-            Word::commit_base(p.cfg.layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
-        }
-    });
-    let roots = [words[0].root(), words[1].root()];
-    (KeyWords { words, roots }, ext)
 }
 
 /// `G` recorded once: inputs are the deferred point, the run's challenges
@@ -383,6 +361,12 @@ pub fn check_shapes(key: &Key, proof: &IvcProof) -> Result<(), String> {
 /// Verify against a preparation whose header must be the proof's: the
 /// final verifier natively, then the deferred nox-public claim.
 pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> {
+    verify_claim(prep, proof).map(|_| ())
+}
+
+/// [`verify_prepared`], returning the deferred nox-public claim it checked
+/// (a wrap binds it in its public input).
+pub fn verify_claim(prep: &Prepared, proof: &IvcProof) -> Result<state::ClaimV<Fp3>, String> {
     let lap = timer();
     if prep.header != (proof.log_rows, proof.start, proof.segments, proof.chain) {
         return Err("recursion: header".into());
@@ -399,5 +383,5 @@ pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> 
         return Err("recursion: deferred nox publics".into());
     }
     lap("nox publics");
-    Ok(())
+    Ok(pn)
 }

@@ -176,8 +176,43 @@ pub struct Proof {
     pub final_open: Vec<Vec<LeafOpening>>,
 }
 
-/// Leaf indices a round queries: every leaf when sampling would saturate
-/// (lens `RoundSpec::opens_all`), else `queries` transcript samples.
-pub fn opens_all(s: &RoundSpec) -> bool {
-    s.opens_all()
+
+/// An opening of the right shape, every value zero (circuit layouts are
+/// fixed by shapes alone).
+pub fn dummy(cfg: &Config, inputs: usize) -> Proof {
+    let wc = &cfg.wc;
+    let z = Fp3::ZERO;
+    let leaf = |s: &RoundSpec| LeafOpening {
+        symbols: vec![z; 1 << s.fold],
+        path: vec![[nebu::Goldilocks::ZERO; 4]; s.log_leaves() as usize],
+        leaf: Some(0),
+    };
+    let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };
+    let opens = |s: &RoundSpec, words: usize| vec![vec![leaf(s); words]; q(s)];
+    let fold_n = |s: &RoundSpec| if s.fold_pow > 0 { s.fold } else { 0 };
+    let s0 = wc.rounds[0];
+    let rounds = (1..wc.rounds.len())
+        .map(|i| {
+            let (prev, s) = (wc.rounds[i - 1], wc.rounds[i]);
+            Round {
+                root: [nebu::Goldilocks::ZERO; 4],
+                ood: vec![z; s.ood],
+                query_nonce: 0,
+                open: opens(&prev, if i == 1 { inputs } else { 1 }),
+                sumcheck: vec![z; 2 * s.fold],
+                fold_nonces: vec![0; fold_n(&s)],
+            }
+        })
+        .collect();
+    let last = *wc.rounds.last().expect("a round");
+    Proof {
+        batch: BatchProof { sumcheck: vec![z; 2 * wc.num_vars], evals: vec![z; inputs], comb_nonce: 0 },
+        ood0: vec![z; s0.ood],
+        sumcheck0: vec![z; 2 * s0.fold],
+        fold_nonces0: vec![0; fold_n(&s0)],
+        rounds,
+        final_poly: vec![z; 1 << wc.final_vars],
+        final_nonce: 0,
+        final_open: opens(&last, if wc.rounds.len() == 1 { inputs } else { 1 }),
+    }
 }
