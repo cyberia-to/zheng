@@ -167,6 +167,42 @@ impl StateEvidence {
     }
 }
 
+/// Namespaces a private state relation selects from (all public tables a
+/// hidden query may name).
+pub const PRIVATE_NAMESPACES: u64 = 10;
+/// Bound on the fields the private relation embeds as constants.
+pub const PRIVATE_MAX_FIELDS: usize = 2048;
+
+impl StateEvidence {
+    /// Authenticate under `root` and return the ten tables a private state
+    /// relation embeds: the evidence must carry namespaces `0..10`.
+    pub fn private_tables(
+        &self,
+        root: [u64; 4],
+    ) -> Result<super::relation::PublicStateTables, String> {
+        let state = self.authenticate(root)?;
+        let mut dimensions: [Vec<Goldilocks>; PRIVATE_NAMESPACES as usize] = Default::default();
+        let mut total = 0usize;
+        for (ns, slot) in dimensions.iter_mut().enumerate() {
+            let table = state
+                .evidence
+                .tables
+                .iter()
+                .find(|t| t.namespace == ns as u64)
+                .ok_or_else(|| format!("state evidence: private state needs table {ns}"))?;
+            total += table.fields.len();
+            *slot = table.fields.iter().map(|&v| Goldilocks::new(v)).collect();
+        }
+        if total > PRIVATE_MAX_FIELDS {
+            return Err("state evidence: private state tables exceed 2048 fields".into());
+        }
+        Ok(super::relation::PublicStateTables {
+            root: root.map(Goldilocks::new),
+            dimensions,
+        })
+    }
+}
+
 impl AuthenticatedState<'_> {
     /// The field at index `key` of table `namespace`, if the evidence
     /// carries that table and the index exists.
