@@ -78,7 +78,7 @@ fn anatomy(p: &SuccinctProof<Whir>, vars: usize) -> (usize, usize, usize, usize,
     (dedup, full, prefixes, limbs.len(), varint)
 }
 
-fn describe(p: &SuccinctProof<Whir>, vars: usize) -> String {
+pub(crate) fn describe(p: &SuccinctProof<Whir>, vars: usize) -> String {
     let (dedup, full, prefixes, limbs, varint) = anatomy(p, vars);
     let cfg = WhirConfig::derive(&p.params, vars).unwrap();
     let queries: Vec<String> = cfg.rounds.iter().map(|r| r.queries.to_string()).collect();
@@ -143,6 +143,32 @@ pub fn combos(reps: usize) {
                             print(&r);
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Grinding 20 vs 24 at the two lowest rates: the large fixture
+/// (`large = true`) or the three small-class fixtures.
+pub fn grind(reps: usize, large: bool) {
+    use crate::common::hash_chain;
+    header();
+    let fixtures = if large {
+        vec![Fixture::Synthetic(20)]
+    } else {
+        vec![
+            Fixture::Program("hash.tri", parse(HASH), vec![7]),
+            Fixture::Program("chain-11 (hemera)", hash_chain(11), vec![7]),
+            Fixture::Synthetic(16),
+        ]
+    };
+    for fx in &fixtures {
+        for rate in [5u8, 6] {
+            for pow in [20u8, 24] {
+                let label = format!("WHIR 1/{} k=4 pow={pow} fin=8", 1 << rate);
+                if let Some(r) = run::<Whir>(&label, whir(rate, 4, pow), fx, reps, describe) {
+                    print(&r);
                 }
             }
         }

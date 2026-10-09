@@ -294,12 +294,42 @@ fn bakeoff(reps: usize) {
 
 mod levers;
 
+/// The shipped choice (`succinct::params_for`) on every fixture.
+fn chosen(reps: usize) {
+    header();
+    for fx in fixtures() {
+        let vars = match &fx {
+            Fixture::Synthetic(k) => *k as usize,
+            Fixture::Program(_, p, i) => {
+                let (s, _) = succinct::prove_default(p, i, 1_000_000).unwrap();
+                let (inst, pins) = relation_of(&s);
+                proof_vars(&inst, &pins)
+            }
+        };
+        let params = succinct::params_for(vars);
+        let label = format!(
+            "WHIR 1/{} k={} pow={} fin={} ({})",
+            1u32 << params.log_inv_rate,
+            params.folding_factor,
+            params.pow_bits,
+            params.max_final_vars,
+            if vars <= succinct::SMALL_MAX_VARS { "small" } else { "large" }
+        );
+        if let Some(r) = run::<Whir>(&label, params, &fx, reps, levers::describe) {
+            print(&r);
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let reps = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(3);
     match args.get(1).map(String::as_str) {
         Some("levers") => levers::levers(reps),
         Some("combos") => levers::combos(reps),
+        Some("grind") => levers::grind(reps, true),
+        Some("grind-small") => levers::grind(reps, false),
+        Some("chosen") => chosen(reps),
         _ => bakeoff(reps),
     }
 }
