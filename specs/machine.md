@@ -137,8 +137,9 @@ matrix and constant from hemera; tests check the row function against
 ## segments
 
 A run longer than `2^n` rows (default `2^14`) is cut into segments.
-All phase-1 words are committed, then the shared challenges, then all
-phase-2 words. Within a segment the successor is non-cyclic; the last
+All phase-1 words are committed (each answering `fresh_ood` out-of-domain
+samples right after its root, binding it to one codeword of its list),
+then the shared challenges, then all phase-2 words (bound the same way). Within a segment the successor is non-cyclic; the last
 row's next is the next segment's first row (cyclically, segment 0 after
 the last), sent in the clear and tied to that segment's words by a row-0
 claim each. The running sum carries across segments and closes once.
@@ -164,7 +165,12 @@ successor polynomial (`O(log N)`).
   equal to nox's digest comparison unless hemera collides (nox's identity
   already assumes it does not);
 - the arena capacity of `nox::Reduction<N>` is not modelled (the relation
-  proves the result of an unbounded arena).
+  proves the result of an unbounded arena);
+- budget: native nox gives each child of a binary opcode its static
+  `bound()` as budget when both bounds fit; "the run succeeds iff
+  `cycles ≤ budget`" therefore relies on `bound()` being an upper bound
+  of the actual cost (checked for the covered opcodes by review, and by
+  the exact-budget tests: `cycles` passes, `cycles − 1` fails).
 
 ## soundness status
 

@@ -111,8 +111,8 @@ and 7.3): *some tuple in `Λ` satisfies every input claim*.
 | `γ` | `|Λ|·(J − 1)/|K|` | for each tuple of `Λ` failing some claim, `Σ_e γ^e (v̂(z_e) − y_e)` is a nonzero polynomial of degree `≤ J − 1` in `γ`; union over `Λ` |
 | sumcheck round | `|Λ|·2/|K|` | sumcheck (Lund–Fortnow–Karloff–Nisan) per tuple, union over `Λ` |
 | `μ_i` check | 0 | for each surviving tuple some `v̂_i(ρ) ≠ μ_i` |
-| `r` | `ε_mca(m−1) + |Λ|·(m−1)/|K|`, minus `comb_pow` | BCGM eprint 2025/2051 Lemma 9.3 (powers generator, degree `d = m−1`, Definition 9.1 error `d·(μ+½)^7/(3ρ^{3/2})·n²/|K|` up to `1 − (1+1/(2μ))√ρ`; unique decoding: `(m−1)·n/|K|`, WHIR Theorem 4.8 with Corollary 4.11) gives mutual correlated agreement, so `Λ(C, Σ r^i u_i, δ) = {Σ r^i v_i : v ∈ Λ}` except with that error (WHIR Lemma 4.13); for each tuple `Σ r^{i}(v̂_i(ρ) − μ_i)` is a nonzero polynomial of degree `≤ m−1` |
-| OOD | `(|Λ_1|²/2)·(2^ℓ/|K|)^s` | WHIR Lemma 4.25 (WARP Lemma 7.3 `ε_out`) |
+| `r` | `ε_mca(m−1) + |Λ|·(m−1)/|K|`, minus `comb_pow` | BCGM eprint 2025/2051 Lemma 9.3 (powers generator, degree `d = m−1`, Definition 9.1 error `d·(μ+½)^7/(3ρ^{3/2})·n²/|K|` up to `1 − (1+1/(2μ))√ρ`; unique decoding: `(m−1)·n/|K|`, WHIR Theorem 4.8 with Corollary 4.11) gives mutual correlated agreement, so `Λ(C, Σ r^i u_i, δ) = {Σ r^i v_i : v ∈ Λ}` except with that error (the argument of WHIR Lemma 4.13 with BCGM Definition 3.14); for each tuple `Σ r^{i}(v̂_i(ρ) − μ_i)` is a nonzero polynomial of degree `≤ m−1` |
+| OOD | `(|Λ_1|²/2)·(2^ℓ/|K|)^s` | WHIR Lemma 4.25 |
 | positions | `(1 − δ)^t`, minus `query_pow` | WARP Lemma 7.3 `ε_shift`: the unique codeword left after OOD differs from `Σ r^i u_i` on more than a `δ` fraction |
 
 The output state is the same predicate at the same `δ`: distance is
@@ -125,11 +125,24 @@ The decider adds the `γ` and sumcheck rows with `m = 1` and WHIR's own
 round-by-round bound at `(whir, ℓ)` for an Fp3 word (lens `security_bits`,
 ≥ 128 by the profile policy).
 
+**Fresh words.** Every word committed by a prover outside a step (the AIR's
+phase-1 and phase-2 words, a CCS statement's witness) answers
+`fresh_ood(whir, ℓ)` out-of-domain samples right after its root is
+absorbed, before any challenge it feeds (WHIR Lemma 4.25, as in WHIR
+Theorem 7.5's commitment phase): except with `(|Λ|²/2)(2^ℓ/|K|)^s ≤ 2^-128`
+at most one codeword of its list agrees with the answers, so the later
+rounds that read the word (zerocheck, column reduction, logUp, Spartan)
+reason about one codeword and carry no list factor. The answers are
+claims of the word's instance.
+
 **Composition.** A proof is one transcript: AIR rounds, `S` steps, one
-decider. Its round-by-round error is the largest single-round error,
-`≤ 2^-128` by construction. Interactively the total error is at most the
-number of rounds times `2^-128` (it grows linearly in the number of
-steps). Non-interactively (Fiat–Shamir with hemera as a random oracle) a
+decider. Without grinding (the interactive protocol) every round is below
+`2^-128` except the two ground ones: the combination round errs with up
+to `2^{-(128 − comb_pow(m))}` and the positions round with up to
+`2^{-(128 − query_pow)}`; the interactive total is at most the sum over
+rounds (linear in the number of steps), dominated by those two terms per
+step. The `2^-128` per round holds only with grinding priced in, i.e. in
+the random-oracle model: non-interactively (Fiat–Shamir with hemera as a random oracle) a
 prover making `Q` hemera queries succeeds with probability
 `≤ Q·2^-128` plus Merkle-binding (hemera collision) terms — independent
 of the number of steps (Canetti et al. 2019: round-by-round soundness
