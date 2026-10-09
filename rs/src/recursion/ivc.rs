@@ -73,7 +73,8 @@ fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
 
 /// Derive (or fetch) the key of `(whir, n)`.
 pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
-    static CACHE: OnceLock<Mutex<HashMap<([u8; 8], usize), Arc<Key>>>> = OnceLock::new();
+    type Cache = Mutex<HashMap<([u8; 8], usize), Arc<Key>>>;
+    static CACHE: OnceLock<Cache> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(k) = cache.lock().expect("key cache").get(&(whir.header(), n)) {
         return Ok(k.clone());
@@ -214,8 +215,8 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let ctx_parts = parts(p, &k.sparse, &rels[0], &global, sd, chain);
     let mut carry = Fp3::ZERO;
     let mut n2s = Vec::with_capacity(segs);
-    for i in 0..segs {
-        let (w2, out) = machine::phase2_build(&rels[i].machine, &run.segment(i), &ch, carry);
+    for (i, rel) in rels.iter().enumerate() {
+        let (w2, out) = machine::phase2_build(&rel.machine, &run.segment(i), &ch, carry);
         carry = out;
         n2s.push(w2);
     }

@@ -214,8 +214,8 @@ impl CircuitAir {
         let b: [Fp3; 4] = core::array::from_fn(|k| p[pre::BITS + k]);
         let any = b[0] + b[1] + b[2] + b[3];
         let chunk = |row: &[Fp3]| (0..BITS_ROW).fold(Fp3::ZERO, |a, j| a + c(1 << j) * row[j]);
-        for j in 0..BITS_ROW {
-            out.push(any * l[j] * (l[j] - one));
+        for &x in &l[..BITS_ROW] {
+            out.push(any * x * (x - one));
         }
         let first3 = b[0] + b[1] + b[2];
         out.push(b[0] * (l[BACC] - chunk(l)));

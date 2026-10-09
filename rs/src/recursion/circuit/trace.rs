@@ -87,8 +87,8 @@ pub fn generate(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, Pre, 
             let Some(gr) = b.gates.get(ar * GATES + k) else { break };
             let row = t.row_mut(r);
             let at = [gate_x(k), gate_y(k), gate_z(k)];
-            for i in 0..3 {
-                put3(row, at[i], b.vals[gr.ops[i].0 as usize]);
+            for (&col, v) in at.iter().zip(&gr.ops) {
+                put3(row, col, b.vals[v.0 as usize]);
             }
             if let Some(o) = gr.out {
                 put3(row, gate_out(k), b.vals[o.0 as usize]);
@@ -130,8 +130,8 @@ pub fn generate(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, Pre, 
             p.one(pre::MEM, r);
             let row = t.row_mut(r);
             let chunk = (v >> (16 * ph)) & 0xFFFF;
-            for j in 0..BITS_ROW {
-                row[j] = Goldilocks::new((chunk >> j) & 1);
+            for (j, cell) in row[..BITS_ROW].iter_mut().enumerate() {
+                *cell = Goldilocks::new((chunk >> j) & 1);
             }
             acc = acc.wrapping_add(chunk << (16 * ph));
             row[BACC] = Goldilocks::new(acc);
