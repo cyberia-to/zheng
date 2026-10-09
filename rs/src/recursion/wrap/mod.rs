@@ -11,27 +11,34 @@
 //!              the deferred nox-public claim (point, value))
 //! ```
 //!
-//! The relation: the circuit's AIR over `2^n` rows, three-or-fewer
-//! committed words — `W1` (circuit phase 1), `W2` (phase 2, after the
-//! memory challenges), and in [`KeyMode::Committed`] the circuit's key as
-//! two fixed words — `live = 1` on every row, the public input `X` at the
-//! output row. The proof:
+//! Two modes:
+//!
+//! - [`Mode::Inner`] (a proof another wrap verifies): the circuit's AIR
+//!   over `2^n` rows with committed words `W1` (circuit phase 1), `W2`
+//!   (phase 2: the memory argument, after the memory challenges) and the
+//!   circuit's key as two fixed words; any interpreter verifies it, the
+//!   circuit included;
+//! - [`Mode::Final`] (the outermost proof, verified natively): one
+//!   committed word `W1`; the memory argument is replaced by its linear
+//!   form — every read slot's value equals its write slot's, batched with
+//!   powers of `λ` into `⟨u_λ, W1⟩ = 0` over the whole word, one sumcheck
+//!   — and the key's columns are evaluated by the verifier (`u_λ` and the
+//!   key are fixed by the circuit's layout: `O(reads + key entries)`
+//!   field operations, no opening).
+//!
+//! Both: `live = 1` on every row, the public input `X` at the output row.
 //!
 //! ```text
-//! transcript  tag WRAP: X; W1 root, OOD; (α_V, β_V); W2 root, OOD;
-//!             τ, μ; zerocheck (degree 9); every W1, W2 column at ρ and
-//!             its successor; the key columns at ρ (committed mode);
-//!             γ_k; the shift reduction of W1, W2 to one point; the key
-//!             claim split over its two words; one batched field-native
-//!             WHIR opening of every word
+//! transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root,
+//!             OOD | final: λ; τ, μ; zerocheck (degree 9); the committed
+//!             columns at ρ and its successor; inner: the key columns at
+//!             ρ, γ_k; the shift reduction to one point per word; inner:
+//!             the key claim split over its two words | final: the wiring
+//!             sumcheck; one batched field-native WHIR opening
 //! ```
 //!
 //! The verifier evaluates the circuit's constraints at the point through
-//! their recorded graph (`expr`), so it runs natively and as a circuit:
-//! a wrap of a wrap verifies the inner wrap in the recursion circuit. In
-//! [`KeyMode::Native`] the verifier evaluates the key's columns itself
-//! (`O(nonzero key entries)`), which saves the key words' openings — the
-//! outermost proof's mode (a native verifier only).
+//! their recorded graph (`expr`), so it runs natively and as a circuit.
 
 mod program;
 mod prove;
@@ -65,14 +72,24 @@ pub const WORD: usize = 64;
 /// Column variables of a word.
 pub const CBITS: usize = 6;
 
-/// How the verifier gets the key's columns at the zerocheck point.
+/// A wrap level's relation (module docs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KeyMode {
-    /// Two fixed committed words, opened with the trace words (any
-    /// interpreter, the circuit included).
-    Committed,
-    /// Evaluated by the verifier from the key (a native verifier only).
-    Native,
+pub enum Mode {
+    /// Memory argument, committed key: verifiable by the circuit.
+    Inner,
+    /// Linear wiring, the key evaluated by the verifier: one committed
+    /// word, a native verifier only.
+    Final,
+}
+
+/// The linear form of the memory argument (final mode): every read slot
+/// with the slot that writes its address, and every used slot's value as
+/// a combination of its row's phase-1 cells.
+pub struct Wiring {
+    /// `(read, write)` slot indices (`row·SLOTS + slot`).
+    pub reads: Vec<(u32, u32)>,
+    /// Per slot index: `(column, coefficient)` of its value.
+    pub kappa: std::collections::BTreeMap<u32, Vec<(u8, Fp3)>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,7 +97,7 @@ pub struct WrapParams {
     pub whir: WhirParams,
     /// `log2` of the rows.
     pub n: usize,
-    pub key: KeyMode,
+    pub mode: Mode,
 }
 
 /// Everything a wrap level's prover and verifier derive from its
@@ -89,8 +106,10 @@ pub struct WrapKey {
     pub params: WrapParams,
     pub pre: Pre,
     pub sparse: Vec<Vec<(u32, Fp3)>>,
-    /// The key words ([`KeyMode::Committed`]).
+    /// The key words (inner mode).
     pub kw: Option<KeyWords>,
+    /// The linear wiring (final mode).
+    pub wiring: Option<Wiring>,
     pub key_ext: bool,
     pub cfg: whir::Config,
     /// OOD samples binding each trace word.
@@ -102,41 +121,53 @@ pub struct WrapKey {
     pub constraints: usize,
     /// Coordinates of the deferred nox-public claim's point.
     pub pn: usize,
-    /// Rows the circuit uses (of `2^n`).
+    /// Rows the circuit uses (of `2^n`), and its census: gates,
+    /// decompositions, permutation blocks.
     pub rows: usize,
+    pub census: [usize; 3],
 }
 
 impl WrapKey {
+    pub fn inner(&self) -> bool {
+        self.params.mode == Mode::Inner
+    }
+    /// Committed trace words (1 or 2) and their columns.
+    pub fn trace_words(&self) -> usize {
+        if self.inner() { 2 } else { 1 }
+    }
+    pub fn cols(&self) -> usize {
+        if self.inner() { COLS } else { V1 }
+    }
     pub fn inputs(&self) -> usize {
-        if self.kw.is_some() { 4 } else { 2 }
+        if self.inner() { 4 } else { 1 }
     }
     /// Symbol fields of the opened words.
     pub fn exts(&self) -> Vec<bool> {
-        let mut v = vec![false, false];
-        if self.kw.is_some() {
-            v.extend([self.key_ext; 2]);
-        }
-        v
+        if self.inner() { vec![false, false, self.key_ext, self.key_ext] } else { vec![false] }
     }
     pub fn vars(&self) -> usize {
         self.params.n + CBITS
     }
 }
 
-/// A wrap proof.
+/// A wrap proof (final mode: one trace word, no key messages; the wiring
+/// sumcheck and the word's value at its point instead).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WrapProof {
-    pub roots: [Digest; 2],
-    pub ood: [Vec<Fp3>; 2],
+    pub roots: Vec<Digest>,
+    pub ood: Vec<Vec<Fp3>>,
     pub zerocheck: Vec<Vec<Fp3>>,
     pub local: Vec<Fp3>,
     pub next: Vec<Fp3>,
     /// The key's columns at `ρ` (committed mode; empty otherwise).
     pub key: Vec<Fp3>,
     pub shift: Vec<Fp3>,
-    pub vals: [Fp3; 2],
-    /// The key claim over its two words (committed mode; empty otherwise).
+    pub vals: Vec<Fp3>,
+    /// The key claim over its two words (inner mode; empty otherwise).
     pub kv: Vec<Fp3>,
+    /// The wiring sumcheck and `W1` at its point (final mode; empty
+    /// otherwise).
+    pub wiring: Vec<Fp3>,
     pub whir: whir::Proof,
 }
 
@@ -152,31 +183,44 @@ pub struct FinalProof {
 pub const DEGREE: usize = 8;
 
 /// The circuit's AIR alone, `live = 1` appended, for the zerocheck prover:
-/// local = W1 ‖ W2, publics = key ‖ public-input columns.
-pub struct View<'a>(pub &'a CircuitAir);
+/// local = W1 ‖ W2 (inner) or W1 (final, no memory constraints), publics =
+/// key ‖ public-input columns.
+pub struct View<'a>(pub &'a CircuitAir, pub Mode);
 
 impl View<'_> {
+    pub fn width(&self) -> usize {
+        if self.1 == Mode::Inner { COLS } else { V1 }
+    }
+    pub fn constraints(&self) -> usize {
+        1 + if self.1 == Mode::Inner { self.0.constraints() } else { self.0.local_constraints() }
+    }
     pub fn eval_with<T: Num>(&self, local: &[T], next: &[T], pubs: &[T], alpha: T, beta: T, out: &mut [T]) {
+        let inner = self.1 == Mode::Inner;
+        let w = self.width();
         let row = Row {
             l1: &local[..V1],
-            l2: &local[V1..COLS],
+            l2: &local[V1..w],
             n1: &next[..V1],
-            n2: &next[V1..COLS],
+            n2: &next[V1..w],
             p: &pubs[..pre::COUNT],
             pin: &pubs[pre::COUNT..],
             alpha,
             beta,
         };
-        let k = self.0.constraints();
+        let k = self.constraints() - 1;
         let mut s = Sink { buf: &mut out[..k], i: 0 };
-        self.0.eval(&row, &mut s);
+        if inner {
+            self.0.eval(&row, &mut s);
+        } else {
+            self.0.eval_local(&row, &mut s);
+        }
         out[k] = local[LIVE] - T::ONE;
     }
 }
 
 impl Air for View<'_> {
     fn shape(&self) -> Shape {
-        Shape { w1: COLS, w2: 0, challenges: 2, constraints: self.0.constraints() + 1, degree: DEGREE }
+        Shape { w1: self.width(), w2: 0, challenges: 2, constraints: self.constraints(), degree: DEGREE }
     }
     fn publics(&self) -> &[Public] {
         &[]
@@ -186,20 +230,23 @@ impl Air for View<'_> {
     }
 }
 
-/// Inputs of the constraint graph: local, next, key, public input, α_V,
-/// β_V, μ.
-pub const G_INPUTS: usize = 2 * COLS + pre::COUNT + PIN + 3;
+/// Inputs of the constraint graph: local, next (`w` each), key, public
+/// input, α_V, β_V, μ.
+pub fn g_inputs(w: usize) -> usize {
+    2 * w + pre::COUNT + PIN + 3
+}
 
 /// Record `Σ_k μ^k C_k` (constraints of the circuit and `live = 1`).
-pub fn g_graph(air: &CircuitAir) -> (Graph, usize) {
-    let k = air.constraints() + 1;
-    let g = record(G_INPUTS, |i| {
-        let (local, rest) = i.split_at(COLS);
-        let (next, rest) = rest.split_at(COLS);
+pub fn g_graph(air: &CircuitAir, mode: Mode) -> (Graph, usize) {
+    let view = View(air, mode);
+    let (k, w) = (view.constraints(), view.width());
+    let g = record(g_inputs(w), |i| {
+        let (local, rest) = i.split_at(w);
+        let (next, rest) = rest.split_at(w);
         let (pubs, rest) = rest.split_at(pre::COUNT + PIN);
         let (alpha, beta, mu) = (rest[0], rest[1], rest[2]);
         let mut out = vec![crate::air::num::Sym::ZERO; k];
-        View(air).eval_with(local, next, pubs, alpha, beta, &mut out);
+        view.eval_with(local, next, pubs, alpha, beta, &mut out);
         let mut acc = crate::air::num::Sym::ZERO;
         let mut m = crate::air::num::Sym::ONE;
         for c in out {

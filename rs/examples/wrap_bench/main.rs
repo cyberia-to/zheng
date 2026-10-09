@@ -4,9 +4,8 @@
 //!
 //! IVC parameters as `ivc_bench` (`ZHENG_RATE`, `ZHENG_POW`, `ZHENG_STEP`).
 //! `ZHENG_WRAP` lists the wrap levels, innermost first, as
-//! `<log inv rate><c|n>[:<pow>[:<fold>]]` (`c`: the key committed, `n`: the
-//! key evaluated by the verifier; only the last level may be `n`), default
-//! `4c,8n`. `ZHENG_IVC_DIR=<dir>`: store / reuse IVC proofs there
+//! `<log inv rate><i|f>[:<pow>[:<fold>]]` (`i`: inner mode, `f`: final
+//! mode — only the last level), default `6i,8f:30`. `ZHENG_IVC_DIR=<dir>`: store / reuse IVC proofs there
 //! (`<fixture>.ivc`).
 
 #[path = "../../tests/common/mod.rs"]
@@ -16,7 +15,7 @@ use std::time::Instant;
 use zheng::execution::ExecutionNoun as N;
 use zheng::machine;
 use zheng::recursion::ivc;
-use zheng::recursion::wrap::{self, FinalProof, Inner, KeyMode, WrapParams};
+use zheng::recursion::wrap::{self, FinalProof, Inner, Mode, WrapParams};
 
 fn fixture(name: &str) -> Option<(N, Vec<u64>)> {
     Some(match name {
@@ -38,7 +37,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 }
 
 fn levels(base: &lens::WhirParams) -> Vec<WrapParams> {
-    let spec: String = env("ZHENG_WRAP", "4c,8n".to_string());
+    let spec: String = env("ZHENG_WRAP", "6i,8f:30".to_string());
     spec.split(',')
         .map(|l| {
             let mut parts = l.split(':');
@@ -52,8 +51,8 @@ fn levels(base: &lens::WhirParams) -> Vec<WrapParams> {
             if let Some(k) = parts.next() {
                 whir.folding_factor = k.parse().expect("fold");
             }
-            let key = if mode == "n" { KeyMode::Native } else { KeyMode::Committed };
-            WrapParams { whir, n: 0, key }
+            let mode = if mode == "f" { Mode::Final } else { Mode::Inner };
+            WrapParams { whir, n: 0, mode }
         })
         .collect()
 }
@@ -75,6 +74,7 @@ fn main() {
     let t0 = Instant::now();
     let ikey = ivc::key(&whir, n as usize).expect("key");
     eprintln!("ivc key: {:.0} ms", ms(t0));
+
     let mut keys = Vec::new();
     for (i, p) in lv.iter().enumerate() {
         let t = Instant::now();
@@ -84,17 +84,23 @@ fn main() {
         }
         .expect("wrap key");
         eprintln!(
-            "wrap {i} key: circuit {} rows → 2^{} · rate 1/{} pow {} k {} · {:?} · bits {:.2} · {:.0} ms",
+            "wrap {i} key: circuit {} rows (gates {} bits {} blocks {}) → 2^{} · rate 1/{} pow {} k {} · {:?} · bits {:.2} · {:.0} ms",
             k.rows,
+            k.census[0],
+            k.census[1],
+            k.census[2],
             k.params.n,
             1u32 << p.whir.log_inv_rate,
             p.whir.pow_bits,
             p.whir.folding_factor,
-            p.key,
+            p.mode,
             k.cfg.security_bits(),
             ms(t)
         );
         keys.push(k);
+    }
+    if std::env::var_os("ZHENG_KEYS_ONLY").is_some() {
+        return;
     }
     for name in names {
         let (prog, input) = fixture(&name).unwrap_or_else(|| panic!("fixture {name}"));

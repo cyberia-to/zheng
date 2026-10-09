@@ -11,7 +11,7 @@
 use lens::PcsError;
 use lens::rspcs::wire::{Reader, Writer};
 
-use super::{COLS, DEGREE, FinalProof, WrapKey, WrapProof};
+use super::{DEGREE, FinalProof, WrapKey, WrapProof};
 use crate::recursion::circuit::layout::pre;
 use crate::recursion::state::ClaimV;
 use crate::recursion::whir;
@@ -34,23 +34,26 @@ pub fn write(w: &mut Writer, k: &WrapKey, p: &WrapProof) {
     }
     exts(w, &p.vals);
     exts(w, &p.kv);
+    exts(w, &p.wiring);
     whir::wire::write(w, &k.cfg, &k.exts(), &p.whir);
 }
 
 pub fn read(r: &mut Reader<'_>, k: &WrapKey) -> R<WrapProof> {
     let n = k.params.n;
-    let committed = k.kw.is_some();
-    let roots = [read_digest(r)?, read_digest(r)?];
-    let ood = [read_exts(r, k.fresh)?, read_exts(r, k.fresh)?];
+    let inner = k.inner();
+    let words = k.trace_words();
+    let roots = (0..words).map(|_| read_digest(r)).collect::<R<_>>()?;
+    let ood = (0..words).map(|_| read_exts(r, k.fresh)).collect::<R<_>>()?;
     let zerocheck = (0..n).map(|_| read_exts(r, DEGREE + 1)).collect::<R<_>>()?;
-    let local = read_exts(r, COLS)?;
-    let next = read_exts(r, COLS)?;
-    let key = read_exts(r, if committed { pre::COUNT } else { 0 })?;
+    let local = read_exts(r, k.cols())?;
+    let next = read_exts(r, k.cols())?;
+    let key = read_exts(r, if inner { pre::COUNT } else { 0 })?;
     let shift = read_exts(r, 2 * n)?;
-    let v = read_exts(r, 2)?;
-    let kv = read_exts(r, if committed { 2 } else { 0 })?;
+    let vals = read_exts(r, words)?;
+    let kv = read_exts(r, if inner { 2 } else { 0 })?;
+    let wiring = read_exts(r, if inner { 0 } else { 2 * k.vars() + 1 })?;
     let whir = whir::wire::read(r, &k.cfg, &k.exts())?;
-    Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals: [v[0], v[1]], kv, whir })
+    Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals, kv, wiring, whir })
 }
 
 impl WrapProof {

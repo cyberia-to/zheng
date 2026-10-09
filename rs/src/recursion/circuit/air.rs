@@ -114,6 +114,10 @@ impl CircuitAir {
     pub fn constraints(&self) -> usize {
         self.constraints
     }
+    /// Constraints of [`Self::eval_local`].
+    pub fn local_constraints(&self) -> usize {
+        self.constraints - MEMORY_CONSTRAINTS
+    }
     pub fn tables(&self) -> &Tables {
         &self.tables
     }
@@ -190,6 +194,17 @@ impl CircuitAir {
 
     /// Every constraint of a row, in a fixed order.
     pub fn eval<T: Num>(&self, r: &Row<'_, T>, out: &mut Sink<'_, T>) {
+        self.eval_with(r, out, true);
+    }
+
+    /// Constraints without the memory argument (its last
+    /// [`MEMORY_CONSTRAINTS`]): for a relation whose wiring is checked
+    /// otherwise (`wrap` final mode).
+    pub fn eval_local<T: Num>(&self, r: &Row<'_, T>, out: &mut Sink<'_, T>) {
+        self.eval_with(r, out, false);
+    }
+
+    fn eval_with<T: Num>(&self, r: &Row<'_, T>, out: &mut Sink<'_, T>, memory: bool) {
         let (l, n, p) = (r.l1, r.n1, r.p);
         let one = T::ONE;
         let live = l[LIVE];
@@ -297,6 +312,9 @@ impl CircuitAir {
             out.push(p[pre::OUT] * (o8[j] - r.pin[j]));
         }
 
+        if !memory {
+            return;
+        }
         // memory
         let vals = slot_values(l, p);
         let mut delta = T::ZERO;
@@ -311,6 +329,10 @@ impl CircuitAir {
         out.push(next - sum - delta);
     }
 }
+
+/// The memory argument's constraints (an inverse per slot, the running
+/// sum).
+pub const MEMORY_CONSTRAINTS: usize = SLOTS + 1;
 
 /// The value each memory slot of a row fingerprints (by row kind).
 pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {

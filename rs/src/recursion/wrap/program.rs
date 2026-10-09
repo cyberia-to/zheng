@@ -2,7 +2,7 @@
 
 use nebu::Fp3;
 
-use super::{KeyMode, WrapKey, WrapParams, WrapProof, g_graph};
+use super::{Mode, Wiring, WrapKey, WrapParams, WrapProof, g_graph};
 use crate::recursion::circuit::air::CircuitAir;
 use crate::recursion::circuit::builder::Builder;
 use crate::recursion::circuit::trace;
@@ -90,17 +90,19 @@ fn dummy_publics() -> Publics<Fp3> {
 pub(crate) fn dummy_proof(k: &WrapKey) -> WrapProof {
     let z = Fp3::ZERO;
     let n = k.params.n;
-    let committed = k.kw.is_some();
+    let inner = k.inner();
+    let words = k.trace_words();
     WrapProof {
-        roots: [[nebu::Goldilocks::ZERO; 4]; 2],
-        ood: [vec![z; k.fresh], vec![z; k.fresh]],
+        roots: vec![[nebu::Goldilocks::ZERO; 4]; words],
+        ood: vec![vec![z; k.fresh]; words],
         zerocheck: vec![vec![z; super::DEGREE + 1]; n],
-        local: vec![z; super::COLS],
-        next: vec![z; super::COLS],
-        key: if committed { vec![z; crate::recursion::circuit::layout::pre::COUNT] } else { vec![] },
+        local: vec![z; k.cols()],
+        next: vec![z; k.cols()],
+        key: if inner { vec![z; crate::recursion::circuit::layout::pre::COUNT] } else { vec![] },
         shift: vec![z; 2 * n],
-        vals: [z; 2],
-        kv: if committed { vec![z; 2] } else { vec![] },
+        vals: vec![z; words],
+        kv: if inner { vec![z; 2] } else { vec![] },
+        wiring: if inner { vec![] } else { vec![z; 2 * k.vars() + 1] },
         whir: whir::dummy(&k.cfg, k.inputs()),
     }
 }
@@ -129,14 +131,15 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
     let mut b = Builder::new(false);
     run(&mut b, inner, &dummy_publics(), &pn, |b, c| b.set_output(c));
     let rows = b.rows();
+    let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
     let n = if params.n == 0 { rows.next_power_of_two().trailing_zeros().max(4) as usize } else { params.n };
     let (_, pre, out_row) = trace::generate(&b, &air, n)?;
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
-    let committed = params.key == KeyMode::Committed;
-    let claims = 2 * (fresh + 1) + if committed { 2 } else { 0 };
-    let inputs = if committed { 4 } else { 2 };
+    let committed = params.mode == Mode::Inner;
+    let (claims, inputs) = if committed { (2 * (fresh + 1) + 2, 4) } else { (fresh + 2, 1) };
     let cfg = whir::Config::derive(&params.whir, vars, inputs, claims)?;
+    let wiring = (!committed).then(|| wiring(&pre));
     let (kw, key_ext) = if committed {
         let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre);
         (Some(kw), ext)
@@ -148,12 +151,13 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
         .iter()
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
-    let (g, constraints) = g_graph(&air);
+    let (g, constraints) = g_graph(&air, params.mode);
     Ok(WrapKey {
         params: WrapParams { n, ..params },
         pre,
         sparse,
         kw,
+        wiring,
         key_ext,
         cfg,
         fresh,
@@ -162,5 +166,55 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
         constraints,
         pn: inner.pn_len(),
         rows,
+        census,
     })
+}
+
+/// The memory argument's slots as linear wiring: every read slot paired
+/// with the slot writing its address, every used slot's value as a
+/// combination of its row's phase-1 cells (`slot_values` is linear in
+/// them: evaluated at unit rows).
+fn wiring(pre: &trace::Pre) -> Wiring {
+    use crate::recursion::circuit::air::slot_values;
+    use crate::recursion::circuit::layout::{SLOTS, V1, pre as pc};
+    let rows = pre.cols[0].len();
+    let one = Fp3::ONE;
+    let mut writes: std::collections::BTreeMap<[u64; 3], u32> = std::collections::BTreeMap::new();
+    let mut reads_at: Vec<(u32, [u64; 3])> = Vec::new();
+    let mut kappa = std::collections::BTreeMap::new();
+    let key = |x: Fp3| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()];
+    for r in 0..rows {
+        let p = pre.row(r);
+        if p[pc::MEM] != one {
+            continue;
+        }
+        let used: Vec<usize> = (0..SLOTS).filter(|&s| p[pc::E + s] != Fp3::ZERO).collect();
+        if used.is_empty() {
+            continue;
+        }
+        let mut unit = vec![Fp3::ZERO; V1];
+        let mut per: Vec<Vec<(u8, Fp3)>> = vec![Vec::new(); SLOTS];
+        for c in 0..V1 {
+            unit[c] = one;
+            let v = slot_values(&unit, &p);
+            unit[c] = Fp3::ZERO;
+            for &s in &used {
+                if v[s] != Fp3::ZERO {
+                    per[s].push((c as u8, v[s]));
+                }
+            }
+        }
+        for &s in &used {
+            let idx = (r * SLOTS + s) as u32;
+            kappa.insert(idx, core::mem::take(&mut per[s]));
+            let addr = key(p[pc::ADDR + s]);
+            if p[pc::E + s] == one {
+                reads_at.push((idx, addr));
+            } else {
+                writes.insert(addr, idx);
+            }
+        }
+    }
+    let reads = reads_at.into_iter().map(|(r, a)| (r, *writes.get(&a).expect("every read address is written"))).collect();
+    Wiring { reads, kappa }
 }
