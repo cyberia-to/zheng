@@ -36,6 +36,9 @@ mod direct_tests;
 mod state_tests;
 
 #[cfg(test)]
+mod state_v3_tests;
+
+#[cfg(test)]
 mod private_state_tests;
 
 #[cfg(test)]
