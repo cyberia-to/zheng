@@ -147,7 +147,7 @@ fn bound_ranges(envelope: &Envelope) -> Vec<(usize, usize)> {
             });
             vec![(0, HEADER_BYTES + roots + reads)]
         }
-        Envelope::Zk { .. } | Envelope::Succinct { .. } => unreachable!(),
+        Envelope::Zk { .. } | Envelope::Succinct { .. } | Envelope::Machine { .. } => unreachable!(),
     }
 }
 
@@ -159,7 +159,7 @@ fn facts(e: &Envelope) -> Envelope {
         Envelope::Public { statement, .. } => statement.budget = 0,
         Envelope::StatePublic { statement, .. } => statement.execution.budget = 0,
         Envelope::Zk { statement, .. } => statement.execution.budget = 0,
-        Envelope::Succinct { .. } => unreachable!(),
+        Envelope::Succinct { .. } | Envelope::Machine { .. } => unreachable!(),
     }
     e
 }
