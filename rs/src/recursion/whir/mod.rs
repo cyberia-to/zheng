@@ -28,6 +28,7 @@
 
 mod prove;
 mod verify;
+pub mod wire;
 
 #[cfg(test)]
 mod tests;

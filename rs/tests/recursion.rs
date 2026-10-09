@@ -21,7 +21,7 @@ fn whir() -> lens::WhirParams {
 fn roundtrip(p: &IvcProof) -> IvcProof {
     let w = whir();
     let k = ivc::key(&w, p.log_rows as usize).unwrap();
-    let bytes = p.to_bytes(&k.params);
+    let bytes = p.to_bytes(&k);
     let q = IvcProof::from_bytes(&bytes, |lr| ivc::key(&w, lr as usize)).unwrap();
     assert_eq!(&q, p);
     q

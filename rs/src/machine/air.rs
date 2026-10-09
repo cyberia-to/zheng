@@ -48,7 +48,7 @@ pub struct Constants {
 
 /// The statement constants as constraint values (inputs of a recorded
 /// constraint graph; field elements otherwise).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KConst<T> {
     pub fml0: T,
     pub obj0: T,

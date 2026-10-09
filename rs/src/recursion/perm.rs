@@ -30,6 +30,12 @@ pub mod tag {
     pub const CTX: u64 = 6;
     /// A cap of a committed word.
     pub const CAP: u64 = 7;
+    /// The decider of the last accumulator.
+    pub const DECIDE: u64 = 8;
+    /// A wrap proof's transcript.
+    pub const WRAP: u64 = 9;
+    /// The digest of a final verifier's public values.
+    pub const PUBLIC: u64 = 10;
 }
 
 fn to_h(x: Goldilocks) -> HG {

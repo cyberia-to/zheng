@@ -21,6 +21,8 @@ pub mod gm;
 pub mod acc;
 pub mod whir;
 pub mod expr;
+pub mod decide;
+pub mod finalv;
 pub mod params;
 pub mod program;
 pub mod relation;

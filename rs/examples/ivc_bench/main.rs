@@ -64,7 +64,7 @@ fn main() {
         let t2 = Instant::now();
         let proof = ivc::prove_run(&run, &whir).expect("prove");
         let t_prove = t2.elapsed();
-        let bytes = proof.to_bytes(p);
+        let bytes = proof.to_bytes(&key);
         let parsed = ivc::IvcProof::from_bytes(&bytes, |lr| ivc::key(&whir, lr as usize)).expect("parse");
         assert_eq!(parsed, proof);
         let mut v = Vec::new();
@@ -83,7 +83,7 @@ fn main() {
         }
         vp.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let segs = run.segments();
-        let parts: Vec<String> = proof.sizes(p).iter().map(|(k, v)| format!("{k} {v}")).collect();
+        let parts: Vec<String> = proof.sizes(&key).iter().map(|(k, v)| format!("{k} {v}")).collect();
         println!("{name}: parts {}", parts.join(" · "));
         println!(
             "{name}: cycles {} · {} steps of 2^{n} rows · proof {} B · run {:.0} ms · prove {:.0} ms ({:.0} ms/step) · verify median {:.2} ms (prepared {:.2} ms)",

@@ -7,7 +7,8 @@
 //! state    its items in hashing order
 //! step     roots · OOD answers · boundary rows · zerocheck · columns at ρ
 //!          · publics · line folds · shift · values · accumulation step
-//! decider  lens wire (accumulate::DeciderProof)
+//! decider  the key claim's two values · the batched WHIR opening
+//!          (`whir::wire`) of the accumulator and the key words
 //! ```
 //!
 //! The accumulation step's openings are deduplicated per word: the spot
@@ -27,33 +28,34 @@ use super::relation::{COLS, PUB_NOX, PUB_V};
 use super::state::{State, StateV};
 use super::step::StepProof;
 use super::word::{Digest, LeafOpening, leaf_digest};
-use crate::accumulate::DeciderProof;
+use super::decide::Decider;
+use super::ivc::Key;
 use crate::machine::layout::{W1, W2};
 
 type R<T> = Result<T, PcsError>;
 
-fn digest(w: &mut Writer, d: &Digest) {
+pub(crate) fn digest(w: &mut Writer, d: &Digest) {
     for &x in d {
         w.base(x);
     }
 }
-fn read_digest(r: &mut Reader<'_>) -> R<Digest> {
+pub(crate) fn read_digest(r: &mut Reader<'_>) -> R<Digest> {
     Ok([r.base()?, r.base()?, r.base()?, r.base()?])
 }
-fn exts(w: &mut Writer, xs: &[Fp3]) {
+pub(crate) fn exts(w: &mut Writer, xs: &[Fp3]) {
     for &x in xs {
         w.ext(x);
     }
 }
-fn read_exts(r: &mut Reader<'_>, k: usize) -> R<Vec<Fp3>> {
+pub(crate) fn read_exts(r: &mut Reader<'_>, k: usize) -> R<Vec<Fp3>> {
     (0..k).map(|_| r.ext()).collect()
 }
-fn bases(w: &mut Writer, xs: &[Goldilocks]) {
+pub(crate) fn bases(w: &mut Writer, xs: &[Goldilocks]) {
     for &x in xs {
         w.base(x);
     }
 }
-fn read_bases(r: &mut Reader<'_>, k: usize) -> R<Vec<Goldilocks>> {
+pub(crate) fn read_bases(r: &mut Reader<'_>, k: usize) -> R<Vec<Goldilocks>> {
     (0..k).map(|_| r.base()).collect()
 }
 
@@ -78,7 +80,7 @@ fn read_state(r: &mut Reader<'_>, p: &Params) -> R<State> {
 
 /// Sibling digests of a multi-opening of sorted distinct `leaves` (lens
 /// order: level by level, increasing index, only those not computable).
-fn multi_siblings(paths: &[(usize, &LeafOpening)], depth: usize) -> Vec<Digest> {
+pub(crate) fn multi_siblings(paths: &[(usize, &LeafOpening)], depth: usize) -> Vec<Digest> {
     let mut out = Vec::new();
     let mut known: Vec<usize> = paths.iter().map(|p| p.0).collect();
     for level in 0..depth {
@@ -183,7 +185,7 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
 }
 
 /// Full paths of a multi-opening (hashing the computable nodes).
-fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], depth: usize, ext: bool) -> R<Vec<LeafOpening>> {
+pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], depth: usize, ext: bool) -> R<Vec<LeafOpening>> {
     let mut nodes: Vec<(usize, Digest)> = leaves.iter().zip(&syms).map(|(&l, s)| (l, leaf_digest(ext, s))).collect();
     let mut paths: Vec<Vec<Digest>> = vec![Vec::with_capacity(depth); leaves.len()];
     let mut it = sib.iter();
@@ -281,10 +283,26 @@ fn read_step(r: &mut Reader<'_>, p: &Params) -> R<StepProof> {
     })
 }
 
+fn decider_ext(k: &Key) -> [bool; 3] {
+    [true, k.key_ext, k.key_ext]
+}
+
+pub(crate) fn decider(w: &mut Writer, d: &Decider, k: &Key) {
+    exts(w, &d.key);
+    super::whir::wire::write(w, &k.dcfg, &decider_ext(k), &d.whir);
+}
+
+pub(crate) fn read_decider(r: &mut Reader<'_>, k: &Key) -> R<Decider> {
+    let v = read_exts(r, 2)?;
+    let whir = super::whir::wire::read(r, &k.dcfg, &decider_ext(k))?;
+    Ok(Decider { key: [v[0], v[1]], whir })
+}
+
 impl IvcProof {
     /// Bytes of each part: header, state, step (AIR part), accumulation
     /// step, decider.
-    pub fn sizes(&self, p: &Params) -> [(&'static str, usize); 5] {
+    pub fn sizes(&self, k: &Key) -> [(&'static str, usize); 5] {
+        let p = &k.params;
         let len = |f: &dyn Fn(&mut Writer)| {
             let mut w = Writer::default();
             f(&mut w);
@@ -297,11 +315,12 @@ impl IvcProof {
             ("state", len(&|w| state(w, &self.state))),
             ("step", all - acc),
             ("accumulation", acc),
-            ("decider", len(&|w| self.decider.write(w, true))),
+            ("decider", len(&|w| decider(w, &self.decider, k))),
         ]
     }
 
-    pub fn to_bytes(&self, p: &Params) -> Vec<u8> {
+    pub fn to_bytes(&self, k: &Key) -> Vec<u8> {
+        let p = &k.params;
         let mut w = Writer::default();
         w.u8(self.log_rows as u8);
         w.u64(self.start);
@@ -309,7 +328,7 @@ impl IvcProof {
         digest(&mut w, &self.chain);
         state(&mut w, &self.state);
         step(&mut w, &self.step, p);
-        self.decider.write(&mut w, true);
+        decider(&mut w, &self.decider, k);
         w.buf
     }
 
@@ -325,11 +344,8 @@ impl IvcProof {
         let chain = read_digest(&mut r).map_err(e)?;
         let st = read_state(&mut r, p).map_err(e)?;
         let stp = read_step(&mut r, p).map_err(e)?;
-        let (decider, ext) = DeciderProof::read(&mut r).map_err(e)?;
+        let decider = read_decider(&mut r, &key).map_err(e)?;
         r.finish().map_err(e)?;
-        if !ext {
-            return Err("recursive proof: decider of a base word".into());
-        }
         Ok(Self { log_rows, start, segments, chain, state: st, step: stp, decider })
     }
 }
