@@ -10,6 +10,8 @@ pub mod proof;
 pub mod public;
 pub mod relation;
 pub mod state;
+/// What authenticates state reads, verified against the statement's root.
+pub mod state_evidence;
 mod statement;
 /// The succinct profile: committed witness, Spartan over Fp3, one opening.
 pub mod succinct;
