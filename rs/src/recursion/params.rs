@@ -52,7 +52,7 @@ impl Params {
         let probe = AccConfig::derive(whir, vars, INPUTS, 3 * (fresh + 2))?;
         let claims = probe.acc_claims() + 3 * (fresh + 2);
         let cfg = AccConfig::derive(whir, vars, INPUTS, claims)?;
-        let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [nebu::Goldilocks::ZERO; 4], cycles: 0 };
+        let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [nebu::Goldilocks::ZERO; 4], cycles: 0, root: [nebu::Goldilocks::ZERO; 4] };
         let machine = Machine::new(constants, &[], 1 << n, 0, 1 << n);
         let rel = relation::Relation::new(machine, [nebu::Fp3::ZERO; 2]);
         let dims = Dims {

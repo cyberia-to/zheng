@@ -305,6 +305,7 @@ pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u
         p: derived.entries.len() as u64,
         output: derived.output,
         cycles: st.cycles,
+        root: derived.root,
     };
     let init = statement::init_columns(&derived.entries);
     let sd = statement_digest(st, n, start, segments);

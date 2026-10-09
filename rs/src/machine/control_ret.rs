@@ -8,7 +8,7 @@ use super::control_eval::go;
 use super::layout::*;
 use crate::air::Vals;
 
-pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
+pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     let l = v.local;
     let n = v.next;
     let one = Fp3::ONE;
@@ -18,19 +18,27 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     let pay = |s: usize, i: usize| l[slot(s, P0 + i)];
     let alloc = l[ALLOC];
     let val = l[X];
+    let op = l[R_OP];
     // the frame: slot 0 under the frame id, payload (x, obj, d, parent)
     let nonterm = rt * (one - l[F_TERM]);
     out.push(nonterm * (key(0) - l[K]));
     let (x, fobj, fd, parent) = (pay(0, 0), pay(0, 1), pay(0, 2), pay(0, 3));
 
-    // push a successor frame and evaluate the frame's formula
-    let push2 = f(F_CONS1) + f(F_COMP1) + f(F_B1ADD) + f(F_B1SUB) + f(F_B1MUL) + f(F_B1EQ);
+    // push a successor frame and evaluate the frame's formula; B1(op)
+    // pushes B2(op) and keeps the subject for look
+    let push2 = f(F_CONS1) + f(F_COMP1) + f(F_B1);
     out.push(push2 * (key(1) - alloc));
     out.push(push2 * (pay(1, 0) - val));
-    out.push(push2 * pay(1, 1));
+    out.push((push2 - f(F_B1)) * pay(1, 1) + f(F_B1) * (pay(1, 1) - fobj));
     out.push((push2 - f(F_COMP1)) * pay(1, 2));
     out.push(f(F_COMP1) * (pay(1, 2) - fd));
     out.push(push2 * (pay(1, 3) - parent));
+    // B1: the frame's op is a B1 opcode — otherwise `TAG_B1 + op` could
+    // name any other frame and B1's step would replace that frame's own
+    let gb1 = f(F_B1);
+    let factor = |ops: &[u64]| ops.iter().fold(one, |a, &o| a * (op - c(o)));
+    out.push(gb1 * (l[R_OPY] - factor(&B1_OPS[..5])));
+    out.push(gb1 * l[R_OPY] * factor(&B1_OPS[5..]));
     go(
         out,
         n,
@@ -69,20 +77,30 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
         K_EVAL,
         &[(OBJ, fobj), (X, arm), (K, parent), (D, fd + one), (ALLOC, alloc)],
     );
-    // B2 add / sub / mul: two atoms, one result atom
+    // the operand atoms of B2AR / B2EQ / B2W / B2LOOK
     let (u, w) = (pay(1, 0), pay(2, 0));
-    let b2 = f(F_B2ADD) + f(F_B2SUB) + f(F_B2MUL);
-    out.push(b2 * (key(1) - x));
-    out.push(b2 * (key(2) - val));
-    let res = f(F_B2ADD) * (u + w) + f(F_B2SUB) * (u - w) + f(F_B2MUL) * u * w;
-    out.push(b2 * pay(3, 0) - res);
+    let two_ops = f(F_B2AR) + f(F_B2EQ) + f(F_B2W) + f(F_B2LOOK);
+    out.push(two_ops * (key(1) - x));
+    out.push(two_ops * (key(2) - val));
+    // B2AR: add / sub / mul selected one-hot by the frame's op
+    let g = f(F_B2AR);
+    let sel = [(R_SADD, 5u64), (R_SSUB, 6), (R_SMUL, 7)];
+    let mut ssum = Fp3::ZERO;
+    let mut sop = Fp3::ZERO;
+    for &(col, code) in &sel {
+        out.push(g * l[col] * (l[col] - one));
+        ssum += l[col];
+        sop += l[col] * c(code);
+    }
+    out.push(g * (ssum - one));
+    out.push(g * (sop - op));
+    let res = l[R_SADD] * (u + w) + l[R_SSUB] * (u - w) + l[R_SMUL] * u * w;
+    out.push(g * (pay(3, 0) - res));
     // B2 eq: kinds, atom compare; pairs go to EQD
     let g = f(F_B2EQ);
     let (ka, kb) = (l[Q_KA], l[Q_KB]);
     out.push(g * ka * (ka - one));
     out.push(g * kb * (kb - one));
-    out.push(g * (key(1) - x));
-    out.push(g * (key(2) - val));
     let atoms = g * ka * kb;
     let iseq = l[Q_ISEQ];
     out.push(atoms * ((u - w) * l[Q_EINV] - (one - iseq)));
@@ -92,12 +110,47 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     let pairs = g * (one - ka) * (one - kb);
     go(out, n, pairs, K_EQD, &[(OBJ, x), (X, val), (K, parent), (ALLOC, alloc)]);
     // the atom result of add / sub / mul / eq(atom|mixed)
-    let wr = b2 + g - pairs;
+    let wr = f(F_B2AR) + g - pairs;
     out.push(wr * (key(3) - alloc));
     for i in 1..4 {
         out.push(wr * pay(3, i));
     }
     go(out, n, wr, K_RET, &[(X, alloc), (K, parent), (ALLOC, alloc + one)]);
+    // B2W: the result atom is written here, the 32 WBIT rows prove it
+    let g = f(F_B2W);
+    out.push(g * (key(3) - alloc));
+    for i in 1..4 {
+        out.push(g * pay(3, i));
+    }
+    let wsum = WOPS.iter().fold(Fp3::ZERO, |a, &(col, code)| a + n[col] * c(code));
+    out.push(g * (wsum - op));
+    go(
+        out,
+        n,
+        g,
+        K_AUX,
+        &[
+            (S_WBIT, one),
+            (OBJ, u),
+            (X, w),
+            (D, pay(3, 0)),
+            (K, parent),
+            (ALLOC, alloc + one),
+            (B_CNT, Fp3::ZERO),
+        ],
+    );
+    // B2LOOK: (namespace, key) atoms, the authenticated state read
+    let g = f(F_B2LOOK);
+    out.push(g * (pay(3, 0) - u));
+    out.push(g * (pay(3, 1) - w));
+    out.push(g * pay(3, 3));
+    go(
+        out,
+        n,
+        g,
+        K_AUX,
+        &[(S_LOOK, one), (OBJ, fobj), (X, pay(3, 2)), (K, parent), (ALLOC, alloc)],
+    );
     // UHASH: the hash opcode's output, as hash_data
     let g = f(F_UHASH);
     out.push(g * (key(1) - val));
@@ -115,6 +168,22 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
         out.push(g * pay(2, i));
     }
     go(out, n, g, K_RET, &[(X, alloc), (K, parent), (ALLOC, alloc + one)]);
+    // CALL1: the tag is an atom; the witness rows follow (stack empty)
+    let g = f(F_CALL1);
+    out.push(g * (key(1) - val));
+    go(
+        out,
+        n,
+        g,
+        K_AUX,
+        &[(OBJ, fobj), (X, x), (D, fd), (K, parent), (ALLOC, alloc), (W_SP, Fp3::ZERO)],
+    );
+    out.push(g * (one - n[S_WATOM] - n[S_WPAIR] - n[S_WJOIN]));
+    // CALL2: the check returned the atom 0; the witness is the value
+    let g = f(F_CALL2);
+    out.push(g * (key(1) - val));
+    out.push(g * pay(1, 0));
+    go(out, n, g, K_RET, &[(X, x), (K, parent), (ALLOC, alloc)]);
 
     // HDA: atoms h0..h3 at ALLOC..ALLOC+3; HDB: their pairs
     let ga = l[K_HDA];

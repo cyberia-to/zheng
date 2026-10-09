@@ -14,9 +14,12 @@
 
 pub mod air;
 mod control;
+mod control_aux;
 mod control_eval;
 mod control_ret;
+mod control_word;
 mod exec;
+mod execute;
 pub mod hemera;
 pub mod layout;
 mod memory;
@@ -25,15 +28,21 @@ mod phase2;
 pub(crate) use phase2::build as phase2_build;
 mod run;
 mod run_eq;
+mod run_ops;
 mod slots;
 pub mod statement;
 mod trace;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_ops;
+#[cfg(test)]
+mod tests_review;
 
-pub use exec::MachineError;
-pub use statement::MachineStatement;
+pub use exec::{Hints, MachineError};
+pub use execute::{execute, execute_exact, execute_hinted, execute_with};
+pub use statement::{MachineState, MachineStatement};
 
 use lens::{MultilinearPcs, Transcript, WhirParams};
 
@@ -41,8 +50,6 @@ use crate::accumulate::{self, AccConfig, AccProof, DeciderProof};
 use crate::air::{self as uair, AirProof, Trace};
 use crate::execution::ExecutionNoun;
 use air::{Constants, Machine};
-use exec::Builder;
-use run::Digests;
 
 /// A machine proof: trace geometry, the AIR messages of every segment,
 /// one accumulation step per segment over its two committed words, and the
@@ -115,13 +122,14 @@ pub const MAX_LOG_ROWS: u32 = 18;
 pub const SEGMENT_LOG_ROWS: u32 = 14;
 
 /// The run of a statement: the global trace, its geometry, the statement.
+#[derive(Clone)]
 pub struct Run {
     pub statement: MachineStatement,
     pub trace: Trace,
     pub start: usize,
     pub seg_log: u32,
     pub constants: Constants,
-    pub init: Vec<(u64, u64, u64)>,
+    pub init: Vec<(u64, u64, u64, u64)>,
 }
 
 impl Run {
@@ -140,78 +148,6 @@ impl Run {
     pub fn machine(&self, i: usize) -> Machine {
         let rows = 1usize << self.seg_log;
         Machine::new(self.constants.clone(), &self.init, self.start, i * rows, rows)
-    }
-}
-
-/// Run `program` on `input` natively and build the machine trace, in
-/// segments of at most `2^seg_max` rows.
-pub fn execute_with(
-    program: &ExecutionNoun,
-    input: &[u64],
-    budget: u64,
-    seg_max: u32,
-) -> Result<Run, MachineError> {
-    execute_sized(program, input, budget, 0, seg_max)
-}
-
-/// Run and build the trace in segments of exactly `2^seg_log` rows (the
-/// recursion profile's fixed step size).
-pub fn execute_exact(program: &ExecutionNoun, input: &[u64], budget: u64, seg_log: u32) -> Result<Run, MachineError> {
-    execute_sized(program, input, budget, seg_log, seg_log)
-}
-
-fn execute_sized(
-    program: &ExecutionNoun,
-    input: &[u64],
-    budget: u64,
-    seg_min: u32,
-    seg_max: u32,
-) -> Result<Run, MachineError> {
-    let mut st = MachineStatement {
-        program: statement::tokens(program),
-        input: input.to_vec(),
-        output: vec![],
-        cycles: 0,
-        budget,
-    };
-    let derived = st.init().map_err(|_| MachineError::Native("statement"))?;
-    let tables = hemera::Tables::default();
-    let mut b = Builder::default();
-    trace::init_rows(&mut b, &derived.entries);
-    let mut dg = Digests::default();
-    let (result, cycles) = run::run(&mut b, &mut dg, &tables, derived.fml0, derived.obj0, budget)?;
-    st.cycles = cycles;
-    st.output = statement::tokens(&noun_of(&b, result));
-    let (trace, start, seg_log) = trace::finish(b, &mut dg, &tables, seg_min, seg_max);
-    let constants = Constants {
-        fml0: derived.fml0,
-        obj0: derived.obj0,
-        p: derived.entries.len() as u64,
-        output: statement::digest(&statement::parse(&st.output).expect("own output")),
-        cycles,
-    };
-    Ok(Run {
-        statement: st,
-        trace,
-        start,
-        seg_log,
-        constants,
-        init: statement::init_columns(&derived.entries),
-    })
-}
-
-/// [`execute_with`] at the default segment size.
-pub fn execute(program: &ExecutionNoun, input: &[u64], budget: u64) -> Result<Run, MachineError> {
-    execute_with(program, input, budget, SEGMENT_LOG_ROWS)
-}
-
-fn noun_of(b: &Builder, id: u64) -> ExecutionNoun {
-    match b.entry(id) {
-        Some(exec::Entry::Atom(v)) => ExecutionNoun::Atom(v),
-        Some(exec::Entry::Pair(l, r)) => {
-            ExecutionNoun::Pair(Box::new(noun_of(b, l)), Box::new(noun_of(b, r)))
-        }
-        _ => unreachable!("result is a noun"),
     }
 }
 
@@ -312,10 +248,32 @@ pub fn prove(
     Ok((run.statement, proof))
 }
 
-/// Verify a machine proof against its statement under `whir` (admitted by
-/// the 128-bit policy).
+/// Verify a machine proof of a statement that reads no state.
 pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) -> Result<(), String> {
+    verify_with_state(st, proof, whir, None)
+}
+
+/// Verify a machine proof against its statement under `whir` (admitted by
+/// the 128-bit policy). A statement with state needs the evidence: zheng
+/// authenticates it under the statement's root and checks every read
+/// against it before the reads become init entries — no caller duty.
+pub fn verify_with_state(
+    st: &MachineStatement,
+    proof: &MachineProof,
+    whir: &WhirParams,
+    evidence: Option<&crate::execution::state_evidence::StateEvidence>,
+) -> Result<(), String> {
     let derived = st.derive()?;
+    if let Some(state) = &st.state {
+        let auth = evidence
+            .ok_or("machine: the statement reads state; no state evidence")?
+            .authenticate(state.root)?;
+        for &(ns, key, value) in &state.reads {
+            if auth.cell(ns, key) != Some(value) {
+                return Err(format!("machine: read ({ns}, {key}) is not the authenticated value"));
+            }
+        }
+    }
     let (n, start) = (proof.log_rows, proof.start as usize);
     let segs = proof.air.segments.len();
     let rows = 1usize << n;
@@ -335,6 +293,7 @@ pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) ->
         p: derived.entries.len() as u64,
         output: derived.output,
         cycles: st.cycles,
+        root: derived.root,
     };
     let init = statement::init_columns(&derived.entries);
     let machines: Vec<Machine> = (0..segs)
