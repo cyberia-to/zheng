@@ -183,10 +183,11 @@ fn block(b: &mut Builder, dg: &mut Digests, t: &Tables, job: Job) {
     b.write(base + PH_OUT, 0, tag, id, out);
 }
 
-/// Pad, emit the region, size the trace — one power-of-two segment, or a
-/// multiple of `2^seg_max` rows — and fill the write multiplicities.
-/// Returns the trace, the region start and `log2` of the segment rows.
-pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables, seg_max: u32) -> (Trace, usize, u32) {
+/// Pad, emit the region, size the trace — one power-of-two segment of at
+/// least `2^seg_min` rows, or a multiple of `2^seg_max` rows — and fill
+/// the write multiplicities. Returns the trace, the region start and
+/// `log2` of the segment rows.
+pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables, seg_min: u32, seg_max: u32) -> (Trace, usize, u32) {
     let jobs = jobs(&b);
     while !b.rows.len().is_multiple_of(BLOCK) {
         b.row(K_PAD);
@@ -198,7 +199,7 @@ pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables, seg_max: u32)
     if b.rows.len() == start {
         idle_block(&mut b, t);
     }
-    let single = b.rows.len().next_power_of_two().max(2 * BLOCK);
+    let single = b.rows.len().next_power_of_two().max(2 * BLOCK).max(1 << seg_min);
     let (n, seg_log) = if single <= 1 << seg_max {
         (single, single.trailing_zeros())
     } else {

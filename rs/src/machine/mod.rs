@@ -22,6 +22,7 @@ pub mod layout;
 mod memory;
 mod perm;
 mod phase2;
+pub(crate) use phase2::build as phase2_build;
 mod run;
 mod run_eq;
 mod slots;
@@ -150,6 +151,22 @@ pub fn execute_with(
     budget: u64,
     seg_max: u32,
 ) -> Result<Run, MachineError> {
+    execute_sized(program, input, budget, 0, seg_max)
+}
+
+/// Run and build the trace in segments of exactly `2^seg_log` rows (the
+/// recursion profile's fixed step size).
+pub fn execute_exact(program: &ExecutionNoun, input: &[u64], budget: u64, seg_log: u32) -> Result<Run, MachineError> {
+    execute_sized(program, input, budget, seg_log, seg_log)
+}
+
+fn execute_sized(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    seg_min: u32,
+    seg_max: u32,
+) -> Result<Run, MachineError> {
     let mut st = MachineStatement {
         program: statement::tokens(program),
         input: input.to_vec(),
@@ -165,7 +182,7 @@ pub fn execute_with(
     let (result, cycles) = run::run(&mut b, &mut dg, &tables, derived.fml0, derived.obj0, budget)?;
     st.cycles = cycles;
     st.output = statement::tokens(&noun_of(&b, result));
-    let (trace, start, seg_log) = trace::finish(b, &mut dg, &tables, seg_max);
+    let (trace, start, seg_log) = trace::finish(b, &mut dg, &tables, seg_min, seg_max);
     let constants = Constants {
         fml0: derived.fml0,
         obj0: derived.obj0,
