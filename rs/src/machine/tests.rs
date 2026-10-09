@@ -68,9 +68,12 @@ pub(crate) fn check(program: &N, input: &[u64]) -> Run {
     let (out, cycles) = native(program, input, budget).expect("native run");
     assert_eq!(statement::parse(&run.statement.output).unwrap(), out, "output");
     assert_eq!(run.statement.cycles, cycles, "cycles");
+    assert_eq!(run.segments(), 1);
     let ch = challenges();
-    let w2 = phase2::build(&run.machine, &run.trace, &ch);
-    assert_eq!(first_violation(&run.machine, &run.trace, &w2, &ch), None);
+    let m = run.machine(0);
+    let (w2, sum) = phase2::build(&m, &run.trace, &ch, Fp3::ZERO);
+    assert_eq!(sum, Fp3::ZERO, "logUp sum closes");
+    assert_eq!(first_violation(&m, &run.trace, &w2, &ch), None);
     run
 }
 
@@ -139,7 +142,7 @@ fn tampered_traces_violate_the_relation() {
     };
     let one = Goldilocks::ONE;
     let add_ret = find(&|r| r[layout::K_RET] == one && r[layout::F_B2ADD] == one);
-    let first_eval = run.machine.constants.p as usize;
+    let first_eval = run.constants.p as usize;
     let round = run.start + layout::PH_ROUND0 + 5;
     // a forged result atom, a forged cycle count, a forged frame id, a
     // forged permutation state, a forged init entry
@@ -152,8 +155,9 @@ fn tampered_traces_violate_the_relation() {
     ] {
         let mut t = run.trace.clone();
         t.row_mut(row)[col] += one;
-        let w2 = phase2::build(&run.machine, &t, &ch);
-        assert!(first_violation(&run.machine, &t, &w2, &ch).is_some(), "({row}, {col})");
+        let m = run.machine(0);
+        let (w2, _) = phase2::build(&m, &t, &ch, Fp3::ZERO);
+        assert!(first_violation(&m, &t, &w2, &ch).is_some(), "({row}, {col})");
     }
 }
 
@@ -183,34 +187,3 @@ fn a_run_proves_and_verifies_and_a_forged_statement_does_not() {
     assert!(verify(&bad, &proof, &whir).is_err());
 }
 
-#[test]
-#[ignore]
-fn debug_sections() {
-    use crate::air::Vals;
-    let run = execute(&op2(5, ax(2), ax(6)), &[7, 5], 1 << 40).unwrap();
-    let ch = challenges();
-    let w2 = phase2::build(&run.machine, &run.trace, &ch);
-    let z = vec![Fp3::ZERO; 64 + 15];
-    let pz = vec![Fp3::ZERO; air::PUBLICS];
-    let v = Vals { local: &z, next: &z, publics: &pz };
-    let count = |f: &dyn Fn(&mut air::Out<'_>)| {
-        let mut o = air::Out::probe();
-        f(&mut o);
-        o.count()
-    };
-    let c1 = count(&|o| control::constrain(&run.machine, &v, o));
-    let c2 = count(&|o| perm::constrain(&run.machine, &v, o));
-    eprintln!("control {c1} perm {c2}");
-    let ce = count(&|o| control_eval::constrain(&v, o));
-    let cr = count(&|o| control_ret::constrain(&v, o));
-    eprintln!("eval {ce} ret {cr}");
-    eprintln!("P {} start {} rows {}", run.machine.constants.p, run.start, run.trace.rows());
-    let viol = first_violation(&run.machine, &run.trace, &w2, &ch);
-    eprintln!("violation {viol:?}");
-    if let Some((r, _)) = viol {
-        for rr in r.saturating_sub(1)..=r + 1 {
-            let row: Vec<u64> = run.trace.row(rr).iter().map(|x| x.as_u64()).collect();
-            eprintln!("row {rr}: {row:?}");
-        }
-    }
-}

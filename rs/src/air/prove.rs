@@ -1,30 +1,46 @@
-//! Proving and verifying a uniform AIR down to evaluation claims on its
-//! committed words (module docs of [`super`]).
+//! Proving and verifying a uniform AIR over one or more segments down to
+//! evaluation claims on the committed words (module docs of [`super`]).
+//!
+//! Segments `0..S` are consecutive pieces of one trace (`2^n` rows each).
+//! Every phase-1 word is committed before the challenges; the challenges
+//! are shared; every phase-2 word is committed after them. The next row of
+//! segment `i`'s last row is the *boundary* `B_i` — the first row of
+//! segment `i + 1` (cyclically, segment 0 after the last) — sent in the
+//! clear and tied to that segment's words by one evaluation claim at row
+//! 0 per word. Within a segment the successor is non-cyclic.
 
 use lens::rspcs::field::{eq_eval, eq_table};
 use lens::{Commitment, MultilinearPcs, Transcript, Whir, WhirParams};
-use nebu::Fp3;
+use nebu::{Fp3, Goldilocks};
 
 use super::public::{next_eval, next_table};
 use super::{Air, Trace, shift, zerocheck};
-use crate::accumulate::{Claim, Instance, Witnessed};
+use crate::accumulate::{Claim, Instance};
 
-/// What the AIR prover sends (the commitments and the IOP messages; the
-/// openings are left to accumulation or a decider).
+/// One segment's messages after the commitments.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AirProof {
-    pub root1: Commitment,
-    /// `None` when the AIR has no phase-2 columns.
-    pub root2: Option<Commitment>,
+pub struct SegmentProof {
+    /// The first row (`W1 ‖ W2`) of the next segment.
+    pub boundary: Vec<Goldilocks>,
     pub zerocheck: Vec<Vec<Fp3>>,
-    /// Every column (`W1 ‖ W2`) at `ρ`.
+    /// Every column at `ρ`, and the next-row columns at `ρ`.
     pub local: Vec<Fp3>,
-    /// Every column at `ρ`'s successor row polynomial.
     pub next: Vec<Fp3>,
     pub shift: Vec<Fp3>,
     pub v1: Fp3,
     pub v2: Fp3,
 }
+
+/// What the AIR prover sends for `S` segments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AirProof {
+    pub roots1: Vec<Commitment>,
+    pub roots2: Vec<Commitment>,
+    pub segments: Vec<SegmentProof>,
+}
+
+/// The two committed words of a segment and their claims.
+pub type SegmentWords = [Instance; 2];
 
 fn powers(x: Fp3, k: usize) -> Vec<Fp3> {
     let mut out = Vec::with_capacity(k);
@@ -36,10 +52,9 @@ fn powers(x: Fp3, k: usize) -> Vec<Fp3> {
     out
 }
 
-fn prologue<A: Air>(air: &A, n: usize, t: &mut Transcript) {
-    let s = air.shape();
-    t.absorb(b"zheng-air-v1");
-    for v in [s.w1, s.w2, s.challenges, s.constraints, s.degree, n] {
+fn prologue(s: super::Shape, n: usize, segments: usize, t: &mut Transcript) {
+    t.absorb(b"zheng-air-v2");
+    for v in [s.w1, s.w2, s.challenges, s.constraints, s.degree, n, segments] {
         t.absorb_u64(v as u64);
     }
 }
@@ -48,126 +63,167 @@ fn squeeze_vec(t: &mut Transcript, k: usize) -> Vec<Fp3> {
     (0..k).map(|_| t.squeeze_fp3()).collect()
 }
 
-/// `Σ_c eq(γ, c)·vals[c]` over `vals.len() ≤ 2^γ.len()` columns.
-fn fold_cols(gamma: &[Fp3], vals: &[Fp3]) -> Fp3 {
+/// `Σ_c eq(γ, c)·vals[c]`.
+fn fold_cols(gamma: &[Fp3], vals: impl IntoIterator<Item = Fp3>) -> Fp3 {
     eq_table(gamma)
         .iter()
         .zip(vals)
-        .fold(Fp3::ZERO, |a, (&e, &v)| a + e * v)
+        .fold(Fp3::ZERO, |a, (&e, v)| a + e * v)
 }
 
-/// Prove `air` on `w1` (phase 2 built by `phase2` from the challenges).
-/// Returns the proof and the two committed words with their claims.
+/// Commit a word (column-major, `padded` columns); the root only.
+pub fn commit_root(whir: &WhirParams, trace: &Trace, padded: usize) -> Commitment {
+    Whir::commit(whir, &trace.column_major(padded)).0
+}
+
+/// The words' instances: claims gathered per word across segments.
+fn instances(
+    roots1: &[Commitment],
+    roots2: &[Commitment],
+    own: Vec<[Claim; 2]>,
+    boundary: Vec<[Claim; 2]>,
+) -> Vec<SegmentWords> {
+    let s = roots1.len();
+    (0..s)
+        .map(|i| {
+            let from = &boundary[(i + s - 1) % s];
+            [0, 1].map(|w| Instance {
+                root: if w == 0 { roots1[i] } else { roots2[i] },
+                ext: false,
+                claims: vec![own[i][w].clone(), from[w].clone()],
+            })
+        })
+        .collect()
+}
+
+/// Prove segments `w1s` (equal row counts); `phase2(i, challenges)` builds
+/// segment `i`'s phase-2 trace (segments in order). Returns the proof, the
+/// phase-2 traces and every word's instance.
 pub fn prove<A: Air>(
-    air: &A,
+    airs: &[A],
     whir: &WhirParams,
-    w1: &Trace,
-    phase2: impl FnOnce(&[Fp3]) -> Trace,
+    w1s: &[Trace],
+    mut phase2: impl FnMut(usize, &[Fp3]) -> Trace,
     t: &mut Transcript,
-) -> Result<(AirProof, Vec<Witnessed>), String> {
-    let s = air.shape();
-    let rows = w1.rows();
-    if !rows.is_power_of_two() || rows < 2 || w1.width != s.w1 {
+) -> Result<(AirProof, Vec<Trace>, Vec<SegmentWords>), String> {
+    let segs = w1s.len();
+    if segs == 0 || airs.len() != segs {
+        return Err("air: segments".into());
+    }
+    let s = airs[0].shape();
+    let rows = w1s[0].rows();
+    if !rows.is_power_of_two() || rows < 2 || w1s.iter().any(|w| w.rows() != rows || w.width != s.w1) {
         return Err("air: trace shape".into());
+    }
+    if s.w2 == 0 {
+        return Err("air: a phase-2 trace is required".into());
     }
     let n = rows.trailing_zeros() as usize;
     let wp = s.padded_width();
-    prologue(air, n, t);
-    let (root1, data1) = Whir::commit(whir, &w1.column_major(wp));
-    t.absorb(root1.as_bytes());
+    prologue(s, n, segs, t);
+    let roots1: Vec<Commitment> = w1s.iter().map(|w| commit_root(whir, w, wp)).collect();
+    for r in &roots1 {
+        t.absorb(r.as_bytes());
+    }
     let ch = squeeze_vec(t, s.challenges);
-    let w2 = phase2(&ch);
-    if w2.width != s.w2 || (s.w2 > 0 && w2.rows() != rows) {
+    let w2s: Vec<Trace> = (0..segs).map(|i| phase2(i, &ch)).collect();
+    if w2s.iter().any(|w| w.width != s.w2 || w.rows() != rows) {
         return Err("air: phase-2 trace shape".into());
     }
-    let second = (s.w2 > 0).then(|| Whir::commit(whir, &w2.column_major(wp)));
-    if let Some((r2, _)) = &second {
-        t.absorb(r2.as_bytes());
+    let roots2: Vec<Commitment> = w2s.iter().map(|w| commit_root(whir, w, wp)).collect();
+    for r in &roots2 {
+        t.absorb(r.as_bytes());
+    }
+    let mut segments = Vec::with_capacity(segs);
+    let mut own = Vec::with_capacity(segs);
+    let mut bound = Vec::with_capacity(segs);
+    for i in 0..segs {
+        let j = (i + 1) % segs;
+        let boundary: Vec<Goldilocks> = w1s[j].row(0).iter().chain(w2s[j].row(0)).copied().collect();
+        let (proof, claims, bclaims) = prove_segment(&airs[i], &w1s[i], &w2s[i], boundary, &ch, wp, t);
+        segments.push(proof);
+        own.push(claims);
+        bound.push(bclaims);
+    }
+    let words = instances(&roots1, &roots2, own, bound);
+    Ok((
+        AirProof {
+            roots1,
+            roots2,
+            segments,
+        },
+        w2s,
+        words,
+    ))
+}
+
+#[allow(clippy::type_complexity)]
+fn prove_segment<A: Air>(
+    air: &A,
+    w1: &Trace,
+    w2: &Trace,
+    boundary: Vec<Goldilocks>,
+    ch: &[Fp3],
+    wp: usize,
+    t: &mut Transcript,
+) -> (SegmentProof, [Claim; 2], [Claim; 2]) {
+    let s = air.shape();
+    let rows = w1.rows();
+    let n = rows.trailing_zeros() as usize;
+    let w = s.w1 + s.w2;
+    for &b in &boundary {
+        t.absorb_goldilocks(b);
     }
     let tau = squeeze_vec(t, n);
     let mu = powers(t.squeeze_fp3(), s.constraints);
-    let w = s.w1 + s.w2;
+    let cell = |r: usize, c: usize| if c < s.w1 { w1.row(r)[c] } else { w2.row(r)[c - s.w1] };
     let mut cols: Vec<Vec<Fp3>> = Vec::with_capacity(2 * w + air.publics().len());
-    let column = |c: usize, shift: usize| -> Vec<Fp3> {
-        (0..rows)
-            .map(|r| {
-                let r = (r + shift) % rows;
-                let x = if c < s.w1 { w1.row(r)[c] } else { w2.row(r)[c - s.w1] };
-                Fp3::from_base(x)
-            })
-            .collect()
-    };
     for c in 0..w {
-        cols.push(column(c, 0));
+        cols.push((0..rows).map(|r| Fp3::from_base(cell(r, c))).collect());
     }
-    for c in 0..w {
-        cols.push(column(c, 1));
+    for (c, &b) in boundary.iter().enumerate() {
+        cols.push(
+            (0..rows)
+                .map(|r| Fp3::from_base(if r + 1 < rows { cell(r + 1, c) } else { b }))
+                .collect(),
+        );
     }
     for p in air.publics() {
         cols.push(p.table(n));
     }
-    let (zc, rho, evals) = zerocheck::prove(air, w, cols, eq_table(&tau), &ch, &mu, t);
+    let (zc, rho, evals) = zerocheck::prove(air, w, cols, eq_table(&tau), ch, &mu, t);
     let local = evals[..w].to_vec();
     let next = evals[w..2 * w].to_vec();
     t.absorb_fp3_slice(&local);
     t.absorb_fp3_slice(&next);
     let cbits = wp.trailing_zeros() as usize;
-    let g1 = squeeze_vec(t, cbits);
-    let g2 = squeeze_vec(t, cbits);
-    let beta = t.squeeze_fp3();
-    let zeta = t.squeeze_fp3();
-    let e1 = eq_table(&g1);
-    let e2 = eq_table(&g2);
-    let p1: Vec<Fp3> = (0..rows)
-        .map(|r| w1.row(r).iter().zip(&e1).fold(Fp3::ZERO, |a, (&x, &e)| a + e * Fp3::from_base(x)))
-        .collect();
-    let p2: Vec<Fp3> = (0..rows)
-        .map(|r| {
-            if s.w2 == 0 {
-                Fp3::ZERO
-            } else {
-                w2.row(r).iter().zip(&e2).fold(Fp3::ZERO, |a, (&x, &e)| a + e * Fp3::from_base(x))
-            }
-        })
-        .collect();
+    let (g1, g2) = (squeeze_vec(t, cbits), squeeze_vec(t, cbits));
+    let (beta, zeta) = (t.squeeze_fp3(), t.squeeze_fp3());
+    let (e1, e2) = (eq_table(&g1), eq_table(&g2));
+    let mix = |row: &[Goldilocks], e: &[Fp3]| {
+        row.iter().zip(e).fold(Fp3::ZERO, |a, (&x, &q)| a + q * Fp3::from_base(x))
+    };
+    let p1: Vec<Fp3> = (0..rows).map(|r| mix(w1.row(r), &e1)).collect();
+    let p2: Vec<Fp3> = (0..rows).map(|r| mix(w2.row(r), &e2)).collect();
     let eqr = eq_table(&rho);
     let nx = next_table(&rho);
-    let kt: Vec<Fp3> = eqr.iter().zip(&nx).map(|(&a, &b)| a + beta * b).collect();
+    let kt: Vec<Fp3> = (0..rows)
+        .map(|y| eqr[y] + if y == 0 { Fp3::ZERO } else { beta * nx[y] })
+        .collect();
     let q: Vec<Fp3> = p1.iter().zip(&p2).map(|(&a, &b)| a + zeta * b).collect();
     let mut extra = vec![p1, p2];
     let (sh, rho2) = shift::prove(t, kt, q, &mut extra);
     let (v1, v2) = (extra[0][0], extra[1][0]);
     t.absorb_fp3(v1);
     t.absorb_fp3(v2);
-    let point = |g: &[Fp3]| -> Vec<Fp3> { rho2.iter().chain(g).copied().collect() };
-    let mut words = vec![Witnessed {
-        instance: Instance {
-            root: root1,
-            ext: false,
-            claims: vec![Claim {
-                point: point(&g1),
-                value: v1,
-            }],
-        },
-        data: data1,
-    }];
-    let root2 = second.as_ref().map(|(r, _)| *r);
-    if let Some((r2, d2)) = second {
-        words.push(Witnessed {
-            instance: Instance {
-                root: r2,
-                ext: false,
-                claims: vec![Claim {
-                    point: point(&g2),
-                    value: v2,
-                }],
-            },
-            data: d2,
-        });
-    }
-    let proof = AirProof {
-        root1,
-        root2,
+    let at = |g: &[Fp3]| -> Vec<Fp3> { rho2.iter().chain(g).copied().collect() };
+    let own = [
+        Claim { point: at(&g1), value: v1 },
+        Claim { point: at(&g2), value: v2 },
+    ];
+    let bclaims = boundary_claims(&boundary, s.w1, n, cbits, t);
+    let proof = SegmentProof {
+        boundary,
         zerocheck: zc,
         local,
         next,
@@ -175,86 +231,99 @@ pub fn prove<A: Air>(
         v1,
         v2,
     };
-    Ok((proof, words))
+    (proof, own, bclaims)
 }
 
-/// Verify the IOP part of an AIR proof over `2^n` rows; returns the
-/// instances (claims on the committed words) the openings must settle.
+/// The claims tying a boundary row to the next segment's words at row 0.
+fn boundary_claims(b: &[Goldilocks], w1: usize, n: usize, cbits: usize, t: &mut Transcript) -> [Claim; 2] {
+    let (g1, g2) = (squeeze_vec(t, cbits), squeeze_vec(t, cbits));
+    let lift = |xs: &[Goldilocks]| xs.iter().map(|&x| Fp3::from_base(x)).collect::<Vec<_>>();
+    let zero = vec![Fp3::ZERO; n];
+    let at = |g: &[Fp3]| -> Vec<Fp3> { zero.iter().chain(g).copied().collect() };
+    [
+        Claim {
+            point: at(&g1),
+            value: fold_cols(&g1, lift(&b[..w1])),
+        },
+        Claim {
+            point: at(&g2),
+            value: fold_cols(&g2, lift(&b[w1..])),
+        },
+    ]
+}
+
+/// Verify the IOP part over `2^n`-row segments; returns every word's
+/// instance (the openings are left to accumulation).
 pub fn verify<A: Air>(
-    air: &A,
+    airs: &[A],
     n: usize,
     proof: &AirProof,
     t: &mut Transcript,
-) -> Result<Vec<Instance>, String> {
-    let s = air.shape();
+) -> Result<Vec<SegmentWords>, String> {
+    let segs = proof.segments.len();
+    if segs == 0 || airs.len() != segs || proof.roots1.len() != segs || proof.roots2.len() != segs {
+        return Err("air: segment count".into());
+    }
+    let s = airs[0].shape();
     let w = s.w1 + s.w2;
-    if proof.local.len() != w || proof.next.len() != w || proof.root2.is_some() != (s.w2 > 0) {
-        return Err("air: proof shape".into());
-    }
     let wp = s.padded_width();
-    prologue(air, n, t);
-    t.absorb(proof.root1.as_bytes());
-    let ch = squeeze_vec(t, s.challenges);
-    if let Some(r2) = &proof.root2 {
-        t.absorb(r2.as_bytes());
-    }
-    let tau = squeeze_vec(t, n);
-    let mu = powers(t.squeeze_fp3(), s.constraints);
-    let (rho, claim) =
-        zerocheck::verify(t, &proof.zerocheck, n, s.degree).ok_or("air: zerocheck shape")?;
-    let publics: Vec<Fp3> = air.publics().iter().map(|p| p.eval(&rho)).collect();
-    let vals: Vec<Fp3> = proof
-        .local
-        .iter()
-        .chain(&proof.next)
-        .chain(&publics)
-        .copied()
-        .collect();
-    let mut scratch = vec![Fp3::ZERO; s.constraints];
-    let c = zerocheck::combine(air, w, &vals, &ch, &mu, &mut scratch);
-    if eq_eval(&tau, &rho) * c != claim {
-        return Err("air: constraints do not hold".into());
-    }
-    t.absorb_fp3_slice(&proof.local);
-    t.absorb_fp3_slice(&proof.next);
     let cbits = wp.trailing_zeros() as usize;
-    let g1 = squeeze_vec(t, cbits);
-    let g2 = squeeze_vec(t, cbits);
-    let beta = t.squeeze_fp3();
-    let zeta = t.squeeze_fp3();
-    let a1 = fold_cols(&g1, &proof.local[..s.w1]);
-    let b1 = fold_cols(&g1, &proof.next[..s.w1]);
-    let a2 = fold_cols(&g2, &proof.local[s.w1..]);
-    let b2 = fold_cols(&g2, &proof.next[s.w1..]);
-    let sigma = a1 + beta * b1 + zeta * (a2 + beta * b2);
-    let (rho2, last) = shift::verify(t, sigma, &proof.shift, n).ok_or("air: shift shape")?;
-    let k = eq_eval(&rho, &rho2) + beta * next_eval(&rho, &rho2);
-    if k * (proof.v1 + zeta * proof.v2) != last {
-        return Err("air: shift reduction".into());
+    prologue(s, n, segs, t);
+    for r in &proof.roots1 {
+        t.absorb(r.as_bytes());
     }
-    if s.w2 == 0 && proof.v2 != Fp3::ZERO {
-        return Err("air: phase-2 value without phase 2".into());
+    let ch = squeeze_vec(t, s.challenges);
+    for r in &proof.roots2 {
+        t.absorb(r.as_bytes());
     }
-    t.absorb_fp3(proof.v1);
-    t.absorb_fp3(proof.v2);
-    let point = |g: &[Fp3]| -> Vec<Fp3> { rho2.iter().chain(g).copied().collect() };
-    let mut out = vec![Instance {
-        root: proof.root1,
-        ext: false,
-        claims: vec![Claim {
-            point: point(&g1),
-            value: proof.v1,
-        }],
-    }];
-    if let Some(r2) = proof.root2 {
-        out.push(Instance {
-            root: r2,
-            ext: false,
-            claims: vec![Claim {
-                point: point(&g2),
-                value: proof.v2,
-            }],
-        });
+    let mut own = Vec::with_capacity(segs);
+    let mut bound = Vec::with_capacity(segs);
+    for (air, sp) in airs.iter().zip(&proof.segments) {
+        if sp.boundary.len() != w || sp.local.len() != w || sp.next.len() != w {
+            return Err("air: segment shape".into());
+        }
+        for &b in &sp.boundary {
+            t.absorb_goldilocks(b);
+        }
+        let tau = squeeze_vec(t, n);
+        let mu = powers(t.squeeze_fp3(), s.constraints);
+        let (rho, claim) =
+            zerocheck::verify(t, &sp.zerocheck, n, s.degree).ok_or("air: zerocheck shape")?;
+        let publics: Vec<Fp3> = air.publics().iter().map(|p| p.eval(&rho)).collect();
+        let vals: Vec<Fp3> = sp.local.iter().chain(&sp.next).chain(&publics).copied().collect();
+        let mut scratch = vec![Fp3::ZERO; s.constraints];
+        let c = zerocheck::combine(air, w, &vals, &ch, &mu, &mut scratch);
+        if eq_eval(&tau, &rho) * c != claim {
+            return Err("air: constraints do not hold".into());
+        }
+        t.absorb_fp3_slice(&sp.local);
+        t.absorb_fp3_slice(&sp.next);
+        let (g1, g2) = (squeeze_vec(t, cbits), squeeze_vec(t, cbits));
+        let (beta, zeta) = (t.squeeze_fp3(), t.squeeze_fp3());
+        // the last row's next is the boundary, not row 0
+        let last = rho.iter().fold(Fp3::ONE, |a, &r| a * r);
+        let lift = |xs: &[Goldilocks]| xs.iter().map(|&x| Fp3::from_base(x)).collect::<Vec<_>>();
+        let b1 = fold_cols(&g1, lift(&sp.boundary[..s.w1]));
+        let b2 = fold_cols(&g2, lift(&sp.boundary[s.w1..]));
+        let a1 = fold_cols(&g1, sp.local[..s.w1].iter().copied());
+        let n1 = fold_cols(&g1, sp.next[..s.w1].iter().copied()) - last * b1;
+        let a2 = fold_cols(&g2, sp.local[s.w1..].iter().copied());
+        let n2 = fold_cols(&g2, sp.next[s.w1..].iter().copied()) - last * b2;
+        let sigma = a1 + beta * n1 + zeta * (a2 + beta * n2);
+        let (rho2, fin) = shift::verify(t, sigma, &sp.shift, n).ok_or("air: shift shape")?;
+        let wrap = rho.iter().zip(&rho2).fold(Fp3::ONE, |a, (&x, &y)| a * x * (Fp3::ONE - y));
+        let k = eq_eval(&rho, &rho2) + beta * (next_eval(&rho, &rho2) - wrap);
+        if k * (sp.v1 + zeta * sp.v2) != fin {
+            return Err("air: shift reduction".into());
+        }
+        t.absorb_fp3(sp.v1);
+        t.absorb_fp3(sp.v2);
+        let at = |g: &[Fp3]| -> Vec<Fp3> { rho2.iter().chain(g).copied().collect() };
+        own.push([
+            Claim { point: at(&g1), value: sp.v1 },
+            Claim { point: at(&g2), value: sp.v2 },
+        ]);
+        bound.push(boundary_claims(&sp.boundary, s.w1, n, cbits, t));
     }
-    Ok(out)
+    Ok(instances(&proof.roots1, &proof.roots2, own, bound))
 }

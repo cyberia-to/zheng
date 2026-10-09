@@ -56,14 +56,6 @@ pub(crate) struct Out<'a> {
 }
 
 impl Out<'_> {
-    #[cfg(test)]
-    pub fn probe() -> Out<'static> {
-        Out { buf: &mut [], i: 0 }
-    }
-    #[cfg(test)]
-    pub fn count(&self) -> usize {
-        self.i
-    }
     pub fn push(&mut self, v: Fp3) {
         if let Some(b) = self.buf.get_mut(self.i) {
             *b = v;
@@ -84,8 +76,16 @@ fn region(pattern: impl Fn(usize) -> Fp3, start: usize) -> Public {
 }
 
 impl Machine {
-    /// `init`: the init entries' `(tag, p0, p1)`; `start`: region start.
-    pub fn new(constants: Constants, init: &[(u64, u64, u64)], start: usize) -> Self {
+    /// The AIR of rows `[offset, offset + rows)` of a trace whose init
+    /// entries are `init` (`(tag, p0, p1)`) and whose region starts at
+    /// `start` (all global row indices).
+    pub fn new(
+        constants: Constants,
+        init: &[(u64, u64, u64)],
+        start: usize,
+        offset: usize,
+        rows: usize,
+    ) -> Self {
         let tables = super::hemera::Tables::default();
         let p = init.len();
         let pre = |f: &dyn Fn(usize) -> u64| Public::Prefix((0..p).map(|i| c(f(i))).collect());
@@ -115,6 +115,7 @@ impl Machine {
                 start,
             ));
         }
+        let publics = publics.iter().map(|p| p.window(offset, rows)).collect();
         let mut m = Self {
             constants,
             publics,

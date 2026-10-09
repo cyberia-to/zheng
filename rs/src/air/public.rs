@@ -108,6 +108,37 @@ impl Public {
         }
     }
 
+    /// The column restricted to rows `[offset, offset + len)`, as a column
+    /// over `len` rows (`len` and `offset` multiples of every period).
+    pub fn window(&self, offset: usize, len: usize) -> Self {
+        match self {
+            Public::Sparse(v) => Public::Sparse(
+                v.iter()
+                    .filter(|&&(x, _)| x >= offset && x < offset + len)
+                    .map(|&(x, val)| (x - offset, val))
+                    .collect(),
+            ),
+            Public::Prefix(v) => {
+                Public::Prefix(v.get(offset..v.len().min(offset + len)).unwrap_or(&[]).to_vec())
+            }
+            Public::Periodic(v) => {
+                assert!(offset.is_multiple_of(v.len()) && v.len() <= len, "window of a periodic column");
+                Public::Periodic(v.clone())
+            }
+            Public::Region { pattern, start } => {
+                assert!(offset.is_multiple_of(pattern.len()) && pattern.len() <= len, "window of a region");
+                if *start >= offset + len {
+                    Public::Sparse(vec![])
+                } else {
+                    Public::Region {
+                        pattern: pattern.clone(),
+                        start: start.saturating_sub(offset),
+                    }
+                }
+            }
+        }
+    }
+
     /// Constant `c` on every row.
     pub fn constant(c: Fp3) -> Self {
         Public::Periodic(vec![c])
@@ -176,6 +207,25 @@ mod tests {
             .zip(eq_table(&z))
             .fold(Fp3::ZERO, |a, (&t, w)| a + t * w);
         assert_eq!(mle, next_eval(&rho, &z));
+    }
+
+    #[test]
+    fn windows_are_the_restricted_columns() {
+        let (n, k) = (7, 5);
+        let z: Vec<Fp3> = (0..k as u64).map(|i| e(i + 2)).collect();
+        for p in [
+            Public::Sparse(vec![(3, e(1)), (40, e(2)), (100, e(3))]),
+            Public::Prefix((0..70).map(e).collect()),
+            Public::Region { pattern: (0..8).map(e).collect(), start: 48 },
+        ] {
+            let full = p.table(n);
+            for off in [0, 32, 64, 96] {
+                let w = p.window(off, 1 << k);
+                assert_eq!(w.table(k), full[off..off + 32].to_vec(), "{p:?} @ {off}");
+                let mle = w.table(k).iter().zip(eq_table(&z)).fold(Fp3::ZERO, |a, (&x, q)| a + x * q);
+                assert_eq!(w.eval(&z), mle);
+            }
+        }
     }
 
     #[test]

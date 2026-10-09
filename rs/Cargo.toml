@@ -36,3 +36,6 @@ postcard = { version = "1", features = ["alloc"] }
 [[example]]
 name = "legacy_wire_cost"
 required-features = ["serde", "legacy"]
+
+[[example]]
+name = "machine_bench"

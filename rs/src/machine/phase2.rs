@@ -12,7 +12,9 @@ fn split(x: Fp3) -> [Goldilocks; 3] {
     [x.c0, x.c1, x.c2]
 }
 
-pub(crate) fn build(m: &Machine, w1: &Trace, ch: &[Fp3]) -> Trace {
+/// Build segment `w1`'s phase-2 columns with the running sum starting at
+/// `sum_in`; returns them and the sum after the segment.
+pub(crate) fn build(m: &Machine, w1: &Trace, ch: &[Fp3], sum_in: Fp3) -> (Trace, Fp3) {
     let (alpha, beta) = (ch[0], ch[1]);
     let rows = w1.rows();
     let n = rows.trailing_zeros() as usize;
@@ -23,7 +25,7 @@ pub(crate) fn build(m: &Machine, w1: &Trace, ch: &[Fp3]) -> Trace {
         pubs[PUB_OUT].table(n),
     );
     let mut w2 = Trace::new(W2, rows);
-    let mut sum = Fp3::ZERO;
+    let mut sum = sum_in;
     let mut fps = vec![Fp3::ZERO; rows * SLOTS];
     let mut mult = vec![Fp3::ZERO; rows * SLOTS];
     for r in 0..rows {
@@ -46,8 +48,7 @@ pub(crate) fn build(m: &Machine, w1: &Trace, ch: &[Fp3]) -> Trace {
         row[SUM..SUM + 3].copy_from_slice(&split(sum));
         sum += delta;
     }
-    debug_assert_eq!(sum, Fp3::ZERO, "logUp sum must close");
-    w2
+    (w2, sum)
 }
 
 /// Montgomery's batch inversion (all inputs nonzero with overwhelming

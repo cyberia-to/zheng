@@ -16,9 +16,9 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     let one = Fp3::ONE;
     // kinds: boolean, one-hot; INIT exactly on the init region
     let mut sum = Fp3::ZERO;
-    for k in 0..KINDS {
-        out.push(l[k] * (l[k] - one));
-        sum += l[k];
+    for &x in &l[..KINDS] {
+        out.push(x * (x - one));
+        sum += x;
     }
     out.push(sum - one);
     out.push(l[K_INIT] - p[PUB_INIT_REG]);

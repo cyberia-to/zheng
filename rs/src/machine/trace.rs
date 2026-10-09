@@ -183,11 +183,12 @@ fn block(b: &mut Builder, dg: &mut Digests, t: &Tables, job: Job) {
     b.write(base + PH_OUT, 0, tag, id, out);
 }
 
-/// Pad, emit the region, size the trace to a power of two and fill the
-/// write multiplicities. Returns the trace and the region start.
-pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables) -> (Trace, usize, Builder) {
+/// Pad, emit the region, size the trace — one power-of-two segment, or a
+/// multiple of `2^seg_max` rows — and fill the write multiplicities.
+/// Returns the trace, the region start and `log2` of the segment rows.
+pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables, seg_max: u32) -> (Trace, usize, u32) {
     let jobs = jobs(&b);
-    while b.rows.len() % BLOCK != 0 {
+    while !b.rows.len().is_multiple_of(BLOCK) {
         b.row(K_PAD);
     }
     let start = b.rows.len();
@@ -197,7 +198,12 @@ pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables) -> (Trace, us
     if b.rows.len() == start {
         idle_block(&mut b, t);
     }
-    let n = b.rows.len().next_power_of_two().max(2 * BLOCK);
+    let single = b.rows.len().next_power_of_two().max(2 * BLOCK);
+    let (n, seg_log) = if single <= 1 << seg_max {
+        (single, single.trailing_zeros())
+    } else {
+        (b.rows.len().div_ceil(1 << seg_max) << seg_max, seg_max)
+    };
     while b.rows.len() < n {
         idle_block(&mut b, t);
     }
@@ -216,9 +222,6 @@ pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables) -> (Trace, us
         b.set(row, slot(s, M), c);
     }
     assert!(reads.is_empty(), "a read without a write: {reads:?}");
-    let mut trace = Trace::new(W1, n);
-    for (r, row) in b.rows.iter().enumerate() {
-        trace.row_mut(r).copy_from_slice(row);
-    }
-    (trace, start, b)
+    let cells: Vec<Goldilocks> = b.rows.iter().flatten().copied().collect();
+    (Trace { width: W1, cells }, start, seg_log)
 }

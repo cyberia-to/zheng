@@ -134,31 +134,45 @@ fn toy_air_with_a_valid_trace_verifies_and_decides() {
     let w1 = toy_trace(n, &xs);
     let whir = params();
     let mut tp = lens::Transcript::new(b"toy");
-    let (proof, words) = prove(&air, &whir, &w1, |ch| toy_phase2(&w1, ch), &mut tp).unwrap();
+    let (proof, w2s, words) =
+        prove(std::slice::from_ref(&air), &whir, std::slice::from_ref(&w1), |_, ch| toy_phase2(&w1, ch), &mut tp)
+            .unwrap();
     let mut tv = lens::Transcript::new(b"toy");
-    let insts = verify(&air, n, &proof, &mut tv).unwrap();
-    assert_eq!(insts.len(), 2);
-    assert_eq!(insts[0], words[0].instance);
-    assert_eq!(insts[1], words[1].instance);
-    let cfg = AccConfig::derive(&whir, words[0].data.num_vars(), 4, 64).unwrap();
+    let insts = verify(std::slice::from_ref(&air), n, &proof, &mut tv).unwrap();
+    assert_eq!(insts, words);
+    let wp = air.shape().padded_width();
+    let data = |t: &Trace| <lens::Whir as lens::MultilinearPcs>::commit(&whir, &t.column_major(wp)).1;
+    let [a, b] = words[0].clone();
+    let x1 = crate::accumulate::Witnessed { instance: a, data: data(&w1) };
+    let x2 = crate::accumulate::Witnessed { instance: b, data: data(&w2s[0]) };
+    let cfg = AccConfig::derive(&whir, x1.data.num_vars(), 4, 64).unwrap();
     let mut ap = transcript(b"toy-acc", b"", &cfg);
-    let inputs: Vec<&crate::accumulate::Witnessed> = words.iter().collect();
-    let (acc, aproof) = accumulate(&cfg, &inputs, &mut ap).unwrap();
+    let (acc, aproof) = accumulate(&cfg, &[&x1, &x2], &mut ap).unwrap();
     let dproof = decide(&cfg, &acc, &mut ap).unwrap();
     let mut av = transcript(b"toy-acc", b"", &cfg);
-    let refs: Vec<&crate::accumulate::Instance> = insts.iter().collect();
-    let acc_inst = verify_step(&cfg, &refs, &aproof, &mut av).unwrap();
+    let acc_inst = verify_step(&cfg, &[&insts[0][0], &insts[0][1]], &aproof, &mut av).unwrap();
     verify_decider(&cfg, &acc_inst, &dproof, &mut av).unwrap();
     // a broken transition is caught by the verifier, not by the prover
     let mut bad = w1.clone();
     bad.row_mut(9)[1] += Goldilocks::ONE;
     let mut tb = lens::Transcript::new(b"toy");
-    let (bp, _) = prove(&air, &whir, &bad, |ch| toy_phase2(&bad, ch), &mut tb).unwrap();
+    let (bp, _, _) =
+        prove(std::slice::from_ref(&air), &whir, std::slice::from_ref(&bad), |_, ch| toy_phase2(&bad, ch), &mut tb)
+            .unwrap();
     let mut tbv = lens::Transcript::new(b"toy");
-    assert!(verify(&air, n, &bp, &mut tbv).is_err());
-    // a forged column value at ρ is caught
+    assert!(verify(std::slice::from_ref(&air), n, &bp, &mut tbv).is_err());
+    // a forged column value at ρ, a forged boundary
     let mut forged = proof.clone();
-    forged.local[0] += Fp3::ONE;
+    forged.segments[0].local[0] += Fp3::ONE;
     let mut tf = lens::Transcript::new(b"toy");
-    assert!(verify(&air, n, &forged, &mut tf).is_err());
+    assert!(verify(std::slice::from_ref(&air), n, &forged, &mut tf).is_err());
+    let mut forged = proof.clone();
+    forged.segments[0].boundary[1] += Goldilocks::ONE;
+    let mut tf = lens::Transcript::new(b"toy");
+    let r = verify(std::slice::from_ref(&air), n, &forged, &mut tf);
+    // a forged boundary either breaks the zerocheck or yields a false claim
+    // on row 0 that the opening (decider) rejects
+    if let Ok(i) = r {
+        assert_ne!(i, words);
+    }
 }
