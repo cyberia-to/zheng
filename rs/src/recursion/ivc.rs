@@ -151,13 +151,13 @@ fn decider_instance(acc: &AccV<Fp3>, vars: usize) -> Instance {
     Instance { root: Commitment(hemera::Hash::from_bytes(bytes)), ext: true, claims }
 }
 
-fn decider_transcript(st: &State) -> Transcript {
-    let d = state::digest_native(st);
+fn decider_transcript(st: &State) -> Result<Transcript, String> {
+    let d = state::digest_native(st)?;
     let mut t = Transcript::new(b"zheng-ivc-decide-v1");
     for x in d {
         t.absorb_u64(x.as_u64());
     }
-    t
+    Ok(t)
 }
 
 /// Run `program` and prove it recursively in steps of `2^n` rows.
@@ -270,7 +270,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let fin = last_state.expect("a segment");
     let AccData::Lens(data) = acc else { return Err("recursion: the last accumulator".into()) };
     let inst = decider_instance(&fin.acc, p.vars);
-    let mut t = decider_transcript(&fin);
+    let mut t = decider_transcript(&fin)?;
     let decider = accumulate::decide(&p.cfg, &Witnessed { instance: inst, data }, &mut t)?;
     lap("decide");
     Ok(IvcProof { log_rows: n as u32, start: run.start as u64, segments: segs as u64, chain, state, step, decider })
@@ -340,12 +340,13 @@ pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> 
         && s.acc.spot.len() == p.dims.spot
         && s.g.point.len() == p.dims.g
         && s.pn.point.len() == p.dims.pn
-        && s.pv.point.len() == p.dims.pv;
+        && s.pv.point.len() == p.dims.pv
+        && state::is_canonical(s);
     if !shape_ok {
         return Err("recursion: state shape".into());
     }
     lap("setup");
-    let x = state::digest_native(s);
+    let x = state::digest_native(s)?;
     let mut o = Native::batched();
     let fin = step::verify(&mut o, p, s, x.map(Fp3::from_base), &proof.step);
     o.finish()?;
@@ -370,7 +371,7 @@ pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> 
     }
     lap("deferred");
     let inst = decider_instance(&fin.acc, p.vars);
-    let mut t = decider_transcript(&fin);
+    let mut t = decider_transcript(&fin)?;
     accumulate::verify_decider(&p.cfg, &inst, &proof.decider, &mut t)?;
     lap("decider");
     Ok(())

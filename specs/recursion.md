@@ -150,8 +150,9 @@ pre       commit every segment's word a → D; (α, β) = H(statement, D);
 step i    circuit: verify step i−1 from state_{i−1} (base: none) → state_i;
           prove segment i ‖ circuit with public input H(state_i)
 proof     state_{S−1}, step S−1's proof, the decider of its accumulator
-verify    step S−1 natively → state_S; ctx, chain = D, step = S, the cyclic
-          boundary; the three deferred claims; the decider
+verify    the state's base items are base (else refused); step S−1
+          natively from x = H(state) → state_S; ctx, chain = D, step = S,
+          the cyclic boundary; the three deferred claims; the decider
 ```
 
 `verify(verify(π))`: a two-step proof is accepted only if the second

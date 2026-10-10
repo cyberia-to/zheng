@@ -284,6 +284,8 @@ pub fn check_shape(p: &Params, pf: &StepProof) -> Result<(), String> {
         && pf.acc.sumcheck.len() == 2 * p.vars
         && pf.acc.evals.len() == 4
         && pf.acc.ood.len() == p.cfg.ood
+        && pf.acc.comb_nonce < nebu::field::P
+        && pf.acc.query_nonce < nebu::field::P
         && pf.acc.openings.len() == p.cfg.queries
         && pf.acc.openings.iter().all(|q| {
             q.len() == 4
