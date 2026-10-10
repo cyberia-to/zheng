@@ -223,14 +223,11 @@ impl Native {
         if self.error.is_none() && !jobs.is_empty() {
             let threads = crate::recursion::wrap::verifier_threads().min(jobs.len().div_ceil(8)).max(1);
             let size = jobs.len().div_ceil(threads);
-            let bad: Option<&'static str> = if threads == 1 {
-                run_chains(&jobs)
-            } else {
-                std::thread::scope(|s| {
-                    let hs: Vec<_> = jobs.chunks(size).map(|c| s.spawn(move || run_chains(c))).collect();
-                    hs.into_iter().filter_map(|h| h.join().expect("merkle worker")).next()
-                })
-            };
+            let groups = jobs.len().div_ceil(size);
+            let bad: Option<&'static str> = super::pool::map_chunks(groups, threads, |r| r.filter_map(|g| run_chains(&jobs[g * size..((g + 1) * size).min(jobs.len())])).next())
+                .into_iter()
+                .flatten()
+                .next();
             if let Some(what) = bad {
                 self.fail(what);
             }

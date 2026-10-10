@@ -186,12 +186,37 @@ fn timer() -> impl Fn(&str) {
 pub fn timer_pub(indent: &'static str) -> impl Fn(&str) {
     let on = std::env::var_os("ZHENG_TIMING").is_some();
     let clock = std::time::Instant::now();
+    let cpu0 = if on { thread_cpu_ms() } else { 0.0 };
     move |what: &str| {
         if on {
             let (a, b) = super::perm::count();
-            eprintln!("{indent}{what}: {:.1} ms · permutations {a} single, {b} batched", clock.elapsed().as_secs_f64() * 1e3);
+            eprintln!(
+                "{indent}{what}: {:.2} ms (this thread's CPU {:.2} ms) · permutations {a} single, {b} batched",
+                clock.elapsed().as_secs_f64() * 1e3,
+                thread_cpu_ms() - cpu0
+            );
         }
     }
+}
+
+/// CPU time of the calling thread, ms (laps on a shared machine).
+pub fn thread_cpu_ms() -> f64 {
+    #[repr(C)]
+    struct Timespec {
+        sec: i64,
+        nsec: i64,
+    }
+    unsafe extern "C" {
+        fn clock_gettime(clock: u32, tp: *mut Timespec) -> i32;
+    }
+    // CLOCK_THREAD_CPUTIME_ID: 16 on macOS, 3 on Linux
+    let id = if cfg!(target_os = "macos") { 16 } else { 3 };
+    let mut t = Timespec { sec: 0, nsec: 0 };
+    // SAFETY: `t` is a valid out-pointer for the duration of the call.
+    if unsafe { clock_gettime(id, &mut t) } != 0 {
+        return 0.0;
+    }
+    t.sec as f64 * 1e3 + t.nsec as f64 / 1e6
 }
 
 fn nox_row0(seg: &crate::air::Trace, n2: &crate::air::Trace) -> Vec<Goldilocks> {

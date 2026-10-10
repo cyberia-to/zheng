@@ -55,20 +55,10 @@ pub fn threads() -> usize {
         .max(1)
 }
 
-/// `f` over `0..n` in contiguous chunks on [`threads`] threads, in order.
+/// `f` over `0..n` in contiguous chunks on [`threads`] threads, in order
+/// (the persistent pool, [`crate::recursion::pool`]).
 pub(crate) fn par_chunks<T: Send>(n: usize, f: impl Fn(core::ops::Range<usize>) -> T + Sync) -> Vec<T> {
-    let t = threads().min(n.max(1));
-    let size = n.div_ceil(t);
-    if t == 1 {
-        return vec![f(0..n)];
-    }
-    std::thread::scope(|s| {
-        let hs: Vec<_> = (0..t).map(|i| {
-            let f = &f;
-            s.spawn(move || f(i * size..((i + 1) * size).min(n)))
-        }).collect();
-        hs.into_iter().map(|h| h.join().expect("verifier thread")).collect()
-    })
+    crate::recursion::pool::map_chunks(n, threads(), f)
 }
 
 /// The key's columns at `ρ` from the key itself.
@@ -168,13 +158,14 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     for (&c, &v) in k.next_cols.iter().zip(&sent) {
         next[c] = v;
     }
+    lap("zerocheck");
     let key: Vec<O::V> = if inner {
         pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect()
     } else {
         let r: Vec<Fp3> = rho.iter().map(|&v| o.value(v)).collect();
         key_at(k, &r).into_iter().map(|v| o.constant(v)).collect()
     };
-    lap("zerocheck, key");
+    lap("key");
     let e_out = gm::eq_row(o, k.out_row, &rho);
     let pin: Vec<O::V> = x.iter().map(|&xj| o.mul(e_out, xj)).collect();
     let e = gm::eq(o, &tau, &rho);

@@ -117,13 +117,14 @@ fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usi
 fn expand_all(raws: Vec<RawOpenings>) -> R<Vec<Vec<Vec<LeafOpening>>>> {
     let jobs: Vec<(usize, &RawOpenings, &(bool, Vec<Vec<Fp3>>, Vec<Digest>))> =
         raws.iter().enumerate().flat_map(|(i, ro)| ro.trees.iter().map(move |t| (i, ro, t))).collect();
-    let done: Vec<R<Vec<LeafOpening>>> = std::thread::scope(|sc| {
-        let hs: Vec<_> = jobs
-            .iter()
-            .map(|&(_, ro, (x, syms, sib))| sc.spawn(move || expand(&ro.distinct, syms.clone(), sib, ro.depth, *x, ro.arity)))
-            .collect();
-        hs.into_iter().map(|h| h.join().expect("expansion")).collect()
-    });
+    let done: Vec<R<Vec<LeafOpening>>> = crate::recursion::pool::map_chunks(jobs.len(), crate::recursion::wrap::verifier_threads(), |r| {
+        r.map(|i| {
+            let (_, ro, (x, syms, sib)) = jobs[i];
+            expand(&ro.distinct, syms.clone(), sib, ro.depth, *x, ro.arity)
+        })
+        .collect::<Vec<_>>()
+    })
+    .concat();
     let mut per_round: Vec<Vec<Vec<LeafOpening>>> = raws.iter().map(|_| Vec::new()).collect();
     for ((i, _, _), d) in jobs.iter().zip(done) {
         per_round[*i].push(d?);

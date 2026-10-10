@@ -166,14 +166,28 @@ impl Wiring {
         })
         .concat();
         // Σ_i λ^i·(S_read(i) − S_write(w(i))): Horner per chunk, scaled by λ^start
+        // eight interleaved Horner chains in λ^8 (one chain is latency
+        // bound: an Fp3 product's latency is ~3× its throughput)
+        const H: usize = 8;
+        let l8 = powers_at(lambda, H);
         let parts = par_chunks(self.reads, |r| {
             let start = r.start;
-            let mut acc = Fp3::ZERO;
-            for i in r.rev() {
-                let d = slot(&self.read_cells[ix.read_at[i] as usize..ix.read_at[i + 1] as usize]) - sw[ix.read_write[i] as usize];
-                acc = acc * lambda + d;
+            let len = r.len();
+            let mut acc = [Fp3::ZERO; H];
+            let d = |i: usize| slot(&self.read_cells[ix.read_at[i] as usize..ix.read_at[i + 1] as usize]) - sw[ix.read_write[i] as usize];
+            for m in (0..len.div_ceil(H)).rev() {
+                for (k, a) in acc.iter_mut().enumerate() {
+                    let off = m * H + k;
+                    let v = if off < len { d(start + off) } else { Fp3::ZERO };
+                    *a = *a * l8 + v;
+                }
             }
-            (start, acc)
+            // Σ_k λ^k·acc_k
+            let mut tot = Fp3::ZERO;
+            for a in acc.iter().rev() {
+                tot = tot * lambda + *a;
+            }
+            (start, tot)
         });
         let mut total = Fp3::ZERO;
         for (start, acc) in parts {

@@ -36,6 +36,8 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
     std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
 }
 
+use zheng::recursion::ivc::thread_cpu_ms;
+
 fn ms(t: Instant) -> f64 {
     t.elapsed().as_secs_f64() * 1e3
 }
@@ -123,20 +125,29 @@ fn main() {
     let p1 = perm::count();
     let runs: usize = env("ZHENG_RUNS", 21);
     let mut v = Vec::with_capacity(runs);
+    let mut cpu = Vec::with_capacity(runs);
     for _ in 0..runs {
         let t = Instant::now();
+        let c = thread_cpu_ms();
         let q = FinalProof::from_bytes(&bytes, &last).expect("parse");
         wrap::verify_final(&prep, &last, &q).expect("verify");
+        cpu.push(thread_cpu_ms() - c);
         v.push(ms(t));
     }
     v.sort_by(|a, b| a.partial_cmp(b).expect("times"));
+    cpu.sort_by(|a, b| a.partial_cmp(b).expect("times"));
+    let load = std::fs::read_to_string("/proc/loadavg").ok().or_else(|| {
+        std::process::Command::new("sysctl").args(["-n", "vm.loadavg"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    });
     println!(
-        "{name}: final proof {} B · threads {threads} · verify cold {cold:.3} ms · warm median {:.3} ms (min {:.3}, max {:.3}, {runs} runs) · permutations {} single + {} batched",
+        "{name}: final proof {} B · threads {threads} · verify cold {cold:.3} ms · warm median {:.3} ms (min {:.3}, max {:.3}, {runs} runs; main-thread CPU median {:.3} ms) · permutations {} single + {} batched · load {}",
         bytes.len(),
         v[runs / 2],
         v[0],
         v[runs - 1],
+        cpu[runs / 2],
         p1.0 - p0.0,
-        p1.1 - p0.1
+        p1.1 - p0.1,
+        load.unwrap_or_default()
     );
 }
