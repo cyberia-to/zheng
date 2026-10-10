@@ -211,6 +211,14 @@ fn a_four_ary_opening_verifies_and_its_wire_round_trips() {
 
 #[test]
 fn one_word_opens_directly_with_any_weights() {
+    // final variables 4: the rows inside α (n = 6) and spilling into the
+    // final variables (n = 10)
+    for n in [6usize, 10] {
+        direct_case(n);
+    }
+}
+
+fn direct_case(n: usize) {
     struct Lin(Vec<Fp3>);
     impl NativeWeight for Lin {
         fn table(&self) -> Vec<Fp3> {
@@ -222,14 +230,15 @@ fn one_word_opens_directly_with_any_weights() {
             (0..1usize << fv).map(|b| (0..1usize << pre).fold(Fp3::ZERO, |a, x| a + e[x] * self.0[x + (b << pre)])).collect()
         }
     }
-    let (n, ell) = (6usize, 12usize);
-    let whir = params(2, 4, 3);
+    let ell = 12usize;
+    let whir = params(2, 4, 6);
     let cfg = Config::derive(&whir, ell, &[1], 6).unwrap();
+    assert_eq!(cfg.wc.final_vars, 4);
     let table: Vec<Goldilocks> = (0..1u64 << ell).map(|i| Goldilocks::new(i * i + 7)).collect();
     let word = Word::commit_base(cfg.layout(0), &table);
     let f: Vec<Fp3> = word.table();
     let rho: Vec<Fp3> = (0..n as u64).map(|i| e(10 + i)).collect();
-    let col: Vec<Fp3> = (0..64u64).map(|c| if c % 3 == 0 { e(c) } else { Fp3::ZERO }).collect();
+    let col: Vec<Fp3> = (0..1u64 << (ell - n)).map(|c| if c % 3 == 0 { e(c + 1) } else { Fp3::ZERO }).collect();
     let rowcol = |next: bool| -> Vec<Fp3> {
         let rt = if next { crate::air::public::next_table(&rho) } else { lens::rspcs::field::eq_table(&rho) };
         (0..1usize << ell).map(|i| rt[i % (1 << n)] * col[i >> n]).collect()

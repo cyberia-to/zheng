@@ -378,20 +378,42 @@ fn core<O: Ops>(
             }
             Point::RowCol { next, rho, col } => {
                 let n = rho.len();
-                assert!(n <= pre && col.len() == 1 << (pre - n + fv), "whir: a row-column weight");
-                let e = if *next { gm::next_eval(o, rho, &a[..n]) } else { gm::eq(o, rho, &a[..n]) };
+                assert!(col.len() << n == 1 << nv, "whir: a row-column weight");
                 let fm = cube.get_or_insert_with(|| cube_values(o, &fin)).clone();
-                let lo = pre - n;
-                let mut acc: Option<O::V> = None;
-                for (c, &w) in col.iter().enumerate() {
-                    let ec = gm::eq_row(o, c & ((1 << lo) - 1), &a[n..pre]);
-                    let wc = o.mul(w, ec);
-                    acc = Some(match acc {
-                        None => o.mul(wc, fm[c >> lo]),
-                        Some(s) => o.mul_add(wc, fm[c >> lo], s),
-                    });
+                if pre >= n {
+                    // the rows inside α: one row factor, the columns split
+                    let e = if *next { gm::next_eval(o, rho, &a[..n]) } else { gm::eq(o, rho, &a[..n]) };
+                    let lo = pre - n;
+                    let mut acc: Option<O::V> = None;
+                    for (c, &w) in col.iter().enumerate() {
+                        let ec = gm::eq_row(o, c & ((1 << lo) - 1), &a[n..pre]);
+                        let wc = o.mul(w, ec);
+                        acc = Some(match acc {
+                            None => o.mul(wc, fm[c >> lo]),
+                            Some(s) => o.mul_add(wc, fm[c >> lo], s),
+                        });
+                    }
+                    (e, acc.expect("columns"))
+                } else {
+                    // the last rows and every column among the final
+                    // variables: the row factor per final row value
+                    let rb = n - pre;
+                    let (zero, one) = (o.zero(), o.one());
+                    let mut acc: Option<O::V> = None;
+                    for br in 0..1usize << rb {
+                        let pt: Vec<O::V> = a.iter().copied().chain((0..rb).map(|i| if (br >> i) & 1 == 1 { one } else { zero })).collect();
+                        let rv = if *next { gm::next_eval(o, rho, &pt) } else { gm::eq(o, rho, &pt) };
+                        for (c, &w) in col.iter().enumerate() {
+                            let rw = o.mul(rv, w);
+                            let f = fm[br + (c << rb)];
+                            acc = Some(match acc {
+                                None => o.mul(rw, f),
+                                Some(s) => o.mul_add(rw, f, s),
+                            });
+                        }
+                    }
+                    (one, acc.expect("rows"))
                 }
-                (e, acc.expect("columns"))
             }
             Point::Native(i) => {
                 let av: Vec<Fp3> = a.iter().map(|&v| o.value(v)).collect();

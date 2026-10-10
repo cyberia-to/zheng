@@ -79,21 +79,29 @@ impl whir::NativeWeight for WiringWeight<'_> {
     fn table(&self) -> Vec<Fp3> {
         super::prove::wiring_table(self.k, self.lambda)
     }
-    /// `u_λ(α, b)` for every `b`: the word's index is `col·2^n + row`,
-    /// `α` covers the rows and the low column bits.
+    /// `u_λ(α, b)` for every `b`: the word's index `x = col·2^n + row`,
+    /// `α` its low `ℓ − fv` bits, `b` the rest.
     fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3> {
         let w = self.k.wiring.as_ref().expect("final mode");
         let n = self.k.params.n;
-        let lo = alpha.len() - n;
-        let er = eq_table(&alpha[..n]);
-        let ec = eq_table(&alpha[n..]);
+        let pre = alpha.len();
+        let ea = eq_table(alpha);
+        let mask = (1usize << pre) - 1;
         let slots = crate::recursion::circuit::layout::SLOTS;
         // every used slot's contribution per final-variable value b, once
         let at: Vec<Vec<(usize, Fp3)>> = w
             .kappa
             .iter()
             .enumerate()
-            .map(|(s, kp)| kp.iter().map(|&(c, kc)| ((c as usize) >> lo, kc * ec[(c as usize) & ((1 << lo) - 1)] * er[s / slots])).collect())
+            .map(|(s, kp)| {
+                let row = s / slots;
+                kp.iter()
+                    .map(|&(c, kc)| {
+                        let x = ((c as usize) << n) | row;
+                        (x >> pre, kc * ea[x & mask])
+                    })
+                    .collect()
+            })
             .collect();
         let mut out = vec![Fp3::ZERO; 1 << fv];
         let mut l = Fp3::ONE;
