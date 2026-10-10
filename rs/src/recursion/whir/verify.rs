@@ -346,7 +346,12 @@ fn core<O: Ops>(
     }
     lap("rounds");
     // the final polynomial and queries
-    let fin: Vec<O::V> = pf.final_poly.iter().map(|&c| t.absorb_free_ext(o, c)).collect();
+    // one word (a native verifier): the final polynomial as a digest
+    let fin: Vec<O::V> = if cfg.direct() {
+        crate::recursion::msg::absorb(o, t, &pf.final_poly)
+    } else {
+        pf.final_poly.iter().map(|&c| t.absorb_free_ext(o, c)).collect()
+    };
     t.grind_check(o, prev.query_pow, pf.final_nonce);
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
@@ -421,9 +426,8 @@ fn core<O: Ops>(
             Point::Native(i) => {
                 let av: Vec<Fp3> = a.iter().map(|&v| o.value(v)).collect();
                 let fins: Vec<Fp3> = fin.iter().map(|&v| o.value(v)).collect();
-                let part = natives[*i].partial(&av, fv);
                 let fm = cube_native(&fins);
-                let v = part.iter().zip(&fm).fold(Fp3::ZERO, |s, (&p, &f)| s + p * f);
+                let v = natives[*i].closing(&av, &fm);
                 (o.one(), o.constant(v))
             }
         };

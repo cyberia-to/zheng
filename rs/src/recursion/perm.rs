@@ -36,6 +36,8 @@ pub mod tag {
     pub const WRAP: u64 = 9;
     /// The digest of a final verifier's public values.
     pub const PUBLIC: u64 = 10;
+    /// A long message absorbed as a digest (`recursion::msg`).
+    pub const MSG: u64 = 11;
 }
 
 fn to_h(x: Goldilocks) -> HG {

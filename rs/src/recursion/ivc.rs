@@ -188,7 +188,8 @@ pub fn timer_pub(indent: &'static str) -> impl Fn(&str) {
     let clock = std::time::Instant::now();
     move |what: &str| {
         if on {
-            eprintln!("{indent}{what}: {:.1} ms", clock.elapsed().as_secs_f64() * 1e3);
+            let (a, b) = super::perm::count();
+            eprintln!("{indent}{what}: {:.1} ms · permutations {a} single, {b} batched", clock.elapsed().as_secs_f64() * 1e3);
         }
     }
 }

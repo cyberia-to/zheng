@@ -15,6 +15,7 @@
 pub mod ops;
 pub mod perm;
 pub mod sponge;
+pub mod msg;
 pub mod word;
 pub mod stream;
 pub mod circuit;

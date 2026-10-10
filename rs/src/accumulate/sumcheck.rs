@@ -77,23 +77,59 @@ pub fn prove(
     (msgs, point, evals)
 }
 
+/// Threads for a pass over `pairs` pairs (one below `2^14`).
+fn threads(pairs: usize) -> usize {
+    if pairs < 1 << 14 { 1 } else { std::thread::available_parallelism().map_or(1, |n| n.get()).min(16) }
+}
+
 /// `(Σ_b' f(0,b')w(0,b'), Σ_b' f(2,b')w(2,b'))` with variable 0 the low bit.
 fn round_sums(f: &[Fp3], w: &[Fp3]) -> (Fp3, Fp3) {
-    let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
-    for (fp, wp) in f.chunks_exact(2).zip(w.chunks_exact(2)) {
-        h0 += fp[0] * wp[0];
-        let f2 = fp[1] + fp[1] - fp[0];
-        let w2 = wp[1] + wp[1] - wp[0];
-        h2 += f2 * w2;
+    let part = |f: &[Fp3], w: &[Fp3]| {
+        let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
+        for (fp, wp) in f.chunks_exact(2).zip(w.chunks_exact(2)) {
+            h0 += fp[0] * wp[0];
+            let f2 = fp[1] + fp[1] - fp[0];
+            let w2 = wp[1] + wp[1] - wp[0];
+            h2 += f2 * w2;
+        }
+        (h0, h2)
+    };
+    let t = threads(f.len() / 2);
+    if t == 1 {
+        return part(f, w);
     }
-    (h0, h2)
+    let size = (f.len() / 2).div_ceil(t) * 2;
+    std::thread::scope(|s| {
+        let hs: Vec<_> = f.chunks(size).zip(w.chunks(size)).map(|(a, b)| s.spawn(move || part(a, b))).collect();
+        hs.into_iter().map(|h| h.join().expect("round")).fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
+    })
 }
 
 fn fold(v: &mut Vec<Fp3>, alpha: Fp3) {
     let half = v.len() / 2;
-    for i in 0..half {
-        let a = v[2 * i];
-        v[i] = a + alpha * (v[2 * i + 1] - a);
+    let t = threads(half);
+    if t == 1 {
+        for i in 0..half {
+            let a = v[2 * i];
+            v[i] = a + alpha * (v[2 * i + 1] - a);
+        }
+    } else {
+        let mut out = vec![Fp3::ZERO; half];
+        let size = half.div_ceil(t);
+        let src = &v[..];
+        std::thread::scope(|s| {
+            for (k, chunk) in out.chunks_mut(size).enumerate() {
+                s.spawn(move || {
+                    for (i, o) in chunk.iter_mut().enumerate() {
+                        let j = k * size + i;
+                        let a = src[2 * j];
+                        *o = a + alpha * (src[2 * j + 1] - a);
+                    }
+                });
+            }
+        });
+        *v = out;
+        return;
     }
     v.truncate(half);
 }

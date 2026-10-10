@@ -188,6 +188,8 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
     let (g, constraints) = g_graph(&air, params.mode);
+    let gc = g.compile();
+    let key_cols = super::key_used(&g, if committed { super::COLS } else { crate::recursion::circuit::layout::V1 });
     let w = if committed { super::COLS } else { crate::recursion::circuit::layout::V1 };
     let used = g.used_inputs();
     let next_cols: Vec<usize> = (0..w).filter(|&c| committed || used[w + c]).collect();
@@ -204,6 +206,8 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
         out_row,
         g,
         constraints,
+        gc,
+        key_cols,
         next_cols,
         pn: inner.pn_len(),
         ivc,
@@ -276,5 +280,5 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
             write_cells.push((j as u32, x(w, c), super::Coef::of(kc)));
         }
     }
-    Wiring { reads: reads_at.len(), read_cells, write_reads, write_at, write_cells }
+    Wiring::new(reads_at.len(), read_cells, write_reads, write_at, write_cells)
 }

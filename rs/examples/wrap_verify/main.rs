@@ -97,6 +97,19 @@ fn main() {
             back
         }
     };
+    if let Some(w) = &last.wiring {
+        eprintln!(
+            "wiring: {} reads ({} cells), {} writes ({} cells); graph {} ops; key {} entries in {} of {} columns used",
+            w.reads,
+            w.read_cells.len(),
+            w.write_at.len() - 1,
+            w.write_cells.len(),
+            last.gc.len(),
+            last.sparse.iter().zip(&last.key_cols).filter(|c| *c.1).map(|c| c.0.len()).sum::<usize>(),
+            last.key_cols.iter().filter(|&&u| u).count(),
+            last.key_cols.len()
+        );
+    }
     let bytes = std::fs::read(format!("{dir}/{name}.final-{}", specs.join("_"))).expect("stored final proof");
     let header = FinalProof::from_bytes(&bytes, &last).expect("parse");
     let prep = ivc::prepare(&run.statement, &whir, header.log_rows, header.start, header.segments, header.chain).expect("prepare");

@@ -97,12 +97,15 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
                 .collect(),
         })
         .collect();
+    let lap = crate::recursion::ivc::timer_pub("      whir prove ");
     let tables: Vec<Vec<Fp3>> = words.iter().map(|w| w.table()).collect();
     let (msgs, rho, evals) = sumcheck::prove(t, tables.clone(), &weights, ell);
+    lap("batch sumcheck");
     for &e in &evals {
         t.absorb_ext(e);
     }
     let comb_nonce = t.grind(cfg.comb_pow);
+    lap(&format!("combination grinding ({} bits)", cfg.comb_pow));
     let r = t.squeeze_ext();
     let mut coef = Vec::with_capacity(m);
     let mut c = Fp3::ONE;
@@ -122,6 +125,7 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
     }
     drop(tables);
     let w = eq_table(&rho);
+    lap("combination");
     core(cfg, t, trees, f, coeffs, w, BatchProof { sumcheck: msgs, evals, comb_nonce })
 }
 
@@ -156,6 +160,7 @@ fn core(
 ) -> Result<Proof, String> {
     let wc = &cfg.wc;
     let ell = wc.num_vars;
+    let lap = crate::recursion::ivc::timer_pub("      whir core ");
     // round 0
     let s0 = wc.rounds[0];
     let mut ood0 = Vec::with_capacity(s0.ood);
@@ -173,7 +178,9 @@ fn core(
         add_scaled_eq(&mut w, &pow_point(z, ell), g);
         g *= gamma;
     }
+    lap("ood 0");
     let (sumcheck0, fold_nonces0) = fold_rounds(t, &mut f, &mut w, &mut coeffs, s0.fold, s0.fold_pow);
+    lap(&format!("folds 0 (grinding {} bits)", s0.fold_pow));
     let mut prev_words: Option<Word> = None;
     let mut prev = s0;
     let mut rounds = Vec::with_capacity(wc.rounds.len() - 1);
@@ -192,6 +199,7 @@ fn core(
     };
     for (i, s) in wc.rounds.iter().enumerate().skip(1) {
         let wd = Word::commit_coeffs(cfg.layout(i), coeffs.clone(), cfg.arity);
+        lap(&format!("round {i} commit"));
         t.absorb_all(&wd.root());
         let mut ood = Vec::with_capacity(s.ood);
         let mut zs = Vec::with_capacity(s.ood);
@@ -203,9 +211,11 @@ fn core(
             zs.push(z);
         }
         let query_nonce = t.grind(prev.query_pow);
+        lap(&format!("round {i} query grinding ({} bits)", prev.query_pow));
         let idx = queries(t, &prev)?;
         let gamma = t.squeeze_ext();
         let opening = open(&prev_words, &idx);
+        lap(&format!("round {i} openings"));
         let mut g = gamma;
         for &z in &zs {
             add_scaled_eq(&mut w, &pow_point(z, s.num_vars), g);
@@ -218,16 +228,22 @@ fn core(
             g *= gamma;
         }
         let (sumcheck, fold_nonces) = fold_rounds(t, &mut f, &mut w, &mut coeffs, s.fold, s.fold_pow);
+        lap(&format!("round {i} folds (grinding {} bits)", s.fold_pow));
         rounds.push(Round { root: wd.root(), ood, query_nonce, open: opening, sumcheck, fold_nonces });
         prev_words = Some(wd);
         prev = *s;
     }
-    for &c in &coeffs {
-        t.absorb_ext(c);
+    if cfg.direct() {
+        t.absorb_all(&crate::recursion::msg::digest_native(&coeffs));
+    } else {
+        for &c in &coeffs {
+            t.absorb_ext(c);
+        }
     }
     let final_nonce = t.grind(prev.query_pow);
     let idx = queries(t, &prev)?;
     let final_open = open(&prev_words, &idx);
+    lap("final");
     if t.sp.has_pending() {
         t.sp.flush(&mut t.o);
     }

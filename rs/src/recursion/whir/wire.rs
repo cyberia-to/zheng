@@ -79,7 +79,17 @@ fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usiz
     }
 }
 
-fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usize], arity: Arity) -> R<Vec<Vec<LeafOpening>>> {
+/// A round's openings as read: query leaves and, per tree, the distinct
+/// leaves' symbols and the multi-opening's siblings (not yet expanded).
+struct RawOpenings {
+    leaves: Vec<usize>,
+    distinct: Vec<usize>,
+    depth: usize,
+    arity: Arity,
+    trees: Vec<(bool, Vec<Vec<Fp3>>, Vec<Digest>)>,
+}
+
+fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usize], arity: Arity) -> R<RawOpenings> {
     let depth = s.log_leaves() as usize;
     let leaves: Vec<usize> = (0..queries(s)).map(|_| r.u32()).collect::<R<_>>()?;
     if leaves.iter().any(|&l| l >> depth != 0) {
@@ -88,7 +98,7 @@ fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usi
     let mut distinct = leaves.clone();
     distinct.sort_unstable();
     distinct.dedup();
-    let mut per_word = Vec::with_capacity(ext.len());
+    let mut trees = Vec::with_capacity(ext.len());
     for (&x, &m) in ext.iter().zip(members) {
         let width = m << s.fold;
         let syms: Vec<Vec<Fp3>> = distinct
@@ -97,13 +107,38 @@ fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usi
             .collect::<R<_>>()?;
         let ns = r.count(32)?;
         let sib: Vec<Digest> = (0..ns).map(|_| read_digest(r)).collect::<R<_>>()?;
-        per_word.push(expand(&distinct, syms, &sib, depth, x, arity)?);
+        trees.push((x, syms, sib));
     }
-    Ok(leaves
+    Ok(RawOpenings { leaves, distinct, depth, arity, trees })
+}
+
+/// Expand every round's multi-openings (their trees in parallel: each
+/// expansion hashes its distinct leaves and the nodes they reach).
+fn expand_all(raws: Vec<RawOpenings>) -> R<Vec<Vec<Vec<LeafOpening>>>> {
+    let jobs: Vec<(usize, &RawOpenings, &(bool, Vec<Vec<Fp3>>, Vec<Digest>))> =
+        raws.iter().enumerate().flat_map(|(i, ro)| ro.trees.iter().map(move |t| (i, ro, t))).collect();
+    let done: Vec<R<Vec<LeafOpening>>> = std::thread::scope(|sc| {
+        let hs: Vec<_> = jobs
+            .iter()
+            .map(|&(_, ro, (x, syms, sib))| sc.spawn(move || expand(&ro.distinct, syms.clone(), sib, ro.depth, *x, ro.arity)))
+            .collect();
+        hs.into_iter().map(|h| h.join().expect("expansion")).collect()
+    });
+    let mut per_round: Vec<Vec<Vec<LeafOpening>>> = raws.iter().map(|_| Vec::new()).collect();
+    for ((i, _, _), d) in jobs.iter().zip(done) {
+        per_round[*i].push(d?);
+    }
+    Ok(raws
         .iter()
-        .map(|l| {
-            let q = distinct.binary_search(l).expect("leaf");
-            per_word.iter().map(|ops: &Vec<LeafOpening>| ops[q].clone()).collect()
+        .zip(per_round)
+        .map(|(ro, per_word)| {
+            ro.leaves
+                .iter()
+                .map(|l| {
+                    let q = ro.distinct.binary_search(l).expect("leaf");
+                    per_word.iter().map(|ops| ops[q].clone()).collect()
+                })
+                .collect()
         })
         .collect())
 }
@@ -147,22 +182,28 @@ pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
     let sumcheck0 = read_exts(r, 2 * s0.fold)?;
     let fold_nonces0 = read_nonces(r, &s0)?;
     let mut rounds = Vec::with_capacity(wc.rounds.len() - 1);
+    let mut raws = Vec::with_capacity(wc.rounds.len());
     for i in 1..wc.rounds.len() {
         let (prev, s) = (wc.rounds[i - 1], wc.rounds[i]);
         let root = read_digest(r)?;
         let ood = read_exts(r, s.ood)?;
         let query_nonce = read_nonce(r, prev.query_pow)?;
         let (e, g): (&[bool], &[usize]) = if i == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
-        let open = read_openings(r, &prev, e, g, cfg.arity)?;
+        raws.push(read_openings(r, &prev, e, g, cfg.arity)?);
         let sc = read_exts(r, 2 * s.fold)?;
         let fold_nonces = read_nonces(r, &s)?;
-        rounds.push(Round { root, ood, query_nonce, open, sumcheck: sc, fold_nonces });
+        rounds.push(Round { root, ood, query_nonce, open: Vec::new(), sumcheck: sc, fold_nonces });
     }
     let final_poly = read_exts(r, 1 << wc.final_vars)?;
     let last = *wc.rounds.last().expect("a round");
     let final_nonce = read_nonce(r, last.query_pow)?;
     let (e, g): (&[bool], &[usize]) = if wc.rounds.len() == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
-    let final_open = read_openings(r, &last, e, g, cfg.arity)?;
+    raws.push(read_openings(r, &last, e, g, cfg.arity)?);
+    let mut opened = expand_all(raws)?;
+    let final_open = opened.pop().expect("final openings");
+    for (rd, op) in rounds.iter_mut().zip(opened) {
+        rd.open = op;
+    }
     Ok(Proof {
         batch: BatchProof { sumcheck, evals, comb_nonce },
         ood0,

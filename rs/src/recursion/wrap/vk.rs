@@ -263,7 +263,7 @@ impl WrapKey {
                 let write_reads = read_u32s(&mut r)?;
                 let write_at = read_u32s(&mut r)?;
                 let write_cells = read_cell_list(&mut r)?;
-                Some(Wiring { reads, read_cells, write_reads, write_at, write_cells })
+                Some(Wiring::new(reads, read_cells, write_reads, write_at, write_cells))
             }
             _ => return Err(PcsError::Malformed),
         };
@@ -289,6 +289,13 @@ impl WrapKey {
         let outputs = (0..no).map(|_| read_sym(&mut r, nn)).collect::<R<Vec<_>>>()?;
         r.finish()?;
         let cfg = super::program::level_config(&params, n + super::CBITS, fresh).map_err(|_| PcsError::Malformed)?;
+        let g = Graph { nodes, inputs, outputs };
+        let w = if mode == Mode::Inner { super::COLS } else { crate::recursion::circuit::layout::V1 };
+        if g.inputs != super::g_inputs(w) {
+            return Err(PcsError::Malformed);
+        }
+        let key_cols = super::key_used(&g, w);
+        let gc = g.compile();
         let key = WrapKey {
             params,
             pre: Pre { cols: Vec::new() },
@@ -300,7 +307,9 @@ impl WrapKey {
             cfg,
             fresh,
             out_row,
-            g: Graph { nodes, inputs, outputs },
+            gc,
+            g,
+            key_cols,
             constraints,
             next_cols,
             pn,

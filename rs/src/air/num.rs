@@ -143,6 +143,153 @@ impl Graph {
     }
 }
 
+/// A graph pruned to the nodes its outputs need, inputs and constants
+/// resolved to slots, a product by a base-field constant specialised
+/// (the native verifier evaluates `G` once per proof).
+#[derive(Clone, Debug)]
+pub struct Compiled {
+    /// `(op, a, b)` over slots: inputs first, then constants, then nodes.
+    ops: Vec<(u8, u32, u32)>,
+    consts: Vec<Fp3>,
+    inputs: usize,
+    outputs: Vec<u32>,
+}
+
+const OP_ADD: u8 = 0;
+const OP_SUB: u8 = 1;
+const OP_MUL: u8 = 2;
+const OP_NEG: u8 = 3;
+/// `a · c` with `c` a base constant: `b` indexes `consts`.
+const OP_MULB: u8 = 4;
+
+impl Graph {
+    /// The compiled form ([`Compiled`]); `eval` of both agree.
+    pub fn compile(&self) -> Compiled {
+        let n = self.nodes.len();
+        let mut need = vec![false; n];
+        for s in &self.outputs {
+            if let Sym::N(i) = s {
+                need[*i as usize] = true;
+            }
+        }
+        for i in (0..n).rev() {
+            if !need[i] {
+                continue;
+            }
+            let mut mark = |s: Sym| {
+                if let Sym::N(j) = s {
+                    need[j as usize] = true;
+                }
+            };
+            match self.nodes[i] {
+                Node::Input(_) => {}
+                Node::Add(a, b) | Node::Sub(a, b) | Node::Mul(a, b) => {
+                    mark(a);
+                    mark(b);
+                }
+                Node::Neg(a) => mark(a),
+            }
+        }
+        // constants get slots after the inputs; nodes after the constants
+        let mut consts: Vec<Fp3> = Vec::new();
+        let mut cidx = std::collections::BTreeMap::<[u64; 3], u32>::new();
+        let mut slot = vec![u32::MAX; n];
+        let mut ops = Vec::new();
+        let mut pending: Vec<(u8, Sym, Sym)> = Vec::new();
+        let mut order = Vec::new();
+        for i in 0..n {
+            if !need[i] {
+                continue;
+            }
+            match self.nodes[i] {
+                Node::Input(k) => slot[i] = k,
+                Node::Add(a, b) => pending.push((OP_ADD, a, b)),
+                Node::Sub(a, b) => pending.push((OP_SUB, a, b)),
+                Node::Mul(a, b) => pending.push((OP_MUL, a, b)),
+                Node::Neg(a) => pending.push((OP_NEG, a, a)),
+            }
+            if !matches!(self.nodes[i], Node::Input(_)) {
+                order.push(i);
+            }
+        }
+        let mut cslot = |c: Fp3, consts: &mut Vec<Fp3>| -> u32 {
+            let key = [c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()];
+            *cidx.entry(key).or_insert_with(|| {
+                consts.push(c);
+                (consts.len() - 1) as u32
+            })
+        };
+        // first pass: register constants (their slots must precede nodes)
+        let is_base = |c: Fp3| c.c1 == Goldilocks::ZERO && c.c2 == Goldilocks::ZERO;
+        for &(op, a, b) in &pending {
+            for x in [a, b] {
+                if let Sym::C(c) = x {
+                    cslot(c, &mut consts);
+                }
+            }
+            let _ = op;
+        }
+        for s in &self.outputs {
+            if let Sym::C(c) = s {
+                cslot(*c, &mut consts);
+            }
+        }
+        let base = self.inputs + consts.len();
+        let mut next = base as u32;
+        let resolve = |x: Sym, slot: &[u32], cidx: &std::collections::BTreeMap<[u64; 3], u32>| -> u32 {
+            match x {
+                Sym::N(j) => slot[j as usize],
+                Sym::C(c) => self.inputs as u32 + cidx[&[c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()]],
+            }
+        };
+        for (&i, &(op, a, b)) in order.iter().zip(&pending) {
+            let e = match (op, a, b) {
+                (OP_MUL, x, Sym::C(c)) | (OP_MUL, Sym::C(c), x) if is_base(c) && !matches!(x, Sym::C(_)) => {
+                    (OP_MULB, resolve(x, &slot, &cidx), cidx[&[c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()]])
+                }
+                _ => (op, resolve(a, &slot, &cidx), resolve(b, &slot, &cidx)),
+            };
+            ops.push(e);
+            slot[i] = next;
+            next += 1;
+        }
+        let outputs = self.outputs.iter().map(|&s| resolve(s, &slot, &cidx)).collect();
+        Compiled { ops, consts, inputs: self.inputs, outputs }
+    }
+}
+
+impl Compiled {
+    /// Evaluate at `inputs`.
+    pub fn eval(&self, inputs: &[Fp3]) -> Vec<Fp3> {
+        assert_eq!(inputs.len(), self.inputs, "graph inputs");
+        let mut v = Vec::with_capacity(self.inputs + self.consts.len() + self.ops.len());
+        v.extend_from_slice(inputs);
+        v.extend_from_slice(&self.consts);
+        for &(op, a, b) in &self.ops {
+            let x = v[a as usize];
+            let r = match op {
+                OP_ADD => x + v[b as usize],
+                OP_SUB => x - v[b as usize],
+                OP_MUL => x * v[b as usize],
+                OP_NEG => -x,
+                _ => {
+                    let c = self.consts[b as usize].c0;
+                    Fp3::new(x.c0 * c, x.c1 * c, x.c2 * c)
+                }
+            };
+            v.push(r);
+        }
+        self.outputs.iter().map(|&o| v[o as usize]).collect()
+    }
+    /// Operations evaluated.
+    pub fn len(&self) -> usize {
+        self.ops.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+}
+
 impl Add for Sym {
     type Output = Sym;
     fn add(self, o: Sym) -> Sym {

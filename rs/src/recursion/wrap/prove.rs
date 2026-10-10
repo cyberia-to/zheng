@@ -113,8 +113,13 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let local = evals[..w].to_vec();
     let next: Vec<Fp3> = k.next_cols.iter().map(|&c| evals[w + c]).collect();
     let keyv = evals[2 * w..2 * w + pre::COUNT].to_vec();
-    for &v in local.iter().chain(&next) {
-        t.absorb_ext(v);
+    if is_inner {
+        for &v in local.iter().chain(&next) {
+            t.absorb_ext(v);
+        }
+    } else {
+        let both: Vec<Fp3> = local.iter().chain(&next).copied().collect();
+        t.absorb_all(&crate::recursion::msg::digest_native(&both));
     }
     if !is_inner {
         drop(local_cols);

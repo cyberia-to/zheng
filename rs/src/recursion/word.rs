@@ -121,7 +121,7 @@ fn par_chunks<T: Send, F: Fn(usize, &mut [T]) + Sync>(v: &mut [T], f: F) {
 /// Leaf digests of `leaves` leaves of `width` symbols each (`ext`: Fp3
 /// symbols), `symbol(j, t)` the `t`-th symbol of leaf `j` — the sponge of
 /// [`leaf_digest`], batched, on this thread.
-fn hash_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3) -> Vec<Digest> {
+pub(crate) fn hash_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3) -> Vec<Digest> {
     let lanes: Vec<usize> = if ext { vec![3; width] } else { vec![1; width] };
     // block boundaries: items never straddle the rate
     let mut blocks: Vec<Vec<usize>> = vec![vec![]];

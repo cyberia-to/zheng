@@ -191,6 +191,13 @@ pub trait NativeWeight {
     /// Its values at `(α, b)` for every `b` of the last `fv` variables,
     /// `α` the first `ℓ − fv` (the closing check).
     fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3>;
+    /// `Σ_b w(α, b)·f_M(b)` for the final polynomial's cube values `fm`
+    /// (the closing check's term; a weight may evaluate it faster than
+    /// through [`Self::partial`]).
+    fn closing(&self, alpha: &[Fp3], fm: &[Fp3]) -> Fp3 {
+        let part = self.partial(alpha, fm.len().trailing_zeros() as usize);
+        part.iter().zip(fm).fold(Fp3::ZERO, |s, (&p, &f)| s + p * f)
+    }
 }
 
 /// A claim on one input word (`Multi`: at a point; `Uni`: at `pow(x)`).

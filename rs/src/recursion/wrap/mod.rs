@@ -44,6 +44,9 @@ mod program;
 mod prove;
 mod verify;
 mod vk;
+mod wiring;
+
+pub use wiring::{Coef, Wiring};
 pub mod wire;
 
 #[cfg(test)]
@@ -53,7 +56,7 @@ mod tests;
 
 pub use program::{Inner, derive_key_ivc, derive_key_wrap, derive_shape, derive_shape_ivc, public_digest, public_digest_native};
 pub use prove::prove;
-pub use verify::{check_shape, verify};
+pub use verify::{check_shape, threads as verifier_threads, verify};
 
 use lens::WhirParams;
 use nebu::Fp3;
@@ -82,75 +85,6 @@ pub enum Mode {
     /// Linear wiring, the key evaluated by the verifier: one committed
     /// word, a native verifier only.
     Final,
-}
-
-/// The linear form of the memory argument (final mode): every read slot
-/// with the slot that writes its address, and every used slot's value as
-/// a combination of its row's phase-1 cells.
-pub struct Wiring {
-    /// Read slots (each paired with the slot writing its address).
-    pub reads: usize,
-    /// `u_λ = Σ_i λ^i·read_i − Σ_w Λ_w·write_w` with `Λ_w` the sum of the
-    /// powers of `w`'s reads: every read slot's cells `(i, word index,
-    /// coefficient)` (a word index is `col·2^n + row`) …
-    pub read_cells: Vec<(u32, u32, Coef)>,
-    /// … every write slot's reads (`write_reads[write_at[w]..write_at[w + 1]]`)
-    pub write_reads: Vec<u32>,
-    pub write_at: Vec<u32>,
-    /// … and its cells `(w, word index, coefficient)`.
-    pub write_cells: Vec<(u32, u32, Coef)>,
-}
-
-/// A cell's coefficient in its slot's value: 1, `T`, `T²` (an Fp3 value's
-/// limbs) or any other.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Coef {
-    One,
-    T,
-    T2,
-    Other(Fp3),
-}
-
-impl Coef {
-    pub fn of(c: Fp3) -> Self {
-        use nebu::Goldilocks as G;
-        let (z, o) = (G::ZERO, G::ONE);
-        match (c.c0, c.c1, c.c2) {
-            (a, b, d) if a == o && b == z && d == z => Coef::One,
-            (a, b, d) if a == z && b == o && d == z => Coef::T,
-            (a, b, d) if a == z && b == z && d == o => Coef::T2,
-            _ => Coef::Other(c),
-        }
-    }
-    /// `coefficient · v` (`T³ = T + 1`: a product by `T` is a limb shift).
-    pub fn apply(self, v: Fp3) -> Fp3 {
-        match self {
-            Coef::One => v,
-            Coef::T => Fp3::new(v.c2, v.c0 + v.c2, v.c1),
-            Coef::T2 => Fp3::new(v.c1, v.c1 + v.c2, v.c0 + v.c2),
-            Coef::Other(c) => c * v,
-        }
-    }
-}
-
-impl Wiring {
-    /// `1, λ, …, λ^{reads−1}`.
-    pub fn powers(&self, lambda: Fp3) -> Vec<Fp3> {
-        let mut out = Vec::with_capacity(self.reads);
-        let mut l = Fp3::ONE;
-        for _ in 0..self.reads {
-            out.push(l);
-            l *= lambda;
-        }
-        out
-    }
-    /// `Λ_w` for every write slot.
-    pub fn write_sums(&self, lp: &[Fp3]) -> Vec<Fp3> {
-        self.write_at
-            .windows(2)
-            .map(|r| self.write_reads[r[0] as usize..r[1] as usize].iter().fold(Fp3::ZERO, |a, &i| a + lp[i as usize]))
-            .collect()
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -183,9 +117,14 @@ pub struct WrapKey {
     /// point, the memory challenges and `μ`.
     pub g: Graph,
     pub constraints: usize,
+    /// `g` compiled for native evaluation.
+    pub gc: crate::air::num::Compiled,
     /// The committed columns whose successor values the constraints read
     /// (final mode sends only these; inner mode every column).
     pub next_cols: Vec<usize>,
+    /// The key columns the constraints read (the final verifier evaluates
+    /// only these; the others never enter `G`).
+    pub key_cols: Vec<bool>,
     /// Coordinates of the deferred nox-public claim's point.
     pub pn: usize,
     /// The recursive proof the chain of levels starts from: its WHIR
@@ -315,6 +254,11 @@ impl Air for View<'_> {
 /// input, α_V, β_V, μ.
 pub fn g_inputs(w: usize) -> usize {
     2 * w + pre::COUNT + PIN + 3
+}
+
+/// The key columns `g` (over committed width `w`) reads.
+pub(crate) fn key_used(g: &Graph, w: usize) -> Vec<bool> {
+    g.used_inputs()[2 * w..2 * w + pre::COUNT].to_vec()
 }
 
 /// Record `Σ_k μ^k C_k` (constraints of the circuit and `live = 1`).
