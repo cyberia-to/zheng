@@ -296,3 +296,39 @@ pub fn verify_native(k: &WrapKey, x: Digest, pf: &WrapProof) -> Result<(), Strin
     verify(&mut o, k, xv, pf);
     o.finish()
 }
+
+/// Every round-by-round term of a wrap level as `(name, bits)` — its own
+/// rounds and its opening's (`specs/soundness.md` § wrap). `reads`: the
+/// read slots of the final mode's wiring.
+pub fn ledger(params: &WrapParams, cfg: &whir::Config, constraints: usize, reads: usize) -> Vec<(String, f64)> {
+    use lens::rspcs::soundness::{ext_field_bits, proximity};
+    let k = ext_field_bits();
+    let n = params.n;
+    let log2 = |x: f64| x.log2();
+    let mut out = Vec::new();
+    let s0 = cfg.wc.rounds[0];
+    let list = proximity(s0.regime, s0.log_inv_rate, s0.log_domain).log_list;
+    let fresh = crate::accumulate::fresh_ood(&params.whir, n + CBITS).unwrap_or(0);
+    out.push(("fresh-word binding (OOD)".into(), -(2.0 * list - 1.0 + fresh as f64 * ((n + CBITS) as f64 - k))));
+    out.push(("zerocheck μ (powers)".into(), k - log2((constraints - 1) as f64)));
+    out.push(("zerocheck τ".into(), k - log2(n as f64)));
+    out.push(("zerocheck round (degree 9)".into(), k - log2((DEGREE + 2) as f64)));
+    match params.mode {
+        Mode::Inner => {
+            let t = (crate::recursion::circuit::layout::SLOTS << n) as f64;
+            out.push(("memory α_V".into(), k - log2(t)));
+            out.push(("memory β_V (pairs)".into(), k - 2.0 * log2(t) + 1.0));
+            out.push(("shift column batching".into(), k - log2(CBITS as f64)));
+            out.push(("shift β, ζ".into(), k - 1.0));
+            out.push(("shift round (degree 2)".into(), k - 1.0));
+            out.push(("key column batching γ_k".into(), k - log2(7.0)));
+            out.push(("key split line".into(), k));
+        }
+        Mode::Final => {
+            out.push(("wiring λ".into(), k - log2(reads.max(2) as f64)));
+            out.push(("column batching (local, successor)".into(), k - log2(CBITS as f64)));
+        }
+    }
+    out.extend(cfg.terms());
+    out
+}

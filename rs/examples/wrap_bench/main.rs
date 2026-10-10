@@ -83,6 +83,11 @@ fn main() {
             Some(prev) => wrap::derive_key_wrap(*p, prev),
         }
         .expect("wrap key");
+        let reads = k.wiring.as_ref().map_or(0, |w| w.reads.len());
+        let rows = wrap::ledger(&k.params, &k.cfg, k.constraints, reads);
+        let (wname, wbits) = rows.iter().fold(("", f64::INFINITY), |a, (nm, b)| if *b < a.1 { (nm.as_str(), *b) } else { a });
+        eprintln!("wrap {i} ledger: {} rows, weakest {wname} {wbits:.2} bits", rows.len());
+        assert!(wbits >= 128.0, "a ledger row below 128 bits");
         eprintln!(
             "wrap {i} key: circuit {} rows (gates {} bits {} blocks {}) → 2^{} · rate 1/{} pow {} k {} · {:?} · bits {:.2} · {:.0} ms",
             k.rows,

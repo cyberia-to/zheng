@@ -35,3 +35,22 @@ fn graph_case(mode: Mode) {
     assert_eq!(b.value(outs[0]), want);
     eprintln!("wrap G ({mode:?}): {k} constraints, {} nodes, {} gates", g.nodes.len(), b.gates.len());
 }
+
+#[test]
+fn every_ledger_row_of_the_wrap_profiles_reaches_128_bits() {
+    let base = crate::execution::succinct::params_for(20);
+    for (rate, pow, n, mode, reads) in [(6u8, 24u8, 16usize, Mode::Inner, 0usize), (8, 30, 15, Mode::Inner, 0), (8, 30, 14, Mode::Final, 1 << 18)] {
+        let mut whir = base;
+        whir.log_inv_rate = rate;
+        whir.pow_bits = pow;
+        let params = WrapParams { whir, n, mode };
+        let fresh = crate::accumulate::fresh_ood(&whir, n + CBITS).unwrap();
+        let (groups, claims): (&[usize], usize) = if mode == Mode::Inner { (&[1, 1, 2], 2 * (fresh + 1) + 2) } else { (&[1], fresh + 3) };
+        let cfg = whir::Config::derive(&whir, n + CBITS, groups, claims).unwrap();
+        let constraints = View(&CircuitAir::default(), mode).constraints();
+        for (name, bits) in ledger(&params, &cfg, constraints, reads) {
+            eprintln!("rate 1/{} {mode:?}: {name:40} {bits:8.2}", 1u32 << rate);
+            assert!(bits >= 128.0, "{name}: {bits}");
+        }
+    }
+}
