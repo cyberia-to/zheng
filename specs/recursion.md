@@ -175,4 +175,11 @@ is conjectured, as for every deployed recursive proof system.
   one native WHIR opening;
 - a wrap step proving the final verifier with a small non-accumulating
   proof (the route to ≤ 64 KB, `audit/recursion-2026-10.md`);
-- an envelope profile for recursive proofs.
+
+## envelope
+
+profile 5 of `ZHENGPF1` carries a recursive proof (`envelope::recursive`,
+body layout in `api.md` § envelope). The IVC wire (`recursion::wire`) is
+fixed-width little-endian with canonical Goldilocks limbs and no lengths
+but the header's; the envelope wraps it with a format byte, the WHIR
+header (admitted sets only), the machine statement and a length prefix.

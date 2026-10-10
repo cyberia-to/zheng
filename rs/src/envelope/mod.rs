@@ -4,6 +4,7 @@
 //! magic    8 bytes  "ZHENGPF1"
 //! version  u16 LE   VERSION
 //! profile  u8       0 public · 1 succinct · 2 zk · 3 state-public · 4 machine
+//!                   · 5 recursive
 //! body              per profile, canonical (see `codec`)
 //! ```
 //!
@@ -21,6 +22,9 @@
 //!   root-in-subject flag, the reads, then the v3 certificate.
 //! - machine (4): WHIR parameters, the machine statement (program, inputs,
 //!   output noun, cycles, budget), then the machine proof (see `machine`).
+//! - recursive (5): format byte, WHIR parameters (an admitted set), the
+//!   machine statement as in profile 4, then the IVC proof, length-prefixed
+//!   (see `recursive`).
 //!
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
@@ -31,6 +35,7 @@
 mod body;
 mod codec;
 mod machine;
+pub mod recursive;
 mod succinct;
 #[cfg(test)]
 mod tests;
@@ -64,6 +69,9 @@ pub enum Profile {
     /// A nox run of any length: the uniform step relation, accumulation,
     /// one decider.
     Machine = 4,
+    /// A nox run of any length proven by IVC: the last step, its
+    /// accumulation step and one decider — constant in the steps.
+    Recursive = 5,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +117,11 @@ pub enum Envelope {
         params: lens::WhirParams,
         statement: crate::machine::MachineStatement,
         proof: Box<crate::machine::MachineProof>,
+    },
+    Recursive {
+        params: lens::WhirParams,
+        statement: crate::machine::MachineStatement,
+        proof: Box<crate::recursion::ivc::IvcProof>,
     },
 }
 
@@ -173,6 +186,7 @@ impl Envelope {
             Self::StatePublic { .. } => Profile::StatePublic,
             Self::Succinct { .. } => Profile::Succinct,
             Self::Machine { .. } => Profile::Machine,
+            Self::Recursive { .. } => Profile::Recursive,
         }
     }
 
@@ -203,6 +217,7 @@ impl Envelope {
             2 => Profile::Zk,
             3 => Profile::StatePublic,
             4 => Profile::Machine,
+            5 => Profile::Recursive,
             other => return Err(EnvelopeError::UnknownProfile(other)),
         };
         let envelope = body::decode(profile, &mut r)?;
@@ -257,6 +272,11 @@ impl Envelope {
                 statement,
                 proof,
             } => crate::machine::verify(statement, proof, params),
+            Self::Recursive {
+                params,
+                statement,
+                proof,
+            } => recursive::verify(params, statement, proof),
         }
     }
 }
