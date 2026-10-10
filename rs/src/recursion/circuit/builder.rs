@@ -34,6 +34,8 @@ pub enum BlockIn {
     Sponge(Vec<In<Var>>),
     /// A Merkle node: the direction bit and the sibling.
     Node(Var, [Goldilocks; 4]),
+    /// A 4-ary Merkle node: the two direction bits and the siblings.
+    Node4([Var; 2], [[Goldilocks; 4]; 3]),
 }
 
 pub struct BlockRec {
@@ -267,6 +269,29 @@ impl Ops for Builder {
         self.read(bit);
         self.chains[c.0].blocks.push(BlockRec {
             input: BlockIn::Node(bit, sibling),
+            x,
+            y: y2,
+            outs: Vec::new(),
+            root: None,
+        });
+    }
+    fn node4(&mut self, c: &mut BChain, bits: [Var; 2], siblings: [[Goldilocks; 4]; 3]) {
+        let y = self.chains[c.0].blocks.last().expect("a block").y;
+        let cur = perm::head(&y);
+        let mut pos = 0;
+        for (k, &b) in bits.iter().enumerate() {
+            let bv = self.value(b);
+            self.check(bv == Fp3::ZERO || bv == Fp3::ONE, "a Merkle direction is not a bit");
+            if bv == Fp3::ONE {
+                pos |= 1 << k;
+            }
+            self.read(b);
+        }
+        let x = perm::node4_input(perm::children4(cur, pos, siblings));
+        let mut y2 = x;
+        perm::permute(&mut y2);
+        self.chains[c.0].blocks.push(BlockRec {
+            input: BlockIn::Node4(bits, siblings),
             x,
             y: y2,
             outs: Vec::new(),

@@ -21,7 +21,7 @@ use nebu::Fp3;
 
 use super::{BatchProof, Config, Proof, Round};
 use crate::recursion::wire::{bases, digest, exts, expand, multi_siblings, read_bases, read_digest, read_exts};
-use crate::recursion::word::{Digest, LeafOpening};
+use crate::recursion::word::{Arity, Digest, LeafOpening};
 
 type R<T> = Result<T, PcsError>;
 
@@ -50,7 +50,7 @@ fn queries(s: &RoundSpec) -> usize {
     if s.opens_all() { 1 << s.log_leaves() } else { s.queries }
 }
 
-fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usize) {
+fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usize, arity: Arity) {
     // `ext`: per tree
     let leaves: Vec<usize> = open.iter().map(|q| q[0].leaf.expect("an opening knows its leaf")).collect();
     for &l in &leaves {
@@ -71,7 +71,7 @@ fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usiz
                 bases(w, &op.symbols.iter().map(|s| s.c0).collect::<Vec<_>>());
             }
         }
-        let sib = multi_siblings(&ops, depth);
+        let sib = multi_siblings(&ops, depth, arity);
         w.u32(sib.len());
         for d in &sib {
             digest(w, d);
@@ -79,7 +79,7 @@ fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usiz
     }
 }
 
-fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usize]) -> R<Vec<Vec<LeafOpening>>> {
+fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usize], arity: Arity) -> R<Vec<Vec<LeafOpening>>> {
     let depth = s.log_leaves() as usize;
     let leaves: Vec<usize> = (0..queries(s)).map(|_| r.u32()).collect::<R<_>>()?;
     if leaves.iter().any(|&l| l >> depth != 0) {
@@ -97,7 +97,7 @@ fn read_openings(r: &mut Reader<'_>, s: &RoundSpec, ext: &[bool], members: &[usi
             .collect::<R<_>>()?;
         let ns = r.count(32)?;
         let sib: Vec<Digest> = (0..ns).map(|_| read_digest(r)).collect::<R<_>>()?;
-        per_word.push(expand(&distinct, syms, &sib, depth, x)?);
+        per_word.push(expand(&distinct, syms, &sib, depth, x, arity)?);
     }
     Ok(leaves
         .iter()
@@ -123,7 +123,7 @@ pub fn write(w: &mut Writer, cfg: &Config, ext: &[bool], p: &Proof) {
         exts(w, &rd.ood);
         nonce(w, prev.query_pow, rd.query_nonce);
         let e: &[bool] = if i == 0 { ext } else { &[true] };
-        openings(w, &rd.open, e, prev.log_leaves() as usize);
+        openings(w, &rd.open, e, prev.log_leaves() as usize, cfg.arity);
         exts(w, &rd.sumcheck);
         nonces(w, &rd.fold_nonces);
     }
@@ -131,7 +131,7 @@ pub fn write(w: &mut Writer, cfg: &Config, ext: &[bool], p: &Proof) {
     let last = *wc.rounds.last().expect("a round");
     nonce(w, last.query_pow, p.final_nonce);
     let e: &[bool] = if wc.rounds.len() == 1 { ext } else { &[true] };
-    openings(w, &p.final_open, e, last.log_leaves() as usize);
+    openings(w, &p.final_open, e, last.log_leaves() as usize, cfg.arity);
 }
 
 /// Read an opening whose round-0 trees have symbol fields `ext`.
@@ -152,7 +152,7 @@ pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
         let ood = read_exts(r, s.ood)?;
         let query_nonce = read_nonce(r, prev.query_pow)?;
         let (e, g): (&[bool], &[usize]) = if i == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
-        let open = read_openings(r, &prev, e, g)?;
+        let open = read_openings(r, &prev, e, g, cfg.arity)?;
         let sc = read_exts(r, 2 * s.fold)?;
         let fold_nonces = read_nonces(r, &s)?;
         rounds.push(Round { root, ood, query_nonce, open, sumcheck: sc, fold_nonces });
@@ -161,7 +161,7 @@ pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
     let last = *wc.rounds.last().expect("a round");
     let final_nonce = read_nonce(r, last.query_pow)?;
     let (e, g): (&[bool], &[usize]) = if wc.rounds.len() == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
-    let final_open = read_openings(r, &last, e, g)?;
+    let final_open = read_openings(r, &last, e, g, cfg.arity)?;
     Ok(Proof {
         batch: BatchProof { sumcheck, evals, comb_nonce },
         ood0,

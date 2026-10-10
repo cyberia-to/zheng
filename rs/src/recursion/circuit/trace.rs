@@ -216,6 +216,15 @@ pub fn generate(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, Pre, 
                     p.set(pre::ADDR + RATE + 4, pre_row, addr(*bit));
                     p.one(pre::E + RATE + 4, pre_row);
                 }
+                BlockIn::Node4(bits, _) => {
+                    assert!(k > 0, "a node continues a chain");
+                    p.one(pre::NODE4, pre_row);
+                    for (i, (bit, col)) in bits.iter().zip([PBIT, PBIT2]).enumerate() {
+                        t.row_mut(pre_row)[col] = b.vals[bit.0 as usize].c0;
+                        p.set(pre::ADDR + RATE + 4 + i, pre_row, addr(*bit));
+                        p.one(pre::E + RATE + 4 + i, pre_row);
+                    }
+                }
             }
             let last = r + 3;
             for &(lane, wide, v) in &blk.outs {

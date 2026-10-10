@@ -26,7 +26,7 @@ use super::perm::tag;
 use super::sponge::{ProverTranscript, Sponge};
 use super::state::{AccV, ClaimV};
 use super::whir;
-use super::word::{Digest, Group, Word};
+use super::word::{Arity, Digest, Group, Word};
 
 /// What the decider sends.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +46,7 @@ impl KeyWords {
     /// The key's columns as two words of 64 columns (column-major, the row
     /// the low variables) in `layout`; whether an entry leaves the base
     /// field.
-    pub fn commit(layout: LeafLayout, n: usize, pre: &Pre) -> (Self, bool) {
+    pub fn commit(layout: LeafLayout, n: usize, pre: &Pre, arity: Arity) -> (Self, bool) {
         const WORD: usize = 64;
         let rows = 1usize << n;
         let ext = pre.cols.iter().flatten().any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO);
@@ -63,7 +63,7 @@ impl KeyWords {
                 Word::member_base(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
             }
         });
-        let group = Group::new(words.into());
+        let group = Group::new(words.into(), arity);
         let root = group.root();
         (Self { group, root }, ext)
     }

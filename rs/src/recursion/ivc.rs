@@ -107,7 +107,7 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
         .iter()
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
-    let (kw, key_ext) = KeyWords::commit(p.cfg.layout, p.n, &pre);
+    let (kw, key_ext) = KeyWords::commit(p.cfg.layout, p.n, &pre, super::word::Arity::Two);
     let dcfg = whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2)?;
     let g = g_graph(&p);
     let k = Arc::new(Key { params: p, pre, sparse, kw, key_ext, dcfg, g });

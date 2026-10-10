@@ -306,6 +306,17 @@ impl CircuitAir {
         }
         out.push(node * (nx[8] - c::<T>(NODE_TAG)));
         out.push(node * bit * (bit - one));
+        // a 4-ary node: the current digest at position b0 + 2·b1
+        let node4 = p[pre::NODE4];
+        let b2 = l[PBIT2];
+        let sel = [(one - bit) * (one - b2), bit * (one - b2), (one - bit) * b2, bit * b2];
+        for (i, &s) in sel.iter().enumerate() {
+            for j in 0..4 {
+                out.push(node4 * s * (nx[4 * i + j] - o8[j]));
+            }
+        }
+        out.push(node4 * bit * (bit - one));
+        out.push(node4 * b2 * (b2 - one));
         let rc = p[pre::ROOTCHK];
         for j in 0..4 {
             out.push(live * rc * (o8[j] - l[PRT + j]));
@@ -359,6 +370,7 @@ pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {
             s if s < RATE => packed(&l[PY8..PY8 + 16], s),
             s if s < RATE + 4 => l[PRT + s - RATE],
             s if s == RATE + 4 => l[PBIT],
+            s if s == RATE + 5 => l[PBIT2],
             _ => T::ZERO,
         };
         arith * av + any * bv + ph0 * p0 + ph3 * p3

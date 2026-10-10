@@ -58,6 +58,8 @@ pub const PY7: usize = 32;
 pub const PY8: usize = 0; // row 3
 pub const PRT: usize = 16;
 pub const PBIT: usize = 20;
+/// The second direction bit of a 4-ary node.
+pub const PBIT2: usize = 21;
 
 // BITS
 pub const BITS_ROW: usize = 16;
@@ -104,7 +106,9 @@ pub mod pre {
     pub const ROOTCHK: usize = ZERO + super::super::super::perm::RATE;
     /// The row whose output (lanes 0..4) is the step's public input.
     pub const OUT: usize = ROOTCHK + 1;
-    pub const COUNT: usize = OUT + 1;
+    /// The next block is a 4-ary Merkle node.
+    pub const NODE4: usize = OUT + 1;
+    pub const COUNT: usize = NODE4 + 1;
     /// `log2` of the padded count (the column variables of the public claim).
     pub const LOG: usize = 7;
 }

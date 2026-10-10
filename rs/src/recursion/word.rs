@@ -18,6 +18,66 @@ use super::sponge::Sponge;
 
 pub type Digest = [Goldilocks; 4];
 
+/// The fan-in of a committed word's Merkle tree: binary, or 4-ary (a node
+/// is the truncated permutation of its four children; a tree over an odd
+/// power of two leaves ends in one binary node). A 4-ary tree halves the
+/// permutations a path costs and triples its siblings per level.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Arity {
+    #[default]
+    Two,
+    Four,
+}
+
+impl Arity {
+    /// The fan-in of every level, leaf level first, for `2^log_leaves`
+    /// leaves.
+    pub fn levels(self, log_leaves: usize) -> Vec<usize> {
+        match self {
+            Arity::Two => vec![2; log_leaves],
+            Arity::Four => {
+                let mut v = vec![4; log_leaves / 2];
+                if log_leaves % 2 == 1 {
+                    v.push(2);
+                }
+                v
+            }
+        }
+    }
+    /// Siblings on a path.
+    pub fn path_len(self, log_leaves: usize) -> usize {
+        self.levels(log_leaves).iter().map(|a| a - 1).sum()
+    }
+}
+
+/// The levels of a tree over `digests` (`levels[0]` the leaves).
+fn tree(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
+    let log = digests.len().trailing_zeros() as usize;
+    let mut levels = vec![digests];
+    for a in arity.levels(log) {
+        let next = if a == 4 { parents4(levels.last().expect("level")) } else { parents(levels.last().expect("level")) };
+        levels.push(next);
+    }
+    levels
+}
+
+/// The path of leaf `j`: per level its siblings in child order.
+fn path_of(levels: &[Vec<Digest>], arity: Arity, j: usize) -> Vec<Digest> {
+    let log = levels[0].len().trailing_zeros() as usize;
+    let mut path = Vec::with_capacity(arity.path_len(log));
+    let mut idx = j;
+    for (level, a) in levels.iter().zip(arity.levels(log)) {
+        let base = idx & !(a - 1);
+        for c in base..base + a {
+            if c != idx {
+                path.push(level[c]);
+            }
+        }
+        idx /= a;
+    }
+    path
+}
+
 enum Data {
     Base { evals: Vec<Goldilocks>, coeffs: Vec<Goldilocks>, code: Vec<Goldilocks> },
     Ext { evals: Vec<Fp3>, coeffs: Vec<Fp3>, code: Vec<Fp3> },
@@ -33,6 +93,7 @@ pub struct Word {
     data: Data,
     /// `levels[0]` = leaf digests, last = `[root]`.
     levels: Vec<Vec<Digest>>,
+    pub arity: Arity,
 }
 
 /// One opened leaf: its symbols and its sibling path (leaf level first).
@@ -114,6 +175,23 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
     out
 }
 
+fn parents4(level: &[Digest]) -> Vec<Digest> {
+    let mut out = vec![[Goldilocks::ZERO; 4]; level.len() / 4];
+    par_chunks(&mut out, |start, chunk| {
+        let mut states: Vec<[Goldilocks; WIDTH]> = (0..chunk.len())
+            .map(|k| {
+                let i = 4 * (start + k);
+                perm::node4_input([level[i], level[i + 1], level[i + 2], level[i + 3]])
+            })
+            .collect();
+        perm::permute_many(&mut states);
+        for (o, s) in chunk.iter_mut().zip(&states) {
+            *o = perm::head(s);
+        }
+    });
+    out
+}
+
 fn parents(level: &[Digest]) -> Vec<Digest> {
     let mut out = vec![[Goldilocks::ZERO; 4]; level.len() / 2];
     par_chunks(&mut out, |start, chunk| {
@@ -130,6 +208,10 @@ fn parents(level: &[Digest]) -> Vec<Digest> {
 
 impl Word {
     fn build(num_vars: usize, layout: LeafLayout, data: Data) -> Self {
+        Self::build_a(num_vars, layout, data, Arity::Two)
+    }
+
+    fn build_a(num_vars: usize, layout: LeafLayout, data: Data, arity: Arity) -> Self {
         let leaves = 1usize << layout.log_leaves();
         let width = 1usize << layout.log_width;
         let digests = match &data {
@@ -140,12 +222,7 @@ impl Word {
                 leaf_digests(leaves, width, true, |j, t| code[j + t * leaves])
             }
         };
-        let mut levels = vec![digests];
-        while levels.last().expect("level").len() > 1 {
-            let next = parents(levels.last().expect("level"));
-            levels.push(next);
-        }
-        Self { num_vars, layout, data, levels }
+        Self { num_vars, layout, data, levels: tree(digests, arity), arity }
     }
 
     /// Commit a Goldilocks table of `2^ℓ` entries under `layout`.
@@ -156,7 +233,21 @@ impl Word {
         let mut coeffs = evals.to_vec();
         mobius_base(&mut coeffs);
         let code = encode_base(&coeffs, layout.log_domain);
-        Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new() }
+        Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
+    }
+
+    /// [`Self::commit_base`] under a tree of `arity`.
+    pub fn commit_base_a(layout: LeafLayout, evals: &[Goldilocks], arity: Arity) -> Self {
+        let mut w = Self::member_base(layout, evals);
+        let leaves = 1usize << layout.log_leaves();
+        let width = 1usize << layout.log_width;
+        let digests = match &w.data {
+            Data::Base { code, .. } => leaf_digests(leaves, width, false, |j, t| Fp3::from_base(code[j + t * leaves])),
+            _ => unreachable!("a base word"),
+        };
+        w.levels = tree(digests, arity);
+        w.arity = arity;
+        w
     }
 
     pub fn commit_base(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
@@ -179,11 +270,11 @@ impl Word {
     }
 
     /// Commit an Fp3 polynomial given by its `2^ℓ` monomial coefficients.
-    pub fn commit_coeffs(layout: LeafLayout, coeffs: Vec<Fp3>) -> Self {
+    pub fn commit_coeffs(layout: LeafLayout, coeffs: Vec<Fp3>, arity: Arity) -> Self {
         let num_vars = coeffs.len().trailing_zeros() as usize;
         assert!(coeffs.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let code = encode_ext(&coeffs, layout.log_domain);
-        Self::build(num_vars, layout, Data::Coeffs { coeffs, code })
+        Self::build_a(num_vars, layout, Data::Coeffs { coeffs, code }, arity)
     }
 
     /// The monomial coefficients, lifted to Fp3.
@@ -241,13 +332,7 @@ impl Word {
         let leaves = 1usize << self.layout.log_leaves();
         let width = 1usize << self.layout.log_width;
         let symbols = (0..width).map(|t| self.symbol(j + t * leaves)).collect();
-        let mut path = Vec::with_capacity(self.levels.len() - 1);
-        let mut idx = j;
-        for level in &self.levels[..self.levels.len() - 1] {
-            path.push(level[idx ^ 1]);
-            idx >>= 1;
-        }
-        LeafOpening { symbols, path, leaf: Some(j) }
+        LeafOpening { symbols, path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
     }
 }
 
@@ -257,12 +342,13 @@ pub struct Group {
     pub words: Vec<Word>,
     pub layout: LeafLayout,
     levels: Vec<Vec<Digest>>,
+    pub arity: Arity,
 }
 
 impl Group {
     /// Members of one layout and one symbol field (built with
     /// [`Word::member_base`] or committed alone; their own trees unused).
-    pub fn new(words: Vec<Word>) -> Self {
+    pub fn new(words: Vec<Word>, arity: Arity) -> Self {
         let layout = words[0].layout;
         let ext = words[0].is_ext();
         assert!(words.iter().all(|w| w.layout == layout && w.is_ext() == ext), "group members");
@@ -270,12 +356,7 @@ impl Group {
         let width = 1usize << layout.log_width;
         let m = words.len();
         let digests = leaf_digests(leaves, width * m, ext, |j, t| words[t / width].symbol(j + (t % width) * leaves));
-        let mut levels = vec![digests];
-        while levels.last().expect("level").len() > 1 {
-            let next = parents(levels.last().expect("level"));
-            levels.push(next);
-        }
-        Self { words, layout, levels }
+        Self { words, layout, levels: tree(digests, arity), arity }
     }
     pub fn root(&self) -> Digest {
         self.levels.last().expect("root")[0]
@@ -285,13 +366,7 @@ impl Group {
         let leaves = 1usize << self.layout.log_leaves();
         let width = 1usize << self.layout.log_width;
         let symbols = self.words.iter().flat_map(|w| (0..width).map(move |t| w.symbol(j + t * leaves))).collect();
-        let mut path = Vec::with_capacity(self.levels.len() - 1);
-        let mut idx = j;
-        for level in &self.levels[..self.levels.len() - 1] {
-            path.push(level[idx ^ 1]);
-            idx >>= 1;
-        }
-        LeafOpening { symbols, path, leaf: Some(j) }
+        LeafOpening { symbols, path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
     }
 }
 
@@ -302,12 +377,13 @@ impl Group {
 pub fn verify_leaf<O: Ops>(
     o: &mut O,
     ext: bool,
+    arity: Arity,
     opening: &LeafOpening,
     bits: &[O::V],
     root: [O::V; 4],
     what: &'static str,
 ) -> Vec<O::V> {
-    assert_eq!(bits.len(), opening.path.len(), "path length");
+    assert_eq!(arity.path_len(bits.len()), opening.path.len(), "path length");
     let mut sp = Sponge::new(o, tag::LEAF);
     let syms: Vec<O::V> = opening
         .symbols
@@ -318,8 +394,18 @@ pub fn verify_leaf<O: Ops>(
         sp.flush(o);
     }
     let mut chain = sp.chain;
-    for (&b, &sib) in bits.iter().zip(&opening.path) {
-        o.node(&mut chain, b, sib);
+    let (mut b, mut p) = (0, 0);
+    for a in arity.levels(bits.len()) {
+        if a == 4 {
+            let sib = [opening.path[p], opening.path[p + 1], opening.path[p + 2]];
+            o.node4(&mut chain, [bits[b], bits[b + 1]], sib);
+            b += 2;
+            p += 3;
+        } else {
+            o.node(&mut chain, bits[b], opening.path[p]);
+            b += 1;
+            p += 1;
+        }
     }
     o.digest_eq(&chain, root, what);
     syms
@@ -386,23 +472,23 @@ mod tests {
                     .map(|k| Fp3::from_base(Goldilocks::new(((j >> k) & 1) as u64)))
                     .collect();
                 let root = w.root().map(Fp3::from_base);
-                verify_leaf(&mut o, ext, &op, &bits, root, "root");
+                verify_leaf(&mut o, ext, Arity::Two, &op, &bits, root, "root");
                 assert!(o.error.is_none(), "leaf {j}");
                 // a wrong symbol, a wrong index, a wrong sibling fail
                 let mut bad = op.clone();
                 bad.symbols[1] += Fp3::ONE;
                 let mut o = Native::new();
-                verify_leaf(&mut o, ext, &bad, &bits, root, "root");
+                verify_leaf(&mut o, ext, Arity::Two, &bad, &bits, root, "root");
                 assert!(o.error.is_some());
                 let mut o = Native::new();
                 let mut flipped = bits.clone();
                 flipped[0] = Fp3::ONE - flipped[0];
-                verify_leaf(&mut o, ext, &op, &flipped, root, "root");
+                verify_leaf(&mut o, ext, Arity::Two, &op, &flipped, root, "root");
                 assert!(o.error.is_some());
                 let mut bad = op.clone();
                 bad.path[2][1] += Goldilocks::ONE;
                 let mut o = Native::new();
-                verify_leaf(&mut o, ext, &bad, &bits, root, "root");
+                verify_leaf(&mut o, ext, Arity::Two, &bad, &bits, root, "root");
                 assert!(o.error.is_some());
                 let _ = o.value(Fp3::ZERO);
             }

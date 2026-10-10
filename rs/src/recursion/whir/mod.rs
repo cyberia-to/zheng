@@ -41,7 +41,7 @@ use lens::rspcs::whir::{LeafLayout, RoundSpec, WhirConfig};
 use lens::WhirParams;
 use nebu::Fp3;
 
-use super::word::{Digest, LeafOpening, Word};
+use super::word::{Arity, Digest, LeafOpening, Word};
 
 /// Bits every round must prove (grinding included).
 pub const MIN_BITS: f64 = 128.0;
@@ -63,6 +63,9 @@ pub struct Config {
     pub claims: usize,
     /// Grinding before the combination challenge `r`.
     pub comb_pow: u32,
+    /// The fan-in of every tree it opens (round 0's words must be
+    /// committed with it).
+    pub arity: Arity,
 }
 
 impl Config {
@@ -73,7 +76,7 @@ impl Config {
         if inputs == 0 || groups.contains(&0) || claims < inputs {
             return Err("whir: every input word carries a claim".into());
         }
-        let mut c = Self { whir: *whir, wc, inputs, groups: groups.to_vec(), claims, comb_pow: 0 };
+        let mut c = Self { whir: *whir, wc, inputs, groups: groups.to_vec(), claims, comb_pow: 0, arity: Arity::Two };
         c.comb_pow = (MIN_BITS + c.comb_log_err()).ceil().max(0.0) as u32;
         if c.comb_pow > COMB_POW_MAX {
             return Err(format!("whir: combination grinding {} > {COMB_POW_MAX}", c.comb_pow));
@@ -83,6 +86,12 @@ impl Config {
             return Err(format!("whir: {bits:.2} bits < {MIN_BITS}"));
         }
         Ok(c)
+    }
+
+    /// The same opening over trees of `arity`.
+    pub fn with_arity(mut self, arity: Arity) -> Self {
+        self.arity = arity;
+        self
     }
 
     pub fn num_vars(&self) -> usize {
@@ -143,12 +152,16 @@ impl Config {
 
 /// A committed tree of one or more input words (the prover's side).
 pub trait Tree {
+    fn arity(&self) -> Arity;
     fn members(&self) -> Vec<&Word>;
     fn root(&self) -> Digest;
     fn open(&self, leaf: usize) -> LeafOpening;
 }
 
 impl Tree for Word {
+    fn arity(&self) -> Arity {
+        self.arity
+    }
     fn members(&self) -> Vec<&Word> {
         vec![self]
     }
@@ -161,6 +174,9 @@ impl Tree for Word {
 }
 
 impl Tree for super::word::Group {
+    fn arity(&self) -> Arity {
+        self.arity
+    }
     fn members(&self) -> Vec<&Word> {
         self.words.iter().collect()
     }
@@ -220,7 +236,7 @@ pub fn dummy(cfg: &Config) -> Proof {
     let z = Fp3::ZERO;
     let leaf = |s: &RoundSpec, m: usize| LeafOpening {
         symbols: vec![z; m << s.fold],
-        path: vec![[nebu::Goldilocks::ZERO; 4]; s.log_leaves() as usize],
+        path: vec![[nebu::Goldilocks::ZERO; 4]; cfg.arity.path_len(s.log_leaves() as usize)],
         leaf: Some(0),
     };
     let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };

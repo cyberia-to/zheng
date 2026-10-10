@@ -36,12 +36,12 @@ fn program<O: Ops>(o: &mut O, word: &Word, leaf: usize) -> Vec<Fp3> {
     o.assert_const(one, Fp3::ONE, "inverse");
     // open `leaf` of `word`
     let op = word.open(leaf);
-    let nb = op.path.len();
+    let nb = word.layout.log_leaves() as usize;
     let lb: Vec<O::V> = (0..nb)
         .map(|k| o.witness(Fp3::from_base(Goldilocks::new(((leaf >> k) & 1) as u64))))
         .collect();
     let root: [O::V; 4] = core::array::from_fn(|i| o.witness(Fp3::from_base(word.root()[i])));
-    let syms = verify_leaf(o, word.is_ext(), &op, &lb, root, "root");
+    let syms = verify_leaf(o, word.is_ext(), word.arity, &op, &lb, root, "root");
     let t = o.dot(&syms, &syms);
     vec![o.value(h), o.value(s), o.value(t)]
 }
@@ -65,9 +65,16 @@ fn check_rows(air: &CircuitAir, t1: &Trace, t2: &Trace, p: &Pre, alpha: Fp3, bet
 
 #[test]
 fn a_recorded_run_satisfies_the_circuit_and_agrees_with_native() {
-    let layout = lens::rspcs::whir::LeafLayout { log_domain: 8, log_width: 2 };
+    use crate::recursion::word::Arity;
+    for (log_domain, arity) in [(8u32, Arity::Two), (8, Arity::Four), (9, Arity::Four)] {
+        recorded_run(log_domain, arity);
+    }
+}
+
+fn recorded_run(log_domain: u32, arity: crate::recursion::word::Arity) {
+    let layout = lens::rspcs::whir::LeafLayout { log_domain, log_width: 2 };
     let evals: Vec<Goldilocks> = (0..64u64).map(|i| Goldilocks::new(i * 5 + 2)).collect();
-    let word = Word::commit_base(layout, &evals);
+    let word = Word::commit_base_a(layout, &evals, arity);
     let mut nat = Native::new();
     let want = program(&mut nat, &word, 11);
     nat.finish().unwrap();
@@ -94,6 +101,25 @@ fn a_recorded_run_satisfies_the_circuit_and_agrees_with_native() {
         let t2b = phase2(&bad, &p, alpha, beta);
         let broken = check_rows(&air, &bad, &t2b, &p, alpha, beta).is_some() || closing_sum(&t2b, &p) != Fp3::ZERO;
         assert!(broken, "tamper at row {r} col {c}");
+    }
+    // a 4-ary path: a wrong direction bit or sibling fails natively
+    if arity == crate::recursion::word::Arity::Four {
+        let op = word.open(11);
+        let mut nat = Native::new();
+        let bits: Vec<Fp3> = (0..layout.log_leaves()).map(|k| Fp3::from_base(Goldilocks::new((11 >> k) & 1))).collect();
+        let root = word.root().map(Fp3::from_base);
+        verify_leaf(&mut nat, false, arity, &op, &bits, root, "root");
+        assert!(nat.error.is_none());
+        let mut flipped = bits.clone();
+        flipped[1] = Fp3::ONE - flipped[1];
+        let mut nat = Native::new();
+        verify_leaf(&mut nat, false, arity, &op, &flipped, root, "root");
+        assert!(nat.error.is_some());
+        let mut bad = op.clone();
+        bad.path[4][2] += Goldilocks::ONE;
+        let mut nat = Native::new();
+        verify_leaf(&mut nat, false, arity, &bad, &bits, root, "root");
+        assert!(nat.error.is_some());
     }
 }
 
@@ -162,7 +188,8 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
         }
         return match c {
             c if c < PRT + 4 => !on(pre::ROOTCHK),
-            PBIT => !on(pre::NODE),
+            PBIT => !on(pre::NODE) && !on(pre::NODE4),
+            PBIT2 => !on(pre::NODE4),
             _ => true,
         };
     }

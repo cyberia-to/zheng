@@ -73,6 +73,28 @@ pub fn node_input(l: [Goldilocks; 4], r: [Goldilocks; 4]) -> [Goldilocks; WIDTH]
     s
 }
 
+/// A 4-ary Merkle node's input: the four children, all sixteen lanes
+/// (a truncated-permutation compression; the binary node's tag tells the
+/// two apart).
+pub fn node4_input(c: [[Goldilocks; 4]; 4]) -> [Goldilocks; WIDTH] {
+    let mut s = [Goldilocks::ZERO; WIDTH];
+    for (i, d) in c.iter().enumerate() {
+        s[4 * i..4 * i + 4].copy_from_slice(d);
+    }
+    s
+}
+
+/// The children of a 4-ary node whose digest `cur` sits at `pos`, the
+/// siblings filling the other positions in order.
+pub fn children4(cur: [Goldilocks; 4], pos: usize, sibs: [[Goldilocks; 4]; 3]) -> [[Goldilocks; 4]; 4] {
+    let mut out = [[Goldilocks::ZERO; 4]; 4];
+    let mut it = sibs.iter();
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = if i == pos { cur } else { *it.next().expect("three siblings") };
+    }
+    out
+}
+
 /// A Merkle node's output state.
 pub fn node_state(l: [Goldilocks; 4], r: [Goldilocks; 4]) -> [Goldilocks; WIDTH] {
     let mut s = node_input(l, r);

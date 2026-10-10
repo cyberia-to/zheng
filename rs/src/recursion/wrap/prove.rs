@@ -110,7 +110,7 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let layout = k.cfg.layout(0);
     let mut t = ProverTranscript::new(tag::WRAP);
     t.absorb_all(&x);
-    let w1 = Word::commit_base(layout, &v1.column_major(WORD));
+    let w1 = Word::commit_base_a(layout, &v1.column_major(WORD), k.arity());
     let (z1, y1) = bind(&mut t, &w1, k.fresh);
     let mut words: Vec<Word> = vec![w1];
     let mut oods = vec![(z1, y1)];
@@ -118,7 +118,7 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let (ab, lambda) = if is_inner {
         let ab = [t.squeeze_ext(), t.squeeze_ext()];
         let v2 = trace::phase2(&v1, &k.pre, ab[0], ab[1]);
-        let w2 = Word::commit_base(layout, &v2.column_major(WORD));
+        let w2 = Word::commit_base_a(layout, &v2.column_major(WORD), k.arity());
         oods.push(bind(&mut t, &w2, k.fresh));
         words.push(w2);
         cols.extend(columns(&v2));

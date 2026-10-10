@@ -146,6 +146,12 @@ impl WrapKey {
     pub fn exts(&self) -> Vec<bool> {
         if self.inner() { vec![false, false, self.key_ext] } else { vec![false] }
     }
+    /// Trees of an inner level are 4-ary (half the permutations a path
+    /// costs the circuit that verifies it); the final level's binary
+    /// (fewest bytes).
+    pub fn arity(&self) -> super::word::Arity {
+        if self.inner() { super::word::Arity::Four } else { super::word::Arity::Two }
+    }
     pub fn vars(&self) -> usize {
         self.params.n + CBITS
     }

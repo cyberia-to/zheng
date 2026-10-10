@@ -84,6 +84,9 @@ pub trait Ops {
     /// A Merkle node over the chain's last output (lanes 0..4) and a
     /// sibling: `bit = 0` puts the current digest left.
     fn node(&mut self, c: &mut Self::Chain, bit: Self::V, sibling: [Goldilocks; 4]);
+    /// A 4-ary Merkle node: the chain's last output sits at position
+    /// `bits[0] + 2·bits[1]`, the siblings fill the others in order.
+    fn node4(&mut self, c: &mut Self::Chain, bits: [Self::V; 2], siblings: [[Goldilocks; 4]; 3]);
     /// The chain's last output (lanes 0..4) equals `root`.
     fn digest_eq(&mut self, c: &Self::Chain, root: [Self::V; 4], what: &'static str);
     /// The canonical 64-bit decomposition of a base value; returns its
@@ -108,6 +111,7 @@ pub struct Native {
 enum NOp {
     Block([Option<Goldilocks>; RATE]),
     Node(bool, [Goldilocks; 4]),
+    Node4(usize, [[Goldilocks; 4]; 3]),
 }
 
 /// A chain's state after its last block (`None` before the first).
@@ -194,6 +198,10 @@ impl Native {
                                 let cur = [prev[0], prev[1], prev[2], prev[3]];
                                 let (l, r) = if *right { (*sib, cur) } else { (cur, *sib) };
                                 perm::node_input(l, r)
+                            }
+                            NOp::Node4(pos, sibs) => {
+                                let cur = [prev[0], prev[1], prev[2], prev[3]];
+                                perm::node4_input(perm::children4(cur, *pos, *sibs))
                             }
                         }
                     })
@@ -347,6 +355,26 @@ impl Ops for Native {
         };
         let (l, r) = if right { (sibling, cur) } else { (cur, sibling) };
         c.state = Some(if self.error.is_none() { perm::node_state(l, r) } else { perm::node_input(l, r) });
+    }
+    fn node4(&mut self, c: &mut NChain, bits: [Fp3; 2], siblings: [[Goldilocks; 4]; 3]) {
+        let mut pos = 0;
+        for (k, &b) in bits.iter().enumerate() {
+            if b == Fp3::ONE {
+                pos |= 1 << k;
+            } else if b != Fp3::ZERO {
+                self.fail("a Merkle direction is not a bit");
+            }
+        }
+        if let Some(ops) = &mut c.ops {
+            ops.push(NOp::Node4(pos, siblings));
+            return;
+        }
+        let s = c.state.expect("a block");
+        let mut x = perm::node4_input(perm::children4([s[0], s[1], s[2], s[3]], pos, siblings));
+        if self.error.is_none() {
+            perm::permute(&mut x);
+        }
+        c.state = Some(x);
     }
     fn digest_eq(&mut self, c: &NChain, root: [Fp3; 4], what: &'static str) {
         if let Some(ops) = &c.ops {

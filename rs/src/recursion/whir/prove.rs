@@ -78,7 +78,7 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
     let words: Vec<&Word> = trees.iter().flat_map(|tr| tr.members()).collect();
     let m = words.len();
     let shape: Vec<usize> = trees.iter().map(|tr| tr.members().len()).collect();
-    if m != cfg.inputs || shape != cfg.groups || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
+    if m != cfg.inputs || shape != cfg.groups || trees.iter().any(|tr| tr.arity() != cfg.arity) || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
         return Err("whir: input words".into());
     }
     // batch
@@ -152,7 +152,7 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
             .collect()
     };
     for (i, s) in wc.rounds.iter().enumerate().skip(1) {
-        let wd = Word::commit_coeffs(cfg.layout(i), coeffs.clone());
+        let wd = Word::commit_coeffs(cfg.layout(i), coeffs.clone(), cfg.arity);
         t.absorb_all(&wd.root());
         let mut ood = Vec::with_capacity(s.ood);
         let mut zs = Vec::with_capacity(s.ood);

@@ -7,7 +7,7 @@ use crate::recursion::circuit::builder::Builder;
 use crate::recursion::ops::{Native, Ops};
 use crate::recursion::perm::tag;
 use crate::recursion::sponge::{ProverTranscript, Sponge};
-use crate::recursion::word::Word;
+use crate::recursion::word::{Arity, Word};
 
 fn e(i: u64) -> Fp3 {
     Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i * i + 11), Goldilocks::new(3 * i + 2))
@@ -25,10 +25,10 @@ struct Case {
     uni: Vec<Vec<Option<Fp3>>>,
 }
 
-fn case(ell: usize, rate: u8, k: u8, fin: u8, ext: &[bool]) -> Case {
+fn case(ell: usize, rate: u8, k: u8, fin: u8, ext: &[bool], arity: Arity) -> Case {
     let whir = params(rate, k, fin);
     let claims_per = 3;
-    let cfg = Config::derive(&whir, ell, &vec![1; ext.len()], claims_per * ext.len()).unwrap();
+    let cfg = Config::derive(&whir, ell, &vec![1; ext.len()], claims_per * ext.len()).unwrap().with_arity(arity);
     let layout = cfg.layout(0);
     let mut words = Vec::new();
     let mut claims = Vec::new();
@@ -37,7 +37,8 @@ fn case(ell: usize, rate: u8, k: u8, fin: u8, ext: &[bool]) -> Case {
         let table: Vec<Fp3> = (0..1u64 << ell)
             .map(|i| if x { e(i + 1000 * w as u64) } else { Fp3::from_base(Goldilocks::new(i * i + 3 + w as u64)) })
             .collect();
-        let word = if x { Word::commit_ext(layout, &table) } else { Word::commit_base(layout, &table.iter().map(|v| v.c0).collect::<Vec<_>>()) };
+        assert!(!x || arity == Arity::Two, "4-ary words of base symbols here");
+        let word = if x { Word::commit_ext(layout, &table) } else { Word::commit_base_a(layout, &table.iter().map(|v| v.c0).collect::<Vec<_>>(), arity) };
         let p: Vec<Fp3> = (0..ell as u64).map(|i| e(50 + i + 13 * w as u64)).collect();
         let z = e(900 + w as u64);
         let z2 = e(901 + w as u64);
@@ -97,7 +98,7 @@ fn a_batched_opening_verifies_natively_and_in_the_circuit() {
         (12, 2, 4, 4, vec![true, true]),
         (8, 2, 4, 4, vec![false, false]),
     ] {
-        let c = case(ell, rate, k, fin, &ext);
+        let c = case(ell, rate, k, fin, &ext, Arity::Two);
         let pf = prove_case(&c);
         check(&c, &pf).unwrap_or_else(|e| panic!("ℓ {ell}: {e}"));
         let mut b = Builder::new(true);
@@ -111,11 +112,11 @@ fn a_batched_opening_verifies_natively_and_in_the_circuit() {
 
 #[test]
 fn a_wrong_claim_or_a_tampered_proof_is_refused() {
-    let c = case(10, 2, 4, 3, &[false, true]);
+    let c = case(10, 2, 4, 3, &[false, true], Arity::Two);
     let pf = prove_case(&c);
     check(&c, &pf).unwrap();
     // a wrong claimed value
-    let mut bad = case(10, 2, 4, 3, &[false, true]);
+    let mut bad = case(10, 2, 4, 3, &[false, true], Arity::Two);
     bad.claims[1][0].1 += Fp3::ONE;
     assert!(check(&bad, &pf).is_err());
     // tampered messages
@@ -151,7 +152,7 @@ fn words_under_one_tree_open_with_one_path() {
     let layout = cfg.layout(0);
     let table = |w: u64| -> Vec<Goldilocks> { (0..1u64 << ell).map(|i| Goldilocks::new(i * (w + 3) + w)).collect() };
     let single = Word::commit_base(layout, &table(0));
-    let group = Group::new(vec![Word::member_base(layout, &table(1)), Word::member_base(layout, &table(2))]);
+    let group = Group::new(vec![Word::member_base(layout, &table(1)), Word::member_base(layout, &table(2))], crate::recursion::word::Arity::Two);
     let mut claims = Vec::new();
     let mut uni = Vec::new();
     for w in [&single, &group.words[0], &group.words[1]] {
@@ -184,4 +185,27 @@ fn words_under_one_tree_open_with_one_path() {
     bad[2][0].1 += Fp3::ONE;
     assert!(run(&bad).is_err());
     assert_eq!(pf.rounds[0].open[0].len(), 2, "two trees opened per query");
+}
+
+#[test]
+fn a_four_ary_opening_verifies_and_its_wire_round_trips() {
+    for (ell, rate) in [(10usize, 2u8), (11, 2)] {
+        let c = case(ell, rate, 4, 3, &[false, false], Arity::Four);
+        let pf = prove_case(&c);
+        check(&c, &pf).unwrap();
+        let mut w = lens::rspcs::wire::Writer::default();
+        wire::write(&mut w, &c.cfg, &[false, false], &pf);
+        let mut r = lens::rspcs::wire::Reader::new(&w.buf);
+        let back = wire::read(&mut r, &c.cfg, &[false, false]).unwrap();
+        r.finish().unwrap();
+        assert_eq!(back, pf);
+        let mut b = Builder::new(true);
+        let ins = inputs(&mut b, &c);
+        let mut t = Sponge::new(&mut b, tag::STEP);
+        verify(&mut b, &c.cfg, &mut t, &ins, &pf);
+        b.finish().unwrap();
+        let mut bad = pf.clone();
+        bad.rounds[0].open[0][0].path[3][1] += Goldilocks::ONE;
+        assert!(check(&c, &bad).is_err());
+    }
 }

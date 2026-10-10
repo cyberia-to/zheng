@@ -138,10 +138,11 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
     let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 2, &[1]) };
-    let cfg = whir::Config::derive(&params.whir, vars, groups, claims)?;
+    let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
+    let cfg = whir::Config::derive(&params.whir, vars, groups, claims)?.with_arity(arity);
     let wiring = (!committed).then(|| wiring(&pre));
     let (kw, key_ext) = if committed {
-        let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre);
+        let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre, arity);
         (Some(kw), ext)
     } else {
         (None, pre.cols.iter().flatten().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO))

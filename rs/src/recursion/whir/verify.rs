@@ -8,7 +8,7 @@ use super::{ClaimRef, Config, InstV, Proof};
 use crate::recursion::gm;
 use crate::recursion::ops::{Arith, Gate, Ops};
 use crate::recursion::sponge::Sponge;
-use crate::recursion::word::{LeafOpening, verify_leaf};
+use crate::recursion::word::{Arity, LeafOpening, verify_leaf};
 
 /// A weight term `coef·Z·eq(point, X)` of WHIR's closing check.
 enum Point<V> {
@@ -136,6 +136,7 @@ fn open_fold<O: Ops>(
     o: &mut O,
     spec: &RoundSpec,
     trees: &[([O::V; 4], bool, usize)],
+    arity: Arity,
     coef: &[O::V],
     bits: &[Vec<O::V>],
     open: &[Vec<LeafOpening>],
@@ -149,7 +150,7 @@ fn open_fold<O: Ops>(
             let mut leaf: Option<Vec<O::V>> = None;
             let mut c = coef.iter();
             for (&(root, ext, members), op) in trees.iter().zip(ops) {
-                let syms = verify_leaf(o, ext, op, b, root, "whir: opening");
+                let syms = verify_leaf(o, ext, arity, op, b, root, "whir: opening");
                 for part in syms.chunks(width).take(members) {
                     let k = *c.next().expect("a coefficient per word");
                     leaf = Some(match leaf {
@@ -174,7 +175,7 @@ pub fn check_shape(cfg: &Config, inputs: usize, pf: &Proof) -> Result<(), String
     let fold_n = |s: &RoundSpec| if s.fold_pow > 0 { s.fold } else { 0 };
     let leaf_ok = |s: &RoundSpec, l: &LeafOpening, m: usize, ext: Option<bool>| {
         l.symbols.len() == m << s.fold
-            && l.path.len() == s.log_leaves() as usize
+            && l.path.len() == cfg.arity.path_len(s.log_leaves() as usize)
             && (ext != Some(false) || l.symbols.iter().all(|x| x.c1 == Goldilocks::ZERO && x.c2 == Goldilocks::ZERO))
     };
     let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };
@@ -268,7 +269,7 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[Inst
         let bits = query_bits(o, t, &prev);
         let gamma = t.squeeze_ext(o);
         let pa = alphas[alphas.len() - prev.fold..].to_vec();
-        let folded = open_fold(o, &prev, &roots, &prev_coef, &bits, &rp.open, &pa);
+        let folded = open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa);
         let mut g = gamma;
         for &(z, y) in &zs {
             sigma = o.mul_add(g, y, sigma);
@@ -290,7 +291,7 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[Inst
     t.grind_check(o, prev.query_pow, pf.final_nonce);
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
-    let folded = open_fold(o, &prev, &roots, &prev_coef, &bits, &pf.final_open, &pa);
+    let folded = open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa);
     for &(v, x) in &folded {
         let f = gm::horner(o, &fin, x);
         o.assert_eq(f, v, "whir: final queries");

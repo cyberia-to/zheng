@@ -132,7 +132,7 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, t: &mut Sponge<O>, inputs: &[I
     for (bits, ops) in idx.iter().zip(&pf.openings) {
         let mut y: Option<O::V> = None;
         for ((inst, op), &c) in inputs.iter().zip(ops).zip(&coef) {
-            let syms = verify_leaf(o, inst.ext, op, &bits[..log_leaves], inst.root, "acc: opening");
+            let syms = verify_leaf(o, inst.ext, super::word::Arity::Two, op, &bits[..log_leaves], inst.root, "acc: opening");
             let u = gm::mux(o, &syms, &bits[log_leaves..]);
             y = Some(match y {
                 None => o.mul(c, u),
