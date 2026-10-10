@@ -10,13 +10,18 @@ Implemented protocols:
   (`succinct::prove` / `succinct::verify`, `succinct::prove_state` /
   `succinct::verify_state`) — the same statements with the witness
   committed instead of disclosed;
+- the zk profile, `zheng-nox-veil-execution-v1` (`veil::prove` /
+  `veil::verify`) — succinct proofs of statements with secret inputs, the
+  witness hidden;
+- verifying keys (`VerifyingKey`), which let a verifier compile each
+  program once;
 - all carried by the `ZHENGPF1` envelope (`zheng::envelope`, profiles 0
-  and 3 for the certificates, 1 for the succinct profile; profile 2 carries
-  native private proofs).
+  and 3 for the certificates, 1 for the succinct profile, 2 for zero
+  knowledge — veil, or MPC-in-the-head as the fallback).
 
 Retired and read for one release: public v2 `zheng-nox-public-execution-v2`
 (`prove_execution` / `verify_execution`, a `DirectProof`) and state v1
-(`prove_state_execution` / `StateStatement::verify`). The owner authorized
+(`prove_state_execution` / `StateStatement::verify_v1`). The owner authorized
 execution/output binding on 2026-09-11. Soundness of every profile is
 recorded in the [soundness ledger](soundness.md).
 
@@ -105,19 +110,58 @@ soundness. See `lens/specs/public-tensor.md` for that commitment contract.
 
 ## Authenticated-state profile v3
 
-`StateStatement` adds the state root (four field limbs), a 32-byte caller
-context, whether the root sits at the head of the subject, and one
-`PublicLookup` per lookup site of the compiled relation (active flag,
-namespace, key, value; inactive reads carry zeros). The verifier recompiles
-the relation for that subject shape, asks the caller's lookup — which MUST
-come from a state certificate already verified under `state_root` — for every
-active read, pins the active flag of every read and the root limbs, namespace,
-key and value of every active read, together with the constant, inputs (and
-the root when it sits in the subject), outputs and cost, and checks the
-certificate exactly as profile v3. At most `MAX_READS = 4096` reads. A root
-limb the program never computes on is bound through the reads' authentication;
-a limb it reads from the subject is also bound by the relation. The context is
-caller metadata that zheng carries and does not interpret.
+`StateStatement` adds the state root (four field limbs), whether the root
+sits at the head of the subject, and one `PublicLookup` per lookup site of
+the compiled relation (active flag, namespace, key, value; inactive reads
+carry zeros). At most `MAX_READS = 4096` reads.
+
+Every verifier of a state statement (`verify_certificate`, `verify_v1`,
+`succinct::verify_state`, `Envelope::verify`) takes the reads' evidence,
+`state_evidence::StateEvidence`, and authenticates it itself: the 14 root
+leaves fold to the statement's `state_root` (`compress4`, the first four
+elements of the hemera permutation over `[acc ‖ leaf ‖ 0⁸]`, from the IV
+`["bbg-root", 0, 0, 0]`), and every table the evidence carries matches its
+leaf (the lens Brakedown commitment of its fields zero-padded to a power of
+two; header `[2, len, entries]`, so a table with appended zeros has another
+header). Then the verifier recompiles the relation for the subject shape,
+answers every active read from the authenticated tables (field `key` of
+table `namespace`), pins the active flag of every read and the root limbs,
+namespace, key and value of every active read, together with the constant,
+inputs (and the root when it sits in the subject), outputs and cost, and
+checks the certificate exactly as profile v3. No caller authenticates
+anything on zheng's behalf: evidence for another root, without the table a
+read names, or with a value its leaf does not commit is rejected. The layout
+is BBG's (`bbg/rs/src/root.rs`, `certificate.rs`); `StateCertificate::evidence`
+converts, and both repositories pin the frozen root vectors. The prover takes
+the same evidence and states the root it authenticates. The private-state path
+takes the same evidence (`specs/ccs-execution-backends.md`).
+
+The statement carries no caller context. Under the public profiles the
+witness is disclosed, so whoever holds a certificate can re-certify the same
+execution under any label: no relation can bind one, and labels such as a
+program name or source hash stay the artifact's own metadata. The retired v1
+transcript absorbed a 32-byte context; `verify_v1(context, …)` and
+`transcript_bytes_v1(context)` reproduce it so that v1 proofs keep verifying.
+
+## Verifying keys
+
+`program_key(statement)` hashes what the relation depends on — the program
+tokens, the input count and the statement kind (execution, or state with the
+root in the subject or not); it costs a hash of the program. A
+`VerifyingKey` is derived only by the verifier (`for_execution`,
+`for_state`; no constructor from parts, no deserialisation) and holds the
+program key, the compiled relation and `digest` = the hemera Merkle root
+(1024-byte leaves, batched) of `"zheng-vk-relation-v1" ‖ program_key ‖` the
+canonical relation encoding: dimensions, every matrix row by row, the
+multisets and coefficients, the input/output/cost wiring, the cost bound and
+every lookup's coordinates — LEB128 integers, each coefficient as the zigzag
+of its centred representative. `verify_with`, `verify_state_with`,
+`verify_certificate_with` and `veil::verify_with` accept an optional key;
+a key whose program key differs from the statement's is rejected, and with a
+matching key the relation is not recompiled. Succinct and zk transcripts
+absorb `"zheng-vk" ‖ digest` before the statement, so a proof is bound to the
+relation it was made for; a key carrying another relation under the same
+program key changes the digest and the proof fails.
 
 ## Succinct profile (envelope profile 1)
 
@@ -139,8 +183,10 @@ once the witness leaves the wire.
 
 Protocol, on the zheng transcript (`Transcript::new`, wide challenges):
 
-1. absorb `"zheng-succinct-v1"`, the statement's `transcript_bytes` (length
-   prefixed), the PCS id, its parameter header, `ℓ` and the row count `m`;
+1. absorb `"zheng-succinct-v1"`, then `"zheng-vk" ‖ digest ‖` the
+   statement's `transcript_bytes` (length prefixed; the digest of the
+   statement's verifying key), the PCS id, its parameter header, `ℓ` and the
+   row count `m`;
 2. `root = PCS.commit(w)`, absorbed with `absorb_commitment`;
 3. Spartan over Fp3 (`spartan::iop::prove::<Fp3>` on the relabelled CCS):
    `τ`, the outer sumcheck (`log m` rounds, degree `d + 1`), the matrix
@@ -177,6 +223,77 @@ Fp3 values are three fixed 8-byte canonical limbs. Shapes — `t`, round
 counts and widths, the proof's internal lengths — are checked by the
 verifier against the relation it compiled and the configuration lens derives.
 
+## Zk profile (envelope profile 2, scheme veil)
+
+Statements are `PrivateStatement`s: the program, the public inputs, the
+outputs, the cycles and the budget. Secret inputs (`[16 [tag check]]` call
+sites) and every intermediate value are witness columns and stay with the
+prover. `veil::prove(program, public, secret, budget)`; `veil::verify` /
+`verify_with`; the relation-level `prove_relation` / `verify_relation`
+mirror `zk::prove` / `zk::verify` (MITH) for callers that derive their own
+relation (joy's private state queries).
+
+Masked relation (`veil::pad`). The verifier appends masking rows to the
+compiled CCS: for the gate `y0·y1 − y2` the types T0 (`y0 = s`), T1
+(`y1 = s`), TB (`y0 = s, y1 = z[0], y2 = s`); for `y0·y1 − y2 + y3^7 − y4`
+also TA (`y2 = s, y4 = −s`) and TE (`y3 = s, y4 = s^7`); three rows per type
+on fresh columns, placed in trailing empty rows or after doubling the row
+count. Every masking row is satisfied by any value of its fresh columns, so
+the masked relation is equisatisfiable with the statement's; the prover
+fills them uniformly. Other gates are refused (MITH is the fallback).
+
+Layout as the succinct profile on the masked relation: `z' = (w ‖ p)`, `p`
+pinned and computed by the verifier. Committed: one hiding commitment
+(`veil::hiding`) to `w ‖ g1 ‖ g2`, where `g1` (outer, `log m` rounds, degree
+`d + 1`) and `g2` (inner, `ℓ` rounds, degree 2) are Libra masks
+`g(x) = Σ_i g_i(x_i)` with uniform Fp3 coefficients, three base entries per
+coefficient.
+
+Protocol (`veil::protocol`), zheng transcript, Fp3 challenges:
+
+1. absorb `"zheng-veil-v1"`, `"zheng-vk" ‖ digest ‖` the statement bytes
+   (length prefixed), the commitment parameters, `ℓ`, `m`, the outer degree,
+   then the root;
+2. `τ`; send `Σ g1`; `ρ1`; sumcheck of `eq(τ,·)·G(Mz) + ρ1·g1` from claim
+   `ρ1·Σ g1`, `log m` rounds (without `c_1`); send `v_i = M̃_i z(ρ_x)`;
+3. `γ`; the verifier computes `P = Σ_i γ^i Σ_rows eq(ρ_x, row) Σ_{pinned c}
+   M_i[row][c]·p(c)`; send `Σ g2`; `ρ2`; sumcheck of `A(0,·)·w̃ + ρ2·g2` from
+   `Σ γ^i v_i − P + ρ2·Σ g2` over `ℓ` rounds, where `A = Σ_i γ^i M̃'_i(ρ_x,
+   ·)`;
+4. `λ`; the verifier sets `g1(ρ_x) := (C1 − eq(τ,ρ_x)·G(v))/ρ1` (rejecting
+   `ρ1 = 0`) and checks one opening of the functional `λ·g1(ρ_x) +
+   A(0,r')·w̃(r') + ρ2·g2(r')` at `λ·g1(ρ_x) + C2`, on a lens transcript
+   seeded by a squeeze of the zheng transcript.
+
+Hiding commitment (`veil::hiding`): rows of width `k` (a power of two),
+row polynomial `p_i = Σ_{c<k} u_{i,c}X^c + X^k ν_i` with `ν_i` uniform of
+degree `< k`, RS-encoded on `N = 2k·2^r` points; masking rows `m_a`, `m_b`
+(degree `< k − 1`), `m_P`; leaf = column ‖ four uniform salt limbs. The
+opening sends `μ = [X^{k−1}]m_a`, then (after `α`, `ρ_L`) the proximity
+polynomial `Σ α^i p_i` (all rows, `m_P` last) and the linear polynomial
+`q = Σ_i Λ'_i p_i + ρ_L(m_a + X^{2k} m_b)` with `Λ'_i = Σ_c Λ_{i,c}X^{k−1−c}`;
+the verifier checks `[X^{k−1}]q = V + ρ_L μ`, then grinding, `t` sampled
+columns, the Merkle multi-opening and both polynomials on every opened
+column. The tensor block (`w`) costs `O(log k)` per column through
+`Σ_c eq(r_lo, c) x^{k−1−c} = x^{k−1} Π_t((1 − r_t) + r_t x^{−2^{lo−1−t}})`.
+Shape: `k` is the power of two minimising the estimated size subject to
+`k > t` (the padding and `m_b` cover every opened column).
+
+Policy (`veil::protocol::admit`): parameters in range (rate `2^-3 … 2^-8`,
+grinding ≤ 30, target 128 … 256) and the proven bound
+`hiding::Config::security_bits ≥ 128`. Default: rate 1/32, 16 grinding bits.
+
+Body (`ZHVEIL01`): root, `Σ g1`, the outer rounds (`log m × (d + 1)` Fp3,
+without `c_1`), the `t` evaluations, `Σ g2`, the inner rounds (`ℓ × 2`), the
+opening (parameter header, `μ`, `2k` + `3k − 1` Fp3 coefficients, the nonce,
+the opened count, the columns with their salts, the Merkle siblings). Every
+count but the opened columns and the siblings comes from the verifier's
+shape; the proof must be consumed exactly.
+
+Zero knowledge, as proven in the [soundness ledger](soundness.md) § zk:
+honest-verifier statistical zero knowledge in the random-oracle model, and
+zero knowledge in the ROM after Fiat–Shamir.
+
 ## Envelope
 
 `zheng::envelope::Envelope` is the one wire form: magic `ZHENGPF1`, version
@@ -185,8 +302,13 @@ u16 little-endian (1), profile byte (0 public, 1 succinct, 2 zk,
 values below p, flags 0 or 1, every length bounded statically and by the
 remaining bytes before allocation, no trailing bytes. A wrong magic, an
 unknown version, an unknown profile, truncation and every
-noncanonical encoding fail at decoding; `Envelope::verify` runs the profile's
-verifier. The zk body binds a 32-byte context through `zk_statement_bytes`.
+noncanonical encoding fail at decoding; `Envelope::verify(state)` runs the
+profile's verifier, with the state evidence for profiles 3 and 1-with-state.
+The zk body starts with a scheme byte (1 = MPC-in-the-head `ZHMITH01`, 2 =
+veil `ZHVEIL01`) and binds a 32-byte context through `zk_statement_bytes`
+(veil keys it with the verifying key's digest); `envelope::prove_zk` builds
+a veil envelope. The state-public body is the execution statement, the root
+limbs, the root-in-subject flag and the reads.
 
 ## Legacy
 

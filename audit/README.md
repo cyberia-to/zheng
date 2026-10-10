@@ -8,3 +8,4 @@ defined in [specs](../specs/README.md).
 
 - [Direct execution review](direct-execution-review.md) — soundness findings, obligations and implemented checks.
 - [Public execution validation](public-execution.md) — tested relation, adversarial checks, CLI measurements and remaining gates.
+- [zk profile, state binding and verifying keys, 2026-10](zk-profile-2026-10.md) — veil (succinct zk) against MPC-in-the-head, state evidence inside zheng, cached keys; raw numbers.

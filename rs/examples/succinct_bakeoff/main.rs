@@ -159,7 +159,8 @@ where
             let (rel, pub_) = relation_of(&statement);
             instance = rel;
             pins = pub_;
-            stmt = statement.transcript_bytes();
+            let vk = zheng::execution::VerifyingKey::for_execution(&statement).unwrap();
+            stmt = succinct::keyed_statement(&vk, &statement.transcript_bytes());
             proof = p;
         }
         Fixture::Synthetic(k) => {

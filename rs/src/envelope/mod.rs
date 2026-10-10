@@ -12,12 +12,13 @@
 //! - public (0): execution statement, then the v3 certificate;
 //! - succinct (1): PCS id and parameter header, statement kind, the
 //!   execution or state statement, then the succinct proof (see `succinct`);
-//! - zk (2): execution statement, a 32-byte caller context, then the
-//!   `ZHMITH01` proof bytes (length-prefixed); the proof's statement bytes
-//!   are [`zk_statement_bytes`];
+//! - zk (2): scheme byte (1 = linear MPC-in-the-head `ZHMITH01`, 2 =
+//!   succinct `veil` `ZHVEIL01`), execution statement, a 32-byte caller
+//!   context, then the proof bytes (length-prefixed); the proof's statement
+//!   bytes are [`zk_statement_bytes`] (for veil keyed by the verifying
+//!   key's digest);
 //! - state-public (3): execution statement, state root (4 field limbs),
-//!   32-byte context, root-in-subject flag, the reads, then the v3
-//!   certificate.
+//!   root-in-subject flag, the reads, then the v3 certificate.
 //!
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
@@ -33,7 +34,9 @@ mod tests;
 
 use crate::execution::private::PrivateStatement;
 use crate::execution::state::StateStatement;
+use crate::execution::state_evidence::StateEvidence;
 use crate::execution::zk::{self, PrivateProof};
+use crate::execution::veil::{self, VeilProof};
 use crate::execution::{Certificate, ExecutionStatement, verify_certificate};
 use core::fmt;
 
@@ -86,7 +89,7 @@ pub enum Envelope {
     Zk {
         statement: PrivateStatement,
         context: [u8; 32],
-        proof: PrivateProof,
+        proof: ZkProof,
     },
     StatePublic {
         statement: StateStatement,
@@ -96,6 +99,51 @@ pub enum Envelope {
         statement: SuccinctStatement,
         proof: AnySuccinct,
     },
+}
+
+/// A zk-profile proof under one of its two schemes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ZkProof {
+    /// Linear-size MPC-in-the-head (`execution::zk`): the fallback for
+    /// relations the succinct scheme does not admit, and a differential
+    /// oracle.
+    Mith(PrivateProof),
+    /// Succinct zk (`execution::veil`).
+    Veil(VeilProof),
+}
+
+impl ZkProof {
+    /// Wire id of the scheme.
+    pub fn scheme(&self) -> u8 {
+        match self {
+            Self::Mith(_) => 1,
+            Self::Veil(_) => 2,
+        }
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Mith(p) => p.as_bytes(),
+            Self::Veil(p) => p.as_bytes(),
+        }
+    }
+}
+
+/// Prove an execution with secret inputs under the succinct zk scheme and
+/// wrap it in a profile-2 envelope bound to `context`.
+pub fn prove_zk(
+    program: &crate::execution::ExecutionNoun,
+    input: &[u64],
+    secret: &[u64],
+    budget: u64,
+    context: [u8; 32],
+) -> Result<Envelope, String> {
+    let (statement, proof) =
+        veil::prove_bound(program, input, secret, budget, &|s| zk_statement_bytes(s, &context))?;
+    Ok(Envelope::Zk {
+        statement,
+        context,
+        proof: ZkProof::Veil(proof),
+    })
 }
 
 /// The statement bytes a zk-profile proof is made and checked against.
@@ -149,11 +197,11 @@ impl Envelope {
         Ok(envelope)
     }
 
-    /// Verify the proof against its own statement. `lookup` answers state
-    /// reads for the state profiles (3, and 1 with a state statement) and MUST come from a state
-    /// certificate already verified under that statement's root; the other
+    /// Verify the proof against its own statement. The state profiles (3,
+    /// and 1 with a state statement) need `state`: zheng authenticates it
+    /// under the statement's root and every read against it; the other
     /// profiles never consult it.
-    pub fn verify(&self, lookup: &mut dyn FnMut(u64, u64) -> Option<u64>) -> Result<(), String> {
+    pub fn verify(&self, state: Option<&StateEvidence>) -> Result<(), String> {
         match self {
             Self::Public {
                 statement,
@@ -162,7 +210,12 @@ impl Envelope {
             Self::Zk {
                 statement,
                 context,
-                proof,
+                proof: ZkProof::Veil(proof),
+            } => veil::verify_bound(statement, proof, None, &zk_statement_bytes(statement, context)),
+            Self::Zk {
+                statement,
+                context,
+                proof: ZkProof::Mith(proof),
             } => {
                 let prepared = statement.prepare()?;
                 let public: Vec<_> = prepared
@@ -181,8 +234,11 @@ impl Envelope {
             Self::StatePublic {
                 statement,
                 certificate,
-            } => statement.verify_certificate(certificate, lookup),
-            Self::Succinct { statement, proof } => succinct::verify(statement, proof, lookup),
+            } => statement.verify_certificate(
+                certificate,
+                state.ok_or("state envelope: no state evidence")?,
+            ),
+            Self::Succinct { statement, proof } => succinct::verify(statement, proof, state),
         }
     }
 }

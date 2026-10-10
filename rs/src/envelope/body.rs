@@ -3,7 +3,9 @@ use super::codec::{Reader, Writer};
 use super::{Envelope, EnvelopeError as E, Profile};
 use crate::execution::private::PrivateStatement;
 use crate::execution::state::{MAX_READS, PublicLookup, StateStatement};
+use crate::execution::veil::{self, VeilProof};
 use crate::execution::zk::{self, PrivateProof};
+use super::ZkProof;
 use crate::execution::{
     Certificate, ExecutionStatement, MAX_INPUTS, MAX_OUTPUTS, MAX_PROGRAM_NODES, NounToken,
 };
@@ -26,6 +28,7 @@ pub(super) fn encode(envelope: &Envelope, w: &mut Writer) {
             context,
             proof,
         } => {
+            w.raw(&[proof.scheme()]);
             execution(&statement.execution, w);
             w.raw(context);
             w.len(proof.as_bytes().len());
@@ -47,7 +50,6 @@ pub(super) fn state(statement: &StateStatement, w: &mut Writer) {
     for limb in statement.state_root {
         w.varint(limb);
     }
-    w.raw(&statement.context);
     w.bool(statement.root_in_subject);
     w.len(statement.reads.len());
     for read in &statement.reads {
@@ -65,10 +67,20 @@ pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
             certificate: read_free(r)?,
         }),
         Profile::Zk => {
+            let scheme = r.byte()?;
             let execution = read_execution(r)?;
             let context = read_context(r)?;
-            let n = r.len(zk::MAX_BYTES, 1)?;
-            let proof = PrivateProof::from_bytes(r.raw(n)?).map_err(|_| E::NonCanonical)?;
+            let proof = match scheme {
+                1 => {
+                    let n = r.len(zk::MAX_BYTES, 1)?;
+                    ZkProof::Mith(PrivateProof::from_bytes(r.raw(n)?).map_err(|_| E::NonCanonical)?)
+                }
+                2 => {
+                    let n = r.len(veil::MAX_BYTES, 1)?;
+                    ZkProof::Veil(VeilProof::from_bytes(r.raw(n)?).map_err(|_| E::NonCanonical)?)
+                }
+                _ => return Err(E::NonCanonical),
+            };
             Ok(Envelope::Zk {
                 statement: PrivateStatement { execution },
                 context,
@@ -89,7 +101,6 @@ pub(super) fn read_state(r: &mut Reader) -> Result<StateStatement, E> {
     for limb in &mut state_root {
         *limb = r.field()?;
     }
-    let context = read_context(r)?;
     let root_in_subject = r.bool()?;
     let n = r.len(MAX_READS, 4)?;
     let mut reads = Vec::with_capacity(n);
@@ -109,7 +120,6 @@ pub(super) fn read_state(r: &mut Reader) -> Result<StateStatement, E> {
     Ok(StateStatement {
         execution,
         state_root,
-        context,
         root_in_subject,
         reads,
     })

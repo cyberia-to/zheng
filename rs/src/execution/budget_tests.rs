@@ -74,21 +74,17 @@ fn public_cost_budget_and_selected_branch_are_authenticated() {
 #[test]
 fn state_wrappers_use_selected_cost_with_the_same_public_bindings() {
     let program = branch(q(0), q(7), p(a(8), q(0)));
-    let root = [1, 2, 3, 4];
+    let evidence = super::state_evidence::StateEvidence::with_tables(vec![]);
     let (statement, proof) =
-        super::state::prove_state_execution(&program, &[], 3, root, false, [0; 32], &mut |_, _| {
-            None
-        })
-        .unwrap();
+        super::state::prove_state_execution(&program, &[], 3, false, &[0; 32], &evidence).unwrap();
     assert_eq!(statement.execution.cycles, 3);
-    statement.verify(&proof, &mut |_, _| None).unwrap();
+    statement.verify_v1(&[0; 32], &proof, &evidence).unwrap();
     let mut bad = statement.clone();
     bad.execution.cycles = 2;
-    assert!(bad.verify(&proof, &mut |_, _| None).is_err());
-    let tables = super::relation::PublicStateTables {
-        root: root.map(F::new),
-        dimensions: std::array::from_fn(|_| vec![]),
-    };
+    assert!(bad.verify_v1(&[0; 32], &proof, &evidence).is_err());
+    let tables = super::state_evidence::StateEvidence::with_tables(
+        (0..10).map(|ns| super::state_evidence::StateTable::with_body(ns, &[])).collect(),
+    );
     let (statement, prepared, witness) =
         super::private_state::prepare_execution(&program, &[], &[], 3, false, &tables).unwrap();
     assert_eq!(statement.execution.cycles, 3);

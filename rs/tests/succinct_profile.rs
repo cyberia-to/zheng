@@ -23,7 +23,7 @@ where
 }
 
 fn accepted(e: &Envelope) -> bool {
-    Envelope::from_bytes(&e.to_bytes()).is_ok_and(|d| d.verify(&mut |_, _| None).is_ok())
+    Envelope::from_bytes(&e.to_bytes()).is_ok_and(|d| d.verify(None).is_ok())
 }
 
 fn fixtures() -> Vec<(&'static str, ExecutionNoun, Vec<u64>)> {
@@ -218,7 +218,7 @@ fn parameters_below_policy_are_refused_by_prover_and_verifier() {
     p.params.security_target = 100;
     assert!(succinct::verify(&statement, &p).is_err());
     let bytes = envelope_of(&statement, &p).to_bytes();
-    assert!(Envelope::from_bytes(&bytes).is_ok_and(|e| e.verify(&mut |_, _| None).is_err()));
+    assert!(Envelope::from_bytes(&bytes).is_ok_and(|e| e.verify(None).is_err()));
 }
 
 #[test]

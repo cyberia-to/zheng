@@ -35,13 +35,14 @@ pub fn prove_default(
     let (statement, relation, witness, public) =
         crate::execution::statement::prepare(program, input, budget)?;
     let pins = super::with_constant(public);
-    let vars = protocol::Layout::new(&relation.instance, &pins)?.vars;
+    let vk = crate::execution::VerifyingKey::new(statement.program_key(), relation);
+    let vars = protocol::Layout::new(&vk.relation().instance, &pins)?.vars;
     let proof: SuccinctProof<Whir> = protocol::prove(
         &params_for(vars),
-        &relation.instance,
+        &vk.relation().instance,
         &witness.z,
         &pins,
-        &statement.transcript_bytes(),
+        &super::keyed_statement(&vk, &statement.transcript_bytes()),
     )?;
     Ok((statement, proof.into()))
 }

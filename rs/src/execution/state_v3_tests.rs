@@ -3,6 +3,8 @@
 //! movable wire a "don't care".
 use super::certificate::malleability::movable_wires_only_multiply_zero;
 use super::state::*;
+use super::state_evidence::tests::{evidence, table};
+use super::state_evidence::{StateEvidence, StateTable, table_leaf};
 use super::{Certificate, ExecutionNoun};
 use nebu::field::P;
 
@@ -33,17 +35,17 @@ fn two_reads_from_input() -> ExecutionNoun {
     let next = op(5, p(a(0), a(6)), q(1));
     op(5, op(17, q(0), key), op(17, q(0), next))
 }
-fn cell(ns: u64, key: u64) -> Option<u64> {
-    match (ns, key) {
-        (2, 11) => Some(42),
-        (0, k) if k < 8 => Some(100 + k),
-        _ => None,
-    }
+/// cell(0, 3..8) = 103..107, cell(2, 11) = 42: two dimension tables.
+fn tables() -> Vec<StateTable> {
+    let mut ns2 = vec![0u64; 9];
+    ns2[8] = 42;
+    vec![table(0, &[103, 104, 105, 106, 107]), table(2, &ns2)]
 }
-const ROOT: [u64; 4] = [1, 2, 3, 4];
-
+fn state() -> StateEvidence {
+    evidence(tables())
+}
 fn certify(program: &ExecutionNoun, input: &[u64]) -> (StateStatement, Certificate) {
-    certify_state_execution(program, input, 1000, ROOT, true, [7; 32], &mut cell).unwrap()
+    certify_state_execution(program, input, 1000, true, &state()).unwrap()
 }
 
 #[test]
@@ -54,21 +56,18 @@ fn state_certificates_verify_and_agree_with_v1() {
         (two_reads_from_input(), vec![3]),
     ] {
         let (statement, certificate) = certify(&program, &input);
-        statement.verify_certificate(&certificate, &mut cell).unwrap();
+        statement.verify_certificate(&certificate, &state()).unwrap();
         let (v1, proof) =
-            prove_state_execution(&program, &input, 1000, ROOT, true, [7; 32], &mut cell).unwrap();
-        v1.verify(&proof, &mut cell).unwrap();
+            prove_state_execution(&program, &input, 1000, true, &[7; 32], &state()).unwrap();
+        v1.verify_v1(&[7; 32], &proof, &state()).unwrap();
+        assert!(v1.verify_v1(&[8; 32], &proof, &state()).is_err(), "v1 binds its context");
         assert_eq!(statement, v1, "v3 and v1 state the same claim");
     }
     let (statement, _) = certify(&read_times_three(), &[]);
     assert_eq!(statement.execution.public_output, vec![126]);
+    assert_eq!(statement.state_root, state().root().unwrap());
     let (statement, _) = certify(&two_reads_from_input(), &[3]);
     assert_eq!(statement.execution.public_output, vec![207]);
-}
-
-/// A state certificate answers only for the root it was verified under.
-fn authenticated(root: [u64; 4]) -> impl FnMut(u64, u64) -> Option<u64> {
-    move |ns, key| if root == ROOT { cell(ns, key) } else { None }
 }
 
 /// cell(2, 11) · r0, where r0 is the first root limb read from the subject.
@@ -78,34 +77,61 @@ fn read_times_root_limb() -> ExecutionNoun {
 
 #[test]
 fn wrong_state_root_is_rejected() {
-    // Reads are authenticated against the statement's root: a different root
-    // makes every active read fail authentication.
+    // zheng authenticates the evidence under the statement's own root: a
+    // statement naming another root fails, whatever the caller holds.
     let (statement, certificate) = certify(&read_times_three(), &[]);
-    statement.verify_certificate(&certificate, &mut authenticated(statement.state_root)).unwrap();
+    statement.verify_certificate(&certificate, &state()).unwrap();
     for limb in 0..4 {
         let mut bad = statement.clone();
-        bad.state_root[limb] += 1;
-        let mut lookup = authenticated(bad.state_root);
-        assert!(bad.verify_certificate(&certificate, &mut lookup).is_err(), "limb {limb}");
+        bad.state_root[limb] = (bad.state_root[limb] + 1) % P;
+        assert!(bad.verify_certificate(&certificate, &state()).is_err(), "limb {limb}");
     }
-    // The root is also pinned into the subject: a limb the program computes
-    // on is rejected by the relation itself, even by a root-blind table.
-    // (Limbs the program never reads are bound by authentication alone.)
+    // evidence for another state (one value changed) has another root
+    let mut tables = tables();
+    tables[1].fields[11] = 43;
+    let other = evidence(tables);
+    assert!(statement.verify_certificate(&certificate, &other).is_err(), "other state");
+    // a statement re-rooted to the other state still reads 42: rejected
+    let mut rerooted = statement.clone();
+    rerooted.state_root = other.root().unwrap();
+    assert!(rerooted.verify_certificate(&certificate, &other).is_err(), "re-rooted");
+    // the root is also pinned into the subject
     let (statement, certificate) = certify(&read_times_root_limb(), &[]);
-    assert_eq!(statement.execution.public_output, vec![42]);
-    statement.verify_certificate(&certificate, &mut cell).unwrap();
-    let mut bad = statement.clone();
-    bad.state_root[0] += 1;
-    assert!(bad.verify_certificate(&certificate, &mut cell).is_err(), "subject limb 0");
+    let r0 = nebu::Goldilocks::new(statement.state_root[0]);
+    assert_eq!(statement.execution.public_output, vec![(r0 * nebu::Goldilocks::new(42)).as_u64()]);
+    statement.verify_certificate(&certificate, &state()).unwrap();
     let mut noncanonical = statement.clone();
     noncanonical.state_root[0] = P;
-    assert!(noncanonical.verify_certificate(&certificate, &mut cell).is_err());
+    assert!(noncanonical.verify_certificate(&certificate, &state()).is_err());
+}
+
+#[test]
+fn an_unauthenticated_read_is_rejected_by_zheng_alone() {
+    let (s, certificate) = certify(&two_reads_from_input(), &[3]);
+    // evidence without the table the reads name
+    let missing = evidence(vec![tables()[1].clone()]);
+    let mut leaves_kept = missing.clone();
+    leaves_kept.leaves = state().leaves;
+    assert!(s.verify_certificate(&certificate, &missing).is_err(), "other root");
+    assert!(s.verify_certificate(&certificate, &leaves_kept).is_err(), "table absent");
+    // the table carried but altered under the honest leaves
+    let mut altered = state();
+    altered.tables[0].fields[3] = 104;
+    assert!(s.verify_certificate(&certificate, &altered).is_err(), "altered table");
+    // a leaf altered to match an altered table changes the root
+    altered.leaves[0] = table_leaf(&altered.tables[0].fields);
+    assert!(s.verify_certificate(&certificate, &altered).is_err(), "altered leaf");
+    // the same execution certified against altered state is another statement
+    let (forged, _) = certify_state_execution(&two_reads_from_input(), &[3], 1000, true, &altered)
+        .unwrap();
+    assert_ne!(forged.state_root, s.state_root);
+    assert!(forged.verify_certificate(&certificate, &state()).is_err());
 }
 
 #[test]
 fn every_read_and_public_claim_is_bound() {
     let (s, certificate) = certify(&two_reads_from_input(), &[3]);
-    let check = |bad: &StateStatement| bad.verify_certificate(&certificate, &mut cell).is_err();
+    let check = |bad: &StateStatement| bad.verify_certificate(&certificate, &state()).is_err();
     for i in 0..2 {
         let mut bad = s.clone();
         bad.reads[i].key += 1;
@@ -141,25 +167,19 @@ fn every_read_and_public_claim_is_bound() {
     let mut bad = s.clone();
     bad.reads.push(bad.reads[0].clone());
     assert!(check(&bad), "extra read");
-    // the lookup provider is the state certificate: a disagreeing cell fails
-    assert!(s.verify_certificate(&certificate, &mut |_, _| None).is_err());
-    assert!(s.verify_certificate(&certificate, &mut |_, _| Some(101)).is_err());
 }
 
 #[test]
 fn inactive_reads_carry_no_data_and_cannot_become_active() {
-    let (s, certificate) = certify_state_execution(
-        &unselected_read(), &[], 1000, ROOT, true, [0; 32],
-        &mut |_, _| panic!("an inactive read consults no state"),
-    )
-    .unwrap();
-    s.verify_certificate(&certificate, &mut |_, _| panic!("inactive")).unwrap();
+    // the program reads cell(9, 1234), a table no evidence carries
+    let (s, certificate) = certify(&unselected_read(), &[]);
+    s.verify_certificate(&certificate, &state()).unwrap();
     let mut bad = s.clone();
     bad.reads[0].key = 1234;
-    assert!(bad.verify_certificate(&certificate, &mut cell).is_err());
+    assert!(bad.verify_certificate(&certificate, &state()).is_err());
     let mut bad = s.clone();
     bad.reads[0].active = true;
-    assert!(bad.verify_certificate(&certificate, &mut |_, _| Some(0)).is_err());
+    assert!(bad.verify_certificate(&certificate, &state()).is_err());
 }
 
 #[test]
@@ -167,13 +187,13 @@ fn statement_bounds_are_enforced() {
     let (s, certificate) = certify(&read_times_three(), &[]);
     let mut bad = s.clone();
     bad.reads = vec![s.reads[0].clone(); MAX_READS + 1];
-    assert!(bad.verify_certificate(&certificate, &mut cell).is_err());
+    assert!(bad.verify_certificate(&certificate, &state()).is_err());
     let mut bad = s.clone();
     bad.execution.public_output[0] = P;
-    assert!(bad.verify_certificate(&certificate, &mut cell).is_err());
+    assert!(bad.verify_certificate(&certificate, &state()).is_err());
     let mut bad = s.clone();
     bad.execution.budget = bad.execution.cycles - 1;
-    assert!(bad.verify_certificate(&certificate, &mut cell).is_err());
+    assert!(bad.verify_certificate(&certificate, &state()).is_err());
 }
 
 #[test]
@@ -181,7 +201,7 @@ fn only_the_canonical_state_certificate_verifies() {
     for (program, input) in [(read_times_three(), vec![]), (unselected_read(), vec![])] {
         let (s, certificate) = certify(&program, &input);
         assert!(!certificate.free.is_empty());
-        let check = |c: &Certificate| s.verify_certificate(c, &mut cell).is_err();
+        let check = |c: &Certificate| s.verify_certificate(c, &state()).is_err();
         let mut trailing_zero = certificate.clone();
         trailing_zero.free.push(0);
         assert!(check(&trailing_zero), "trailing zero");
@@ -196,7 +216,7 @@ fn only_the_canonical_state_certificate_verifies() {
     // read · 3 has one free value, the product: dropping it is rejected
     let (s, certificate) = certify(&read_times_three(), &[]);
     assert_eq!(certificate.free.len(), 1);
-    assert!(s.verify_certificate(&Certificate { free: vec![] }, &mut cell).is_err());
+    assert!(s.verify_certificate(&Certificate { free: vec![] }, &state()).is_err());
 }
 
 #[test]
@@ -208,7 +228,7 @@ fn every_movable_state_wire_only_multiplies_zero() {
     ] {
         let (statement, certificate) = certify(&program, &input);
         let relation = statement.relation().unwrap();
-        let public = statement.bindings(&relation, &mut cell).unwrap();
+        let public = statement.authenticated_bindings(&state()).unwrap().1;
         let movable =
             movable_wires_only_multiply_zero(name, &relation.instance, &certificate, &public);
         println!("{name}: free {} movable {movable}", certificate.free.len());

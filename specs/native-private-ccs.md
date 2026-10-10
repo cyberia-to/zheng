@@ -19,8 +19,9 @@ aggregation or small-field sumcheck establishes acceptance.
 
 The execution caller reconstructs the CCS from the public program. Public input,
 output, selected reduction count, budget and authenticated state context remain
-bound by that caller. Secret witness preparation, native execution comparison
-and public BBG table authentication stay in their existing owners.
+bound by that caller. Secret witness preparation and native execution
+comparison stay in their existing owners; public BBG tables of a private-state
+statement are authenticated by zheng (`PrivateStateStatement::verify_mith`).
 
 ## Three-party decomposition
 

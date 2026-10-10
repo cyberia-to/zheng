@@ -367,11 +367,19 @@ pub fn compile_relation(
 ) -> Result<ExecutionRelation, RelationError> {
     compile_relation_internal(program, shape, None)
 }
-/// Public tables MUST have been authenticated against this root by the owner.
+/// The ten public dimensions a private state relation selects from, as
+/// relation constants. Only zheng builds them, from evidence it has
+/// authenticated under the root (`StateEvidence::private_tables`).
 #[derive(Clone, Debug)]
 pub struct PublicStateTables {
-    pub root: [F; 4],
-    pub dimensions: [Vec<F>; 10],
+    pub(crate) root: [F; 4],
+    pub(crate) dimensions: [Vec<F>; 10],
+}
+impl PublicStateTables {
+    /// The root the tables were authenticated under.
+    pub fn root(&self) -> [u64; 4] {
+        self.root.map(|v| v.as_u64())
+    }
 }
 pub fn compile_relation_with_state(
     program: &ExecutionNoun,
