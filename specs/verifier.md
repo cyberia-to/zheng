@@ -66,7 +66,7 @@ as profile 1 on the masked relation (`veil::pad`), with Libra masks on both sumc
 
 ## profile 4 — machine proof (phase 3)
 
-lands with accumulation (`accumulation.md`, `machine.md`, in progress in this release): the nox machine is one uniform step relation; the prover accumulates RS evaluation claims step by step (ARC/WARP-style), and the verifier checks the final accumulator with ONE WHIR opening. goal: ≤ 64 KB, verify ≤ 1 ms, constant in the number of steps; measured size and time TODO(F-numbers).
+lands with accumulation (`accumulation.md`, `machine.md`, in progress in this release): the nox machine is one uniform step relation; the prover accumulates RS evaluation claims step by step (ARC/WARP-style), and the verifier checks the final accumulator with ONE WHIR opening. goal: ≤ 64 KB, verify ≤ 1 ms, constant in the number of steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`); decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments).
 
 ## recursion
 

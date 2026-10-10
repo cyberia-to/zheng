@@ -16,9 +16,9 @@ phase 3 replaces it with hash-based accumulation of Reed–Solomon evaluation cl
 
 | quantity | status |
 |---|---|
-| decider proof size | goal ≤ 64 KB, constant in steps; measured TODO(F-numbers) |
-| decider verify time | goal ≤ 1 ms; measured TODO(F-numbers) |
-| light-client checkpoint | state root + the decider proof of the accumulator; size goal ≤ 64 KB, measured TODO(F-numbers) |
+| decider proof size | goal ≤ 64 KB, constant in steps; decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`) |
+| decider verify time | goal ≤ 1 ms; decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments) |
+| light-client checkpoint | state root + the decider proof of the accumulator; size goal ≤ 64 KB; decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`) |
 
 when to decide is unchanged in spirit: the accumulator keeps absorbing steps (signal, block, epoch) and is decided once where an outside party needs a proof.
 

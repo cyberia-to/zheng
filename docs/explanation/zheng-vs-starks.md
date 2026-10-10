@@ -65,11 +65,11 @@ the goal of the repair: any nox computation → a proof ≤ 64 KB, post-quantum,
 
 ## 5. long computations
 
-a STARK proves a long computation as one long trace, or recursively by verifying proofs inside proofs. zheng's plan (phase 3, in progress, no numbers yet) is hash-based accumulation of Reed–Solomon evaluation claims, ARC/WARP-style: the nox machine becomes one uniform step relation; each step batches its claims with a sumcheck, commits one combined word, samples out-of-domain points and opens a few positions; the accumulator is one root plus a fixed number of claims, independent of the number of steps; the decider is one WHIR opening of the final accumulator. decider proof: ≤ 64 KB goal, measured size TODO(F-numbers).
+a STARK proves a long computation as one long trace, or recursively by verifying proofs inside proofs. zheng's plan (phase 3, in progress, no numbers yet) is hash-based accumulation of Reed–Solomon evaluation claims, ARC/WARP-style: the nox machine becomes one uniform step relation; each step batches its claims with a sumcheck, commits one combined word, samples out-of-domain points and opens a few positions; the accumulator is one root plus a fixed number of claims, independent of the number of steps; the decider is one WHIR opening of the final accumulator. decider proof: ≤ 64 KB goal, decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`); measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 
 this replaces the folding of the 0.3/0.4 design, which needs a homomorphic commitment; hemera is a hash, so the stack never had it soundly. recursion proper — a zheng verifier written as a nox program — is kept for composition (across domains, across versions), never for size: in a hash-only world the outer proof carries its own Merkle paths again.
 
-a light-client checkpoint is a state root plus the decider proof of the accumulator: ≤ 64 KB goal, measured size TODO(F-numbers).
+a light-client checkpoint is a state root plus the decider proof of the accumulator: ≤ 64 KB goal; decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`).
 
 ## 6. honest assessment
 

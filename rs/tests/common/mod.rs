@@ -190,3 +190,81 @@ pub fn native(program: &ExecutionNoun, input: &[u64], budget: u64) -> (Vec<u64>,
         other => panic!("native nox: {other:?}"),
     }
 }
+
+// ── machine fixtures ────────────────────────────────────────────────
+
+fn m_pr(a: ExecutionNoun, b: ExecutionNoun) -> ExecutionNoun {
+    ExecutionNoun::Pair(Box::new(a), Box::new(b))
+}
+fn m_at(v: u64) -> ExecutionNoun {
+    ExecutionNoun::Atom(v)
+}
+fn m_axis(n: u64) -> ExecutionNoun {
+    m_pr(m_at(0), m_at(n))
+}
+fn m_quote(n: ExecutionNoun) -> ExecutionNoun {
+    m_pr(m_at(1), n)
+}
+fn m_op(t: u64, a: ExecutionNoun, b: ExecutionNoun) -> ExecutionNoun {
+    m_pr(m_at(t), m_pr(a, b))
+}
+
+/// One Merkle level on the state `[cur [[sib dir] rest]]`:
+/// `[hash(dir = 0 ? [cur sib] : [sib cur]) rest]`.
+fn merkle_level() -> ExecutionNoun {
+    let left = m_op(3, m_axis(2), m_axis(12));
+    let right = m_op(3, m_axis(12), m_axis(2));
+    let pick = m_pr(m_at(4), m_pr(m_axis(13), m_pr(left, right)));
+    m_op(3, m_pr(m_at(15), pick), m_axis(7))
+}
+
+/// Apply `f` `k` times by nested compose.
+fn repeat(f: &ExecutionNoun, k: usize) -> ExecutionNoun {
+    (1..k).fold(f.clone(), |acc, _| m_op(2, acc, m_quote(f.clone())))
+}
+
+/// The digest noun `[[a b] [c d]]`.
+pub fn digest_noun(d: [u64; 4]) -> ExecutionNoun {
+    m_pr(m_pr(m_at(d[0]), m_at(d[1])), m_pr(m_at(d[2]), m_at(d[3])))
+}
+
+/// A `levels`-hash Merkle path check on input `[x 0]`: the leaf is
+/// `hash(x)`, the siblings and directions are quoted in the program, the
+/// output is `eq(computed root, root)` (0 when the path verifies). With
+/// `root = None` the program returns the computed root instead.
+pub fn merkle_program(levels: usize, root: Option<&ExecutionNoun>) -> ExecutionNoun {
+    let mut path = m_at(0);
+    for i in (0..levels).rev() {
+        let sib = digest_noun([1000 + i as u64, 7 * i as u64, 3, i as u64 * i as u64]);
+        path = m_pr(m_pr(sib, m_at((i % 2) as u64)), path);
+    }
+    let start = m_op(3, m_pr(m_at(15), m_axis(2)), m_quote(path));
+    let folded = m_op(2, start, m_quote(repeat(&merkle_level(), levels)));
+    let computed = m_op(2, folded, m_quote(m_axis(2)));
+    match root {
+        None => computed,
+        Some(r) => m_op(9, computed, m_quote(r.clone())),
+    }
+}
+
+/// A balanced tree of `2^k` additions on input `[x 0]`: `f_0 = x + 1`,
+/// `f_k = f_{k−1} + f_{k−1}` — nox depth `k + 1`, about `3·2^k` cycles.
+pub fn tree_program(k: usize) -> ExecutionNoun {
+    (0..k).fold(m_op(5, m_axis(2), m_quote(m_at(1))), |f, _| m_op(5, f.clone(), f))
+}
+
+/// Doubling recursion over a subject that carries its own formula:
+/// `f(n) = n = 0 ? 1 : f(n−1) + f(n−1)` on input `[n 0]`, so `f(n) = 2^n`
+/// after about `2^{n+1}` calls. A small program (tens of tokens) whose
+/// run grows exponentially, with nox depth about `4n`.
+pub fn rec_program() -> ExecutionNoun {
+    // inside F the subject is [n F]
+    let n = m_axis(2);
+    let me = m_axis(3);
+    let call = m_op(2, m_op(3, m_op(6, n.clone(), m_quote(m_at(1))), me.clone()), me);
+    let body = m_op(5, call.clone(), call);
+    let test = m_op(9, n, m_quote(m_at(0)));
+    let f = m_pr(m_at(4), m_pr(test, m_pr(m_quote(m_at(1)), body)));
+    // start: subject [x 0] → [x F], formula F
+    m_op(2, m_op(3, m_axis(2), m_quote(f.clone())), m_quote(f))
+}

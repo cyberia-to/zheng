@@ -19,7 +19,7 @@ zheng proofs are not STARKs: no AIR, no FRI. soundness of every production compo
 | 3 | state-public v3 | as profile 0, plus every read authenticated against the statement's own state root (`StateEvidence`) | linear |
 | 1 | succinct | Spartan over Fp3, then one WHIR opening of the committed witness (rate 1/64, folding 4, 24 grinding bits); 128 proven bits | hash.tri 16,148 B envelope, verify 7.96 ms; 2^20 relation 71,081 B, 270 ms |
 | 2 | zk (veil; MPC-in-the-head fallback) | Libra-masked Spartan over Fp3 + one hiding RS tensor commitment opened by one zero-knowledge linear test; 128.2 proven bits | secret-preimage hash 63.9 KB, verify 10.0 ms (4.1 ms with a cached verifying key) |
-| 4 | machine proof (accumulation) | lands with phase 3: the nox machine as one step relation, accumulated per step, decided by one WHIR opening | goal ≤ 64 KB, constant in steps; measured TODO(F-numbers) |
+| 4 | machine proof (accumulation) | lands with phase 3: the nox machine as one step relation, accumulated per step, decided by one WHIR opening | goal ≤ 64 KB, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`) |
 
 measurements: [succinct bake-off](../audit/succinct-profile-2026-10.md), [zk profile](../audit/zk-profile-2026-10.md) (Apple M4 Max, shared machine). the goal (owner, 2026-10-09): any nox computation → proof ≤ 64 KB, post-quantum (hash-only), verify ≤ 1 ms, constant in the number of steps. the succinct profile misses the size goal at 2^20 by 11 % and the verify goal everywhere today.
 

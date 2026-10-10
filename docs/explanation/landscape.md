@@ -111,7 +111,7 @@ survive quantum computing). it does not need the smallest possible
 proof per statement: long computations and many statements are combined
 by hash-based accumulation of Reed–Solomon evaluation claims (phase 3,
 ARC/WARP-style, in progress), decided by one WHIR opening — decider
-proof ≤ 64 KB goal, measured size TODO(F-numbers). recursion proper — a
+proof ≤ 64 KB goal, measured: decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`); the whole proof is linear in the steps without recursion. recursion proper — a
 verifier written as a nox program — is kept for composition, not for
 size: in a hash-only world a proof of a proof carries its own Merkle
 paths again.

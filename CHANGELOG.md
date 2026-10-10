@@ -4,6 +4,24 @@
 
 ### Added
 
+- **`machine`: the nox machine as one uniform step relation.** A run of any
+  length is a trace of 64-column rows (init entries, one row per
+  continuation-machine step, 32-row hemera permutation blocks for noun
+  digests) with a write-once memory checked by logUp over Fp3; the row
+  relation (the verifier key) is identical for every program. Segments of
+  `2^14` rows share the lookup challenges and link through boundary rows.
+  Agrees with `nox::reduce` on joy's fixtures, Merkle paths and long runs.
+  `specs/machine.md`.
+- **`air`: uniform AIR proving** (zerocheck over the rows, successor
+  polynomial, public columns evaluated by the verifier) down to evaluation
+  claims on the committed words; verifier work independent of the program.
+- **`accumulate`: hash-based accumulation of RS evaluation claims and its
+  decider** (WARP's claim-carrying structure for Reed–Solomon codes with
+  univariate OOD as in ARC; unbounded depth; one WHIR opening decides).
+  `accumulate::ccs` folds statements of one CCS relation into one decider
+  (fold mining). `specs/accumulation.md`.
+- **envelope profile 4**: a machine proof. Measurements:
+  `audit/accumulation-2026-10.md`.
 - **zk profile (`execution::veil`, envelope profile 2 scheme 2).** Succinct
   proofs of statements with secret inputs: Spartan over Fp3 on the relation
   plus masking rows, Libra-masked sumchecks, one hiding Reed–Solomon tensor

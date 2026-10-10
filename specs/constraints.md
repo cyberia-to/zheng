@@ -31,7 +31,7 @@ s_p × (r0_t − p) = 0      for every p        (a non-zero s_p forces r0 = p)
 
 together: exactly one s_p is non-zero and it equals 1 — two non-zero selectors would need two values of r0, and the sum then fixes the survivor to 1. every other pattern's terms vanish identically, so multiplying C_p by s_p raises its degree by exactly one. Lagrange selectors interpolated over the 18 tag values would raise it by 17 — rejected for that reason. a row whose tag is outside 0..17 admits no selector and is unprovable.
 
-because one instance covers every row, the legacy fold (feature `legacy`, unsound) used one accumulator and one decider for the whole Layer-1 trace ([[decider]] §soundness). in the shipped design that role passes to the nox machine relation (`machine.md`, phase 3), accumulated step by step and decided by one WHIR opening; proof size goal ≤ 64 KB whatever the program, measured TODO(F-numbers).
+because one instance covers every row, the legacy fold (feature `legacy`, unsound) used one accumulator and one decider for the whole Layer-1 trace ([[decider]] §soundness). in the shipped design that role passes to the nox machine relation (`machine.md`, phase 3), accumulated step by step and decided by one WHIR opening; proof size goal ≤ 64 KB whatever the program, measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 
 ### hash rows
 
@@ -549,7 +549,7 @@ CCS decomposition for C_17a (q = 2 terms, degree 1):
 
 CCS decomposition for C_17b (degree 1): same shape as C_17a, selecting the evaluation point auxiliary register and the derived function of r4. the exact derivation of `eval(r4)` (how the BBG lookup key maps to a polynomial evaluation point) is specified in bbg/specs/indexes.md.
 
-the composed opening sub-instance is not part of the main CCS trace — it is a separate CCS proof, composed with the trace. its constraint count is that of the lens opening verifier as a nox program — not measured yet, TODO(F-numbers).
+the composed opening sub-instance is not part of the main CCS trace — it is a separate CCS proof, composed with the trace. its constraint count is that of the lens opening verifier as a nox program — not built (no verifier relation; `audit/accumulation-2026-10.md` §7 estimates ≈ 2^17 rows per accumulation step).
 
 ### hash pattern (15)
 
@@ -607,6 +607,6 @@ total per Poseidon2 round: 4 × w degree-2 constraints (S-box decomposition) + w
 | anonymous [[cyberlink]] | 15, 4, 9 | ~13,000 |
 | delivery (per hop) | 15, 7, 4 | ~60,000 |
 | private transfer (BBG) | 15, 7, 9 | ~50,000 |
-| recursive verification (Spartan verifier + WHIR opening as a nox program) | 15, 5, 7, 4 | TODO(F-numbers) |
+| recursive verification (Spartan verifier + WHIR opening as a nox program) | 15, 5, 7, 4 | not built (no verifier relation; `audit/accumulation-2026-10.md` §7 estimates ≈ 2^17 rows per accumulation step) |
 
 see [[SuperSpartan]] for the IOP that verifies constraints, [[sumcheck]] for the reduction mechanism, [[nox]] for pattern definitions, [[transcript]] for Fiat-Shamir challenge derivation

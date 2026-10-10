@@ -29,6 +29,9 @@
 //! and compiles only with the `legacy` feature; see [`legacy`] and
 //! `specs/soundness.md`.
 
+pub mod accumulate;
+pub mod air;
+pub mod machine;
 pub mod envelope;
 pub mod execution;
 pub mod field;
