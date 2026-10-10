@@ -86,6 +86,13 @@ fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
     Ok((pre, out))
 }
 
+/// The recursion profile's shipped grinding budget per challenge
+/// (`examples/ivc_plan`: at rate 1/16 and steps of 2^15 rows the step
+/// circuit fits with 16 bits — 29,628 of 32,768 rows — and a step's
+/// grinding falls from ≈ 2^24 to ≈ 2^18 permutations;
+/// `specs/soundness.md` § recursion).
+pub const SHIPPED_POW: u8 = 16;
+
 /// A step size and parameter set planned without committing the key: the
 /// step circuit's rows (it must fit the step's `2^n` with the nox
 /// segment beside it), its census (gates, decompositions, permutation

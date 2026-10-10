@@ -72,7 +72,7 @@ fn main() {
     let (prog, input) = fixture(&name).unwrap_or_else(|| panic!("fixture {name}"));
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = 4;
-    whir.pow_bits = 24;
+    whir.pow_bits = ivc::SHIPPED_POW;
     let n = 15u32;
     let dir: String = std::env::var("ZHENG_IVC_DIR").expect("ZHENG_IVC_DIR");
     let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());

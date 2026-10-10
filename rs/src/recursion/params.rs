@@ -159,19 +159,21 @@ mod tests {
     /// proves ≥ 128 bits (`specs/soundness.md` § recursion).
     #[test]
     fn every_ledger_row_of_the_recursion_profile_reaches_128_bits() {
-        for rate in [4u8, 6] {
-            rows_at(rate);
+        for (rate, pow) in [(4u8, 24u8), (6, 24), (4, super::super::ivc::SHIPPED_POW)] {
+            rows_at(rate, pow);
         }
     }
 
-    fn rows_at(rate: u8) {
+    fn rows_at(rate: u8, pow: u8) {
         let mut whir = crate::execution::succinct::params_for(20);
         whir.log_inv_rate = rate;
-        whir.pow_bits = 24;
+        whir.pow_bits = pow;
         let p = Params::new(&whir, 15).unwrap();
-        eprintln!("rate 1/{}", 1u32 << rate);
+        eprintln!("rate 1/{} pow {pow}", 1u32 << rate);
         let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
         let rows = ledger(&p);
+        let inter = rows.iter().map(|r| r.1 - f64::from(r.2)).fold(f64::INFINITY, f64::min);
+        eprintln!("interactive weakest {inter:.2}");
         for (name, bits, _) in &rows {
             eprintln!("{name:40} {bits:8.2}");
             assert!(*bits >= 128.0, "{name}: {bits}");

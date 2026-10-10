@@ -18,7 +18,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = 4;
-    whir.pow_bits = 24;
+    whir.pow_bits = ivc::SHIPPED_POW;
     let n = 15u32;
     let (prog, input) = match args.first().map(String::as_str).unwrap_or("add.tri") {
         "add.tri" => (common::parse(common::ADD), vec![7u64, 5]),

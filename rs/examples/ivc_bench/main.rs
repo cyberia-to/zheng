@@ -36,7 +36,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 fn main() {
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = env("ZHENG_RATE", 4);
-    whir.pow_bits = env("ZHENG_POW", 24);
+    whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: u32 = env("ZHENG_STEP", 15);
     let args: Vec<String> = std::env::args().skip(1).collect();
     let names = if args.is_empty() { vec!["add.tri".into()] } else { args };

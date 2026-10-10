@@ -87,20 +87,30 @@ fn round<A: Air>(
                 s.spawn(move || {
                     let mut h = vec![Fp3::ZERO; deg + 1];
                     let mut vals = vec![Fp3::ZERO; cols.len()];
+                    let mut step = vec![Fp3::ZERO; cols.len()];
                     let mut scratch = vec![Fp3::ZERO; k];
                     let lo_i = wi * chunk;
                     let hi_i = ((wi + 1) * chunk).min(pairs);
+                    let start = Fp3::from_base(Goldilocks::new(first as u64));
                     for i in lo_i..hi_i {
                         let (e0, e1) = (eq[2 * i], eq[2 * i + 1]);
+                        // every column along the line, one addition a point
+                        for ((v, d), c) in vals.iter_mut().zip(step.iter_mut()).zip(cols) {
+                            let (a, b) = (c[2 * i], c[2 * i + 1]);
+                            *d = b - a;
+                            *v = if first == 0 { a } else { a + start * *d };
+                        }
+                        let de = e1 - e0;
+                        let mut ex = e0 + start * de;
                         for (x, hx) in h.iter_mut().enumerate().skip(first) {
-                            let xf = Fp3::from_base(Goldilocks::new(x as u64));
-                            let ex = e0 + xf * (e1 - e0);
+                            if x > first {
+                                for (v, d) in vals.iter_mut().zip(&step) {
+                                    *v += *d;
+                                }
+                                ex += de;
+                            }
                             if ex == Fp3::ZERO {
                                 continue;
-                            }
-                            for (v, c) in vals.iter_mut().zip(cols) {
-                                let (a, b) = (c[2 * i], c[2 * i + 1]);
-                                *v = a + xf * (b - a);
                             }
                             *hx += ex * combine(air, w, &vals, ch, mu, &mut scratch);
                         }

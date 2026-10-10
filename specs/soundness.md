@@ -67,6 +67,16 @@ of `m = 4` words with `J = 64` claims (`t = 53`, `s = 1`, `query_pow = 24`,
 `comb_pow = 22`). Every number below is printed and checked ≥ 128 by
 `recursion::params::tests::every_ledger_row_of_the_recursion_profile_reaches_128_bits`.
 
+Shipped since `audit/wrap-fastverify-2026-10.md` (`ivc::SHIPPED_POW`):
+the same profile with **16 grinding bits** per challenge — `J = 69`
+claims, `t = 58` spot checks, `query_pow = 16`, `comb_pow = 17`; the
+step circuit 29,628 of 2^15 rows (`examples/ivc_plan`). Its rows, checked
+≥ 128 by the same test: combine 128.34, spot 128.28; decider batch
+combine 128.92, fold ≥ 128.43, shift ≥ 128.22, fin 129.00, OOD ≥ 154.8;
+the other rows as below (they do not depend on grinding). Interactively
+(every grinding removed) the weakest round carries **111.34** bits (104.01
+at 24 grinding bits).
+
 | component | assumption | bits claimed | status | argument | controlling parameter | test |
 |---|---|---|---|---|---|---|
 | field-native transcript (`recursion::sponge`) | hemera's permutation as an ideal permutation; capacity 7 lanes | challenges: output limbs, exactly uniform on `F_p` (no byte reduction); indices: low `k ≤ 32` bits of a limb `v ≠ p − 1`, exactly uniform since `2^k \| p − 1`; generic sponge bound `2^{c·64/2} = 2^{224}` for 7 capacity lanes, above the hash row's `2^128` digest bound | proven given the ideal permutation; hemera conjectured (hash row) | overwrite duplex with a fixed message schedule (every protocol absorbs a fixed number of items per round), domain tags per use | rate 9, tags | `recursion::sponge` via every recursion test |
