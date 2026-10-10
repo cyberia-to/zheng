@@ -344,10 +344,19 @@ impl WrapKey {
             }
         };
         let ok_mode = (self.params.mode == Mode::Inner) == self.key_root.is_some();
+        // the successor columns sent are exactly those the constraints read
+        // (inner: every column) — the column-batching row's premise; the
+        // key columns evaluated are derived from the graph on load
+        let ok_next = ok_graph && {
+            let used = self.g.used_inputs();
+            let want: Vec<usize> = (0..w).filter(|&c| self.params.mode == Mode::Inner || used[w + c]).collect();
+            self.next_cols == want && self.key_cols == super::key_used(&self.g, w)
+        };
         ok_graph
             && ok_sparse
             && ok_wiring
             && ok_mode
+            && ok_next
             && self.out_row < rows
             && self.next_cols.iter().all(|&c| c < w)
             && (4..=24).contains(&n)

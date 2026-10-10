@@ -196,7 +196,9 @@ verifier evaluates (`NativeWeight`); the closing check sums each weight
 against the final polynomial on the cube. One word is opened only by a
 native verifier (the final wrap): it absorbs its final polynomial as a
 message digest (`recursion::msg`: eight part sponges, tag `MSG`, and a
-sponge over their digests) instead of coefficient by coefficient. Trees are binary or 4-ary
+sponge over the message's length and their digests) instead of
+coefficient by coefficient; a native verifier only (`Ops::native`) takes
+the field-native closing check, a circuit the generic one. Trees are binary or 4-ary
 (`word::Arity`): a 4-ary node is the truncated permutation of its four
 children (all sixteen lanes); over an odd power of two leaves the top
 level is one binary node; the circuit's `NODE4` input places the current

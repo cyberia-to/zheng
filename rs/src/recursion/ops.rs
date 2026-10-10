@@ -79,6 +79,14 @@ pub trait Ops {
     type Chain;
 
     fn value(&self, v: Self::V) -> Fp3;
+    /// Whether this interpreter computes in the field and only there (no
+    /// circuit): a value it reads back with [`Self::value`] and returns
+    /// as a [`Self::constant`] is then as checked as any other. A circuit
+    /// must not take such shortcuts — a value lifted out and re-entered
+    /// as a constant is unconstrained.
+    fn native(&self) -> bool {
+        false
+    }
     fn gate(&mut self, g: Gate, x: Self::V, y: Self::V, z: Self::V) -> Self::V;
     /// The gate's output must be zero.
     fn assert_gate(&mut self, g: Gate, x: Self::V, y: Self::V, z: Self::V, what: &'static str);
@@ -293,6 +301,10 @@ fn base_of(x: Fp3) -> Option<Goldilocks> {
 impl Ops for Native {
     type V = Fp3;
     type Chain = NChain;
+
+    fn native(&self) -> bool {
+        true
+    }
 
     fn graph(&mut self, g: &crate::air::num::Graph, inputs: &[Fp3]) -> Vec<Fp3> {
         g.eval(inputs)
