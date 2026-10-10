@@ -92,6 +92,16 @@ pub trait Ops {
     /// The canonical 64-bit decomposition of a base value; returns its
     /// low `want` bits.
     fn bits(&mut self, v: Self::V, want: usize) -> Vec<Self::V>;
+
+    /// A recorded expression graph at `inputs` (the circuit compiles it to
+    /// gates; a native interpreter evaluates it in the field — the same
+    /// polynomial).
+    fn graph(&mut self, g: &crate::air::num::Graph, inputs: &[Self::V]) -> Vec<Self::V>
+    where
+        Self: Sized,
+    {
+        super::expr::compile(self, g, inputs)
+    }
 }
 
 /// Native interpretation: values, and the first failed check.
@@ -232,6 +242,10 @@ fn base_of(x: Fp3) -> Option<Goldilocks> {
 impl Ops for Native {
     type V = Fp3;
     type Chain = NChain;
+
+    fn graph(&mut self, g: &crate::air::num::Graph, inputs: &[Fp3]) -> Vec<Fp3> {
+        g.eval(inputs)
+    }
 
     fn value(&self, v: Fp3) -> Fp3 {
         v

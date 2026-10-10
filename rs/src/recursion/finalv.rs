@@ -18,7 +18,6 @@
 use nebu::Fp3;
 
 use super::decide::{self, Decider};
-use super::expr;
 use super::ivc::Key;
 use super::ops::{Arith, Ops};
 use super::state::{self, ClaimV, State};
@@ -81,7 +80,7 @@ pub fn run<O: Ops>(o: &mut O, key: &Key, pubs: &Publics<O::V>, state: &State, st
     let mut ins = fin.g.point.clone();
     ins.extend_from_slice(&pubs.ch);
     ins.extend(pubs.k.to_vec());
-    let g = expr::compile(o, &key.g, &ins)[0];
+    let g = o.graph(&key.g, &ins)[0];
     o.assert_eq(g, fin.g.value, "final: deferred constraints");
     decide::verify(o, &key.dcfg, &fin.acc, &fin.pv, key.kw.root, key.key_ext, p.n, dec);
     fin.pn

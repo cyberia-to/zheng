@@ -85,11 +85,25 @@ pub enum Mode {
 /// with the slot that writes its address, and every used slot's value as
 /// a combination of its row's phase-1 cells.
 pub struct Wiring {
-    /// `(read, write)` slot indices (`row·SLOTS + slot`).
-    pub reads: Vec<(u32, u32)>,
-    /// Per slot index (`row·SLOTS + slot`): `(column, coefficient)` of its
-    /// value (empty for an unused slot).
-    pub kappa: Vec<Vec<(u8, Fp3)>>,
+    /// Read slots (each paired with the slot writing its address).
+    pub reads: usize,
+    /// `u_λ = Σ_i λ^i·(read_i − write_i)` as `(i, word index, coefficient)`:
+    /// the read slot's cells with their coefficients, its write slot's
+    /// negated (a word index is `col·2^n + row`).
+    pub entries: Vec<(u32, u32, Fp3)>,
+}
+
+impl Wiring {
+    /// `1, λ, …, λ^{reads−1}`.
+    pub fn powers(&self, lambda: Fp3) -> Vec<Fp3> {
+        let mut out = Vec::with_capacity(self.reads);
+        let mut l = Fp3::ONE;
+        for _ in 0..self.reads {
+            out.push(l);
+            l *= lambda;
+        }
+        out
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -180,10 +194,15 @@ pub struct WrapProof {
     pub whir: whir::Proof,
 }
 
-/// The outermost proof: the deferred nox-public claim and the wrap proof
-/// whose public input binds it.
+/// The outermost proof: the recursive proof's header (step size, region
+/// start, segments, the chain of pre-committed roots), the deferred
+/// nox-public claim and the wrap proof whose public input binds them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinalProof {
+    pub log_rows: u32,
+    pub start: u64,
+    pub segments: u64,
+    pub chain: Digest,
     pub pn: ClaimV<Fp3>,
     pub wrap: WrapProof,
 }
@@ -273,6 +292,9 @@ pub fn g_graph(air: &CircuitAir, mode: Mode) -> (Graph, usize) {
 /// to.
 pub fn verify_final(prep: &super::ivc::Prepared, k: &WrapKey, fp: &FinalProof) -> Result<(), String> {
     use super::ops::{Native, Ops};
+    if prep.header != (fp.log_rows, fp.start, fp.segments, fp.chain) {
+        return Err("wrap: header".into());
+    }
     if fp.pn.point.len() != k.pn {
         return Err("wrap: nox-public claim shape".into());
     }
@@ -285,6 +307,14 @@ pub fn verify_final(prep: &super::ivc::Prepared, k: &WrapKey, fp: &FinalProof) -
     let xv = x.map(|v| o.constant(Fp3::from_base(v)));
     verify(&mut o, k, xv, &fp.wrap);
     o.finish()
+}
+
+/// Verify the outermost proof of `st` (the recursive proof's WHIR
+/// parameters `ivc_whir`): prepare the statement under the proof's
+/// header, then [`verify_final`].
+pub fn verify_statement(st: &crate::machine::MachineStatement, ivc_whir: &lens::WhirParams, k: &WrapKey, fp: &FinalProof) -> Result<(), String> {
+    let prep = super::ivc::prepare(st, ivc_whir, fp.log_rows, fp.start, fp.segments, fp.chain)?;
+    verify_final(&prep, k, fp)
 }
 
 /// Verify a wrap proof natively under public input `x`.

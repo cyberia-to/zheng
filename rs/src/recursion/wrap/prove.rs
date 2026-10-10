@@ -10,7 +10,7 @@ use crate::air::public::next_table;
 use crate::air::{Public, Trace, shift_prove, zerocheck_prove};
 use crate::recursion::circuit::air::CircuitAir;
 use crate::recursion::circuit::builder::Builder;
-use crate::recursion::circuit::layout::{SLOTS, V1, pre};
+use crate::recursion::circuit::layout::{V1, pre};
 use crate::recursion::circuit::trace;
 use crate::recursion::finalv::Publics;
 use crate::recursion::ops::Ops;
@@ -40,18 +40,10 @@ fn columns(t: &Trace) -> Vec<Vec<Fp3>> {
 pub(crate) fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
     let w = k.wiring.as_ref().expect("final mode");
     let rows = 1usize << k.params.n;
+    let lp = w.powers(lambda);
     let mut u = vec![Fp3::ZERO; WORD * rows];
-    let mut add = |s: u32, c: Fp3| {
-        let row = (s / SLOTS as u32) as usize;
-        for &(col, kc) in &w.kappa[s as usize] {
-            u[col as usize * rows + row] += c * kc;
-        }
-    };
-    let mut l = Fp3::ONE;
-    for &(r, wr) in &w.reads {
-        add(r, l);
-        add(wr, -l);
-        l *= lambda;
+    for &(i, x, kc) in &w.entries {
+        u[x as usize] += lp[i as usize] * kc;
     }
     u
 }

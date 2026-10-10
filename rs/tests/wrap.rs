@@ -24,21 +24,14 @@ fn refuses(st: &MachineStatement, fp: &FinalProof, k: &WrapKey, what: &str) {
     assert!(matches!(r, Ok(Err(_))), "{what} accepted");
 }
 
-thread_local! {
-    static HEADER: std::cell::RefCell<Option<(u64, u64, [Goldilocks; 4])>> = const { std::cell::RefCell::new(None) };
-}
-
 fn verify(st: &MachineStatement, fp: &FinalProof, k: &WrapKey) -> Result<(), String> {
-    let (start, segments, chain) = HEADER.with(|h| h.borrow().expect("header"));
-    let prep = ivc::prepare(st, &whir(4), STEP, start, segments, chain)?;
-    wrap::verify_final(&prep, k, fp)
+    wrap::verify_statement(st, &whir(4), k, fp)
 }
 
 #[test]
 fn a_wrapped_proof_verifies_and_binds_its_statement() {
     let prog = common::parse(common::ADD);
     let (st, p) = ivc::prove(&prog, &[7, 5], 1 << 20, &whir(4), STEP).unwrap();
-    HEADER.with(|h| *h.borrow_mut() = Some((p.start, p.segments, p.chain)));
     let ikey = ivc::key(&whir(4), STEP as usize).unwrap();
     let prep = ivc::prepare(&st, &whir(4), STEP, p.start, p.segments, p.chain).unwrap();
     let pn = ivc::verify_claim(&prep, &p).unwrap();
@@ -48,7 +41,7 @@ fn a_wrapped_proof_verifies_and_binds_its_statement() {
     let k1 = wrap::derive_key_wrap(WrapParams { whir: whir(4), n: 0, mode: Mode::Final }, &k0).unwrap();
     let (w1, x1) = wrap::prove(&k1, &Inner::Wrap { key: &k0, proof: &w0 }, &prep.publics, &pn).unwrap();
     assert_eq!(x0, x1, "every level binds the same public values");
-    let fp = FinalProof { pn: pn.clone(), wrap: w1 };
+    let fp = FinalProof { log_rows: p.log_rows, start: p.start, segments: p.segments, chain: p.chain, pn: pn.clone(), wrap: w1 };
     let bytes = fp.to_bytes(&k1);
     let fp = FinalProof::from_bytes(&bytes, &k1).unwrap();
     verify(&st, &fp, &k1).unwrap();
@@ -82,6 +75,9 @@ fn a_wrapped_proof_verifies_and_binds_its_statement() {
         Box::new(|p| p.wrap.whir.sumcheck0[1] += Fp3::ONE),
         Box::new(|p| p.wrap.whir.final_poly[0] += Fp3::ONE),
         Box::new(|p| p.wrap.whir.rounds[0].open[0][0].symbols[2] += Fp3::ONE),
+        Box::new(|p| p.segments += 1),
+        Box::new(|p| p.chain[0] += Goldilocks::ONE),
+        Box::new(|p| p.start += 32),
     ];
     for (i, f) in tamper.iter().enumerate() {
         let mut bad = fp.clone();

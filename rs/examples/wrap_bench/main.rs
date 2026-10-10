@@ -83,7 +83,7 @@ fn main() {
             Some(prev) => wrap::derive_key_wrap(*p, prev),
         }
         .expect("wrap key");
-        let reads = k.wiring.as_ref().map_or(0, |w| w.reads.len());
+        let reads = k.wiring.as_ref().map_or(0, |w| w.reads);
         let rows = wrap::ledger(&k.params, &k.cfg, k.constraints, reads);
         let (wname, wbits) = rows.iter().fold(("", f64::INFINITY), |a, (nm, b)| if *b < a.1 { (nm.as_str(), *b) } else { a });
         eprintln!("wrap {i} ledger: {} rows, weakest {wname} {wbits:.2} bits", rows.len());
@@ -171,7 +171,7 @@ fn main() {
             wraps.push(parsed);
         }
         let last = keys.last().expect("a level");
-        let fp = FinalProof { pn: pn.clone(), wrap: wraps.pop().expect("a wrap") };
+        let fp = FinalProof { log_rows: proof.log_rows, start: proof.start, segments: proof.segments, chain: proof.chain, pn: pn.clone(), wrap: wraps.pop().expect("a wrap") };
         let bytes = fp.to_bytes(last);
         let fp = FinalProof::from_bytes(&bytes, last).expect("parse");
         let mut v = Vec::new();

@@ -219,6 +219,17 @@ fn wiring(pre: &trace::Pre) -> Wiring {
             }
         }
     }
-    let reads = reads_at.into_iter().map(|(r, a)| (r, *writes.get(&a).expect("every read address is written"))).collect();
-    Wiring { reads, kappa }
+    let n = rows.trailing_zeros();
+    let x = |s: u32, c: u8| ((c as u32) << n) | (s / SLOTS as u32);
+    let mut entries = Vec::new();
+    for (i, &(r, a)) in reads_at.iter().enumerate() {
+        let w = *writes.get(&a).expect("every read address is written");
+        for &(c, kc) in &kappa[r as usize] {
+            entries.push((i as u32, x(r, c), kc));
+        }
+        for &(c, kc) in &kappa[w as usize] {
+            entries.push((i as u32, x(w, c), -kc));
+        }
+    }
+    Wiring { reads: reads_at.len(), entries }
 }

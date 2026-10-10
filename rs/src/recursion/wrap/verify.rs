@@ -6,7 +6,6 @@ use nebu::Fp3;
 use super::{CBITS, DEGREE, WrapKey, WrapProof};
 use crate::recursion::acc::{ClaimRef, InstV};
 use crate::recursion::circuit::layout::{V1, pre};
-use crate::recursion::expr;
 use crate::recursion::gm;
 use crate::recursion::ops::{Arith, Ops};
 use crate::recursion::perm::tag;
@@ -83,36 +82,14 @@ impl whir::NativeWeight for WiringWeight<'_> {
     /// `α` its low `ℓ − fv` bits, `b` the rest.
     fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3> {
         let w = self.k.wiring.as_ref().expect("final mode");
-        let n = self.k.params.n;
         let pre = alpha.len();
         let ea = eq_table(alpha);
         let mask = (1usize << pre) - 1;
-        let slots = crate::recursion::circuit::layout::SLOTS;
-        // every used slot's contribution per final-variable value b, once
-        let at: Vec<Vec<(usize, Fp3)>> = w
-            .kappa
-            .iter()
-            .enumerate()
-            .map(|(s, kp)| {
-                let row = s / slots;
-                kp.iter()
-                    .map(|&(c, kc)| {
-                        let x = ((c as usize) << n) | row;
-                        (x >> pre, kc * ea[x & mask])
-                    })
-                    .collect()
-            })
-            .collect();
+        let lp = w.powers(self.lambda);
         let mut out = vec![Fp3::ZERO; 1 << fv];
-        let mut l = Fp3::ONE;
-        for &(r, wr) in &w.reads {
-            for &(b, v) in &at[r as usize] {
-                out[b] += l * v;
-            }
-            for &(b, v) in &at[wr as usize] {
-                out[b] -= l * v;
-            }
-            l *= self.lambda;
+        for &(i, x, kc) in &w.entries {
+            let x = x as usize;
+            out[x >> pre] += lp[i as usize] * (kc * ea[x & mask]);
         }
         out
     }
@@ -180,7 +157,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     ins.extend_from_slice(&key);
     ins.extend_from_slice(&pin);
     ins.extend_from_slice(&[ab[0], ab[1], mu]);
-    let g = expr::compile(o, &k.g, &ins)[0];
+    let g = o.graph(&k.g, &ins)[0];
     o.assert_eq(g, c, "wrap: constraints");
     lap("constraints");
     if !inner {
