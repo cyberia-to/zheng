@@ -28,7 +28,25 @@ pub struct Gate {
 
 impl Gate {
     pub fn eval(&self, x: Fp3, y: Fp3, z: Fp3) -> Fp3 {
-        self.qm * x * (y + self.qs * z) + self.qa * x + self.qb * y + self.qc * z + self.qk
+        // the same value, skipping zero and unit coefficients (the native
+        // verifier runs every gate of its program)
+        let (zero, one) = (Fp3::ZERO, Fp3::ONE);
+        let scale = |c: Fp3, v: Fp3| if c == one { v } else { c * v };
+        let mut out = self.qk;
+        if self.qm != zero {
+            let t = if self.qs == zero { y } else { y + scale(self.qs, z) };
+            out += scale(self.qm, x * t);
+        }
+        if self.qa != zero {
+            out += scale(self.qa, x);
+        }
+        if self.qb != zero {
+            out += scale(self.qb, y);
+        }
+        if self.qc != zero {
+            out += scale(self.qc, z);
+        }
+        out
     }
 }
 
