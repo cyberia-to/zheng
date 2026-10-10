@@ -61,7 +61,7 @@ load 13–40). After: this branch, chain `4i:16,8i,9f:24`.
 | peak memory | 32–38 GB max RSS (45.7–61.3 GB footprint) | **19.5 GB** max RSS, 14.1 GB footprint (keys of every level held: ≈ 7 GB before proving starts) | — |
 | ledger | weakest 128.24 / 128.29 / 128.02 | weakest 128.22 / 128.29 / 128.40 | ≥ 128 — met |
 | interactive (no grinding) | 104.42 / 104.29 / 98.02 (the combination's grinding not counted) | 109.34 / 104.29 / 104.70 (fold, query and combination grinding removed) | stated |
-| bit-flip scan of the final proof | 500,712 flips, 0 accepted | **510,920 flips, 510,104 decoded, 0 accepted**, 0 panics (562 s) | 0 — met |
+| bit-flip scan of the final proof | 500,712 flips, 0 accepted | **510,920 flips, 510,104 decoded, 0 accepted**, 0 panics — twice (562 s; 682 s on the final verifier code, with the permutation recall and the packed closing) | 0 — met |
 
 Permutations per verification (deterministic): before ≈ 1,000 batched +
 the transcript's (not counted); after **107 one at a time + 1,500
@@ -128,7 +128,7 @@ the floor of this design on a quiet machine, above the 1 ms goal.
 | `wrap::ledger` tests (`every_ledger_row_of_the_wrap_profiles_reaches_128_bits`, the shipped chain's) | passed |
 | streamed words = held words (`stream::tests`, `word::tests::streamed_leaf_digests_equal_the_held_codeword_s`) | passed |
 | message digest native = over `Ops` (`msg::tests`) | passed |
-| bit-flip scan (`wrap_flip add.tri`) | 510,920 flips, 0 accepted |
+| bit-flip scan (`wrap_flip add.tri`) | 510,920 flips, 0 accepted (twice; the second on the final code) |
 | verifying key bytes round trip (`wrap_verify`) | re-serialised bytes equal |
 
 ## 6. what is left
