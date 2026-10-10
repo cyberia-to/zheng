@@ -68,9 +68,9 @@ fn path_of(levels: &[Vec<Digest>], arity: Arity, j: usize) -> Vec<Digest> {
     let mut idx = j;
     for (level, a) in levels.iter().zip(arity.levels(log)) {
         let base = idx & !(a - 1);
-        for c in base..base + a {
+        for (c, d) in level.iter().enumerate().skip(base).take(a) {
             if c != idx {
-                path.push(level[c]);
+                path.push(*d);
             }
         }
         idx /= a;

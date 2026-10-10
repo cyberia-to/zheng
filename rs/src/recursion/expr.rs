@@ -148,8 +148,8 @@ pub fn compile<O: Ops>(o: &mut O, g: &Graph, inputs: &[O::V]) -> Vec<O::V> {
         }
     }
     let mut c: Compiler<'_, O> = Compiler { g, lin: vec![None; n], mat: vec![None; n] };
-    for i in 0..n {
-        if !need[i] {
+    for (i, &needed) in need.iter().enumerate() {
+        if !needed {
             continue;
         }
         let l = match c.g.nodes[i] {
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn a_compiled_graph_computes_the_polynomial() {
-        let g = record(4, |i| poly(i));
+        let g = record(4, poly);
         let x: Vec<Fp3> = (0..4).map(e).collect();
         let want = poly(&x);
         assert_eq!(g.eval(&x), want);

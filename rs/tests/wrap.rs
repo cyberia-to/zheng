@@ -66,7 +66,8 @@ fn a_wrapped_proof_verifies_and_binds_its_statement() {
     let mut bad = fp.clone();
     bad.pn.point[3] += Fp3::ONE;
     refuses(&st, &bad, &k1, "a deferred claim point");
-    let tamper: Vec<Box<dyn Fn(&mut FinalProof)>> = vec![
+    type Tamper = Box<dyn Fn(&mut FinalProof)>;
+    let tamper: Vec<Tamper> = vec![
         Box::new(|p| p.wrap.roots[0][1] += Goldilocks::ONE),
         Box::new(|p| p.wrap.ood[0][0] += Fp3::ONE),
         Box::new(|p| p.wrap.zerocheck[2][4] += Fp3::ONE),

@@ -119,7 +119,8 @@ fn a_wrong_claim_or_a_tampered_proof_is_refused() {
     bad.claims[1][0].1 += Fp3::ONE;
     assert!(check(&bad, &pf).is_err());
     // tampered messages
-    let tamper: Vec<Box<dyn Fn(&mut Proof)>> = vec![
+    type Tamper = Box<dyn Fn(&mut Proof)>;
+    let tamper: Vec<Tamper> = vec![
         Box::new(|p| p.batch.sumcheck[3] += Fp3::ONE),
         Box::new(|p| p.batch.evals[0] += Fp3::ONE),
         Box::new(|p| p.ood0[0] += Fp3::ONE),
@@ -247,7 +248,7 @@ fn direct_case(n: usize) {
     let z = e(77);
     let p: Vec<Fp3> = (0..ell as u64).map(|i| e(40 + i)).collect();
     let dot = |w: &[Fp3]| w.iter().zip(&f).fold(Fp3::ZERO, |a, (&x, &y)| a + x * y);
-    let tables = vec![lens::rspcs::field::eq_table(&p), lens::rspcs::field::eq_table(&pow_point(z, ell)), rowcol(false), rowcol(true), lin.clone()];
+    let tables = [lens::rspcs::field::eq_table(&p), lens::rspcs::field::eq_table(&pow_point(z, ell)), rowcol(false), rowcol(true), lin.clone()];
     let claims: Vec<(Vec<Fp3>, Fp3)> = tables.iter().map(|w| (w.clone(), dot(w))).collect();
     let mut t = ProverTranscript::new(tag::STEP);
     let pf = prove_direct(&cfg, &mut t, &word, &claims).unwrap();
