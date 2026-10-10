@@ -68,6 +68,14 @@ as profile 1 on the masked relation (`veil::pad`), with Libra masks on both sumc
 
 lands with accumulation (`accumulation.md`, `machine.md`, in progress in this release): the nox machine is one uniform step relation; the prover accumulates RS evaluation claims step by step (ARC/WARP-style), and the verifier checks the final accumulator with ONE WHIR opening. goal: ≤ 64 KB, verify ≤ 1 ms, constant in the number of steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`); decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments).
 
+## profile 5 — recursive proof (IVC)
+
+the nox run proven by incrementally verifiable computation (`recursion.md`): each 2^15-row step's circuit verifies the previous step, so the proof is the last step's proof, the state it started from, its accumulation step and one decider — constant in the number of steps. the verifier admits only the parameter sets of `envelope::recursive::ADMITTED` (WHIR rate 1/16 or 1/64, folding 4, 24 grinding bits, steps of 2^15 rows; every ledger row ≥ 128 bits), derives the circuit key of that set once per process (`ivc::key`, cached), prepares the statement side (`ivc::prepare`), verifies the step natively, checks the final state against this run (context, pre-commitment chain, step count, cyclic boundary), the three deferred claims, and the decider.
+
+## profile 6 — wrapped proof
+
+the profile-5 proof's final verifier, proved by three wrap levels of the recursion circuit (`recursion.md` § wrap): the final proof is the recursive proof's header, the deferred nox-public claim and one final-mode wrap proof — ≤ 64 KB, constant in the number of steps. the verifier admits only the chain of `envelope::wrapped::chain()` (IVC at 1/16 over 2^15-row steps; wrap 1/64 inner, 1/256 inner, 1/256 final, 30 grinding bits on the last two; every ledger row ≥ 128 bits), prepares the statement side under the proof's header (`ivc::prepare`, IVC key cached), evaluates the deferred claim against the statement's columns, recomputes the public digest `X` and verifies the final wrap natively (`wrap::verify_statement`). the final key is cached per process; a fresh process derives it over the inner levels' pinned key roots (`wrapped::INNER_ROOTS`) or installs it from a pinned key bundle (`envelope::keys`).
+
 ## recursion
 
 a zheng verifier can be written as a nox program and proven (the Trident verifier). that is composition — proving a statement about proofs — and never the way proofs get small: size and constancy come from accumulation, not from re-proving verifiers.
@@ -78,7 +86,8 @@ a zheng verifier can be written as a nox program and proven (the Trident verifie
 ENVELOPE:
   magic    "ZHENGPF1"
   version  u16 LE (1)
-  profile  u8  (0 public, 1 succinct, 2 zk, 3 state-public; 4 machine with phase 3)
+  profile  u8  (0 public, 1 succinct, 2 zk, 3 state-public, 4 machine, 5 recursive,
+           6 wrapped)
   body     canonical: shortest LEB128, field values < p, flags 0|1,
            lengths bounded before allocation, no trailing bytes
 ```

@@ -47,6 +47,12 @@ pub(super) fn encode(envelope: &Envelope, w: &mut Writer) {
             statement,
             proof,
         } => super::machine::encode(params, statement, proof, w),
+        Envelope::Recursive {
+            params,
+            statement,
+            proof,
+        } => super::recursive::encode(params, statement, proof, w),
+        Envelope::Wrapped { statement, proof } => super::wrapped::encode(statement, proof, w),
     }
 }
 
@@ -98,6 +104,8 @@ pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
         }),
         Profile::Succinct => super::succinct::decode(r),
         Profile::Machine => super::machine::decode(r),
+        Profile::Recursive => super::recursive::decode(r),
+        Profile::Wrapped => super::wrapped::decode(r),
     }
 }
 

@@ -10,7 +10,7 @@ use super::EnvelopeError as E;
 use nebu::field::P;
 
 #[derive(Default)]
-pub(super) struct Writer {
+pub(crate) struct Writer {
     pub bytes: Vec<u8>,
 }
 
@@ -37,7 +37,7 @@ impl Writer {
     }
 }
 
-pub(super) struct Reader<'a> {
+pub(crate) struct Reader<'a> {
     bytes: &'a [u8],
 }
 

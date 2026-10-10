@@ -4,6 +4,7 @@
 //! magic    8 bytes  "ZHENGPF1"
 //! version  u16 LE   VERSION
 //! profile  u8       0 public · 1 succinct · 2 zk · 3 state-public · 4 machine
+//!                   · 5 recursive · 6 wrapped
 //! body              per profile, canonical (see `codec`)
 //! ```
 //!
@@ -21,6 +22,12 @@
 //!   root-in-subject flag, the reads, then the v3 certificate.
 //! - machine (4): WHIR parameters, the machine statement (program, inputs,
 //!   output noun, cycles, budget), then the machine proof (see `machine`).
+//! - recursive (5): format byte, WHIR parameters (an admitted set), the
+//!   machine statement as in profile 4, then the IVC proof, length-prefixed
+//!   (see `recursive`).
+//! - wrapped (6): format byte, the admitted chain (IVC WHIR header, wrap
+//!   levels' headers and modes), the machine statement as in profile 4,
+//!   then the final proof, length-prefixed (see `wrapped`).
 //!
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
@@ -29,8 +36,11 @@
 //! value or flag, any length beyond its bound, truncation and trailing bytes.
 
 mod body;
-mod codec;
+pub(crate) mod codec;
 mod machine;
+pub mod keys;
+pub mod recursive;
+pub mod wrapped;
 mod succinct;
 #[cfg(test)]
 mod tests;
@@ -64,6 +74,12 @@ pub enum Profile {
     /// A nox run of any length: the uniform step relation, accumulation,
     /// one decider.
     Machine = 4,
+    /// A nox run of any length proven by IVC: the last step, its
+    /// accumulation step and one decider — constant in the steps.
+    Recursive = 5,
+    /// A nox run of any length proven by IVC, its final verifier proved
+    /// by wrap levels: ≤ 64 KB, constant in the steps.
+    Wrapped = 6,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,6 +125,15 @@ pub enum Envelope {
         params: lens::WhirParams,
         statement: crate::machine::MachineStatement,
         proof: Box<crate::machine::MachineProof>,
+    },
+    Recursive {
+        params: lens::WhirParams,
+        statement: crate::machine::MachineStatement,
+        proof: Box<crate::recursion::ivc::IvcProof>,
+    },
+    Wrapped {
+        statement: crate::machine::MachineStatement,
+        proof: Box<crate::recursion::wrap::FinalProof>,
     },
 }
 
@@ -173,6 +198,8 @@ impl Envelope {
             Self::StatePublic { .. } => Profile::StatePublic,
             Self::Succinct { .. } => Profile::Succinct,
             Self::Machine { .. } => Profile::Machine,
+            Self::Recursive { .. } => Profile::Recursive,
+            Self::Wrapped { .. } => Profile::Wrapped,
         }
     }
 
@@ -203,6 +230,8 @@ impl Envelope {
             2 => Profile::Zk,
             3 => Profile::StatePublic,
             4 => Profile::Machine,
+            5 => Profile::Recursive,
+            6 => Profile::Wrapped,
             other => return Err(EnvelopeError::UnknownProfile(other)),
         };
         let envelope = body::decode(profile, &mut r)?;
@@ -211,9 +240,10 @@ impl Envelope {
     }
 
     /// Verify the proof against its own statement. The state profiles (3,
-    /// and 1 with a state statement) need `state`: zheng authenticates it
-    /// under the statement's root and every read against it; the other
-    /// profiles never consult it.
+    /// 1 with a state statement, 4–6 with a machine statement that reads
+    /// state) need `state`: zheng authenticates it under the statement's
+    /// root and every read against it; the other profiles never consult
+    /// it.
     pub fn verify(&self, state: Option<&StateEvidence>) -> Result<(), String> {
         match self {
             Self::Public {
@@ -257,6 +287,12 @@ impl Envelope {
                 statement,
                 proof,
             } => crate::machine::verify_with_state(statement, proof, params, state),
+            Self::Recursive {
+                params,
+                statement,
+                proof,
+            } => recursive::verify(params, statement, proof, state),
+            Self::Wrapped { statement, proof } => wrapped::verify(statement, proof, state),
         }
     }
 }

@@ -109,11 +109,21 @@ pub(crate) fn dummy_proof(k: &WrapKey) -> WrapProof {
 /// Derive the key of the wrap level over the IVC final verifier
 /// (`params.n = 0`: the smallest size the circuit fits).
 pub fn derive_key_ivc(params: WrapParams, key: &Key) -> Result<WrapKey, String> {
+    key_over_ivc(params, key, None)
+}
+
+/// [`derive_key_ivc`] for an inner level whose key root is known (pinned):
+/// the key words are not committed — the cheap path to the levels above.
+pub fn derive_key_ivc_at(params: WrapParams, key: &Key, root: Digest) -> Result<WrapKey, String> {
+    key_over_ivc(params, key, Some(root))
+}
+
+fn key_over_ivc(params: WrapParams, key: &Key, root: Option<Digest>) -> Result<WrapKey, String> {
     let state = ivc_program::dummy_state(&key.params);
     let step = ivc_program::dummy_proof(&key.params);
     let decider = decide::dummy(&key.dcfg);
     let proof = IvcProof { log_rows: key.params.n as u32, start: 0, segments: 1, chain: [nebu::Goldilocks::ZERO; 4], state, step, decider };
-    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n))
+    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n), root)
 }
 
 /// Derive the key of a wrap level over another wrap level's verifier.
@@ -125,12 +135,22 @@ pub fn derive_key_wrap(params: WrapParams, key: &WrapKey) -> Result<WrapKey, Str
         return Err("wrap: a final-mode level is verified natively only".into());
     }
     let proof = dummy_proof(key);
-    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc)
+    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc, None)
+}
+
+/// [`derive_key_wrap`] for an inner level whose key root is known
+/// (pinned).
+pub fn derive_key_wrap_at(params: WrapParams, key: &WrapKey, root: Digest) -> Result<WrapKey, String> {
+    if !key.inner() {
+        return Err("wrap: a final-mode level is verified natively only".into());
+    }
+    let proof = dummy_proof(key);
+    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc, Some(root))
 }
 
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
 /// never read: layouts are fixed by shapes).
-fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize)) -> Result<WrapKey, String> {
+fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize), key_root: Option<Digest>) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
     let pn = ClaimV { point: vec![Fp3::ZERO; inner.pn_len()], value: Fp3::ZERO };
     let mut b = Builder::new(false);
@@ -139,6 +159,16 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
     let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
     let n = if params.n == 0 { rows.next_power_of_two().trailing_zeros().max(4) as usize } else { params.n };
     let (_, pre, out_row) = trace::generate(&b, &air, n)?;
+    assemble(WrapParams { n, ..params }, ivc, pre, out_row, rows, census, inner.pn_len(), key_root)
+}
+
+/// Everything but the circuit layout (`pre`, the output row, the census)
+/// rebuilt from it; an inner level's key words are committed unless their
+/// root is given.
+#[allow(clippy::too_many_arguments)]
+fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre, out_row: usize, rows: usize, census: [usize; 3], pn: usize, key_root: Option<Digest>) -> Result<WrapKey, String> {
+    let air = CircuitAir::default();
+    let n = params.n;
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
@@ -146,23 +176,19 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
     let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
     let cfg = whir::Config::derive(&params.whir, vars, groups, claims)?.with_arity(arity);
     let wiring = (!committed).then(|| wiring(&pre));
-    let (key_root, key_ext) = if committed {
-        let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre, arity);
-        (Some(kw.root), ext)
-    } else {
-        (None, pre.cols.iter().flatten().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO))
+    let key_ext = crate::recursion::vkey::ext(&pre);
+    let key_root = match (committed, key_root) {
+        (false, _) => None,
+        (true, Some(r)) => Some(r),
+        (true, None) => Some(KeyWords::commit(cfg.layout(0), n, &pre, arity).0.root),
     };
-    let sparse = pre
-        .cols
-        .iter()
-        .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
-        .collect();
+    let sparse = crate::recursion::vkey::sparse(&pre);
     let (g, constraints) = g_graph(&air, params.mode);
     let w = if committed { super::COLS } else { crate::recursion::circuit::layout::V1 };
     let used = g.used_inputs();
     let next_cols: Vec<usize> = (0..w).filter(|&c| committed || used[w + c]).collect();
     Ok(WrapKey {
-        params: WrapParams { n, ..params },
+        params,
         pre,
         sparse,
         key_root,
@@ -174,11 +200,65 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
         g,
         constraints,
         next_cols,
-        pn: inner.pn_len(),
+        pn,
         ivc,
         rows,
         census,
     })
+}
+
+/// Tag of a wrap key layout.
+const LAYOUT_TAG: &[u8; 8] = b"ZHKWRP01";
+
+impl WrapKey {
+    /// The key's layout as canonical bytes (`recursion::vkey`): tag, WHIR
+    /// header, mode (0 inner, 1 final), the recursive proof's WHIR header
+    /// and step size (`WrapKey::ivc`), `log2` rows, the deferred claim's
+    /// point length, output row, circuit rows, census, the key words' root
+    /// (inner levels), the fixed columns.
+    pub fn layout_bytes(&self) -> Vec<u8> {
+        use crate::recursion::vkey;
+        let mut w = crate::envelope::codec::Writer::default();
+        w.raw(LAYOUT_TAG);
+        w.raw(&self.params.whir.header());
+        w.bool(self.params.mode == Mode::Final);
+        w.raw(&self.ivc.0.header());
+        for v in [self.ivc.1, self.params.n, self.pn, self.out_row, self.rows, self.census[0], self.census[1], self.census[2]] {
+            w.varint(v as u64);
+        }
+        if let Some(r) = &self.key_root {
+            vkey::write_digest(&mut w, r);
+        }
+        vkey::write_pre(&mut w, &self.pre);
+        w.bytes
+    }
+
+    /// Rebuild a key from [`WrapKey::layout_bytes`]. The caller vouches for
+    /// the bytes (their digest is pinned: `envelope::keys`).
+    pub fn from_layout(bytes: &[u8]) -> Result<Self, String> {
+        use crate::execution::succinct::SuccinctPcs;
+        use crate::recursion::vkey;
+        let e = |e: crate::envelope::EnvelopeError| format!("wrap key layout: {e}");
+        let mut r = crate::envelope::codec::Reader::new(bytes);
+        if r.raw(LAYOUT_TAG.len()).map_err(e)? != LAYOUT_TAG {
+            return Err("wrap key layout: tag".into());
+        }
+        let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "wrap key layout: header")?;
+        let mode = if r.bool().map_err(e)? { Mode::Final } else { Mode::Inner };
+        let ivc_whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "wrap key layout: recursive header")?;
+        let mut v = [0usize; 8];
+        for x in &mut v {
+            *x = usize::try_from(r.varint().map_err(e)?).map_err(|_| "wrap key layout: size")?;
+        }
+        let [ivc_n, n, pn, out_row, rows, c0, c1, c2] = v;
+        if !(10..=20).contains(&ivc_n) || !(4..=20).contains(&n) || out_row >= 1 << n || rows > 1 << n || pn > 64 {
+            return Err("wrap key layout: geometry".into());
+        }
+        let key_root = if mode == Mode::Inner { Some(vkey::read_digest(&mut r)?) } else { None };
+        let pre = vkey::read_pre(&mut r, 1 << n)?;
+        r.finish().map_err(e)?;
+        assemble(WrapParams { whir, n, mode }, (ivc_whir, ivc_n), pre, out_row, rows, [c0, c1, c2], pn, key_root)
+    }
 }
 
 /// The memory argument's slots as linear wiring: every read slot paired
@@ -194,14 +274,15 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
     let mut reads_at: Vec<(u32, [u64; 3])> = Vec::new();
     let mut kappa = vec![Vec::new(); rows * SLOTS];
     let key = |x: Fp3| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()];
-    for r in 0..rows {
+    // every used slot's cells, per row (rows are independent: threads)
+    let slots_of = |r: usize| -> Vec<(usize, Vec<(u8, Fp3)>)> {
         let p = pre.row(r);
         if p[pc::MEM] != one {
-            continue;
+            return Vec::new();
         }
         let used: Vec<usize> = (0..SLOTS).filter(|&s| p[pc::E + s] != Fp3::ZERO).collect();
         if used.is_empty() {
-            continue;
+            return Vec::new();
         }
         let mut unit = vec![Fp3::ZERO; V1];
         let mut per: Vec<Vec<(u8, Fp3)>> = vec![Vec::new(); SLOTS];
@@ -215,11 +296,25 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
                 }
             }
         }
-        for &s in &used {
+        used.into_iter().map(|s| (s, core::mem::take(&mut per[s]))).collect()
+    };
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let chunk = rows.div_ceil(threads);
+    let per_row: Vec<Vec<(usize, Vec<(u8, Fp3)>)>> = std::thread::scope(|sc| {
+        let hs: Vec<_> = (0..rows)
+            .step_by(chunk)
+            .map(|lo| sc.spawn(move || (lo..(lo + chunk).min(rows)).map(slots_of).collect::<Vec<_>>()))
+            .collect();
+        hs.into_iter().flat_map(|h| h.join().expect("wiring thread")).collect()
+    });
+    // reads in row order; a later write of an address replaces an earlier
+    for (r, slots) in per_row.into_iter().enumerate() {
+        for (s, cells) in slots {
             let idx = (r * SLOTS + s) as u32;
-            kappa[idx as usize] = core::mem::take(&mut per[s]);
-            let addr = key(p[pc::ADDR + s]);
-            if p[pc::E + s] == one {
+            kappa[idx as usize] = cells;
+            let p_addr = pre.cols[pc::ADDR + s][r];
+            let addr = key(p_addr);
+            if pre.cols[pc::E + s][r] == one {
                 reads_at.push((idx, addr));
             } else {
                 writes.insert(addr, idx);
