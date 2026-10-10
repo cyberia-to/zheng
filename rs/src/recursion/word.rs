@@ -63,20 +63,32 @@ fn tree(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
 }
 
 /// The path of leaf `j`: per level its siblings in child order.
-fn path_of(levels: &[Vec<Digest>], arity: Arity, j: usize) -> Vec<Digest> {
-    let log = levels[0].len().trailing_zeros() as usize;
+/// The path of leaf `j` (`2^log` leaves): per level its siblings in child
+/// order. A streamed word keeps no leaf level (`levels[0]` empty): its
+/// leaf-level siblings come from `leaf` (recomputed from the
+/// coefficients).
+fn path_of(levels: &[Vec<Digest>], arity: Arity, j: usize, log: usize, leaf: impl Fn(usize) -> Digest) -> Vec<Digest> {
     let mut path = Vec::with_capacity(arity.path_len(log));
     let mut idx = j;
-    for (level, a) in levels.iter().zip(arity.levels(log)) {
+    for (li, (level, a)) in levels.iter().zip(arity.levels(log)).enumerate() {
         let base = idx & !(a - 1);
-        for (c, d) in level.iter().enumerate().skip(base).take(a) {
+        for c in base..base + a {
             if c != idx {
-                path.push(*d);
+                path.push(if li == 0 && level.is_empty() { leaf(c) } else { level[c] });
             }
         }
         idx /= a;
     }
     path
+}
+
+/// A streamed word's tree keeps its levels from the first nodes up: the
+/// leaf level (the largest) is recomputed for the few siblings an
+/// opening needs.
+fn drop_leaf_level(levels: &mut [Vec<Digest>], layout: LeafLayout) {
+    if streamed(layout) {
+        levels[0] = Vec::new();
+    }
 }
 
 enum Data {
@@ -192,7 +204,7 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
 /// Leaf digests of members streamed coset by coset ([`stream`]).
 fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
     let ext = members[0].is_ext();
-    stream::digests(members, layout.log_domain, layout.log_width, |rows| hash_leaves(rows.len(), rows[0].len(), ext, |j, t| rows[j][t]))
+    stream::digests(members, layout.log_domain, layout.log_width, |leaves, width, sym| hash_leaves(leaves, width, ext, sym))
 }
 
 fn parents4(level: &[Digest]) -> Vec<Digest> {
@@ -226,9 +238,34 @@ fn parents(level: &[Digest]) -> Vec<Digest> {
     out
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Tests stream every word (the streamed paths at small sizes).
+    static FORCE_STREAM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
 /// Whether a codeword over `layout` is streamed (never held).
 fn streamed(layout: LeafLayout) -> bool {
+    #[cfg(test)]
+    if FORCE_STREAM.with(|f| f.get()) {
+        return true;
+    }
     layout.log_domain > STREAM_LOG
+}
+
+/// A member word that is always streamed (fixed words a key holds for
+/// every proof: their codewords are never kept).
+impl Word {
+    pub fn member_base_streamed(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
+        let mut coeffs = evals.to_vec();
+        mobius_base(&mut coeffs);
+        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code: Vec::new() }, levels: Vec::new(), arity: Arity::Two }
+    }
+    pub fn member_ext_streamed(layout: LeafLayout, evals: &[Fp3]) -> Self {
+        let mut coeffs = evals.to_vec();
+        mobius_ext(&mut coeffs);
+        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code: Vec::new() }, levels: Vec::new(), arity: Arity::Two }
+    }
 }
 
 fn encode_b(coeffs: &[Goldilocks], layout: LeafLayout) -> Vec<Goldilocks> {
@@ -243,6 +280,7 @@ impl Word {
     fn build_a(num_vars: usize, layout: LeafLayout, data: Data, arity: Arity) -> Self {
         let mut w = Self { num_vars, layout, data, levels: Vec::new(), arity };
         w.levels = tree(Group::digests(&[&w]), arity);
+        drop_leaf_level(&mut w.levels, layout);
         w
     }
 
@@ -278,6 +316,7 @@ impl Word {
     pub fn commit_base_a(layout: LeafLayout, evals: &[Goldilocks], arity: Arity) -> Self {
         let mut w = Self::member_base(layout, evals);
         w.levels = tree(Group::digests(&[&w]), arity);
+        drop_leaf_level(&mut w.levels, layout);
         w.arity = arity;
         w
     }
@@ -290,6 +329,7 @@ impl Word {
     pub fn commit_ext(layout: LeafLayout, evals: &[Fp3]) -> Self {
         let mut w = Self::member_ext(layout, evals);
         w.levels = tree(Group::digests(&[&w]), Arity::Two);
+        drop_leaf_level(&mut w.levels, layout);
         w
     }
 
@@ -370,7 +410,13 @@ impl Word {
     }
     /// Leaf `j`: its symbols in coset order and its sibling path.
     pub fn open(&self, j: usize) -> LeafOpening {
-        LeafOpening { symbols: self.leaf_symbols(j), path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
+        let log = self.layout.log_leaves() as usize;
+        let ext = self.is_ext();
+        let leaf = |c: usize| {
+            let syms = self.leaf_symbols(c);
+            hash_leaves(1, syms.len(), ext, |_, t| syms[t])[0]
+        };
+        LeafOpening { symbols: self.leaf_symbols(j), path: path_of(&self.levels, self.arity, j, log, leaf), leaf: Some(j) }
     }
 }
 
@@ -389,7 +435,12 @@ impl Group {
     pub fn new(words: Vec<Word>, arity: Arity) -> Self {
         let layout = words[0].layout;
         let digests = Self::digests(&words.iter().collect::<Vec<_>>());
-        Self { words, layout, levels: tree(digests, arity), arity }
+        let mut levels = tree(digests, arity);
+        // the members' layout: streamed or held alike
+        if !words[0].held() {
+            levels[0] = Vec::new();
+        }
+        Self { words, layout, levels, arity }
     }
     /// Leaf digests of members of one layout and one symbol field.
     fn digests(words: &[&Word]) -> Vec<Digest> {
@@ -410,7 +461,13 @@ impl Group {
     /// Leaf `j` of every member (concatenated) and the group's path.
     pub fn open(&self, j: usize) -> LeafOpening {
         let symbols = self.words.iter().flat_map(|w| w.leaf_symbols(j)).collect();
-        LeafOpening { symbols, path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
+        let log = self.layout.log_leaves() as usize;
+        let ext = self.words[0].is_ext();
+        let leaf = |c: usize| {
+            let syms: Vec<Fp3> = self.words.iter().flat_map(|w| w.leaf_symbols(c)).collect();
+            hash_leaves(1, syms.len(), ext, |_, t| syms[t])[0]
+        };
+        LeafOpening { symbols, path: path_of(&self.levels, self.arity, j, log, leaf), leaf: Some(j) }
     }
 }
 
@@ -481,6 +538,40 @@ mod tests {
 
     fn layout(num_vars: usize) -> LeafLayout {
         LeafLayout { log_domain: num_vars as u32 + 2, log_width: 2 }
+    }
+
+    #[test]
+    fn a_streamed_word_commits_and_opens_as_the_held_one() {
+        let n = 8;
+        let lay = LeafLayout { log_domain: n as u32 + 4, log_width: 3 };
+        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 17 + 3)).collect();
+        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(5 * i + 1), Goldilocks::new(i ^ 9))).collect();
+        let build = |force: bool| {
+            FORCE_STREAM.with(|f| f.set(force));
+            let ws = vec![
+                Word::commit_base_a(lay, &base, Arity::Two),
+                Word::commit_base_a(lay, &base, Arity::Four),
+                Word::commit_ext(lay, &ext),
+                Word::commit_coeffs(lay, ext.clone(), Arity::Four),
+            ];
+            let g = Group::new(vec![Word::member_ext(lay, &ext), Word::member_ext(lay, &ext)], Arity::Four);
+            FORCE_STREAM.with(|f| f.set(false));
+            (ws, g)
+        };
+        let (held, gh) = build(false);
+        let (strm, gs) = build(true);
+        assert!(strm.iter().all(|w| !w.held() && w.levels[0].is_empty()));
+        let leaves = 1usize << lay.log_leaves();
+        for (a, b) in held.iter().zip(&strm) {
+            assert_eq!(a.root(), b.root());
+            for j in [0, 1, 7, leaves - 1] {
+                assert_eq!(a.open(j), b.open(j));
+            }
+        }
+        assert_eq!(gh.root(), gs.root());
+        for j in [0, 3, leaves - 1] {
+            assert_eq!(gh.open(j), gs.open(j));
+        }
     }
 
     #[test]

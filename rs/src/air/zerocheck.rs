@@ -72,8 +72,12 @@ fn round<A: Air>(
     ch: &[Fp3],
     mu: &[Fp3],
     deg: usize,
+    on_cube: bool,
 ) -> Vec<Fp3> {
     let pairs = eq.len() / 2;
+    // the first round's points 0 and 1 are trace rows, where every
+    // constraint of an honest trace vanishes: h(0) = h(1) = 0
+    let first = if on_cube { 2 } else { 0 };
     let k = air.shape().constraints;
     let workers = threads().min(pairs.max(1));
     let chunk = pairs.div_ceil(workers);
@@ -88,7 +92,7 @@ fn round<A: Air>(
                     let hi_i = ((wi + 1) * chunk).min(pairs);
                     for i in lo_i..hi_i {
                         let (e0, e1) = (eq[2 * i], eq[2 * i + 1]);
-                        for (x, hx) in h.iter_mut().enumerate() {
+                        for (x, hx) in h.iter_mut().enumerate().skip(first) {
                             let xf = Fp3::from_base(Goldilocks::new(x as u64));
                             let ex = e0 + xf * (e1 - e0);
                             if ex == Fp3::ZERO {
@@ -142,8 +146,8 @@ pub(crate) fn prove<A: Air>(
     let n = eq.len().trailing_zeros() as usize;
     let mut msgs = Vec::with_capacity(n);
     let mut point = Vec::with_capacity(n);
-    for _ in 0..n {
-        let h = round(air, w, &cols, &eq, ch, mu, deg);
+    for r in 0..n {
+        let h = round(air, w, &cols, &eq, ch, mu, deg, r == 0);
         let msg: Vec<Fp3> = core::iter::once(h[0]).chain(h[2..].iter().copied()).collect();
         t.absorb_fp3_slice(&msg);
         msgs.push(msg);

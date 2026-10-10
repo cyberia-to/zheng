@@ -38,9 +38,10 @@ impl Coeffs<'_> {
     }
 }
 
-/// Coset `s` of the code of `c` over `2^log_n` points, as Fp3 values
-/// (`η^u` order: index `u`).
-fn coset(c: Coeffs<'_>, log_n: u32, s: usize, tw: &[Goldilocks]) -> Vec<Fp3> {
+/// Coset `s` of the code of `c` over `2^log_n` points: one limb vector
+/// per field coordinate (one for a base word, three for Fp3), `η^u`
+/// order.
+fn coset(c: Coeffs<'_>, log_n: u32, s: usize, tw: &[Goldilocks]) -> Vec<Vec<Goldilocks>> {
     let shift = root_of_unity(log_n).exp(s as u64);
     let limb = |f: &dyn Fn(usize) -> Goldilocks, k: usize| {
         let mut v = Vec::with_capacity(k);
@@ -53,22 +54,32 @@ fn coset(c: Coeffs<'_>, log_n: u32, s: usize, tw: &[Goldilocks]) -> Vec<Fp3> {
         v
     };
     match c {
-        Coeffs::Base(b) => limb(&|i| b[i], b.len()).into_iter().map(Fp3::from_base).collect(),
+        Coeffs::Base(b) => vec![limb(&|i| b[i], b.len())],
         Coeffs::Ext(e) => {
             let k = e.len();
-            let l0 = limb(&|i| e[i].c0, k);
-            let l1 = limb(&|i| e[i].c1, k);
-            let l2 = limb(&|i| e[i].c2, k);
-            (0..k).map(|u| Fp3::new(l0[u], l1[u], l2[u])).collect()
+            vec![limb(&|i| e[i].c0, k), limb(&|i| e[i].c1, k), limb(&|i| e[i].c2, k)]
         }
     }
 }
 
+/// A pointer workers write disjoint entries through.
+struct Out(*mut [Goldilocks; 4]);
+// SAFETY: each coset's leaves are written by the one worker that took the
+// coset, at indices `s + B·a` no other coset produces.
+unsafe impl Sync for Out {}
+
 /// Leaf digests of the words `members` (one tree, a leaf hashing every
 /// member's `W = 2^log_width` symbols in member order) over `2^log_n`
-/// points, coset by coset; `hash(leaves)` digests a batch of leaves given
-/// as symbol rows.
-pub fn digests(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash: impl Fn(&[Vec<Fp3>]) -> Vec<[Goldilocks; 4]> + Sync) -> Vec<[Goldilocks; 4]> {
+/// points, coset by coset: one NTT per member and coset, that coset's
+/// leaves hashed by `hash(leaves, width, symbol)` and written in place.
+/// Memory: the digests and, per worker, one coset per member.
+#[allow(clippy::type_complexity)]
+pub fn digests(
+    members: &[Coeffs<'_>],
+    log_n: u32,
+    log_width: u32,
+    hash: impl Fn(usize, usize, &dyn Fn(usize, usize) -> Fp3) -> Vec<[Goldilocks; 4]> + Sync,
+) -> Vec<[Goldilocks; 4]> {
     let k = members[0].len();
     let n = 1usize << log_n;
     let b = n / k;
@@ -79,34 +90,33 @@ pub fn digests(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash: impl Fn
     let tw = precompute_twiddles_vec(k);
     let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16).min(b);
     let next = std::sync::atomic::AtomicUsize::new(0);
-    let parts: Vec<Vec<(usize, Vec<[Goldilocks; 4]>)>> = std::thread::scope(|sc| {
-        let hs: Vec<_> = (0..threads)
-            .map(|_| {
-                sc.spawn(|| {
-                    let mut out = Vec::new();
-                    loop {
-                        let s = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        if s >= b {
-                            break;
-                        }
-                        let vals: Vec<Vec<Fp3>> = members.iter().map(|&m| coset(m, log_n, s, &tw)).collect();
-                        let rows: Vec<Vec<Fp3>> = (0..per)
-                            .map(|a| vals.iter().flat_map(|v| (0..w).map(move |t| v[a + t * per])).collect())
-                            .collect();
-                        out.push((s, hash(&rows)));
-                    }
-                    out
-                })
-            })
-            .collect();
-        hs.into_iter().map(|h| h.join().expect("coset worker")).collect()
-    });
     let mut d = vec![[Goldilocks::ZERO; 4]; leaves];
-    for (s, ds) in parts.into_iter().flatten() {
-        for (a, x) in ds.into_iter().enumerate() {
-            d[s + b * a] = x;
+    let out = Out(d.as_mut_ptr());
+    std::thread::scope(|sc| {
+        for _ in 0..threads {
+            sc.spawn(|| {
+                let out = &out;
+                loop {
+                    let s = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if s >= b {
+                        break;
+                    }
+                    let vals: Vec<Vec<Vec<Goldilocks>>> = members.iter().map(|&m| coset(m, log_n, s, &tw)).collect();
+                    let symbol = |a: usize, t: usize| {
+                        let v = &vals[t / w];
+                        let u = a + (t % w) * per;
+                        if v.len() == 1 { Fp3::from_base(v[0][u]) } else { Fp3::new(v[0][u], v[1][u], v[2][u]) }
+                    };
+                    let ds = hash(per, w * members.len(), &symbol);
+                    for (a, x) in ds.into_iter().enumerate() {
+                        // SAFETY: `s + b·a < leaves`, and only this worker
+                        // writes coset `s`'s indices (see `Out`).
+                        unsafe { *out.0.add(s + b * a) = x };
+                    }
+                }
+            });
         }
-    }
+    });
     d
 }
 
@@ -186,8 +196,8 @@ mod tests {
                     assert_eq!(symbol(Coeffs::Ext(&ext), log_n, s), ce[s]);
                 }
                 // every coset's leaves, in leaf order
-                let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |rows| {
-                    rows.iter().map(|r| [r[0].c0, r[1].c0, r[r.len() - 1].c1, Goldilocks::new(r.len() as u64)]).collect()
+                let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |leaves, width, sym| {
+                    (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, width - 1).c1, Goldilocks::new(width as u64)]).collect()
                 });
                 for j in 0..leaves {
                     let w = 1usize << log_w;

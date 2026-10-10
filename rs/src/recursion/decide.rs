@@ -44,6 +44,7 @@ pub struct KeyWords {
 
 impl KeyWords {
     /// The key's columns as two words of 64 columns (column-major, the row
+    /// the low variables; streamed: a key never holds codewords)
     /// the low variables) in `layout`; whether an entry leaves the base
     /// field.
     pub fn commit(layout: LeafLayout, n: usize, pre: &Pre, arity: Arity) -> (Self, bool) {
@@ -58,9 +59,9 @@ impl KeyWords {
                 }
             }
             if ext {
-                Word::member_ext(layout, &t)
+                Word::member_ext_streamed(layout, &t)
             } else {
-                Word::member_base(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
+                Word::member_base_streamed(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
             }
         });
         let group = Group::new(words.into(), arity);

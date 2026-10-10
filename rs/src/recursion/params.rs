@@ -90,6 +90,66 @@ impl Params {
     }
 }
 
+/// Every round-by-round term of the recursion profile at `p` as `(name,
+/// bits)`, grinding priced (`specs/soundness.md` § recursion), and the
+/// grinding bits each term carries (its interactive value is the
+/// difference).
+pub fn ledger(p: &Params) -> Vec<(String, f64, u32)> {
+    let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
+    let mut rows: Vec<(String, f64, u32)> = p
+        .cfg
+        .terms(INPUTS, j)
+        .into_iter()
+        .map(|(n, b)| {
+            let g = if n == "combine" {
+                p.cfg.comb_pow_for(INPUTS)
+            } else if n.starts_with("spot") || n.starts_with("position") {
+                p.cfg.query_pow
+            } else {
+                0
+            };
+            (n, b, g)
+        })
+        .collect();
+    if let Ok(dcfg) = super::whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2) {
+        let wc = &dcfg.wc;
+        for (n, b) in dcfg.terms() {
+            let g = if let Some(i) = n.strip_prefix("shift_") {
+                wc.rounds[i.parse::<usize>().unwrap_or(1) - 1].query_pow
+            } else if let Some(i) = n.strip_prefix("fold_") {
+                wc.rounds[i.parse::<usize>().unwrap_or(0)].fold_pow
+            } else if n == "fin" {
+                wc.rounds.last().map_or(0, |r| r.query_pow)
+            } else if n == "batch combine" {
+                dcfg.comb_pow
+            } else {
+                0
+            };
+            rows.push((format!("decider {n}"), b, g));
+        }
+    }
+    let k = lens::rspcs::soundness::ext_field_bits();
+    let log2 = |x: usize| (x as f64).log2();
+    let mut push = |n: &str, b: f64| rows.push((n.into(), b, 0));
+    push("zerocheck μ (structured powers)", k - log2(SEEDS * (p.base - 1)));
+    push("zerocheck τ", k - log2(p.n));
+    push("zerocheck round (degree 9)", k - log2(10));
+    // shift reduction: rounds of degree 2, ζ over three words (degree
+    // 2), β (degree 1), column batching of 64 columns (6 variables)
+    push("shift round (degree 2)", k - log2(2));
+    push("shift batching ζ, β", k - log2(2));
+    push("shift / boundary column batching", k - log2(CBITS));
+    push("constraint line fold", k - log2(p.g_deg));
+    push("nox public line fold", k - log2(p.pn_deg));
+    push("circuit key line fold", k - log2(p.pv_deg));
+    push("column batching γ_n, γ_v", k - log2(cl::pre::LOG));
+    // circuit memory: T slot accesses per step
+    let t = cl::SLOTS << p.n;
+    push("circuit memory α", k - log2(t));
+    push("circuit memory β (pairs)", k - 2.0 * log2(t) + 1.0);
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,28 +171,8 @@ mod tests {
         let p = Params::new(&whir, 15).unwrap();
         eprintln!("rate 1/{}", 1u32 << rate);
         let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
-        let mut rows = p.cfg.terms(INPUTS, j);
-        let dcfg = super::super::whir::Config::derive(&whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2).unwrap();
-        rows.extend(dcfg.terms().into_iter().map(|(n, b)| (format!("decider {n}"), b)));
-        let k = lens::rspcs::soundness::ext_field_bits();
-        let log2 = |x: usize| (x as f64).log2();
-        rows.push(("zerocheck μ (structured powers)".into(), k - log2(SEEDS * (p.base - 1))));
-        rows.push(("zerocheck τ".into(), k - log2(p.n)));
-        rows.push(("zerocheck round (degree 9)".into(), k - log2(10)));
-        // shift reduction: rounds of degree 2, ζ over three words (degree
-        // 2), β (degree 1), column batching of 64 columns (6 variables)
-        rows.push(("shift round (degree 2)".into(), k - log2(2)));
-        rows.push(("shift batching ζ, β".into(), k - log2(2)));
-        rows.push(("shift / boundary column batching".into(), k - log2(CBITS)));
-        rows.push(("constraint line fold".into(), k - log2(p.g_deg)));
-        rows.push(("nox public line fold".into(), k - log2(p.pn_deg)));
-        rows.push(("circuit key line fold".into(), k - log2(p.pv_deg)));
-        rows.push(("column batching γ_n, γ_v".into(), k - log2(cl::pre::LOG)));
-        // circuit memory: T slot accesses per step
-        let t = cl::SLOTS << p.n;
-        rows.push(("circuit memory α".into(), k - log2(t)));
-        rows.push(("circuit memory β (pairs)".into(), k - 2.0 * log2(t) + 1.0));
-        for (name, bits) in &rows {
+        let rows = ledger(&p);
+        for (name, bits, _) in &rows {
             eprintln!("{name:40} {bits:8.2}");
             assert!(*bits >= 128.0, "{name}: {bits}");
         }
