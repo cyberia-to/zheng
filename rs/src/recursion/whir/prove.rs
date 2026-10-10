@@ -33,6 +33,27 @@ fn round_poly(f: &[Fp3], w: &[Fp3]) -> (Fp3, Fp3) {
     })
 }
 
+/// `dst += c · src`, in threads for long tables (exact field arithmetic).
+fn axpy(dst: &mut [Fp3], c: Fp3, src: &[Fp3]) {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    if dst.len() < 1 << 14 || threads == 1 {
+        for (x, &y) in dst.iter_mut().zip(src) {
+            *x += c * y;
+        }
+        return;
+    }
+    let per = dst.len().div_ceil(threads);
+    std::thread::scope(|s| {
+        for (d, sr) in dst.chunks_mut(per).zip(src.chunks(per)) {
+            s.spawn(move || {
+                for (x, &y) in d.iter_mut().zip(sr) {
+                    *x += c * y;
+                }
+            });
+        }
+    });
+}
+
 /// The folding sumcheck: `rounds` rounds over `f·w`, folding `f`, `w`
 /// and the coefficients.
 fn fold_rounds(
@@ -116,12 +137,8 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
     let mut f = vec![Fp3::ZERO; 1 << ell];
     let mut coeffs = vec![Fp3::ZERO; 1 << ell];
     for ((tb, w), &c) in tables.iter().zip(words).zip(&coef) {
-        for (x, &y) in f.iter_mut().zip(tb) {
-            *x += c * y;
-        }
-        for (x, y) in coeffs.iter_mut().zip(w.coeffs()) {
-            *x += c * y;
-        }
+        axpy(&mut f, c, tb);
+        axpy(&mut coeffs, c, &w.coeffs());
     }
     drop(tables);
     let w = eq_table(&rho);
@@ -140,9 +157,7 @@ pub fn prove_direct(cfg: &Config, t: &mut ProverTranscript, word: &Word, claims:
     let mut w = vec![Fp3::ZERO; 1 << ell];
     let mut g = Fp3::ONE;
     for (tb, _) in claims {
-        for (x, &y) in w.iter_mut().zip(tb) {
-            *x += g * y;
-        }
+        axpy(&mut w, g, tb);
         g *= gamma;
     }
     core(cfg, t, &[word as &dyn Tree], word.table(), word.coeffs(), w, BatchProof { sumcheck: vec![], evals: vec![], comb_nonce: 0 })

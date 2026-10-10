@@ -179,8 +179,83 @@ pub(crate) fn hash_leaves_with(leaves: usize, width: usize, ext: bool, symbol: i
     states.iter().map(perm::head).collect()
 }
 
-/// [`hash_leaves`] on every core.
+/// Whether the process's prover backend runs on a device (then leaf
+/// sponges and streamed cosets go to it in large batches).
+fn on_device() -> bool {
+    lens::rspcs::backend::current().name() != "cpu"
+}
+
+/// The block layout of a leaf of `width` symbols: per block the symbol
+/// indices it absorbs (items never straddle the rate).
+fn leaf_blocks(width: usize, ext: bool) -> Vec<Vec<usize>> {
+    let w = if ext { 3 } else { 1 };
+    let mut blocks: Vec<Vec<usize>> = vec![vec![]];
+    let mut used = 0;
+    for t in 0..width {
+        if used + w > RATE {
+            blocks.push(vec![]);
+            used = 0;
+        }
+        blocks.last_mut().expect("block").push(t);
+        used += w;
+        if used == RATE && t + 1 < width {
+            blocks.push(vec![]);
+            used = 0;
+        }
+    }
+    blocks
+}
+
+/// [`hash_leaves`] in one call to the prover backend's sponge: the rate
+/// lanes of every leaf's blocks laid out in threads, the sponges run
+/// together.
+fn backend_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3 + Sync) -> Vec<Digest> {
+    let blocks = leaf_blocks(width, ext);
+    let per = blocks.len() * RATE;
+    let mut lanes = vec![0u64; leaves * per];
+    par_chunks(&mut lanes, |start, chunk| {
+        // a chunk may start and end inside a leaf: lay out whole leaves,
+        // copy the overlapping lanes
+        let mut leaf = vec![0u64; per];
+        let mut at = start;
+        let end = start + chunk.len();
+        while at < end {
+            let j = at / per;
+            for (b, blk) in blocks.iter().enumerate() {
+                let row = &mut leaf[b * RATE..(b + 1) * RATE];
+                row.fill(0);
+                let mut lane = 0;
+                for &t in blk {
+                    let v = symbol(j, t);
+                    row[lane] = v.c0.as_u64();
+                    lane += 1;
+                    if ext {
+                        row[lane] = v.c1.as_u64();
+                        row[lane + 1] = v.c2.as_u64();
+                        lane += 2;
+                    }
+                }
+            }
+            let from = at - j * per;
+            let to = per.min(end - j * per);
+            chunk[at - start..at - start + (to - from)].copy_from_slice(&leaf[from..to]);
+            at = j * per + to;
+        }
+    });
+    let mut init = [0u64; WIDTH];
+    init[RATE] = tag::LEAF;
+    lens::rspcs::backend::current()
+        .sponge(&init, RATE, blocks.len(), &lanes)
+        .into_iter()
+        .map(|d| d.map(Goldilocks::new))
+        .collect()
+}
+
+/// [`hash_leaves`] on every core (or the prover backend's device).
 fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3 + Sync) -> Vec<Digest> {
+    if leaves >= perm::BACKEND_MIN && on_device() {
+        return backend_leaves(leaves, width, ext, symbol);
+    }
     let mut out = vec![[Goldilocks::ZERO; 4]; leaves];
     par_chunks(&mut out, |start, chunk| {
         let d = hash_leaves(chunk.len(), width, ext, |j, t| symbol(start + j, t));
@@ -192,6 +267,13 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
 /// Leaf digests of members streamed coset by coset ([`stream`]).
 fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
     let ext = members[0].is_ext();
+    if on_device() {
+        // cosets in groups: their NTTs and their leaves' sponges in large
+        // batches on the device
+        return stream::digests_grouped(members, layout.log_domain, layout.log_width, |leaves, width, symbol| {
+            backend_leaves(leaves, width, ext, symbol)
+        });
+    }
     stream::digests(members, layout.log_domain, layout.log_width, |rows| hash_leaves(rows.len(), rows[0].len(), ext, |j, t| rows[j][t]))
 }
 
@@ -481,6 +563,36 @@ mod tests {
 
     fn layout(num_vars: usize) -> LeafLayout {
         LeafLayout { log_domain: num_vars as u32 + 2, log_width: 2 }
+    }
+
+    /// The CPU backend under another name: exercises the device paths
+    /// (one sponge call per batch, cosets in groups).
+    struct Device;
+    impl lens::rspcs::backend::Backend for Device {
+        fn name(&self) -> &'static str {
+            "device-test"
+        }
+    }
+
+    #[test]
+    fn device_paths_give_the_cpu_digests() {
+        let n = 8;
+        let lay = LeafLayout { log_domain: n as u32 + 7, log_width: 3 };
+        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 77 + 5)).collect();
+        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(i * i), Goldilocks::new(11))).collect();
+        let (wb, wb2) = (Word::member_base(lay, &base), Word::member_base(lay, &base));
+        let (we, we2) = (Word::member_ext(lay, &ext), Word::member_ext(lay, &ext));
+        let mut want = Vec::new();
+        for (a, b) in [(&wb, &wb2), (&we, &we2)] {
+            want.push((Group::digests(&[a, b]), stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay)));
+        }
+        let prev = lens::rspcs::backend::install(std::sync::Arc::new(Device));
+        for ((a, b), (held, streamed)) in [(&wb, &wb2), (&we, &we2)].into_iter().zip(&want) {
+            assert_eq!(&Group::digests(&[a, b]), held);
+            assert_eq!(&stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay), streamed);
+            assert_eq!(held, streamed);
+        }
+        lens::rspcs::backend::install(prev);
     }
 
     #[test]

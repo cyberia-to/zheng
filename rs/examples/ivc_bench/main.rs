@@ -34,6 +34,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 }
 
 fn main() {
+    common::backend();
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = env("ZHENG_RATE", 4);
     whir.pow_bits = env("ZHENG_POW", 24);
