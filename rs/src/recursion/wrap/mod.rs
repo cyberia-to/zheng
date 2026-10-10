@@ -46,6 +46,8 @@ mod verify;
 pub mod wire;
 
 #[cfg(test)]
+mod review;
+#[cfg(test)]
 mod tests;
 
 pub use program::{Inner, derive_key_ivc, derive_key_wrap, public_digest, public_digest_native};
@@ -183,6 +185,10 @@ pub struct WrapKey {
     pub next_cols: Vec<usize>,
     /// Coordinates of the deferred nox-public claim's point.
     pub pn: usize,
+    /// The recursive proof the chain of levels starts from: its WHIR
+    /// parameters and step size (`log2` rows). The outermost proof's
+    /// header must name them.
+    pub ivc: (WhirParams, usize),
     /// Rows the circuit uses (of `2^n`), and its census: gates,
     /// decompositions, permutation blocks.
     pub rows: usize,
@@ -338,6 +344,12 @@ pub fn verify_final(prep: &super::ivc::Prepared, k: &WrapKey, fp: &FinalProof) -
     use super::ops::{Native, Ops};
     if prep.header != (fp.log_rows, fp.start, fp.segments, fp.chain) {
         return Err("wrap: header".into());
+    }
+    // the levels verify one recursive proof's final verifier: its key
+    // (WHIR parameters, step size) is the one the statement was prepared
+    // under
+    if (prep.key.params.whir, prep.key.params.n) != k.ivc {
+        return Err("wrap: the key was derived for another recursive proof".into());
     }
     if fp.pn.point.len() != k.pn {
         return Err("wrap: nox-public claim shape".into());

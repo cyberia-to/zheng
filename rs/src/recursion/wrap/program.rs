@@ -113,18 +113,24 @@ pub fn derive_key_ivc(params: WrapParams, key: &Key) -> Result<WrapKey, String> 
     let step = ivc_program::dummy_proof(&key.params);
     let decider = decide::dummy(&key.dcfg);
     let proof = IvcProof { log_rows: key.params.n as u32, start: 0, segments: 1, chain: [nebu::Goldilocks::ZERO; 4], state, step, decider };
-    derive_key(params, &Inner::Ivc { key, proof: &proof })
+    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n))
 }
 
 /// Derive the key of a wrap level over another wrap level's verifier.
 pub fn derive_key_wrap(params: WrapParams, key: &WrapKey) -> Result<WrapKey, String> {
+    // a final-mode verifier evaluates the key and the wiring weight in the
+    // field (`o.value`): inside a circuit those would be constants of the
+    // key derivation's dummy proof, not of the proof verified
+    if !key.inner() {
+        return Err("wrap: a final-mode level is verified natively only".into());
+    }
     let proof = dummy_proof(key);
-    derive_key(params, &Inner::Wrap { key, proof: &proof })
+    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc)
 }
 
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
 /// never read: layouts are fixed by shapes).
-fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> {
+fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize)) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
     let pn = ClaimV { point: vec![Fp3::ZERO; inner.pn_len()], value: Fp3::ZERO };
     let mut b = Builder::new(false);
@@ -169,6 +175,7 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
         constraints,
         next_cols,
         pn: inner.pn_len(),
+        ivc,
         rows,
         census,
     })
@@ -178,7 +185,7 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
 /// with the slot writing its address, every used slot's value as a
 /// combination of its row's phase-1 cells (`slot_values` is linear in
 /// them: evaluated at unit rows).
-fn wiring(pre: &trace::Pre) -> Wiring {
+pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
     use crate::recursion::circuit::air::slot_values;
     use crate::recursion::circuit::layout::{SLOTS, V1, pre as pc};
     let rows = pre.cols[0].len();

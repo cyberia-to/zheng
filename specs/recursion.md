@@ -229,8 +229,13 @@ transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root, OOD |
 The constraints are evaluated at the point through their recorded graph
 (`Σ μ^k C_k`, 267 constraints → 4,054 gates inner, 249 → 3,620 final).
 The outermost proof (`FinalProof`) is the deferred nox-public claim and
-the final wrap; `wrap::verify_final` evaluates the claim against the
-statement's columns, recomputes `X` and verifies the wrap natively.
+the final wrap; `wrap::verify_final` refuses a key derived for another
+recursive proof (a wrap key records the IVC's WHIR parameters and step
+size; the header's must be them), evaluates the claim against the
+statement's columns, recomputes `X` and verifies the wrap natively. A
+final-mode level is verified natively only: `derive_key_wrap` refuses to
+put one inside a circuit (its verifier evaluates the key and the wiring
+weight in the field).
 
 The final verifier keeps #53's review checks: natively a state is read
 only if its base items are base (`state::is_canonical`); in the circuit a
