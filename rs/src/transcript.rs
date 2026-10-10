@@ -10,49 +10,88 @@
 //! separator to prevent cross-phase attacks.
 
 use hemera::Hasher;
-use nebu::{field::P, Goldilocks};
+use nebu::{field::P, Fp3, Goldilocks};
 
 use lens::Commitment;
 
-use crate::types::{Statement, SumcheckPoly};
+#[cfg(feature = "legacy")]
+use crate::types::Statement;
+use crate::field::ChallengeField;
+use crate::types::SumcheckPoly;
 
 // ── domain separators ─────────────────────────────────────────────
 // absorbed before the corresponding phase message. unique per phase.
 
 const DOM_INIT: &[u8]      = b"\x01zheng-transcript-v1";
+const DOM_SQUEEZE_WIDE: &[u8] = b"\x09squeeze-wide";
 const DOM_COMMIT: &[u8]    = b"\x02commit";
 const DOM_SUMCHECK: u8     = 0x03;
 const DOM_EVAL: &[u8]      = b"\x04eval";
 const DOM_PCS_OPEN: &[u8]  = b"\x05pcs-open";
+#[cfg(feature = "legacy")]
 const DOM_RECURSE: &[u8]   = b"\x06recurse";
+#[cfg(feature = "legacy")]
 const DOM_STATEMENT: &[u8] = b"\x07statement";
+#[cfg(feature = "legacy")]
 const DOM_LINKAGE: &[u8]   = b"\x08linkage";
 
 // ── transcript ───────────────────────────────────────────────────
 
+/// How a transcript maps hemera output to Goldilocks challenges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChallengeRule {
+    /// Reduce 24 XOF bytes (three output limbs) per challenge limb modulo p.
+    Wide,
+    /// The 0.4.0 rule: the first 8 bytes of one 32-byte squeeze. Kept only
+    /// to read retired artifacts (public v2, state v1) and the legacy path.
+    V1FirstLimb,
+}
+
 /// Fiat-Shamir transcript: absorb → squeeze → absorb → squeeze …
 ///
-/// After each squeeze the hasher is re-seeded with the output hash,
+/// After each squeeze the hasher is re-seeded with a chaining value,
 /// chaining the state forward. Clone the transcript at any point to
 /// branch for parallel sub-protocols.
+///
+/// Challenge distribution. hemera's output bytes are canonical Goldilocks
+/// limbs (each < p, little-endian), so under the sponge-as-random-oracle
+/// model one limb is exactly uniform in F_p. The wide rule does not depend
+/// on that encoding: each challenge limb is a 192-bit integer
+/// (three output limbs) reduced mod p. For a uniform 192-bit input the
+/// statistical distance from uniform on F_p is at most p / 2^192 < 2^-128;
+/// for canonical-limb output the lowest limb alone is uniform and
+/// independent, so the reduction is exactly uniform. Either way the bias
+/// per limb is below 2^-128. (The 0.4.0 rule documented a 2^-32 bias under
+/// a uniform-bytes model; see `ChallengeRule::V1FirstLimb`.)
 #[derive(Clone)]
 pub struct Transcript {
     hasher: Hasher,
+    rule: ChallengeRule,
 }
 
 impl Transcript {
-    /// Create a new transcript, domain-separated for zheng proofs.
+    /// Create a new transcript, domain-separated for zheng proofs, with
+    /// wide challenges.
     pub fn new() -> Self {
         let mut hasher = Hasher::new();
         hasher.update(DOM_INIT);
-        Self { hasher }
+        Self { hasher, rule: ChallengeRule::Wide }
     }
 
-    /// Create a transcript for recursive (inner) proofs.
+    /// A transcript that reproduces the 0.4.0 challenge rule, for verifying
+    /// retired artifacts (direct public v2 / state v1 proofs, the legacy
+    /// path) for one release. New proofs use [`Transcript::new`].
+    pub fn new_v1() -> Self {
+        Self { rule: ChallengeRule::V1FirstLimb, ..Self::new() }
+    }
+
+    /// Create a transcript for recursive (inner) proofs. Legacy only;
+    /// reproduces the 0.4.0 challenge rule.
+    #[cfg(feature = "legacy")]
     pub fn new_recursive() -> Self {
         let mut hasher = Hasher::new();
         hasher.update(DOM_RECURSE);
-        Self { hasher }
+        Self { hasher, rule: ChallengeRule::V1FirstLimb }
     }
 
     /// Absorb arbitrary bytes into the transcript.
@@ -68,15 +107,17 @@ impl Transcript {
         *hash.as_bytes()
     }
 
-    /// Squeeze a Goldilocks challenge.
-    ///
-    /// Takes the first 8 bytes of the hash as a little-endian u64 and
-    /// canonicalizes into [0, p). Bias is (2^64 - p) / 2^64 ≈ 2^-32 —
-    /// negligible at 128-bit security.
+    /// Squeeze a Goldilocks challenge under this transcript's rule.
     pub fn squeeze_challenge(&mut self) -> Goldilocks {
-        let hash = self.squeeze_hash();
-        let raw = u64::from_le_bytes(hash[..8].try_into().unwrap());
-        Goldilocks::new(raw).canonicalize()
+        match self.rule {
+            ChallengeRule::Wide => self.squeeze_limbs::<1>()[0],
+            ChallengeRule::V1FirstLimb => {
+                let hash = self.squeeze_hash();
+                let mut limb = [0u8; 8];
+                limb.copy_from_slice(&hash[..8]);
+                Goldilocks::new(u64::from_le_bytes(limb)).canonicalize()
+            }
+        }
     }
 
     /// Squeeze `n` independent Goldilocks challenges.
@@ -84,6 +125,32 @@ impl Transcript {
     /// Each challenge re-seeds the hasher, so they are independent.
     pub fn squeeze_challenges(&mut self, n: usize) -> Vec<Goldilocks> {
         (0..n).map(|_| self.squeeze_challenge()).collect()
+    }
+
+    /// Squeeze a challenge in the cubic extension Fp3 = F_p[t]/(t³ − t − 1):
+    /// three limbs, each drawn by the wide rule (bias < 2^-128 per limb), so
+    /// the element is within 3 · 2^-128 of uniform on a set of p³ ≈ 2^192.
+    /// Always wide, whatever the transcript's base-field rule.
+    pub fn squeeze_fp3(&mut self) -> Fp3 {
+        let [c0, c1, c2] = self.squeeze_limbs::<3>();
+        Fp3::new(c0, c1, c2)
+    }
+
+    /// One XOF read: a 32-byte chaining value, then 24 bytes per limb.
+    fn squeeze_limbs<const N: usize>(&mut self) -> [Goldilocks; N] {
+        self.hasher.update(DOM_SQUEEZE_WIDE);
+        self.hasher.update(&[N as u8]);
+        let mut xof = self.hasher.finalize_xof();
+        let mut chain = [0u8; 32];
+        xof.fill(&mut chain);
+        let limbs = core::array::from_fn(|_| {
+            let mut wide = [0u8; 24];
+            xof.fill(&mut wide);
+            reduce_192(&wide)
+        });
+        self.hasher = Hasher::new();
+        self.hasher.update(&chain);
+        limbs
     }
 
     // ── phase absorbers ──────────────────────────────────────────
@@ -95,19 +162,24 @@ impl Transcript {
     }
 
     /// Absorb a sumcheck round polynomial (domain-separated).
-    pub fn absorb_sumcheck_poly(&mut self, round: usize, poly: &SumcheckPoly) {
+    /// Goldilocks coefficients encode as 8 bytes, Fp3 as 24 (three limbs).
+    pub fn absorb_sumcheck_poly<F: ChallengeField>(&mut self, round: usize, poly: &SumcheckPoly<F>) {
         self.absorb(&[DOM_SUMCHECK]);
         self.absorb(&(round as u64).to_le_bytes());
         self.absorb(&[poly.degree]);
-        for coeff in &poly.coeffs {
-            self.absorb(&encode_field(*coeff));
+        let mut bytes = Vec::with_capacity(poly.coeffs.len() * 8 * F::LIMBS);
+        for &coeff in &poly.coeffs {
+            coeff.encode(&mut bytes);
         }
+        self.absorb(&bytes);
     }
 
     /// Absorb the evaluation claim after sumcheck (domain-separated).
-    pub fn absorb_eval(&mut self, v: Goldilocks) {
+    pub fn absorb_eval<F: ChallengeField>(&mut self, v: F) {
         self.absorb(DOM_EVAL);
-        self.absorb(&encode_field(v));
+        let mut bytes = Vec::with_capacity(8 * F::LIMBS);
+        v.encode(&mut bytes);
+        self.absorb(&bytes);
     }
 
     /// Absorb a domain separator before the PCS opening phase.
@@ -119,6 +191,7 @@ impl Transcript {
     ///
     /// Must be called at the same point in both prover and verifier transcripts
     /// to bind the proof to a specific program/input/output identity.
+    #[cfg(feature = "legacy")]
     pub fn absorb_statement(&mut self, s: &Statement) {
         self.absorb(DOM_STATEMENT);
         self.absorb(&s.program_hash);
@@ -134,6 +207,7 @@ impl Transcript {
     /// group in a TraceProof, binding the groups to each other (option A
     /// linkage of the axis design): a group spliced in from another proof
     /// changes the digest and breaks every group's Fiat-Shamir chain.
+    #[cfg(feature = "legacy")]
     pub fn absorb_linkage(&mut self, digest: &[u8; 32]) {
         self.absorb(DOM_LINKAGE);
         self.absorb(digest);
@@ -144,6 +218,21 @@ impl Default for Transcript {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The integer `b[0..8] + 2^64·b[8..16] + 2^128·b[16..24]` (little-endian
+/// limbs) reduced modulo p, exactly.
+fn reduce_192(bytes: &[u8; 24]) -> Goldilocks {
+    let limb = |i: usize| {
+        let mut b = [0u8; 8];
+        b.copy_from_slice(&bytes[8 * i..8 * i + 8]);
+        u64::from_le_bytes(b) as u128
+    };
+    let p = P as u128;
+    let mut r = limb(2) % p;
+    r = ((r << 64) | limb(1)) % p;
+    r = ((r << 64) | limb(0)) % p;
+    Goldilocks::new(r as u64)
 }
 
 // ── wire encoding ─────────────────────────────────────────────────
@@ -212,139 +301,5 @@ pub fn decode_sumcheck_poly(bytes: &[u8]) -> Option<(SumcheckPoly, usize)> {
 // ── tests ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn same_messages_same_challenge() {
-        let mut t1 = Transcript::new();
-        t1.absorb(b"hello");
-        let c1 = t1.squeeze_challenge();
-
-        let mut t2 = Transcript::new();
-        t2.absorb(b"hello");
-        let c2 = t2.squeeze_challenge();
-
-        assert_eq!(c1.as_u64(), c2.as_u64());
-    }
-
-    #[test]
-    fn different_messages_different_challenges() {
-        let mut t1 = Transcript::new();
-        t1.absorb(b"hello");
-        let c1 = t1.squeeze_challenge();
-
-        let mut t2 = Transcript::new();
-        t2.absorb(b"world");
-        let c2 = t2.squeeze_challenge();
-
-        assert_ne!(c1.as_u64(), c2.as_u64());
-    }
-
-    #[test]
-    fn different_domains_different_challenges() {
-        let mut t1 = Transcript::new();
-        t1.absorb(b"same");
-        let c1 = t1.squeeze_challenge();
-
-        let mut t2 = Transcript::new_recursive();
-        t2.absorb(b"same");
-        let c2 = t2.squeeze_challenge();
-
-        assert_ne!(c1.as_u64(), c2.as_u64());
-    }
-
-    #[test]
-    fn multiple_squeezes_are_independent() {
-        let mut t = Transcript::new();
-        t.absorb(b"test");
-        let c1 = t.squeeze_challenge();
-        let c2 = t.squeeze_challenge();
-        assert_ne!(c1.as_u64(), c2.as_u64());
-    }
-
-    #[test]
-    fn encode_decode_field_roundtrip() {
-        let f = Goldilocks::new(12345678);
-        let bytes = encode_field(f);
-        let decoded = decode_field(&bytes).unwrap();
-        assert_eq!(f.as_u64(), decoded.as_u64());
-    }
-
-    #[test]
-    fn decode_field_rejects_noncanonical() {
-        // P = 0xFFFF_FFFF_0000_0001 is non-canonical (>= p)
-        let bytes = P.to_le_bytes();
-        assert!(decode_field(&bytes).is_none());
-
-        // P + 1 is also non-canonical
-        let bytes2 = (P + 1).to_le_bytes();
-        assert!(decode_field(&bytes2).is_none());
-    }
-
-    #[test]
-    fn decode_field_accepts_p_minus_1() {
-        let bytes = (P - 1).to_le_bytes();
-        let f = decode_field(&bytes).unwrap();
-        assert_eq!(f.as_u64(), P - 1);
-    }
-
-    #[test]
-    fn encode_decode_fields_roundtrip() {
-        let elems: Vec<Goldilocks> = (0u64..8).map(Goldilocks::new).collect();
-        let bytes = encode_fields(&elems);
-        let decoded = decode_fields(&bytes).unwrap();
-        for (a, b) in elems.iter().zip(decoded.iter()) {
-            assert_eq!(a.as_u64(), b.as_u64());
-        }
-    }
-
-    #[test]
-    fn decode_fields_rejects_odd_length() {
-        assert!(decode_fields(&[0u8; 7]).is_none());
-        assert!(decode_fields(&[0u8; 9]).is_none());
-    }
-
-    #[test]
-    fn sumcheck_poly_encode_decode_roundtrip() {
-        let poly = SumcheckPoly {
-            degree: 3,
-            coeffs: vec![
-                Goldilocks::new(1),
-                Goldilocks::new(2),
-                Goldilocks::new(3),
-                Goldilocks::new(4),
-            ],
-        };
-        let bytes = encode_sumcheck_poly(&poly);
-        let (decoded, consumed) = decode_sumcheck_poly(&bytes).unwrap();
-        assert_eq!(consumed, bytes.len());
-        assert_eq!(decoded.degree, poly.degree);
-        for (a, b) in poly.coeffs.iter().zip(decoded.coeffs.iter()) {
-            assert_eq!(a.as_u64(), b.as_u64());
-        }
-    }
-
-    #[test]
-    fn commitment_domain_separation() {
-        use lens::{brakedown::Brakedown, Lens, MultilinearPoly};
-
-        // build a real commitment via lens so both sides use the same hemera version
-        let poly = MultilinearPoly::new(vec![
-            Goldilocks::new(1), Goldilocks::new(2),
-            Goldilocks::new(3), Goldilocks::new(4),
-        ]);
-        let c = Brakedown::commit(&poly);
-
-        let mut t1 = Transcript::new();
-        t1.absorb_commitment(&c);
-        let ch1 = t1.squeeze_challenge();
-
-        // same bytes, no domain separator
-        let mut t2 = Transcript::new();
-        t2.absorb(c.as_bytes());
-        let ch2 = t2.squeeze_challenge();
-
-        assert_ne!(ch1.as_u64(), ch2.as_u64());
-    }
-}
+#[path = "transcript_tests.rs"]
+mod tests;

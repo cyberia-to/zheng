@@ -14,6 +14,8 @@ five operations: **commit**, **open**, **verify**, **fold**, **decide**.
 Implementation reviews and validation evidence are indexed in
 [audit](../audit/README.md).
 
+- [[soundness]] — the soundness ledger: one row per production component
+- [[execution]] — public and authenticated-state profile v3, the `ZHENGPF1` envelope
 - [[lens]] — polynomial commitment (separate repo: ~/git/lens/)
 - [[sumcheck]] — the engine: O(N) prover reduces exponential sum to one evaluation
 - [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one Lens opening

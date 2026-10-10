@@ -1,9 +1,17 @@
-//! Public authenticated lookup coordinates in a verifier-derived execution CCS.
-//! Lookup authentication belongs to the state owner and must precede verification.
+//! Public authenticated-state execution: lookup coordinates pinned in a
+//! verifier-derived CCS. Profile v3 (`certify_state_execution`,
+//! `StateStatement::verify_certificate`) checks a certificate exactly;
+//! profile v1 (`prove_state_execution`, `StateStatement::verify`) is retired
+//! and read for one release. Lookup authentication belongs to the state owner
+//! and must precede verification.
 use super::relation::{ExecutionRelation, SubjectShape, compile_relation};
-use super::{DirectProof, ExecutionNoun, ExecutionStatement, proof};
+use super::{Certificate, DirectProof, ExecutionNoun, ExecutionStatement, certificate, proof};
+use crate::types::CCSWitness;
 use nebu::Goldilocks as F;
 use std::collections::BTreeMap;
+
+/// Bound on the reads a state statement may carry.
+pub const MAX_READS: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -27,7 +35,7 @@ pub struct StateStatement {
 }
 #[cfg(feature = "serde")]
 fn reads_wire<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<PublicLookup>, D::Error> {
-    super::statement_wire::bounded::<D, PublicLookup, 4096>(d)
+    super::statement_wire::bounded::<D, PublicLookup, MAX_READS>(d)
 }
 impl StateStatement {
     pub(super) fn inputs(&self) -> Vec<F> {
@@ -38,9 +46,9 @@ impl StateStatement {
         input.extend(self.execution.inputs());
         input
     }
-    fn relation(&self) -> Result<ExecutionRelation, String> {
+    pub(crate) fn relation(&self) -> Result<ExecutionRelation, String> {
         self.execution.validate_bounds()?;
-        if self.state_root.iter().any(|&v| v >= nebu::field::P) || self.reads.len() > 4096 {
+        if self.state_root.iter().any(|&v| v >= nebu::field::P) || self.reads.len() > MAX_READS {
             return Err("invalid state execution bounds".into());
         }
         let mut shape = SubjectShape::Atom;
@@ -79,7 +87,7 @@ impl StateStatement {
         }
         bytes
     }
-    fn bindings(
+    pub(crate) fn bindings(
         &self,
         relation: &ExecutionRelation,
         lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
@@ -125,7 +133,20 @@ impl StateStatement {
         }
         Ok(coordinates.into_iter().collect())
     }
-    /// The callback MUST read authenticated values from this exact state_root.
+    /// Profile v3. The callback MUST answer from a state certificate already
+    /// verified against this exact `state_root`; it is consulted for every
+    /// active read before any row is checked.
+    pub fn verify_certificate(
+        &self,
+        certificate: &Certificate,
+        lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+    ) -> Result<(), String> {
+        let relation = self.relation()?;
+        let public = self.bindings(&relation, lookup)?;
+        certificate::verify(&relation.instance, certificate, &public).map_err(|e| e.to_string())
+    }
+    /// Profile v1 (retired, read for one release). The callback MUST read
+    /// authenticated values from this exact state_root.
     pub fn verify(
         &self,
         proof: &DirectProof,
@@ -137,8 +158,10 @@ impl StateStatement {
             .map_err(|e| e.to_string())
     }
 }
-/// Public only: the direct proof discloses all columns. No secret stream is taken.
-pub fn prove_state_execution(
+/// The statement, relation, witness and pinned coordinates of one honest
+/// state execution; shared by the v1 prover and the v3 certifier.
+#[allow(clippy::type_complexity)]
+fn prepare(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
@@ -146,7 +169,7 @@ pub fn prove_state_execution(
     root_in_subject: bool,
     context: [u8; 32],
     lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
-) -> Result<(StateStatement, DirectProof), String> {
+) -> Result<(StateStatement, ExecutionRelation, CCSWitness, Vec<(usize, F)>), String> {
     let mut statement = StateStatement {
         execution: ExecutionStatement {
             program: ExecutionStatement::encode_program(program)?,
@@ -174,6 +197,9 @@ pub fn prove_state_execution(
     let value = |i: usize| witness.z[i].as_u64();
     statement.execution.public_output = relation.output_indices.iter().map(|&i| value(i)).collect();
     statement.execution.cycles = value(relation.cost_index);
+    if statement.execution.cycles > budget {
+        return Err("execution cost exceeds budget".into());
+    }
     for wires in &relation.lookups {
         let active = value(wires.active) == 1;
         statement.reads.push(if active {
@@ -193,6 +219,23 @@ pub fn prove_state_execution(
         });
     }
     let public = statement.bindings(&relation, lookup)?;
+    Ok((statement, relation, witness, public))
+}
+
+/// State profile v1 (Spartan + PublicTensor). Public only: the direct proof
+/// discloses all columns. Retained to produce and read `JOYST001` for one
+/// release; new artifacts use [`certify_state_execution`].
+pub fn prove_state_execution(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    state_root: [u64; 4],
+    root_in_subject: bool,
+    context: [u8; 32],
+    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+) -> Result<(StateStatement, DirectProof), String> {
+    let (statement, relation, witness, public) =
+        prepare(program, input, budget, state_root, root_in_subject, context, lookup)?;
     let proof = proof::prove(
         &relation.instance,
         &witness,
@@ -201,4 +244,26 @@ pub fn prove_state_execution(
     )
     .map_err(|e| e.to_string())?;
     Ok((statement, proof))
+}
+
+/// State profile v3: the statement (with every read) plus the free witness
+/// positions. The verifier pins z[0] = 1, the inputs (and the root when it
+/// sits in the subject), the outputs, the cost and every lookup coordinate
+/// — active flag, root limbs, namespace, key, value — after authenticating
+/// each active read through the caller's state certificate, then checks
+/// every CCS row exactly. No commitment, sumcheck or challenge.
+pub fn certify_state_execution(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    state_root: [u64; 4],
+    root_in_subject: bool,
+    context: [u8; 32],
+    lookup: &mut dyn FnMut(u64, u64) -> Option<u64>,
+) -> Result<(StateStatement, Certificate), String> {
+    let (statement, relation, witness, public) =
+        prepare(program, input, budget, state_root, root_in_subject, context, lookup)?;
+    let certificate =
+        certificate::certify(&relation.instance, &witness, &public).map_err(|e| e.to_string())?;
+    Ok((statement, certificate))
 }

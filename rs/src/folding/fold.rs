@@ -211,7 +211,7 @@ mod tests {
         let instance = universal_ccs().clone();
         let witness = make_witness(5, 3, 8);
         let mut acc = zero_accumulator(&instance);
-        let mut transcript = Transcript::new();
+        let mut transcript = Transcript::new_v1();
         fold_step(&mut acc, &instance, &witness, &mut transcript).unwrap();
         assert_eq!(acc.step_count, 1);
         // Error is all-zero for a satisfying witness (every row zero).
@@ -224,7 +224,7 @@ mod tests {
         let w1 = make_witness(5, 3, 8);
         let w2 = make_witness(2, 4, 6);
         let mut acc = zero_accumulator(&instance);
-        let mut t = Transcript::new();
+        let mut t = Transcript::new_v1();
         fold_step(&mut acc, &instance, &w1, &mut t).unwrap();
         fold_step(&mut acc, &instance, &w2, &mut t).unwrap();
         assert_eq!(acc.step_count, 2);
@@ -236,11 +236,11 @@ mod tests {
         let witness = make_witness(5, 3, 8);
 
         let mut acc1 = zero_accumulator(&instance);
-        let mut t1 = Transcript::new();
+        let mut t1 = Transcript::new_v1();
         fold_step(&mut acc1, &instance, &witness, &mut t1).unwrap();
 
         let mut acc2 = zero_accumulator(&instance);
-        let mut t2 = Transcript::new();
+        let mut t2 = Transcript::new_v1();
         fold_step(&mut acc2, &instance, &witness, &mut t2).unwrap();
 
         assert_eq!(acc1.step_count, acc2.step_count);
@@ -276,7 +276,7 @@ mod tests {
     //    not just "some computed e"): every gated row is 0×(anything)=0, and
     //    every ungated row is a homogeneous linear relation among witness
     //    columns with no independent additive constant, so it is 0=0 too.
-    //    `attack_zeroed_constant_wire_satisfies_universal_instance` proves
+    //    `retired_path_hole_zeroed_constant_wire_satisfies_universal_instance` proves
     //    this directly against `is_satisfied_by`, then shows the (correctly
     //    working) new gate cannot reject it — because it is not lying about
     //    its own error, the relation itself is silent on it — and that
@@ -290,7 +290,7 @@ mod tests {
     // both closed: a witness that is genuinely, honestly satisfying (a real
     // solution of the CCS) but corresponds to no real nox execution and no
     // relationship to the Statement still decides and verifies for ANY
-    // Statement — `attack_satisfying_but_meaningless_witness_passes_for_any_statement`.
+    // Statement — `retired_path_hole_meaningless_witness_passes_for_any_statement`.
     // That is the recursion-milestone residual: no gate on one entry point
     // closes it, because there is nothing internally inconsistent to catch.
 
@@ -305,7 +305,7 @@ mod tests {
         let instance = universal_ccs().clone();
         let bad = make_witness(5, 3, 9); // 5 + 3 != 9
         let mut acc = zero_accumulator(&instance);
-        let mut t = Transcript::new();
+        let mut t = Transcript::new_v1();
         let err = fold_step(&mut acc, &instance, &bad, &mut t);
         assert!(matches!(err, Err(FoldError::UnsatisfyingWitness)), "{err:?}");
         assert_eq!(acc.step_count, 0, "a rejected fold must not mutate the accumulator");
@@ -320,7 +320,7 @@ mod tests {
         let good = make_witness(5, 3, 8);
         let bad = make_witness(2, 4, 7); // 2 + 4 != 7
         let mut acc = zero_accumulator(&instance);
-        let mut t = Transcript::new();
+        let mut t = Transcript::new_v1();
         fold_step(&mut acc, &instance, &good, &mut t).unwrap();
         assert_eq!(acc.step_count, 1);
         let err = fold_step(&mut acc, &instance, &bad, &mut t);
@@ -340,7 +340,7 @@ mod tests {
     /// public/private witness split, or an extra fixed-point PCS opening) —
     /// out of scope for this fix; recorded in `specs/decider.md` §soundness.
     #[test]
-    fn attack_zeroed_constant_wire_satisfies_universal_instance() {
+    fn retired_path_hole_zeroed_constant_wire_satisfies_universal_instance() {
         use crate::folding::decide::decide;
         use crate::types::{ProofGroup, ProofParams, Statement, TraceProof};
 
@@ -353,7 +353,7 @@ mod tests {
         );
 
         let mut acc = zero_accumulator(&instance);
-        let mut t = Transcript::new();
+        let mut t = Transcript::new_v1();
         fold_step(&mut acc, &instance, &all_zero, &mut t)
             .expect("the gate cannot reject a witness whose error is genuinely zero");
         assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO));
@@ -388,7 +388,7 @@ mod tests {
     /// needs a verifier-checked fold over N real steps (the recursion
     /// milestone) — not a per-witness gate, however strict.
     #[test]
-    fn attack_satisfying_but_meaningless_witness_passes_for_any_statement() {
+    fn retired_path_hole_meaningless_witness_passes_for_any_statement() {
         use crate::folding::decide::decide;
         use crate::types::{ProofGroup, ProofParams, Statement, TraceProof};
 
@@ -398,7 +398,7 @@ mod tests {
         assert!(instance.is_satisfied_by(&quote_row));
 
         let mut acc = zero_accumulator(&instance);
-        let mut t = Transcript::new();
+        let mut t = Transcript::new_v1();
         fold_step(&mut acc, &instance, &quote_row, &mut t).unwrap();
         assert!(acc.error_evals.iter().all(|&e| e == Goldilocks::ZERO));
 

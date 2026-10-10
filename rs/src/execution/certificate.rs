@@ -236,7 +236,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod malleability {
+pub(crate) mod malleability {
     //! Every free witness position must be either constrained (any change is
     //! rejected) or a factor of a product whose other factor is zero in the
     //! honest witness — a "don't care" wire whose value cannot reach any row
@@ -280,6 +280,50 @@ mod malleability {
             .fold(Goldilocks::ZERO, |acc, &(c, v)| acc + v * z[c])
     }
 
+    /// Change each free value by one; every change that still verifies must
+    /// be a "don't care" wire: each product term reading it has another
+    /// factor that is zero in the honest witness. Returns the movable count.
+    pub(crate) fn movable_wires_only_multiply_zero(
+        name: &str,
+        instance: &crate::types::CCSInstance,
+        cert: &super::Certificate,
+        public: &[(usize, Goldilocks)],
+    ) -> usize {
+        let z = super::assemble(instance, cert, public).unwrap().z;
+        let pins: Vec<usize> = core::iter::once(0).chain(public.iter().map(|p| p.0)).collect();
+        let free_index: Vec<usize> = (0..instance.num_cols).filter(|i| !pins.contains(i)).collect();
+        let mut movable = 0;
+        for (k, &idx) in free_index.iter().enumerate().take(cert.free.len()) {
+            let mut bad = cert.clone();
+            bad.free[k] = (bad.free[k] + 1) % nebu::field::P;
+            if super::verify(instance, &bad, public).is_err() {
+                continue;
+            }
+            movable += 1;
+            for r in 0..instance.num_rows {
+                for set in &instance.multisets {
+                    let reads = set.iter().any(|&mi| {
+                        instance.matrices[mi].entries[r]
+                            .iter()
+                            .any(|&(c, v)| c == idx && v != Goldilocks::ZERO)
+                    });
+                    if !reads {
+                        continue;
+                    }
+                    let zero_partner = set.iter().any(|&mi| {
+                        !instance.matrices[mi].entries[r].iter().any(|&(c, _)| c == idx)
+                            && row_value(&instance.matrices[mi], r, &z) == Goldilocks::ZERO
+                    });
+                    assert!(
+                        zero_partner,
+                        "{name}: z[{idx}] is movable and reaches row {r} through a nonzero product"
+                    );
+                }
+            }
+        }
+        movable
+    }
+
     #[test]
     fn every_movable_wire_only_multiplies_zero() {
         for (name, program, inputs) in [
@@ -300,51 +344,9 @@ mod malleability {
                 let (statement, cert) = certify_execution(&program, &input, 1_000_000).unwrap();
                 let relation = statement.relation().unwrap();
                 let public = statement.bindings(&relation).unwrap();
-                let instance = &relation.instance;
-                let z = super::assemble(instance, &cert, &public).unwrap().z;
-                let pins: Vec<usize> = core::iter::once(0)
-                    .chain(public.iter().map(|p| p.0))
-                    .collect();
-                let free_index: Vec<usize> = (0..instance.num_cols)
-                    .filter(|i| !pins.contains(i))
-                    .collect();
-                let mut movable = 0;
-                for (k, &idx) in free_index.iter().enumerate().take(cert.free.len()) {
-                    let mut bad = cert.clone();
-                    bad.free[k] = (bad.free[k] + 1) % nebu::field::P;
-                    if super::verify(instance, &bad, &public).is_err() {
-                        continue;
-                    }
-                    movable += 1;
-                    // every multiset term that reads idx must multiply it by a
-                    // factor that is zero in the honest witness
-                    for r in 0..instance.num_rows {
-                        for set in &instance.multisets {
-                            let reads = set.iter().any(|&mi| {
-                                instance.matrices[mi].entries[r]
-                                    .iter()
-                                    .any(|&(c, v)| c == idx && v != Goldilocks::ZERO)
-                            });
-                            if !reads {
-                                continue;
-                            }
-                            let zero_partner = set.iter().any(|&mi| {
-                                !instance.matrices[mi].entries[r]
-                                    .iter()
-                                    .any(|&(c, _)| c == idx)
-                                    && row_value(&instance.matrices[mi], r, &z) == Goldilocks::ZERO
-                            });
-                            assert!(
-                                zero_partner,
-                                "{name} {input:?}: z[{idx}] is movable and reaches row {r} through a nonzero product"
-                            );
-                        }
-                    }
-                }
-                println!(
-                    "{name} {input:?}: free {} movable {movable}",
-                    cert.free.len()
-                );
+                let movable =
+                    movable_wires_only_multiply_zero(name, &relation.instance, &cert, &public);
+                println!("{name} {input:?}: free {} movable {movable}", cert.free.len());
             }
         }
     }

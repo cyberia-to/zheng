@@ -22,7 +22,7 @@ pub use certificate::Certificate;
 pub use proof::DirectProof;
 pub use relation::ExecutionNoun;
 pub use statement::{
-    ExecutionStatement, NounToken, certify_execution, prove_execution, verify_certificate,
+    ExecutionStatement, MAX_DEPTH, MAX_INPUTS, MAX_OUTPUTS, MAX_PROGRAM_NODES, NounToken, certify_execution, prove_execution, verify_certificate,
     verify_execution,
 };
 
@@ -30,7 +30,13 @@ pub use statement::{
 mod call_tests;
 
 #[cfg(test)]
+mod direct_tests;
+
+#[cfg(test)]
 mod state_tests;
+
+#[cfg(test)]
+mod state_v3_tests;
 
 #[cfg(test)]
 mod private_state_tests;

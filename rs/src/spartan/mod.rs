@@ -3,8 +3,10 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! SuperSpartan IOP: prover and verifier.
+//! SuperSpartan: the IOP generic over the challenge field (`iop`) and its
+//! lens-PCS wrappers (`prover`, `verifier`).
 
+pub mod iop;
 pub mod prover;
 pub mod verifier;
 

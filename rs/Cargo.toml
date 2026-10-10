@@ -18,6 +18,12 @@ getrandom = "0.3"
 zeroize = "1"
 
 [features]
+# The retired 0.3.x folded trace API: commit/open/verify_eval/verify/fold/
+# decide, the universal CCS (`ccs`), HyperNova folding (`folding`) and phi
+# SpMV. UNSOUND (fold unchecked, statement unbound — specs/decider.md); kept
+# off by default so external consumers can migrate. Never enable it on a
+# production path.
+legacy = []
 # proof artifact wire form: Statement + TraceProof (and everything inside)
 # Serialize/Deserialize; Goldilocks rides nebu's canonical-u64 form,
 # Commitment/Opening ride lens's existing serde feature.
@@ -29,4 +35,4 @@ postcard = { version = "1", features = ["alloc"] }
 
 [[example]]
 name = "legacy_wire_cost"
-required-features = ["serde"]
+required-features = ["serde", "legacy"]

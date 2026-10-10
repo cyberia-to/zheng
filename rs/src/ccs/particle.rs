@@ -99,9 +99,9 @@ mod tests {
         let error_evals = constraint_eval(ccs, &witness);
         assert!(error_evals.iter().any(|&e| e != Goldilocks::ZERO), "precondition: unsatisfied");
 
-        let mut pt = Transcript::new();
+        let mut pt = Transcript::new_v1();
         let proof = SpartanProver::prove(ccs, &witness, &mut pt);
-        let mut vt = Transcript::new();
+        let mut vt = Transcript::new_v1();
         let r = SpartanVerifier::verify(ccs, &proof, &error_evals, &mut vt);
         assert!(r.is_ok(), "relaxed proof with honest nonzero error must verify: {r:?}");
     }
@@ -118,9 +118,9 @@ mod tests {
         let ccs = universal_ccs();
         assert!(is_satisfied(ccs, &witness), "precondition: witness must satisfy");
 
-        let mut pt = Transcript::new();
+        let mut pt = Transcript::new_v1();
         let proof = SpartanProver::prove(ccs, &witness, &mut pt);
-        let mut vt = Transcript::new();
+        let mut vt = Transcript::new_v1();
         let zero = vec![Goldilocks::ZERO; ccs.num_rows];
         assert!(
             SpartanVerifier::verify(ccs, &proof, &zero, &mut vt).is_ok(),

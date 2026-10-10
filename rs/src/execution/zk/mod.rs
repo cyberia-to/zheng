@@ -2,6 +2,8 @@
 //! relation, arithmetic MPC-in-the-head protocol and security assumptions.
 mod circuit;
 #[cfg(test)]
+mod soundness_tests;
+#[cfg(test)]
 mod tests;
 mod views;
 mod wire;

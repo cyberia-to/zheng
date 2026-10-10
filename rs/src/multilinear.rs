@@ -7,15 +7,17 @@
 
 use nebu::Goldilocks;
 
+use crate::field::ChallengeField;
+
 /// Compute eq(r, x) for all x ∈ {0,1}^k in lex order (MSB-first indexing).
 ///
 /// Returns 2^k values where table[b_0*2^{k-1}+...+b_{k-1}] = Π_i eq(r_i, b_i).
-pub fn eq_evals(r: &[Goldilocks]) -> Vec<Goldilocks> {
-    let mut table = vec![Goldilocks::ONE];
+pub fn eq_evals<F: ChallengeField>(r: &[F]) -> Vec<F> {
+    let mut table = vec![F::ONE];
     for &ri in r {
         let n = table.len();
-        let one_minus_ri = Goldilocks::ONE - ri;
-        let mut new_table = vec![Goldilocks::ZERO; 2 * n];
+        let one_minus_ri = F::ONE - ri;
+        let mut new_table = vec![F::ZERO; 2 * n];
         for m in 0..n {
             new_table[m]     = table[m] * one_minus_ri;
             new_table[m + n] = table[m] * ri;
@@ -28,11 +30,11 @@ pub fn eq_evals(r: &[Goldilocks]) -> Vec<Goldilocks> {
 /// Bookkeeping fold: pin x_0 (MSB) to challenge r.
 ///
 /// table[m] ← (1-r)·table[m] + r·table[m+half], then truncate to half.
-pub fn fold_inplace(table: &mut Vec<Goldilocks>, r: Goldilocks) {
+pub fn fold_inplace<F: ChallengeField>(table: &mut Vec<F>, r: F) {
     let sz = table.len();
     assert!(sz >= 2 && sz.is_power_of_two(), "table must be power-of-2 size ≥ 2");
     let half = sz / 2;
-    let one_minus_r = Goldilocks::ONE - r;
+    let one_minus_r = F::ONE - r;
     for m in 0..half {
         let lo = table[m];
         let hi = table[m + half];
@@ -42,7 +44,7 @@ pub fn fold_inplace(table: &mut Vec<Goldilocks>, r: Goldilocks) {
 }
 
 /// Evaluate the multilinear extension at an arbitrary point by repeated folding.
-pub fn evaluate_multilinear(evals: &[Goldilocks], point: &[Goldilocks]) -> Goldilocks {
+pub fn evaluate_multilinear<F: ChallengeField>(evals: &[F], point: &[F]) -> F {
     debug_assert_eq!(evals.len(), 1 << point.len());
     let mut table = evals.to_vec();
     for &r in point {
@@ -53,19 +55,19 @@ pub fn evaluate_multilinear(evals: &[Goldilocks], point: &[Goldilocks]) -> Goldi
 
 /// Linearly extend two values at 0, 1 to an arbitrary t: (1-t)·v0 + t·v1.
 #[inline]
-pub fn linear_ext(v0: Goldilocks, v1: Goldilocks, t: Goldilocks) -> Goldilocks {
-    (Goldilocks::ONE - t) * v0 + t * v1
+pub fn linear_ext<F: ChallengeField>(v0: F, v1: F, t: F) -> F {
+    (F::ONE - t) * v0 + t * v1
 }
 
 /// Lagrange interpolation from evaluations at integer points 0, 1, ..., d.
 ///
 /// Returns coefficients in ascending monomial order.
-pub fn evals_to_coeffs(evals: &[Goldilocks]) -> Vec<Goldilocks> {
+pub fn evals_to_coeffs<F: ChallengeField>(evals: &[F]) -> Vec<F> {
     if evals.is_empty() {
         return vec![];
     }
     let d = evals.len() - 1;
-    let mut coeffs = vec![Goldilocks::ZERO; d + 1];
+    let mut coeffs = vec![F::ZERO; d + 1];
     for (i, &eval_i) in evals.iter().enumerate() {
         // compute L_i(t) = Π_{j≠i} (t-j)/(i-j) as polynomial in t
         let mut li = vec![Goldilocks::ONE]; // polynomial 1
@@ -91,17 +93,17 @@ pub fn evals_to_coeffs(evals: &[Goldilocks]) -> Vec<Goldilocks> {
             denom *= diff;
         }
         let denom_inv = denom.inv();
-        let scale = eval_i * denom_inv;
+        let scale = eval_i * F::from_base(denom_inv);
         for k in 0..=d {
-            coeffs[k] += scale * li[k];
+            coeffs[k] = coeffs[k] + scale * F::from_base(li[k]);
         }
     }
     coeffs
 }
 
 /// Evaluate polynomial (monomial coefficients, ascending) via Horner.
-pub fn eval_poly(coeffs: &[Goldilocks], x: Goldilocks) -> Goldilocks {
-    let mut r = Goldilocks::ZERO;
+pub fn eval_poly<F: ChallengeField>(coeffs: &[F], x: F) -> F {
+    let mut r = F::ZERO;
     for &c in coeffs.iter().rev() {
         r = r * x + c;
     }
@@ -114,9 +116,9 @@ pub fn eval_poly(coeffs: &[Goldilocks], x: Goldilocks) -> Goldilocks {
 /// rounds up) its own length. Truncating here once silently cut every
 /// witness wider than 64 columns and broke verification for any CCS with
 /// more than 32 SpMV rows.
-pub fn pad_to_power_of_two(table: &mut Vec<Goldilocks>, floor: usize) {
+pub fn pad_to_power_of_two<F: ChallengeField>(table: &mut Vec<F>, floor: usize) {
     let n = table.len().max(floor).next_power_of_two().max(1);
-    table.resize(n, Goldilocks::ZERO);
+    table.resize(n, F::ZERO);
 }
 
 #[cfg(test)]
