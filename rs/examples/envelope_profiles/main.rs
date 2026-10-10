@@ -1,10 +1,14 @@
 //! Measure one fixture under every envelope profile that proves a public
-//! nox run: succinct (1), machine (4), recursive (5). Reports envelope
-//! bytes, prove time, and `from_bytes` + `verify` time (the first call —
-//! for profile 5 it derives the circuit key — and the median of 5 more).
+//! nox run: succinct (1), machine (4), recursive (5), wrapped (6).
+//! Reports envelope bytes, prove time, and `from_bytes` + `verify` time
+//! (the first call — for profiles 5 and 6 it builds the keys — and the
+//! median of 5 more).
 //!
 //! `cargo run --release -p zheng --example envelope_profiles -- [fixture…]`
-//! fixtures: add.tri hash.tri merkle-32. `ZHENG_PROFILES=1,4,5` selects.
+//! fixtures: add.tri hash.tri merkle-32 tree-<k>. `ZHENG_PROFILES=1,4,5,6`
+//! selects (default 1,4,5). `ZHENG_ENVELOPE_DIR=<dir>` writes each envelope
+//! to `<dir>/<fixture>.p<profile>.zheng`. `ZHENG_VERIFY=<file>` only
+//! decodes and verifies that envelope (a fresh process: cold keys).
 
 #[path = "../../tests/common/mod.rs"]
 mod common;
@@ -25,6 +29,7 @@ fn fixture(name: &str) -> Option<(N, Vec<u64>)> {
             let r = machine::statement::parse(&root.statement.output).ok()?;
             (common::merkle_program(32, Some(&r)), vec![5])
         }
+        t if t.starts_with("tree-") => (common::tree_program(t[5..].parse().ok()?), vec![3]),
         _ => return None,
     })
 }
@@ -41,6 +46,7 @@ fn prove(profile: u8, prog: &N, input: &[u64]) -> Result<Envelope, String> {
             Ok(Envelope::Machine { params, statement, proof: Box::new(proof) })
         }
         5 => recursive::prove(prog, input, BUDGET, &recursive::params()),
+        6 => zheng::envelope::wrapped::prove(prog, input, BUDGET),
         _ => Err(format!("profile {profile}")),
     }
 }
@@ -52,6 +58,14 @@ fn check(bytes: &[u8]) -> f64 {
 }
 
 fn main() {
+    if let Ok(file) = std::env::var("ZHENG_VERIFY") {
+        let bytes = std::fs::read(&file).expect("envelope");
+        let first = check(&bytes);
+        let mut v: Vec<f64> = (0..5).map(|_| check(&bytes)).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("{file}: {} B · profile {} · decode+verify cold {first:.2} ms, warm median {:.2} ms", bytes.len(), bytes[10], v[2]);
+        return;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let names = if args.is_empty() { vec!["hash.tri".into(), "merkle-32".into()] } else { args };
     let profiles: Vec<u8> = std::env::var("ZHENG_PROFILES")
@@ -71,6 +85,9 @@ fn main() {
             };
             let t_prove = t0.elapsed().as_secs_f64();
             let bytes = envelope.to_bytes();
+            if let Ok(dir) = std::env::var("ZHENG_ENVELOPE_DIR") {
+                std::fs::write(format!("{dir}/{name}.p{profile}.zheng"), &bytes).expect("write envelope");
+            }
             let first = check(&bytes);
             let mut v: Vec<f64> = (0..5).map(|_| check(&bytes)).collect();
             v.sort_by(|a, b| a.partial_cmp(b).unwrap());
