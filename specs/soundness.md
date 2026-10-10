@@ -70,7 +70,7 @@ of `m = 4` words with `J = 64` claims (`t = 53`, `s = 1`, `query_pow = 24`,
 | component | assumption | bits claimed | status | argument | controlling parameter | test |
 |---|---|---|---|---|---|---|
 | field-native transcript (`recursion::sponge`) | hemera's permutation as an ideal permutation; capacity 7 lanes | challenges: output limbs, exactly uniform on `F_p` (no byte reduction); indices: low `k ≤ 32` bits of a limb `v ≠ p − 1`, exactly uniform since `2^k \| p − 1`; generic sponge bound `2^{c·64/2} = 2^{224}` for 7 capacity lanes, above the hash row's `2^128` digest bound | proven given the ideal permutation; hemera conjectured (hash row) | overwrite duplex with a fixed message schedule (every protocol absorbs a fixed number of items per round), domain tags per use | rate 9, tags | `recursion::sponge` via every recursion test |
-| field-native words (`recursion::word`) | hemera collision resistance (4-limb digests) | binding as the hash row (`2^128` classical) | conjectured (hash row) | leaf = sponge (tag `LEAF`) over the symbols, node = `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`, a 4-ary node (inner wrap levels) the truncated permutation of its four children `perm(c0 ‖ c1 ‖ c2 ‖ c3)[0..4]` (ideal-permutation collision bound `2^{128}` for 4-limb outputs; the binary node's tag and the leaf sponge's capacity tag keep the three input kinds apart); words committed together may share a tree (a leaf hashes every member's symbols); code, domain and distance are lens's round-0 layout, so the accumulation rows are unchanged | — | `recursion::word::tests` |
+| field-native words (`recursion::word`) | hemera collision resistance (4-limb digests) | binding as the hash row (`2^128` classical) | conjectured (hash row) | leaf = sponge (tag `LEAF`) over the symbols, node = `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`, a 4-ary node (inner wrap levels) the truncated permutation of its four children `perm(c0 ‖ c1 ‖ c2 ‖ c3)[0..4]` (ideal-permutation collision bound `2^{128}` for 4-limb outputs; a 4-ary node's input carries no tag and its siblings are the prover's, so it can equal a binary node's or a leaf block's input — binding rests on the verifier's fixed level schedule (depth and fan-in per level from the shape, never parsed two ways) and on collision resistance of the truncated permutation, not on domain separation between the three kinds); words committed together may share a tree (a leaf hashes every member's symbols); code, domain and distance are lens's round-0 layout, so the accumulation rows are unchanged | — | `recursion::word::tests` |
 | step zerocheck (machine ‖ circuit) | Schwartz–Zippel; sumcheck on the one codeword each fresh word is OOD-bound to | `μ` structured powers `μ1^a μ2^b μ3^c` (`B = 9`): degree `3(B−1) = 24` → 187.4; `τ`: `n/|K|`; per round `10/|K|` → 188.7 | proven | a violated constraint makes `Σ_k μ1^a μ2^b μ3^c C_k` a nonzero polynomial of individual degrees `< B` | `B`, degree 8 | `recursion::params::tests` |
 | shift reduction and boundary claims (`air/shift.rs` over the duplex) | Schwartz–Zippel | rounds of degree 2 → 191.0; `ζ` over three words, `β` → 191.0; column batching `γ_s`, `γ_b` (6 variables) → 189.4; `τ` (`n/|K|`) → 188.1 | proven | the local and successor claims of three words reduced to one point; the last row's successor is the boundary row (nox `b_out`, circuit `b_v` = its own row 0) | — | `recursion::params::tests` |
 | fresh-word binding (words a, b, c) | OOD (WHIR Lemma 4.25) | `s = 1` → 155.5 | proven | word a's OOD points come from its root alone (tag `PRE`) and its answers enter the chain before `(α, β)` | `s` | as the machine row |
@@ -86,8 +86,16 @@ of `m = 4` words with `J = 64` claims (`t = 53`, `s = 1`, `query_pow = 24`,
 
 Every number below is printed and checked ≥ 128 by
 `recursion::wrap::tests::every_ledger_row_of_the_wrap_profiles_reaches_128_bits`
-(the shipped levels: inner 1/64 and 1/256 with 24 grinding bits, final
-1/256 with 30) and by `examples/wrap_bench` for the derived keys.
+(inner 1/64 with 24 grinding bits, inner 1/256 with 30, final 1/256 with
+30), by `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
+(the chain measured in `audit/wrap-2026-10.md`, `6i,8i,8f:30`: inner
+1/64 and 1/256 with 24 grinding bits, final 1/256 with 30 — weakest rows
+128.24 / 128.29 / 128.02) and by `examples/wrap_bench` for the derived
+keys. The ≥ 128 figures price grinding as hemera work: interactively
+(grinding removed) the weakest rounds carry 104.42 / 104.29 / **98.02**
+bits (the final level's shift round after its 30-bit query grinding), so
+the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
+grinding permutation.
 
 | component | assumption | bits claimed | status | argument | controlling parameter | test |
 |---|---|---|---|---|---|---|

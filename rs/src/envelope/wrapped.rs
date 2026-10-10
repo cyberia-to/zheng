@@ -132,9 +132,25 @@ pub fn final_key_cached() -> bool {
     final_slot().lock().expect("final key").is_some()
 }
 
+/// The recursive proof every admitted key is bound to (`WrapKey::ivc`):
+/// the chain's IVC parameters and the step size.
+pub fn admitted_ivc() -> (WhirParams, usize) {
+    (chain().0, STEP_LOG_ROWS as usize)
+}
+
+fn check_bound(k: &WrapKey) -> Result<(), String> {
+    let last = chain().1[LEVELS - 1];
+    if k.ivc != admitted_ivc() || k.params.whir != last.whir || k.params.mode != last.mode {
+        return Err("wrapped: the final key is not the admitted chain's".into());
+    }
+    Ok(())
+}
+
 /// Install the final key (rebuilt from a pinned layout: `keys`).
-pub(super) fn install_final(k: WrapKey) {
+pub(super) fn install_final(k: WrapKey) -> Result<(), String> {
+    check_bound(&k)?;
     final_slot().lock().expect("final key").get_or_insert(Arc::new(k));
+    Ok(())
 }
 
 /// The final level's key: cached, else derived over the inner levels'
@@ -149,6 +165,7 @@ pub fn final_key() -> Result<Arc<WrapKey>, String> {
     let k0 = wrap::derive_key_ivc_at(l0, &ikey, pinned_root(0))?;
     let k1 = wrap::derive_key_wrap_at(l1, &k0, pinned_root(1))?;
     let k = Arc::new(wrap::derive_key_wrap(l2, &k1)?);
+    check_bound(&k)?;
     *slot = Some(k.clone());
     Ok(k)
 }
@@ -196,11 +213,14 @@ pub fn wrap_recursive(st: &MachineStatement, proof: &ivc::IvcProof) -> Result<En
 /// `state`: its reads are authenticated against it first.
 pub(super) fn verify(st: &MachineStatement, fp: &FinalProof, state: Option<&StateEvidence>) -> Result<(), String> {
     machine::authenticate_state(st, state)?;
-    if fp.log_rows != STEP_LOG_ROWS {
+    // the header names the recursive proof the admitted key is bound to,
+    // checked before any key work
+    if fp.log_rows as usize != admitted_ivc().1 {
         return Err("wrapped envelope: step size not admitted".into());
     }
-    let (ivc_whir, _) = chain();
-    wrap::verify_statement(st, &ivc_whir, &*final_key()?, fp)
+    let k = final_key()?;
+    check_bound(&k)?;
+    wrap::verify_statement(st, &admitted_ivc().0, &k, fp)
 }
 
 /// The proof's wire bytes (the envelope's last field).
@@ -230,8 +250,9 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
     let statement = read_statement(r)?;
     let n = r.len(MAX_PROOF_BYTES, 1)?;
     let bytes = r.raw(n)?;
-    // the header's step size must be admitted before any key is built
-    if u32::from(*bytes.first().ok_or(E::Truncated)?) != STEP_LOG_ROWS {
+    // the proof's step size must be the admitted key's (`WrapKey::ivc`)
+    // before any key is built
+    if usize::from(*bytes.first().ok_or(E::Truncated)?) != admitted_ivc().1 {
         return Err(E::NonCanonical);
     }
     let key = final_key().map_err(|_| E::NonCanonical)?;

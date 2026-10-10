@@ -123,25 +123,34 @@ fn key_over_ivc(params: WrapParams, key: &Key, root: Option<Digest>) -> Result<W
     let step = ivc_program::dummy_proof(&key.params);
     let decider = decide::dummy(&key.dcfg);
     let proof = IvcProof { log_rows: key.params.n as u32, start: 0, segments: 1, chain: [nebu::Goldilocks::ZERO; 4], state, step, decider };
-    derive_key(params, &Inner::Ivc { key, proof: &proof }, root)
+    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n), root)
 }
 
 /// Derive the key of a wrap level over another wrap level's verifier.
 pub fn derive_key_wrap(params: WrapParams, key: &WrapKey) -> Result<WrapKey, String> {
+    // a final-mode verifier evaluates the key and the wiring weight in the
+    // field (`o.value`): inside a circuit those would be constants of the
+    // key derivation's dummy proof, not of the proof verified
+    if !key.inner() {
+        return Err("wrap: a final-mode level is verified natively only".into());
+    }
     let proof = dummy_proof(key);
-    derive_key(params, &Inner::Wrap { key, proof: &proof }, None)
+    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc, None)
 }
 
 /// [`derive_key_wrap`] for an inner level whose key root is known
 /// (pinned).
 pub fn derive_key_wrap_at(params: WrapParams, key: &WrapKey, root: Digest) -> Result<WrapKey, String> {
+    if !key.inner() {
+        return Err("wrap: a final-mode level is verified natively only".into());
+    }
     let proof = dummy_proof(key);
-    derive_key(params, &Inner::Wrap { key, proof: &proof }, Some(root))
+    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc, Some(root))
 }
 
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
 /// never read: layouts are fixed by shapes).
-fn derive_key(params: WrapParams, inner: &Inner<'_>, key_root: Option<Digest>) -> Result<WrapKey, String> {
+fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize), key_root: Option<Digest>) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
     let pn = ClaimV { point: vec![Fp3::ZERO; inner.pn_len()], value: Fp3::ZERO };
     let mut b = Builder::new(false);
@@ -150,13 +159,14 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, key_root: Option<Digest>) -
     let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
     let n = if params.n == 0 { rows.next_power_of_two().trailing_zeros().max(4) as usize } else { params.n };
     let (_, pre, out_row) = trace::generate(&b, &air, n)?;
-    assemble(WrapParams { n, ..params }, pre, out_row, rows, census, inner.pn_len(), key_root)
+    assemble(WrapParams { n, ..params }, ivc, pre, out_row, rows, census, inner.pn_len(), key_root)
 }
 
 /// Everything but the circuit layout (`pre`, the output row, the census)
 /// rebuilt from it; an inner level's key words are committed unless their
 /// root is given.
-fn assemble(params: WrapParams, pre: trace::Pre, out_row: usize, rows: usize, census: [usize; 3], pn: usize, key_root: Option<Digest>) -> Result<WrapKey, String> {
+#[allow(clippy::too_many_arguments)]
+fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre, out_row: usize, rows: usize, census: [usize; 3], pn: usize, key_root: Option<Digest>) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
     let n = params.n;
     let vars = n + super::CBITS;
@@ -191,6 +201,7 @@ fn assemble(params: WrapParams, pre: trace::Pre, out_row: usize, rows: usize, ce
         constraints,
         next_cols,
         pn,
+        ivc,
         rows,
         census,
     })
@@ -201,7 +212,8 @@ const LAYOUT_TAG: &[u8; 8] = b"ZHKWRP01";
 
 impl WrapKey {
     /// The key's layout as canonical bytes (`recursion::vkey`): tag, WHIR
-    /// header, mode (0 inner, 1 final), `log2` rows, the deferred claim's
+    /// header, mode (0 inner, 1 final), the recursive proof's WHIR header
+    /// and step size (`WrapKey::ivc`), `log2` rows, the deferred claim's
     /// point length, output row, circuit rows, census, the key words' root
     /// (inner levels), the fixed columns.
     pub fn layout_bytes(&self) -> Vec<u8> {
@@ -210,7 +222,8 @@ impl WrapKey {
         w.raw(LAYOUT_TAG);
         w.raw(&self.params.whir.header());
         w.bool(self.params.mode == Mode::Final);
-        for v in [self.params.n, self.pn, self.out_row, self.rows, self.census[0], self.census[1], self.census[2]] {
+        w.raw(&self.ivc.0.header());
+        for v in [self.ivc.1, self.params.n, self.pn, self.out_row, self.rows, self.census[0], self.census[1], self.census[2]] {
             w.varint(v as u64);
         }
         if let Some(r) = &self.key_root {
@@ -232,18 +245,19 @@ impl WrapKey {
         }
         let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "wrap key layout: header")?;
         let mode = if r.bool().map_err(e)? { Mode::Final } else { Mode::Inner };
-        let mut v = [0usize; 7];
+        let ivc_whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "wrap key layout: recursive header")?;
+        let mut v = [0usize; 8];
         for x in &mut v {
             *x = usize::try_from(r.varint().map_err(e)?).map_err(|_| "wrap key layout: size")?;
         }
-        let [n, pn, out_row, rows, c0, c1, c2] = v;
-        if !(4..=20).contains(&n) || out_row >= 1 << n || rows > 1 << n || pn > 64 {
+        let [ivc_n, n, pn, out_row, rows, c0, c1, c2] = v;
+        if !(10..=20).contains(&ivc_n) || !(4..=20).contains(&n) || out_row >= 1 << n || rows > 1 << n || pn > 64 {
             return Err("wrap key layout: geometry".into());
         }
         let key_root = if mode == Mode::Inner { Some(vkey::read_digest(&mut r)?) } else { None };
         let pre = vkey::read_pre(&mut r, 1 << n)?;
         r.finish().map_err(e)?;
-        assemble(WrapParams { whir, n, mode }, pre, out_row, rows, [c0, c1, c2], pn, key_root)
+        assemble(WrapParams { whir, n, mode }, (ivc_whir, ivc_n), pre, out_row, rows, [c0, c1, c2], pn, key_root)
     }
 }
 
@@ -251,7 +265,7 @@ impl WrapKey {
 /// with the slot writing its address, every used slot's value as a
 /// combination of its row's phase-1 cells (`slot_values` is linear in
 /// them: evaluated at unit rows).
-fn wiring(pre: &trace::Pre) -> Wiring {
+pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
     use crate::recursion::circuit::air::slot_values;
     use crate::recursion::circuit::layout::{SLOTS, V1, pre as pc};
     let rows = pre.cols[0].len();

@@ -34,7 +34,7 @@ pub mod statement;
 mod trace;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 mod tests_ops;
 #[cfg(test)]
