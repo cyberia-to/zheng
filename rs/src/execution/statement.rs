@@ -198,14 +198,16 @@ impl ExecutionStatement {
     }
 }
 
-/// Input values and the witness are public in this certificate. Secret-input
-/// proving uses [`super::private::prepare_execution`] and [`super::zk::prove`];
-/// see `specs/native-private-ccs.md` for its disclosure and security contract.
-pub fn prove_execution(
+/// The statement, relation, witness and pinned coordinates of one honest
+/// public execution; shared by every public-statement prover (v2, v3 and
+/// the succinct profile).
+#[allow(clippy::type_complexity)]
+pub(crate) fn prepare(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
-) -> Result<(ExecutionStatement, DirectProof), String> {
+) -> Result<(ExecutionStatement, ExecutionRelation, crate::types::CCSWitness, Vec<(usize, F)>), String>
+{
     let mut statement = ExecutionStatement {
         program: ExecutionStatement::encode_program(program)?,
         public_input: input.to_vec(),
@@ -227,6 +229,18 @@ pub fn prove_execution(
         return Err("execution cost exceeds budget".into());
     }
     let public = statement.bindings(&relation)?;
+    Ok((statement, relation, witness, public))
+}
+
+/// Input values and the witness are public in this certificate. Secret-input
+/// proving uses [`super::private::prepare_execution`] and [`super::zk::prove`];
+/// see `specs/native-private-ccs.md` for its disclosure and security contract.
+pub fn prove_execution(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+) -> Result<(ExecutionStatement, DirectProof), String> {
+    let (statement, relation, witness, public) = prepare(program, input, budget)?;
     let proof = proof::prove(
         &relation.instance,
         &witness,
@@ -257,27 +271,7 @@ pub fn certify_execution(
     input: &[u64],
     budget: u64,
 ) -> Result<(ExecutionStatement, super::certificate::Certificate), String> {
-    let mut statement = ExecutionStatement {
-        program: ExecutionStatement::encode_program(program)?,
-        public_input: input.to_vec(),
-        public_output: vec![],
-        cycles: 0,
-        budget,
-    };
-    let relation = statement.relation()?;
-    let witness = relation
-        .witness(&statement.inputs())
-        .map_err(|e| format!("execution witness: {e:?}"))?;
-    statement.public_output = relation
-        .output_indices
-        .iter()
-        .map(|&i| witness.z[i].as_u64())
-        .collect();
-    statement.cycles = witness.z[relation.cost_index].as_u64();
-    if statement.cycles > budget {
-        return Err("execution cost exceeds budget".into());
-    }
-    let public = statement.bindings(&relation)?;
+    let (statement, relation, witness, public) = prepare(program, input, budget)?;
     let certificate = super::certificate::certify(&relation.instance, &witness, &public)
         .map_err(|e| e.to_string())?;
     Ok((statement, certificate))

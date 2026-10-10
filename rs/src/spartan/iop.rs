@@ -36,7 +36,7 @@ fn lift<F: ChallengeField>(values: &[Goldilocks]) -> Vec<F> {
 ///
 /// Row weights use the reversed challenge order: the outer fold pins the
 /// MSB row bit with the round-0 challenge, while eq_evals is LSB-first.
-fn combined_weights<F: ChallengeField>(
+pub(crate) fn combined_weights<F: ChallengeField>(
     instance: &CCSInstance,
     rho_x: &[F],
     gamma: F,

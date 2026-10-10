@@ -11,6 +11,8 @@ pub mod public;
 pub mod relation;
 pub mod state;
 mod statement;
+/// The succinct profile: committed witness, Spartan over Fp3, one opening.
+pub mod succinct;
 #[cfg(feature = "serde")]
 mod statement_wire;
 /// Experimental opt-in tagged kernel; no production protocol dispatch.

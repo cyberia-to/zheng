@@ -3,13 +3,15 @@
 //! ```text
 //! magic    8 bytes  "ZHENGPF1"
 //! version  u16 LE   VERSION
-//! profile  u8       0 public · 1 succinct (reserved) · 2 zk · 3 state-public
+//! profile  u8       0 public · 1 succinct · 2 zk · 3 state-public
 //! body              per profile, canonical (see `codec`)
 //! ```
 //!
 //! Bodies:
 //!
 //! - public (0): execution statement, then the v3 certificate;
+//! - succinct (1): PCS id and parameter header, statement kind, the
+//!   execution or state statement, then the succinct proof (see `succinct`);
 //! - zk (2): execution statement, a 32-byte caller context, then the
 //!   `ZHMITH01` proof bytes (length-prefixed); the proof's statement bytes
 //!   are [`zk_statement_bytes`];
@@ -20,11 +22,12 @@
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
 //! values with no trailing zero. Decoding rejects a wrong magic, an unknown
-//! version, an unknown or reserved profile, any noncanonical integer, field
+//! version, an unknown profile, any noncanonical integer, field
 //! value or flag, any length beyond its bound, truncation and trailing bytes.
 
 mod body;
 mod codec;
+mod succinct;
 #[cfg(test)]
 mod tests;
 
@@ -33,6 +36,8 @@ use crate::execution::state::StateStatement;
 use crate::execution::zk::{self, PrivateProof};
 use crate::execution::{Certificate, ExecutionStatement, verify_certificate};
 use core::fmt;
+
+pub use succinct::{AnySuccinct, SuccinctStatement, proof_bytes as succinct_proof_bytes};
 
 pub const MAGIC: &[u8; 8] = b"ZHENGPF1";
 pub const VERSION: u16 = 1;
@@ -46,7 +51,7 @@ pub const MAX_BYTES: usize = zk::MAX_BYTES + (1 << 20);
 #[repr(u8)]
 pub enum Profile {
     Public = 0,
-    /// Reserved for the committed-witness profile of phase 2; never decoded.
+    /// Committed witness, Spartan over Fp3, one PCS opening.
     Succinct = 1,
     Zk = 2,
     StatePublic = 3,
@@ -57,7 +62,6 @@ pub enum EnvelopeError {
     BadMagic,
     UnsupportedVersion(u16),
     UnknownProfile(u8),
-    ReservedProfile(Profile),
     Truncated,
     TrailingBytes,
     NonCanonical,
@@ -88,6 +92,10 @@ pub enum Envelope {
         statement: StateStatement,
         certificate: Certificate,
     },
+    Succinct {
+        statement: SuccinctStatement,
+        proof: AnySuccinct,
+    },
 }
 
 /// The statement bytes a zk-profile proof is made and checked against.
@@ -104,6 +112,7 @@ impl Envelope {
             Self::Public { .. } => Profile::Public,
             Self::Zk { .. } => Profile::Zk,
             Self::StatePublic { .. } => Profile::StatePublic,
+            Self::Succinct { .. } => Profile::Succinct,
         }
     }
 
@@ -130,7 +139,7 @@ impl Envelope {
         }
         let profile = match r.byte()? {
             0 => Profile::Public,
-            1 => return Err(EnvelopeError::ReservedProfile(Profile::Succinct)),
+            1 => Profile::Succinct,
             2 => Profile::Zk,
             3 => Profile::StatePublic,
             other => return Err(EnvelopeError::UnknownProfile(other)),
@@ -141,7 +150,7 @@ impl Envelope {
     }
 
     /// Verify the proof against its own statement. `lookup` answers state
-    /// reads for the state-public profile and MUST come from a state
+    /// reads for the state profiles (3, and 1 with a state statement) and MUST come from a state
     /// certificate already verified under that statement's root; the other
     /// profiles never consult it.
     pub fn verify(&self, lookup: &mut dyn FnMut(u64, u64) -> Option<u64>) -> Result<(), String> {
@@ -173,6 +182,7 @@ impl Envelope {
                 statement,
                 certificate,
             } => statement.verify_certificate(certificate, lookup),
+            Self::Succinct { statement, proof } => succinct::verify(statement, proof, lookup),
         }
     }
 }

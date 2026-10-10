@@ -9,9 +9,12 @@ use nebu::Goldilocks;
 
 use crate::field::ChallengeField;
 
-/// Compute eq(r, x) for all x ∈ {0,1}^k in lex order (MSB-first indexing).
+/// Compute eq(r, x) for all x ∈ {0,1}^k, LSB-first: `r[i]` pairs with bit
+/// `i` of the index.
 ///
-/// Returns 2^k values where table[b_0*2^{k-1}+...+b_{k-1}] = Π_i eq(r_i, b_i).
+/// Returns 2^k values where table[b_0 + 2·b_1 + … + 2^{k-1}·b_{k-1}] =
+/// Π_i eq(r_i, b_i). (`evaluate_multilinear` pairs `point[0]` with the top
+/// bit instead; reverse the point to move between the two.)
 pub fn eq_evals<F: ChallengeField>(r: &[F]) -> Vec<F> {
     let mut table = vec![F::ONE];
     for &ri in r {
