@@ -278,7 +278,7 @@ fn run_chains(jobs: &[Job]) -> Option<&'static str> {
                 }
             })
             .collect();
-        perm::permute_many(&mut batch);
+        perm::permute_many_recall(&mut batch);
         for (&q, s) in idx.iter().zip(batch) {
             states[q] = s;
         }

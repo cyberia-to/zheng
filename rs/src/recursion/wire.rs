@@ -201,7 +201,7 @@ pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_
     if syms.iter().any(|s| s.len() != width) {
         return Err(PcsError::Malformed);
     }
-    let ld = super::word::hash_leaves(syms.len(), width, ext, |j, t| syms[j][t]);
+    let ld = super::word::hash_leaves_with(syms.len(), width, ext, |j, t| syms[j][t], true);
     let mut nodes: Vec<(usize, Digest)> = leaves.iter().copied().zip(ld).collect();
     let mut paths: Vec<Vec<Digest>> = vec![Vec::with_capacity(arity.path_len(log_leaves)); leaves.len()];
     let mut it = sib.iter();
@@ -238,7 +238,7 @@ pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_
             next.push((base / a, input));
         }
         let mut states: Vec<[Goldilocks; 16]> = next.iter().map(|x| x.1).collect();
-        perm::permute_many(&mut states);
+        perm::permute_many_remember(&mut states);
         nodes = next.iter().zip(&states).map(|(x, s)| (x.0, perm::head(s))).collect();
         div *= a;
     }

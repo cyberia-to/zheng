@@ -78,6 +78,93 @@ pub fn permute_many(states: &mut [[Goldilocks; WIDTH]]) {
     }
 }
 
+/// Permutations a proof's parser computed (expanding multi-openings),
+/// kept so the verifier's batched Merkle check reads them instead of
+/// recomputing: a cache of a pure function — a hit is the permutation's
+/// output whatever proof put it there. Bounded: cleared past
+/// [`MEMO_CAP`] entries.
+static MEMO: std::sync::Mutex<Option<std::collections::HashMap<[u64; WIDTH], [Goldilocks; WIDTH], MemoHash>>> = std::sync::Mutex::new(None);
+
+/// Entries the cache holds at most (a final proof's parse adds ≈ 3,000).
+pub const MEMO_CAP: usize = 1 << 16;
+
+#[derive(Clone, Copy, Default)]
+pub struct MemoHash;
+
+impl core::hash::BuildHasher for MemoHash {
+    type Hasher = MemoHasher;
+    fn build_hasher(&self) -> MemoHasher {
+        MemoHasher(0)
+    }
+}
+
+/// A multiply-xor hasher over the state's limbs (keys are permutation
+/// inputs; collisions only cost a comparison).
+#[derive(Clone, Copy)]
+pub struct MemoHasher(u64);
+
+impl core::hash::Hasher for MemoHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for c in bytes.chunks(8) {
+            let mut b = [0u8; 8];
+            b[..c.len()].copy_from_slice(c);
+            self.write_u64(u64::from_le_bytes(b));
+        }
+    }
+    fn write_u64(&mut self, x: u64) {
+        self.0 = (self.0.rotate_left(5) ^ x).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+fn key(s: &[Goldilocks; WIDTH]) -> [u64; WIDTH] {
+    core::array::from_fn(|i| s[i].as_u64())
+}
+
+/// [`permute_many`], remembering every input's output.
+pub fn permute_many_remember(states: &mut [[Goldilocks; WIDTH]]) {
+    let inputs: Vec<[u64; WIDTH]> = states.iter().map(key).collect();
+    permute_many(states);
+    let mut g = MEMO.lock().expect("memo");
+    let m = g.get_or_insert_with(Default::default);
+    if m.len() + states.len() > MEMO_CAP {
+        m.clear();
+    }
+    for (k, s) in inputs.into_iter().zip(states.iter()) {
+        m.insert(k, *s);
+    }
+}
+
+/// [`permute_many`], reading remembered outputs where there are any.
+pub fn permute_many_recall(states: &mut [[Goldilocks; WIDTH]]) {
+    let mut miss = Vec::new();
+    {
+        let g = MEMO.lock().expect("memo");
+        match g.as_ref() {
+            Some(m) if !m.is_empty() => {
+                for (i, s) in states.iter_mut().enumerate() {
+                    match m.get(&key(s)) {
+                        Some(o) => *s = *o,
+                        None => miss.push(i),
+                    }
+                }
+            }
+            _ => miss.extend(0..states.len()),
+        }
+    }
+    if miss.len() == states.len() {
+        permute_many(states);
+        return;
+    }
+    let mut batch: Vec<[Goldilocks; WIDTH]> = miss.iter().map(|&i| states[i]).collect();
+    permute_many(&mut batch);
+    for (&i, s) in miss.iter().zip(batch) {
+        states[i] = s;
+    }
+}
+
 /// A Merkle node's input.
 pub fn node_input(l: [Goldilocks; 4], r: [Goldilocks; 4]) -> [Goldilocks; WIDTH] {
     let mut s = [Goldilocks::ZERO; WIDTH];

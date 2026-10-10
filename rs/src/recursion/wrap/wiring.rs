@@ -92,12 +92,30 @@ impl Wiring {
 
 /// Slot ranges of a wiring whose cells are grouped by slot (as derived).
 pub(super) struct Index {
-    /// `read_cells[read_at[i]..read_at[i + 1]]` are read `i`'s cells.
+    /// The closing's `|α|` the packed cells were built for.
+    pre: usize,
+    /// `rcell[read_at[i]..read_at[i + 1]]` are read `i`'s cells, packed
+    /// `(x >> pre) << 2 | coefficient` (1, `T`, `T²`); `rrow[i]` its
+    /// `x & (2^pre − 1)`.
     read_at: Vec<u32>,
+    rcell: Vec<u16>,
+    rrow: Vec<u16>,
     /// The write slot each read reads.
     read_write: Vec<u32>,
-    /// `write_cells[cell_at[j]..cell_at[j + 1]]` are write `j`'s cells.
+    /// As for reads: write `j`'s cells and row.
     cell_at: Vec<u32>,
+    wcell: Vec<u16>,
+    wrow: Vec<u16>,
+}
+
+/// `coefficient · v` for a packed coefficient (0: 1, 1: `T`, 2: `T²`).
+#[inline(always)]
+fn apply_tag(tag: u16, v: Fp3) -> Fp3 {
+    match tag {
+        0 => v,
+        1 => Fp3::new(v.c2, v.c0 + v.c2, v.c1),
+        _ => Fp3::new(v.c1, v.c1 + v.c2, v.c0 + v.c2),
+    }
 }
 
 impl Wiring {
@@ -105,10 +123,11 @@ impl Wiring {
         Self { index: OnceLock::new(), reads, read_cells, write_reads, write_at, write_cells }
     }
 
-    /// The slot index, when cells are grouped by slot in order and every
-    /// read has one write (else `None`: the closing takes the per-cell
-    /// path).
-    fn index(&self) -> Option<&Index> {
+    /// The slot index for closing checks with `|α| = pre`, when cells
+    /// are grouped by slot in order, every read has one write, every
+    /// coefficient is 1, `T` or `T²` and the indices pack in 16 bits (else
+    /// `None`: the closing takes the per-cell path).
+    fn index(&self, pre: usize) -> Option<&Index> {
         self.index
             .get_or_init(|| {
                 let at = |cells: &[(u32, u32, Coef)], slots: usize| -> Option<Vec<u32>> {
@@ -123,6 +142,35 @@ impl Wiring {
                         at[k + 1] += at[k];
                     }
                     Some(at)
+                };
+                if pre > 16 {
+                    return None;
+                }
+                let mask = (1u32 << pre) - 1;
+                let pack = |cells: &[(u32, u32, Coef)]| -> Option<Vec<u16>> {
+                    cells
+                        .iter()
+                        .map(|&(_, x, c)| {
+                            let hi = x >> pre;
+                            let tag = match c {
+                                Coef::One => 0,
+                                Coef::T => 1,
+                                Coef::T2 => 2,
+                                Coef::Other(_) => return None,
+                            };
+                            (hi < 1 << 14).then_some(((hi << 2) | tag) as u16)
+                        })
+                        .collect()
+                };
+                let rows = |cells: &[(u32, u32, Coef)], at: &[u32]| -> Option<Vec<u16>> {
+                    at.windows(2)
+                        .map(|w| {
+                            let s = &cells[w[0] as usize..w[1] as usize];
+                            let r = s.first().map_or(0, |c| c.1 & mask);
+                            // every cell of a slot is in its row
+                            s.iter().all(|c| c.1 & mask == r).then_some(r as u16)
+                        })
+                        .collect()
                 };
                 let writes = self.write_at.len().checked_sub(1)?;
                 let read_at = at(&self.read_cells, self.reads)?;
@@ -139,9 +187,19 @@ impl Wiring {
                 if read_write.contains(&u32::MAX) {
                     return None;
                 }
-                Some(Index { read_at, read_write, cell_at })
+                Some(Index {
+                    pre,
+                    rcell: pack(&self.read_cells)?,
+                    rrow: rows(&self.read_cells, &read_at)?,
+                    wcell: pack(&self.write_cells)?,
+                    wrow: rows(&self.write_cells, &cell_at)?,
+                    read_at,
+                    read_write,
+                    cell_at,
+                })
             })
             .as_ref()
+            .filter(|ix| ix.pre == pre)
     }
 
     /// `Σ_x u_λ(x)·eq(α, x_lo)·f_M(x_hi)` with `x_lo` the low `|α|` bits
@@ -151,18 +209,19 @@ impl Wiring {
         if pre > n {
             return None;
         }
-        let ix = self.index()?;
+        let ix = self.index(pre)?;
+        if fm.len() << pre != 1usize << (n + super::CBITS) {
+            return None;
+        }
         let ea = eq_table(alpha);
-        let mask = (1usize << pre) - 1;
         // a slot's term: eq(α, row_lo)·Σ coef·f_M(x_hi)
-        let slot = |cells: &[(u32, u32, Coef)]| -> Fp3 {
-            let Some(&(_, x0, _)) = cells.first() else { return Fp3::ZERO };
-            let s = cells.iter().fold(Fp3::ZERO, |a, &(_, x, c)| a + c.apply(fm[x as usize >> pre]));
-            s * ea[x0 as usize & mask]
+        let slot = |cells: &[u16], row: u16| -> Fp3 {
+            let s = cells.iter().fold(Fp3::ZERO, |a, &c| a + apply_tag(c & 3, fm[(c >> 2) as usize]));
+            s * ea[row as usize]
         };
         let writes = ix.cell_at.len() - 1;
         let sw: Vec<Fp3> = par_chunks(writes, |r| {
-            r.map(|j| slot(&self.write_cells[ix.cell_at[j] as usize..ix.cell_at[j + 1] as usize])).collect::<Vec<_>>()
+            r.map(|j| slot(&ix.wcell[ix.cell_at[j] as usize..ix.cell_at[j + 1] as usize], ix.wrow[j])).collect::<Vec<_>>()
         })
         .concat();
         // Σ_i λ^i·(S_read(i) − S_write(w(i))): Horner per chunk, scaled by λ^start
@@ -174,7 +233,7 @@ impl Wiring {
             let start = r.start;
             let len = r.len();
             let mut acc = [Fp3::ZERO; H];
-            let d = |i: usize| slot(&self.read_cells[ix.read_at[i] as usize..ix.read_at[i + 1] as usize]) - sw[ix.read_write[i] as usize];
+            let d = |i: usize| slot(&ix.rcell[ix.read_at[i] as usize..ix.read_at[i + 1] as usize], ix.rrow[i]) - sw[ix.read_write[i] as usize];
             for m in (0..len.div_ceil(H)).rev() {
                 for (k, a) in acc.iter_mut().enumerate() {
                     let off = m * H + k;

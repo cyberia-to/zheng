@@ -122,6 +122,12 @@ fn par_chunks<T: Send, F: Fn(usize, &mut [T]) + Sync>(v: &mut [T], f: F) {
 /// symbols), `symbol(j, t)` the `t`-th symbol of leaf `j` — the sponge of
 /// [`leaf_digest`], batched, on this thread.
 pub(crate) fn hash_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3) -> Vec<Digest> {
+    hash_leaves_with(leaves, width, ext, symbol, false)
+}
+
+/// [`hash_leaves`]; `remember`: keep the permutations for the verifier
+/// ([`perm::permute_many_remember`]).
+pub(crate) fn hash_leaves_with(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3, remember: bool) -> Vec<Digest> {
     let lanes: Vec<usize> = if ext { vec![3; width] } else { vec![1; width] };
     // block boundaries: items never straddle the rate
     let mut blocks: Vec<Vec<usize>> = vec![vec![]];
@@ -164,7 +170,11 @@ pub(crate) fn hash_leaves(leaves: usize, width: usize, ext: bool, symbol: impl F
                 *x = Goldilocks::ZERO;
             }
         }
-        perm::permute_many(&mut states);
+        if remember {
+            perm::permute_many_remember(&mut states);
+        } else {
+            perm::permute_many(&mut states);
+        }
     }
     states.iter().map(perm::head).collect()
 }
