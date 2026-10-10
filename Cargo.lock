@@ -126,13 +126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyber-tape"
-version = "0.1.0"
-dependencies = [
- "bytes",
-]
-
-[[package]]
 name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -379,6 +372,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tade"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
 name = "thiserror"
 version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -406,7 +406,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "zheng"
-version = "0.3.1"
+version = "0.3.3"
 dependencies = [
  "cyber-hemera",
  "cyber-lens",
@@ -424,8 +424,8 @@ dependencies = [
  "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
- "cyber-tape",
  "strata-nebu",
+ "tade",
  "zheng",
 ]
 
