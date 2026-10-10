@@ -268,3 +268,16 @@ pub fn rec_program() -> ExecutionNoun {
     // start: subject [x 0] → [x F], formula F
     m_op(2, m_op(3, m_axis(2), m_quote(f.clone())), m_quote(f))
 }
+
+/// Install the prover backend named by `ZHENG_BACKEND` (`cpu`, `metal`,
+/// `webgpu`, `auto`; unset = cpu) and report it on stderr. Proof bytes do
+/// not depend on it.
+pub fn backend() -> &'static str {
+    let choice = std::env::var("ZHENG_BACKEND").unwrap_or_else(|_| "cpu".into());
+    let (name, device) = choice
+        .parse::<cyber_lens_gpu::Choice>()
+        .and_then(cyber_lens_gpu::install)
+        .unwrap_or_else(|e| panic!("ZHENG_BACKEND: {e}"));
+    eprintln!("backend: {name} ({device})");
+    name
+}
