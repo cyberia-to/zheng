@@ -5,7 +5,7 @@
 //! IVC parameters as `ivc_bench` (`ZHENG_RATE`, `ZHENG_POW`, `ZHENG_STEP`).
 //! `ZHENG_WRAP` lists the wrap levels, innermost first, as
 //! `<log inv rate><i|f>[:<pow>[:<fold>]]` (`i`: inner mode, `f`: final
-//! mode — only the last level), default `6i,8i:30,8f:30`. `ZHENG_IVC_DIR=<dir>`: store / reuse IVC proofs there
+//! mode — only the last level), default `wrap::SHIPPED`. `ZHENG_IVC_DIR=<dir>`: store / reuse IVC proofs there
 //! (`<fixture>.ivc`).
 
 #[path = "../../tests/common/mod.rs"]
@@ -37,7 +37,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 }
 
 fn levels(base: &lens::WhirParams) -> Vec<WrapParams> {
-    let spec: String = env("ZHENG_WRAP", "6i,8i:30,8f:30".to_string());
+    let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());
     spec.split(',')
         .map(|l| {
             let mut parts = l.split(':');
@@ -133,7 +133,7 @@ fn main() {
         let pn = ivc::verify_claim(&prep, &proof).expect("ivc verify");
         println!("{name}: cycles {} · {} steps · IVC proof {ivc_bytes} B · IVC verify {:.2} ms", run.statement.cycles, run.segments(), ms(t));
         let mut wraps = Vec::new();
-        let spec: String = env("ZHENG_WRAP", "6i,8i:30,8f:30".to_string());
+        let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());
         let specs: Vec<&str> = spec.split(',').collect();
         for (i, k) in keys.iter().enumerate() {
             let t = Instant::now();

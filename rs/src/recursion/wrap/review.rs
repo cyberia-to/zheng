@@ -317,7 +317,7 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 }
 
 /// The shipped chain's levels (`audit/wrap-fastverify-2026-10.md`:
-/// `4i,8i,9f:24`, every level grinding at most 24 bits) reach 128 bits on
+/// `4i:16,8i,9f:24`, grinding 16 / 24 / 24 bits) reach 128 bits on
 /// every row; the weakest row of each level and its interactive value
 /// (every grinding removed: folds, queries, the combination) as printed
 /// in the audit.
@@ -325,7 +325,7 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated() {
     let base = crate::execution::succinct::params_for(20);
     let mut weakest = Vec::new();
-    for (rate, pow, n, mode, reads) in [(4u8, 24u8, 16usize, Mode::Inner, 0usize), (8, 24, 15, Mode::Inner, 0), (9, 24, 14, Mode::Final, 1 << 18)] {
+    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (8, 24, 15, Mode::Inner, 0), (9, 24, 14, Mode::Final, 1 << 18)] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;

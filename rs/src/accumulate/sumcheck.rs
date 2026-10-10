@@ -32,13 +32,74 @@ impl Weight {
     /// The table of `w` over `{0,1}^ℓ`.
     pub fn table(&self, vars: usize) -> Vec<Fp3> {
         let mut out = vec![Fp3::ZERO; 1 << vars];
-        for (p, c) in &self.terms {
-            debug_assert_eq!(p.len(), vars);
-            for (o, e) in out.iter_mut().zip(eq_table(p)) {
-                *o += *c * e;
-            }
-        }
+        add_eq_terms(&mut out, &self.terms);
         out
+    }
+}
+
+/// `out += Σ_j c_j·eq(p_j, ·)` over `{0,1}^ℓ` (`out.len() = 2^ℓ`), in
+/// parallel: an index splits as `hi·2^k + lo` (`p[..k]` the low
+/// variables), so `eq(p, x) = eq(p_lo, lo)·eq(p_hi, hi)` and every block
+/// of `2^k` entries adds `Σ_j (c_j·eq(p_hi, hi))·eq_table(p_lo)`.
+pub fn add_eq_terms(out: &mut [Fp3], terms: &[(Vec<Fp3>, Fp3)]) {
+    let vars = out.len().trailing_zeros() as usize;
+    if terms.is_empty() {
+        return;
+    }
+    let k = vars.min(12);
+    let lo: Vec<Vec<Fp3>> = terms.iter().map(|(p, _)| eq_table(&p[..k])).collect();
+    let hi: Vec<Vec<Fp3>> = terms
+        .iter()
+        .map(|(p, c)| {
+            let mut t = eq_table(&p[k..]);
+            for x in &mut t {
+                *x *= *c;
+            }
+            t
+        })
+        .collect();
+    let block = 1usize << k;
+    let threads = if vars < 16 { 1 } else { std::thread::available_parallelism().map_or(1, |n| n.get()).min(16) };
+    let blocks = out.len() / block;
+    let per = blocks.div_ceil(threads).max(1);
+    std::thread::scope(|s| {
+        for (ci, chunk) in out.chunks_mut(per * block).enumerate() {
+            let (lo, hi) = (&lo, &hi);
+            s.spawn(move || {
+                for (bi, b) in chunk.chunks_mut(block).enumerate() {
+                    let h = ci * per + bi;
+                    for (l, hv) in lo.iter().zip(hi) {
+                        let sc = hv[h];
+                        for (o, &e) in b.iter_mut().zip(l) {
+                            *o += sc * e;
+                        }
+                    }
+                }
+            });
+        }
+    });
+}
+
+#[cfg(test)]
+mod eq_terms_tests {
+    use super::*;
+    use nebu::Goldilocks;
+
+    #[test]
+    fn split_eq_terms_equal_the_full_tables() {
+        for vars in [3usize, 12, 13, 17] {
+            let pt = |s: u64| (0..vars as u64).map(|i| Fp3::new(Goldilocks::new(s * 31 + i), Goldilocks::new(i * i + s), Goldilocks::new(7))).collect::<Vec<_>>();
+            let terms = vec![(pt(1), Fp3::from_base(Goldilocks::new(5))), (pt(2), Fp3::new(Goldilocks::new(2), Goldilocks::new(9), Goldilocks::ZERO))];
+            let mut want = vec![Fp3::ZERO; 1 << vars];
+            for (p, c) in &terms {
+                for (o, e) in want.iter_mut().zip(eq_table(p)) {
+                    *o += *c * e;
+                }
+            }
+            let mut got = vec![Fp3::ZERO; 1 << vars];
+            add_eq_terms(&mut got, &terms);
+            assert_eq!(got, want, "{vars}");
+        }
     }
 }
 

@@ -75,7 +75,7 @@ fn main() {
     whir.pow_bits = 24;
     let n = 15u32;
     let dir: String = std::env::var("ZHENG_IVC_DIR").expect("ZHENG_IVC_DIR");
-    let spec: String = env("ZHENG_WRAP", "6i,8i,8f:30".to_string());
+    let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());
     let specs: Vec<&str> = spec.split(',').collect();
     let run = machine::execute_exact(&prog, &input, 1 << 40, n).expect("run");
     let ikey = ivc::key(&whir, n as usize).expect("key");
