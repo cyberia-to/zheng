@@ -58,7 +58,6 @@ use nebu::Fp3;
 use super::circuit::air::{CircuitAir, Row, Sink};
 use super::circuit::layout::{LIVE, PIN, V1, V2, pre};
 use super::circuit::trace::Pre;
-use super::decide::KeyWords;
 use super::state::ClaimV;
 use super::whir;
 use super::word::Digest;
@@ -88,8 +87,9 @@ pub enum Mode {
 pub struct Wiring {
     /// `(read, write)` slot indices (`row·SLOTS + slot`).
     pub reads: Vec<(u32, u32)>,
-    /// Per slot index: `(column, coefficient)` of its value.
-    pub kappa: std::collections::BTreeMap<u32, Vec<(u8, Fp3)>>,
+    /// Per slot index (`row·SLOTS + slot`): `(column, coefficient)` of its
+    /// value (empty for an unused slot).
+    pub kappa: Vec<Vec<(u8, Fp3)>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -106,8 +106,9 @@ pub struct WrapKey {
     pub params: WrapParams,
     pub pre: Pre,
     pub sparse: Vec<Vec<(u32, Fp3)>>,
-    /// The key words (inner mode).
-    pub kw: Option<KeyWords>,
+    /// The root of the key's words (inner mode); the prover recommits
+    /// them for each proof (their codewords are large).
+    pub key_root: Option<Digest>,
     /// The linear wiring (final mode).
     pub wiring: Option<Wiring>,
     pub key_ext: bool,
@@ -119,6 +120,9 @@ pub struct WrapKey {
     /// point, the memory challenges and `μ`.
     pub g: Graph,
     pub constraints: usize,
+    /// The committed columns whose successor values the constraints read
+    /// (final mode sends only these; inner mode every column).
+    pub next_cols: Vec<usize>,
     /// Coordinates of the deferred nox-public claim's point.
     pub pn: usize,
     /// Rows the circuit uses (of `2^n`), and its census: gates,
@@ -157,8 +161,9 @@ impl WrapKey {
     }
 }
 
-/// A wrap proof (final mode: one trace word, no key messages; the wiring
-/// sumcheck and the word's value at its point instead).
+/// A wrap proof (final mode: one trace word, the successor values of the
+/// columns the constraints read, no key messages, no shift or wiring
+/// sumcheck — its claims are the opening's weights).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WrapProof {
     pub roots: Vec<Digest>,
@@ -172,9 +177,6 @@ pub struct WrapProof {
     pub vals: Vec<Fp3>,
     /// The key claim over its two words (inner mode; empty otherwise).
     pub kv: Vec<Fp3>,
-    /// The wiring sumcheck and `W1` at its point (final mode; empty
-    /// otherwise).
-    pub wiring: Vec<Fp3>,
     pub whir: whir::Proof,
 }
 

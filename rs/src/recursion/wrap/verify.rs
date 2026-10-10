@@ -24,12 +24,11 @@ pub fn check_shape(k: &WrapKey, pf: &WrapProof) -> Result<(), String> {
         && pf.zerocheck.len() == n
         && pf.zerocheck.iter().all(|m| m.len() == DEGREE + 1)
         && pf.local.len() == k.cols()
-        && pf.next.len() == k.cols()
+        && pf.next.len() == k.next_cols.len()
         && pf.key.len() == if inner { pre::COUNT } else { 0 }
-        && pf.shift.len() == 2 * n
-        && pf.vals.len() == words
-        && pf.kv.len() == if inner { 2 } else { 0 }
-        && pf.wiring.len() == if inner { 0 } else { 2 * k.vars() + 1 };
+        && pf.shift.len() == if inner { 2 * n } else { 0 }
+        && pf.vals.len() == if inner { words } else { 0 }
+        && pf.kv.len() == if inner { 2 } else { 0 };
     if !ok {
         return Err("wrap: proof shape".into());
     }
@@ -53,25 +52,46 @@ pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
     k.sparse.iter().map(|col| col.iter().fold(Fp3::ZERO, |a, &(x, v)| a + v * e[x as usize])).collect()
 }
 
-/// `ũ_λ(z)`: the batched wiring vector's multilinear extension at `z`
-/// (row variables first, then the 6 column variables).
-pub(crate) fn wiring_at(k: &WrapKey, lambda: Fp3, z: &[Fp3]) -> Fp3 {
-    let w = k.wiring.as_ref().expect("final mode");
-    let n = k.params.n;
-    let er = eq_table(&z[..n]);
-    let ec = eq_table(&z[n..]);
-    let slots = crate::recursion::circuit::layout::SLOTS as u32;
-    let at = |s: u32| -> Fp3 {
-        let row = er[(s / slots) as usize];
-        w.kappa[&s].iter().fold(Fp3::ZERO, |a, &(c, kc)| a + kc * ec[c as usize]) * row
-    };
-    let mut acc = Fp3::ZERO;
-    let mut l = Fp3::ONE;
-    for &(r, wr) in &w.reads {
-        acc += l * (at(r) - at(wr));
-        l *= lambda;
+/// The batched wiring vector `u_λ` as a weight of the opening: every
+/// read slot's value minus its write slot's, with powers of `λ`.
+pub(crate) struct WiringWeight<'a> {
+    pub k: &'a WrapKey,
+    pub lambda: Fp3,
+}
+
+impl whir::NativeWeight for WiringWeight<'_> {
+    fn table(&self) -> Vec<Fp3> {
+        super::prove::wiring_table(self.k, self.lambda)
     }
-    acc
+    /// `u_λ(α, b)` for every `b`: the word's index is `col·2^n + row`,
+    /// `α` covers the rows and the low column bits.
+    fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3> {
+        let w = self.k.wiring.as_ref().expect("final mode");
+        let n = self.k.params.n;
+        let lo = alpha.len() - n;
+        let er = eq_table(&alpha[..n]);
+        let ec = eq_table(&alpha[n..]);
+        let slots = crate::recursion::circuit::layout::SLOTS;
+        // every used slot's contribution per final-variable value b, once
+        let at: Vec<Vec<(usize, Fp3)>> = w
+            .kappa
+            .iter()
+            .enumerate()
+            .map(|(s, kp)| kp.iter().map(|&(c, kc)| ((c as usize) >> lo, kc * ec[(c as usize) & ((1 << lo) - 1)] * er[s / slots])).collect())
+            .collect();
+        let mut out = vec![Fp3::ZERO; 1 << fv];
+        let mut l = Fp3::ONE;
+        for &(r, wr) in &w.reads {
+            for &(b, v) in &at[r as usize] {
+                out[b] += l * v;
+            }
+            for &(b, v) in &at[wr as usize] {
+                out[b] -= l * v;
+            }
+            l *= self.lambda;
+        }
+        out
+    }
 }
 
 /// Verify a wrap proof whose public input is `x` (final mode: a native
@@ -83,7 +103,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     let mut t = Sponge::new(o, tag::WRAP);
     t.absorb_all(o, &x);
     let mut roots = Vec::with_capacity(2);
-    let mut oods = Vec::with_capacity(2);
+    let mut oods: Vec<Vec<ClaimRef<O::V>>> = Vec::with_capacity(2);
     let r1: [O::V; 4] = core::array::from_fn(|i| t.absorb_free(o, pf.roots[0][i]));
     roots.push(r1);
     oods.push(bind(o, &mut t, &pf.ood[0]));
@@ -112,7 +132,12 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         rho.push(a);
     }
     let local: Vec<O::V> = pf.local.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
-    let next: Vec<O::V> = pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
+    let sent: Vec<O::V> = pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
+    let zero = o.zero();
+    let mut next = vec![zero; k.cols()];
+    for (&c, &v) in k.next_cols.iter().zip(&sent) {
+        next[c] = v;
+    }
     let key: Vec<O::V> = if inner {
         pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect()
     } else {
@@ -131,7 +156,35 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     ins.extend_from_slice(&[ab[0], ab[1], mu]);
     let g = expr::compile(o, &k.g, &ins)[0];
     o.assert_eq(g, c, "wrap: constraints");
-    let gk = if inner { t.squeeze_exts(o, pre::LOG) } else { vec![] };
+    if !inner {
+        // one word: its claims are the opening's weights — OOD, the
+        // columns at ρ and at its successor, the wiring
+        let gl = t.squeeze_exts(o, CBITS);
+        let gn = t.squeeze_exts(o, CBITS);
+        let cols = |o: &mut O, g: &[O::V], keep: &dyn Fn(usize) -> bool| -> Vec<O::V> {
+            (0..1usize << CBITS).map(|c| if keep(c) { gm::eq_row(o, c, g) } else { zero }).collect()
+        };
+        let cl = cols(o, &gl, &|c| c < V1);
+        let cn = cols(o, &gn, &|c| k.next_cols.contains(&c));
+        let vl = gm::combine(o, &cl[..V1], &local);
+        let nsel: Vec<O::V> = k.next_cols.iter().map(|&c| cn[c]).collect();
+        let vn = gm::combine(o, &nsel, &sent);
+        let mut claims: Vec<(whir::Weight<O::V>, O::V)> = oods
+            .remove(0)
+            .into_iter()
+            .map(|c| match c {
+                ClaimRef::Uni(z, y) => (whir::Weight::Pow(z), y),
+                ClaimRef::Multi(p, y) => (whir::Weight::Eq(p), y),
+            })
+            .collect();
+        claims.push((whir::Weight::RowCol { next: false, rho: rho.clone(), col: cl }, vl));
+        claims.push((whir::Weight::RowCol { next: true, rho: rho.clone(), col: cn }, vn));
+        claims.push((whir::Weight::Native(0), zero));
+        let wiring = WiringWeight { k, lambda: o.value(lambda.expect("final mode")) };
+        whir::verify_direct(o, &k.cfg, &mut t, roots[0], false, claims, &[&wiring], &pf.whir);
+        return;
+    }
+    let gk = t.squeeze_exts(o, pre::LOG);
     // shift: every word's local and successor claims to one point
     let words = k.trace_words();
     let gs: Vec<Vec<O::V>> = (0..words).map(|_| t.squeeze_exts(o, CBITS)).collect();
@@ -171,35 +224,16 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         claims.push(ClaimRef::Multi(rho2.iter().chain(&gs[w]).copied().collect(), vals[w]));
         inputs.push(InstV { root, ext: false, claims });
     }
-    if let Some(kw) = &k.kw {
+    if let Some(key_root) = k.key_root {
         let kv = gm::mle(o, &key, &gk);
         let v = [t.absorb_free_ext(o, pf.kv[0]), t.absorb_free_ext(o, pf.kv[1])];
         let line = o.lerp(gk[CBITS], v[0], v[1]);
         o.assert_eq(line, kv, "wrap: key claim");
         let zg: Vec<O::V> = rho.iter().chain(&gk[..CBITS]).copied().collect();
         for &vh in &v {
-            let root = kw.root.map(|x| o.constant(Fp3::from_base(x)));
+            let root = key_root.map(|x| o.constant(Fp3::from_base(x)));
             inputs.push(InstV { root, ext: k.key_ext, claims: vec![ClaimRef::Multi(zg.clone(), vh)] });
         }
-    }
-    if let Some(lambda) = lambda {
-        // wiring: Σ_x ũ_λ(x)·W̃1(x) = 0
-        let mut claim = o.zero();
-        let mut z = Vec::with_capacity(k.vars());
-        for pair in pf.wiring[..2 * k.vars()].chunks_exact(2) {
-            let h0 = t.absorb_free_ext(o, pair[0]);
-            let h2 = t.absorb_free_ext(o, pair[1]);
-            let a = t.squeeze_ext(o);
-            let h1 = o.sub(claim, h0);
-            claim = gm::quadratic(o, h0, h1, h2, a);
-            z.push(a);
-        }
-        let v = t.absorb_free_ext(o, pf.wiring[2 * k.vars()]);
-        let zf: Vec<Fp3> = z.iter().map(|&a| o.value(a)).collect();
-        let u = o.constant(wiring_at(k, o.value(lambda), &zf));
-        let lhs = o.mul(u, v);
-        o.assert_eq(lhs, claim, "wrap: wiring");
-        inputs[0].claims.push(ClaimRef::Multi(z, v));
     }
     whir::verify(o, &k.cfg, &mut t, &inputs, &pf.whir);
 }

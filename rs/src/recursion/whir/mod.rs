@@ -33,8 +33,8 @@ pub mod wire;
 #[cfg(test)]
 mod tests;
 
-pub use prove::prove;
-pub use verify::{check_shape, verify};
+pub use prove::{prove, prove_direct};
+pub use verify::{check_shape, verify, verify_direct};
 
 use lens::rspcs::soundness::{ext_field_bits, log2_add, mca_log2, proximity};
 use lens::rspcs::whir::{LeafLayout, RoundSpec, WhirConfig};
@@ -116,6 +116,12 @@ impl Config {
         proximity(s.regime, s.log_inv_rate, s.log_domain).log_list
     }
 
+    /// One input word: its claims are WHIR's initial weights (no batch
+    /// sumcheck).
+    pub fn direct(&self) -> bool {
+        self.inputs == 1
+    }
+
     fn comb_log_err(&self) -> f64 {
         if self.inputs <= 1 {
             return f64::NEG_INFINITY;
@@ -137,7 +143,9 @@ impl Config {
         if self.claims > 1 {
             out.push(("batch γ".into(), k - list - ((self.claims - 1) as f64).log2()));
         }
-        out.push(("batch sumcheck".into(), k - list - 1.0));
+        if !self.direct() {
+            out.push(("batch sumcheck".into(), k - list - 1.0));
+        }
         if self.inputs > 1 {
             out.push(("batch combine".into(), -self.comb_log_err() + f64::from(self.comb_pow)));
         }
@@ -186,6 +194,32 @@ impl Tree for super::word::Group {
     fn open(&self, leaf: usize) -> LeafOpening {
         super::word::Group::open(self, leaf)
     }
+}
+
+/// The weight of a direct claim `Σ_x w(x)·f(x) = v` on the one input
+/// word (direct mode; `ℓ = n + 6`: rows the low `n` variables, 64
+/// columns the high six).
+#[derive(Clone, Debug)]
+pub enum Weight<V> {
+    /// `eq(point, ·)`.
+    Eq(Vec<V>),
+    /// `eq(pow(x), ·)`.
+    Pow(V),
+    /// `row(ρ, r)·col[c]` at index `c·2^n + r`, `row` = `eq` or the
+    /// successor `nxt` (the claim on a column combination at `ρ` or at its
+    /// successor row).
+    RowCol { next: bool, rho: Vec<V>, col: Vec<V> },
+    /// The `i`-th [`NativeWeight`] (a native verifier only).
+    Native(usize),
+}
+
+/// A weight a native verifier evaluates itself.
+pub trait NativeWeight {
+    /// The weight over the word (the prover's table).
+    fn table(&self) -> Vec<Fp3>;
+    /// Its values at `(α, b)` for every `b` of the last `fv` variables,
+    /// `α` the first `ℓ − fv` (the closing check).
+    fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3>;
 }
 
 /// A claim on one input word (`Multi`: at a point; `Uni`: at `pow(x)`).

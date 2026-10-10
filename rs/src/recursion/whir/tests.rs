@@ -93,8 +93,7 @@ fn check(c: &Case, pf: &Proof) -> Result<(), String> {
 #[test]
 fn a_batched_opening_verifies_natively_and_in_the_circuit() {
     for (ell, rate, k, fin, ext) in [
-        (10usize, 2u8, 4u8, 3u8, vec![false]),
-        (11, 3, 3, 2, vec![false, true, false]),
+        (11usize, 3u8, 3u8, 2u8, vec![false, true, false]),
         (12, 2, 4, 4, vec![true, true]),
         (8, 2, 4, 4, vec![false, false]),
     ] {
@@ -208,4 +207,65 @@ fn a_four_ary_opening_verifies_and_its_wire_round_trips() {
         bad.rounds[0].open[0][0].path[3][1] += Goldilocks::ONE;
         assert!(check(&c, &bad).is_err());
     }
+}
+
+#[test]
+fn one_word_opens_directly_with_any_weights() {
+    struct Lin(Vec<Fp3>);
+    impl NativeWeight for Lin {
+        fn table(&self) -> Vec<Fp3> {
+            self.0.clone()
+        }
+        fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3> {
+            let pre = alpha.len();
+            let e = lens::rspcs::field::eq_table(alpha);
+            (0..1usize << fv).map(|b| (0..1usize << pre).fold(Fp3::ZERO, |a, x| a + e[x] * self.0[x + (b << pre)])).collect()
+        }
+    }
+    let (n, ell) = (6usize, 12usize);
+    let whir = params(2, 4, 3);
+    let cfg = Config::derive(&whir, ell, &[1], 6).unwrap();
+    let table: Vec<Goldilocks> = (0..1u64 << ell).map(|i| Goldilocks::new(i * i + 7)).collect();
+    let word = Word::commit_base(cfg.layout(0), &table);
+    let f: Vec<Fp3> = word.table();
+    let rho: Vec<Fp3> = (0..n as u64).map(|i| e(10 + i)).collect();
+    let col: Vec<Fp3> = (0..64u64).map(|c| if c % 3 == 0 { e(c) } else { Fp3::ZERO }).collect();
+    let rowcol = |next: bool| -> Vec<Fp3> {
+        let rt = if next { crate::air::public::next_table(&rho) } else { lens::rspcs::field::eq_table(&rho) };
+        (0..1usize << ell).map(|i| rt[i % (1 << n)] * col[i >> n]).collect()
+    };
+    let lin: Vec<Fp3> = (0..1u64 << ell).map(|i| if i % 17 == 3 { e(i) } else { Fp3::ZERO }).collect();
+    let z = e(77);
+    let p: Vec<Fp3> = (0..ell as u64).map(|i| e(40 + i)).collect();
+    let dot = |w: &[Fp3]| w.iter().zip(&f).fold(Fp3::ZERO, |a, (&x, &y)| a + x * y);
+    let tables = vec![lens::rspcs::field::eq_table(&p), lens::rspcs::field::eq_table(&pow_point(z, ell)), rowcol(false), rowcol(true), lin.clone()];
+    let claims: Vec<(Vec<Fp3>, Fp3)> = tables.iter().map(|w| (w.clone(), dot(w))).collect();
+    let mut t = ProverTranscript::new(tag::STEP);
+    let pf = prove_direct(&cfg, &mut t, &word, &claims).unwrap();
+    let native = Lin(lin);
+    let run = |vals: &[Fp3]| -> Result<(), String> {
+        let mut o = Native::batched();
+        let weights = vec![
+            Weight::Eq(p.clone()),
+            Weight::Pow(z),
+            Weight::RowCol { next: false, rho: rho.clone(), col: col.clone() },
+            Weight::RowCol { next: true, rho: rho.clone(), col: col.clone() },
+            Weight::Native(0),
+        ];
+        let cl: Vec<(Weight<Fp3>, Fp3)> = weights.into_iter().zip(vals.iter().copied()).collect();
+        let mut sp = Sponge::new(&mut o, tag::STEP);
+        verify_direct(&mut o, &cfg, &mut sp, word.root().map(Fp3::from_base), false, cl, &[&native], &pf);
+        o.finish()
+    };
+    let vals: Vec<Fp3> = claims.iter().map(|c| c.1).collect();
+    run(&vals).unwrap();
+    for k in 0..vals.len() {
+        let mut bad = vals.clone();
+        bad[k] += Fp3::ONE;
+        assert!(run(&bad).is_err(), "claim {k}");
+    }
+    let mut w = lens::rspcs::wire::Writer::default();
+    wire::write(&mut w, &cfg, &[false], &pf);
+    let mut r = lens::rspcs::wire::Reader::new(&w.buf);
+    assert_eq!(wire::read(&mut r, &cfg, &[false]).unwrap(), pf);
 }

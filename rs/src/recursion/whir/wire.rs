@@ -139,8 +139,9 @@ pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
     let wc = &cfg.wc;
     let ell = wc.num_vars;
     let s0 = wc.rounds[0];
-    let sumcheck = read_exts(r, 2 * ell)?;
-    let evals = read_exts(r, cfg.inputs)?;
+    let b = if cfg.direct() { 0 } else { 1 };
+    let sumcheck = read_exts(r, 2 * ell * b)?;
+    let evals = read_exts(r, cfg.inputs * b)?;
     let comb_nonce = read_nonce(r, cfg.comb_pow)?;
     let ood0 = read_exts(r, s0.ood)?;
     let sumcheck0 = read_exts(r, 2 * s0.fold)?;

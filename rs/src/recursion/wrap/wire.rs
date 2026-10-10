@@ -34,7 +34,6 @@ pub fn write(w: &mut Writer, k: &WrapKey, p: &WrapProof) {
     }
     exts(w, &p.vals);
     exts(w, &p.kv);
-    exts(w, &p.wiring);
     whir::wire::write(w, &k.cfg, &k.exts(), &p.whir);
 }
 
@@ -46,14 +45,13 @@ pub fn read(r: &mut Reader<'_>, k: &WrapKey) -> R<WrapProof> {
     let ood = (0..words).map(|_| read_exts(r, k.fresh)).collect::<R<_>>()?;
     let zerocheck = (0..n).map(|_| read_exts(r, DEGREE + 1)).collect::<R<_>>()?;
     let local = read_exts(r, k.cols())?;
-    let next = read_exts(r, k.cols())?;
+    let next = read_exts(r, k.next_cols.len())?;
     let key = read_exts(r, if inner { pre::COUNT } else { 0 })?;
-    let shift = read_exts(r, 2 * n)?;
-    let vals = read_exts(r, words)?;
+    let shift = read_exts(r, if inner { 2 * n } else { 0 })?;
+    let vals = read_exts(r, if inner { words } else { 0 })?;
     let kv = read_exts(r, if inner { 2 } else { 0 })?;
-    let wiring = read_exts(r, if inner { 0 } else { 2 * k.vars() + 1 })?;
     let whir = whir::wire::read(r, &k.cfg, &k.exts())?;
-    Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals, kv, wiring, whir })
+    Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals, kv, whir })
 }
 
 impl WrapProof {

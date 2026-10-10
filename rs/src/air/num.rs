@@ -92,6 +92,36 @@ pub fn record(inputs: usize, f: impl FnOnce(&[Sym]) -> Vec<Sym>) -> Graph {
 }
 
 impl Graph {
+    /// Which inputs the outputs depend on.
+    pub fn used_inputs(&self) -> Vec<bool> {
+        let mut need = vec![false; self.nodes.len()];
+        for s in &self.outputs {
+            if let Sym::N(i) = s {
+                need[*i as usize] = true;
+            }
+        }
+        let mut used = vec![false; self.inputs];
+        for i in (0..self.nodes.len()).rev() {
+            if !need[i] {
+                continue;
+            }
+            let mut mark = |s: Sym| {
+                if let Sym::N(j) = s {
+                    need[j as usize] = true;
+                }
+            };
+            match self.nodes[i] {
+                Node::Input(k) => used[k as usize] = true,
+                Node::Add(a, b) | Node::Sub(a, b) | Node::Mul(a, b) => {
+                    mark(a);
+                    mark(b);
+                }
+                Node::Neg(a) => mark(a),
+            }
+        }
+        used
+    }
+
     /// Evaluate at `inputs` (a reference for the compiled circuit).
     pub fn eval(&self, inputs: &[Fp3]) -> Vec<Fp3> {
         let mut v = Vec::with_capacity(self.nodes.len());

@@ -37,13 +37,13 @@ fn columns(t: &Trace) -> Vec<Vec<Fp3>> {
 }
 
 /// `u_λ` as a table over the word's index `col·N + row`.
-fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
+pub(crate) fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
     let w = k.wiring.as_ref().expect("final mode");
     let rows = 1usize << k.params.n;
     let mut u = vec![Fp3::ZERO; WORD * rows];
     let mut add = |s: u32, c: Fp3| {
         let row = (s / SLOTS as u32) as usize;
-        for &(col, kc) in &w.kappa[&s] {
+        for &(col, kc) in &w.kappa[s as usize] {
             u[col as usize * rows + row] += c * kc;
         }
     };
@@ -54,37 +54,6 @@ fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
         l *= lambda;
     }
     u
-}
-
-/// The product sumcheck `Σ_x a(x)·b(x)` (low variable first); returns the
-/// messages `(h(0), h(2))`, the point and `b` there.
-fn product_sumcheck(t: &mut ProverTranscript, mut a: Vec<Fp3>, mut b: Vec<Fp3>) -> (Vec<Fp3>, Vec<Fp3>, Fp3) {
-    let fold = |v: &mut Vec<Fp3>, x: Fp3| {
-        let half = v.len() / 2;
-        for i in 0..half {
-            let p = v[2 * i];
-            v[i] = p + x * (v[2 * i + 1] - p);
-        }
-        v.truncate(half);
-    };
-    let mut msgs = Vec::new();
-    let mut point = Vec::new();
-    while a.len() > 1 {
-        let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
-        for (ap, bp) in a.chunks_exact(2).zip(b.chunks_exact(2)) {
-            h0 += ap[0] * bp[0];
-            h2 += (ap[1] + ap[1] - ap[0]) * (bp[1] + bp[1] - bp[0]);
-        }
-        t.absorb_ext(h0);
-        t.absorb_ext(h2);
-        msgs.push(h0);
-        msgs.push(h2);
-        let x = t.squeeze_ext();
-        fold(&mut a, x);
-        fold(&mut b, x);
-        point.push(x);
-    }
-    (msgs, point, b[0])
 }
 
 /// Prove that the circuit ran `inner`'s verifier and output the digest of
@@ -146,10 +115,44 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let (zc, rho, evals) = zerocheck_prove(&View(&air, mode), w, cols, eq_table(&tau), &ab, &mus, &mut t);
     lap("zerocheck");
     let local = evals[..w].to_vec();
-    let next = evals[w..2 * w].to_vec();
+    let next: Vec<Fp3> = k.next_cols.iter().map(|&c| evals[w + c]).collect();
     let keyv = evals[2 * w..2 * w + pre::COUNT].to_vec();
     for &v in local.iter().chain(&next) {
         t.absorb_ext(v);
+    }
+    if !is_inner {
+        drop(local_cols);
+        let lambda = lambda.expect("final mode");
+        let gl = t.squeeze_exts(CBITS);
+        let gn = t.squeeze_exts(CBITS);
+        let (el, en) = (eq_table(&gl), eq_table(&gn));
+        let cl: Vec<Fp3> = (0..WORD).map(|c| if c < V1 { el[c] } else { Fp3::ZERO }).collect();
+        let cn: Vec<Fp3> = (0..WORD).map(|c| if k.next_cols.contains(&c) { en[c] } else { Fp3::ZERO }).collect();
+        let vl = local.iter().zip(&cl).fold(Fp3::ZERO, |a, (&x, &c)| a + x * c);
+        let vn = k.next_cols.iter().zip(&next).fold(Fp3::ZERO, |a, (&c, &x)| a + x * cn[c]);
+        let rowcol = |rt: Vec<Fp3>, col: &[Fp3]| -> Vec<Fp3> { (0..WORD * rows).map(|i| rt[i % rows] * col[i / rows]).collect() };
+        let up = |z: Fp3| eq_table(&pow_point(z, n + CBITS));
+        let mut claims: Vec<(Vec<Fp3>, Fp3)> = oods[0].0.iter().zip(&oods[0].1).map(|(&z, &y)| (up(z), y)).collect();
+        claims.push((rowcol(eq_table(&rho), &cl), vl));
+        claims.push((rowcol(next_table(&rho), &cn), vn));
+        claims.push((wiring_table(k, lambda), Fp3::ZERO));
+        let whir = whir::prove_direct(&k.cfg, &mut t, &words[0], &claims)?;
+        lap("opening");
+        return Ok((
+            WrapProof {
+                roots: vec![words[0].root()],
+                ood: oods.into_iter().map(|o| o.1).collect(),
+                zerocheck: zc,
+                local,
+                next,
+                key: vec![],
+                shift: vec![],
+                vals: vec![],
+                kv: vec![],
+                whir,
+            },
+            x,
+        ));
     }
     if is_inner {
         for &v in &keyv {
@@ -192,7 +195,8 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     }
     let mut kv = Vec::new();
     let mut opened: Vec<&dyn whir::Tree> = words.iter().map(|w| w as &dyn whir::Tree).collect();
-    if let Some(kw) = &k.kw {
+    let kw = k.key_root.map(|_| crate::recursion::decide::KeyWords::commit(layout, n, &k.pre, k.arity()).0);
+    if let Some(kw) = &kw {
         let zg: Vec<Fp3> = rho.iter().chain(&gk[..CBITS]).copied().collect();
         for wd in &kw.group.words {
             let v = ml_eval_ext(&wd.table(), &zg);
@@ -201,16 +205,6 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
             claims.push(vec![(zg.clone(), v)]);
         }
         opened.push(&kw.group);
-    }
-    let mut wiring = Vec::new();
-    if let Some(lambda) = lambda {
-        let u = wiring_table(k, lambda);
-        let (msgs, z, v) = product_sumcheck(&mut t, u, words[0].table());
-        t.absorb_ext(v);
-        wiring = msgs;
-        wiring.push(v);
-        claims[0].push((z, v));
-        lap("wiring");
     }
     let whir = whir::prove(&k.cfg, &mut t, &opened, &claims)?;
     lap("opening");
@@ -225,7 +219,6 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
             shift,
             vals,
             kv,
-            wiring,
             whir,
         },
         x,

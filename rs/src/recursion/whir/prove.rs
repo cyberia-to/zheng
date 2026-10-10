@@ -78,7 +78,7 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
     let words: Vec<&Word> = trees.iter().flat_map(|tr| tr.members()).collect();
     let m = words.len();
     let shape: Vec<usize> = trees.iter().map(|tr| tr.members().len()).collect();
-    if m != cfg.inputs || shape != cfg.groups || trees.iter().any(|tr| tr.arity() != cfg.arity) || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
+    if cfg.direct() || m != cfg.inputs || shape != cfg.groups || trees.iter().any(|tr| tr.arity() != cfg.arity) || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
         return Err("whir: input words".into());
     }
     // batch
@@ -121,6 +121,41 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
         }
     }
     drop(tables);
+    let w = eq_table(&rho);
+    core(cfg, t, trees, f, coeffs, w, BatchProof { sumcheck: msgs, evals, comb_nonce })
+}
+
+/// Prove an opening of one word with claims given by their weights'
+/// tables (`Σ_x w(x)·f(x) = v`), in [`super::verify_direct`]'s order.
+pub fn prove_direct(cfg: &Config, t: &mut ProverTranscript, word: &Word, claims: &[(Vec<Fp3>, Fp3)]) -> Result<Proof, String> {
+    let ell = cfg.wc.num_vars;
+    if !cfg.direct() || word.arity != cfg.arity || word.num_vars != ell || word.layout != cfg.layout(0) || claims.len() > cfg.claims {
+        return Err("whir: a direct opening".into());
+    }
+    let gamma = t.squeeze_ext();
+    let mut w = vec![Fp3::ZERO; 1 << ell];
+    let mut g = Fp3::ONE;
+    for (tb, _) in claims {
+        for (x, &y) in w.iter_mut().zip(tb) {
+            *x += g * y;
+        }
+        g *= gamma;
+    }
+    core(cfg, t, &[word as &dyn Tree], word.table(), word.coeffs(), w, BatchProof { sumcheck: vec![], evals: vec![], comb_nonce: 0 })
+}
+
+/// WHIR on `f_0` (table `f`, coefficients) from its initial weight table.
+fn core(
+    cfg: &Config,
+    t: &mut ProverTranscript,
+    trees: &[&dyn Tree],
+    mut f: Vec<Fp3>,
+    mut coeffs: Vec<Fp3>,
+    mut w: Vec<Fp3>,
+    batch: BatchProof,
+) -> Result<Proof, String> {
+    let wc = &cfg.wc;
+    let ell = wc.num_vars;
     // round 0
     let s0 = wc.rounds[0];
     let mut ood0 = Vec::with_capacity(s0.ood);
@@ -133,7 +168,6 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
         zs.push(z);
     }
     let gamma = t.squeeze_ext();
-    let mut w = eq_table(&rho);
     let mut g = gamma;
     for &z in &zs {
         add_scaled_eq(&mut w, &pow_point(z, ell), g);
@@ -193,7 +227,7 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
         t.sp.flush(&mut t.o);
     }
     Ok(Proof {
-        batch: BatchProof { sumcheck: msgs, evals, comb_nonce },
+        batch,
         ood0,
         sumcheck0,
         fold_nonces0,

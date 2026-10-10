@@ -97,12 +97,11 @@ pub(crate) fn dummy_proof(k: &WrapKey) -> WrapProof {
         ood: vec![vec![z; k.fresh]; words],
         zerocheck: vec![vec![z; super::DEGREE + 1]; n],
         local: vec![z; k.cols()],
-        next: vec![z; k.cols()],
+        next: vec![z; k.next_cols.len()],
         key: if inner { vec![z; crate::recursion::circuit::layout::pre::COUNT] } else { vec![] },
-        shift: vec![z; 2 * n],
-        vals: vec![z; words],
+        shift: if inner { vec![z; 2 * n] } else { vec![] },
+        vals: if inner { vec![z; words] } else { vec![] },
         kv: if inner { vec![z; 2] } else { vec![] },
-        wiring: if inner { vec![] } else { vec![z; 2 * k.vars() + 1] },
         whir: whir::dummy(&k.cfg),
     }
 }
@@ -137,13 +136,13 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
-    let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 2, &[1]) };
+    let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 3, &[1]) };
     let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
     let cfg = whir::Config::derive(&params.whir, vars, groups, claims)?.with_arity(arity);
     let wiring = (!committed).then(|| wiring(&pre));
-    let (kw, key_ext) = if committed {
+    let (key_root, key_ext) = if committed {
         let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre, arity);
-        (Some(kw), ext)
+        (Some(kw.root), ext)
     } else {
         (None, pre.cols.iter().flatten().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO))
     };
@@ -153,11 +152,14 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
     let (g, constraints) = g_graph(&air, params.mode);
+    let w = if committed { super::COLS } else { crate::recursion::circuit::layout::V1 };
+    let used = g.used_inputs();
+    let next_cols: Vec<usize> = (0..w).filter(|&c| committed || used[w + c]).collect();
     Ok(WrapKey {
         params: WrapParams { n, ..params },
         pre,
         sparse,
-        kw,
+        key_root,
         wiring,
         key_ext,
         cfg,
@@ -165,6 +167,7 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>) -> Result<WrapKey, String> 
         out_row,
         g,
         constraints,
+        next_cols,
         pn: inner.pn_len(),
         rows,
         census,
@@ -182,7 +185,7 @@ fn wiring(pre: &trace::Pre) -> Wiring {
     let one = Fp3::ONE;
     let mut writes: std::collections::BTreeMap<[u64; 3], u32> = std::collections::BTreeMap::new();
     let mut reads_at: Vec<(u32, [u64; 3])> = Vec::new();
-    let mut kappa = std::collections::BTreeMap::new();
+    let mut kappa = vec![Vec::new(); rows * SLOTS];
     let key = |x: Fp3| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()];
     for r in 0..rows {
         let p = pre.row(r);
@@ -207,7 +210,7 @@ fn wiring(pre: &trace::Pre) -> Wiring {
         }
         for &s in &used {
             let idx = (r * SLOTS + s) as u32;
-            kappa.insert(idx, core::mem::take(&mut per[s]));
+            kappa[idx as usize] = core::mem::take(&mut per[s]);
             let addr = key(p[pc::ADDR + s]);
             if p[pc::E + s] == one {
                 reads_at.push((idx, addr));
