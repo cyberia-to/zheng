@@ -45,26 +45,75 @@ fn bind<O: Ops>(o: &mut O, t: &mut Sponge<O>, answers: &[Fp3]) -> Vec<ClaimRef<O
         .collect()
 }
 
+/// Threads of the native verifier's field passes (`ZHENG_VERIFY_THREADS`,
+/// default every core up to 16).
+pub(crate) fn threads() -> usize {
+    std::env::var("ZHENG_VERIFY_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()).min(16))
+        .max(1)
+}
+
+/// `f` over `0..n` in contiguous chunks on [`threads`] threads, in order.
+fn par_chunks<T: Send>(n: usize, f: impl Fn(core::ops::Range<usize>) -> T + Sync) -> Vec<T> {
+    let t = threads().min(n.max(1));
+    let size = n.div_ceil(t);
+    if t == 1 {
+        return vec![f(0..n)];
+    }
+    std::thread::scope(|s| {
+        let hs: Vec<_> = (0..t).map(|i| {
+            let f = &f;
+            s.spawn(move || f(i * size..((i + 1) * size).min(n)))
+        }).collect();
+        hs.into_iter().map(|h| h.join().expect("verifier thread")).collect()
+    })
+}
+
 /// The key's columns at `ρ` from the key itself.
 pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
     use lens::rspcs::field::mul_base;
     let e = eq_table(rho);
     let one = nebu::Goldilocks::ONE;
-    k.sparse
-        .iter()
-        .map(|col| {
-            col.iter().fold(Fp3::ZERO, |a, &(x, v)| {
-                let ex = e[x as usize];
-                if v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO {
-                    a + v * ex
-                } else if v.c0 == one {
-                    a + ex
-                } else {
-                    a + mul_base(ex, v.c0)
-                }
-            })
+    let col = |c: &[(u32, Fp3)]| {
+        c.iter().fold(Fp3::ZERO, |a, &(x, v)| {
+            let ex = e[x as usize];
+            if v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO {
+                a + v * ex
+            } else if v.c0 == one {
+                a + ex
+            } else {
+                a + mul_base(ex, v.c0)
+            }
         })
-        .collect()
+    };
+    par_chunks(k.sparse.len(), |r| r.map(|j| col(&k.sparse[j])).collect::<Vec<_>>()).concat()
+}
+
+/// `λ^i` for `i < n`, in parallel chunks.
+fn powers(lambda: Fp3, n: usize) -> Vec<Fp3> {
+    let pow = |mut e: usize| {
+        let (mut acc, mut b) = (Fp3::ONE, lambda);
+        while e > 0 {
+            if e & 1 == 1 {
+                acc *= b;
+            }
+            b *= b;
+            e >>= 1;
+        }
+        acc
+    };
+    par_chunks(n, |r| {
+        let mut l = pow(r.start);
+        r.map(|_| {
+            let v = l;
+            l *= lambda;
+            v
+        })
+        .collect::<Vec<_>>()
+    })
+    .concat()
 }
 
 /// The batched wiring vector `u_λ` as a weight of the opening: every
@@ -85,11 +134,34 @@ impl whir::NativeWeight for WiringWeight<'_> {
         let pre = alpha.len();
         let ea = eq_table(alpha);
         let mask = (1usize << pre) - 1;
-        let lp = w.powers(self.lambda);
+        let lp = powers(self.lambda, w.reads);
+        let writes = w.write_at.len() - 1;
+        let ws: Vec<Fp3> = par_chunks(writes, |r| {
+            r.map(|j| w.write_reads[w.write_at[j] as usize..w.write_at[j + 1] as usize].iter().fold(Fp3::ZERO, |a, &i| a + lp[i as usize]))
+                .collect::<Vec<_>>()
+        })
+        .concat();
+        let nr = w.read_cells.len();
+        let parts = par_chunks(nr + w.write_cells.len(), |r| {
+            let mut out = vec![Fp3::ZERO; 1 << fv];
+            for e in r {
+                if e < nr {
+                    let (i, x, kc) = w.read_cells[e];
+                    let x = x as usize;
+                    out[x >> pre] += kc.apply(lp[i as usize] * ea[x & mask]);
+                } else {
+                    let (j, x, kc) = w.write_cells[e - nr];
+                    let x = x as usize;
+                    out[x >> pre] -= kc.apply(ws[j as usize] * ea[x & mask]);
+                }
+            }
+            out
+        });
         let mut out = vec![Fp3::ZERO; 1 << fv];
-        for &(i, x, kc) in &w.entries {
-            let x = x as usize;
-            out[x >> pre] += lp[i as usize] * (kc * ea[x & mask]);
+        for p in parts {
+            for (o, v) in out.iter_mut().zip(p) {
+                *o += v;
+            }
         }
         out
     }

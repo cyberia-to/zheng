@@ -87,10 +87,47 @@ pub enum Mode {
 pub struct Wiring {
     /// Read slots (each paired with the slot writing its address).
     pub reads: usize,
-    /// `u_λ = Σ_i λ^i·(read_i − write_i)` as `(i, word index, coefficient)`:
-    /// the read slot's cells with their coefficients, its write slot's
-    /// negated (a word index is `col·2^n + row`).
-    pub entries: Vec<(u32, u32, Fp3)>,
+    /// `u_λ = Σ_i λ^i·read_i − Σ_w Λ_w·write_w` with `Λ_w` the sum of the
+    /// powers of `w`'s reads: every read slot's cells `(i, word index,
+    /// coefficient)` (a word index is `col·2^n + row`) …
+    pub read_cells: Vec<(u32, u32, Coef)>,
+    /// … every write slot's reads (`write_reads[write_at[w]..write_at[w + 1]]`)
+    pub write_reads: Vec<u32>,
+    pub write_at: Vec<u32>,
+    /// … and its cells `(w, word index, coefficient)`.
+    pub write_cells: Vec<(u32, u32, Coef)>,
+}
+
+/// A cell's coefficient in its slot's value: 1, `T`, `T²` (an Fp3 value's
+/// limbs) or any other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Coef {
+    One,
+    T,
+    T2,
+    Other(Fp3),
+}
+
+impl Coef {
+    pub fn of(c: Fp3) -> Self {
+        use nebu::Goldilocks as G;
+        let (z, o) = (G::ZERO, G::ONE);
+        match (c.c0, c.c1, c.c2) {
+            (a, b, d) if a == o && b == z && d == z => Coef::One,
+            (a, b, d) if a == z && b == o && d == z => Coef::T,
+            (a, b, d) if a == z && b == z && d == o => Coef::T2,
+            _ => Coef::Other(c),
+        }
+    }
+    /// `coefficient · v` (`T³ = T + 1`: a product by `T` is a limb shift).
+    pub fn apply(self, v: Fp3) -> Fp3 {
+        match self {
+            Coef::One => v,
+            Coef::T => Fp3::new(v.c2, v.c0 + v.c2, v.c1),
+            Coef::T2 => Fp3::new(v.c1, v.c1 + v.c2, v.c0 + v.c2),
+            Coef::Other(c) => c * v,
+        }
+    }
 }
 
 impl Wiring {
@@ -103,6 +140,13 @@ impl Wiring {
             l *= lambda;
         }
         out
+    }
+    /// `Λ_w` for every write slot.
+    pub fn write_sums(&self, lp: &[Fp3]) -> Vec<Fp3> {
+        self.write_at
+            .windows(2)
+            .map(|r| self.write_reads[r[0] as usize..r[1] as usize].iter().fold(Fp3::ZERO, |a, &i| a + lp[i as usize]))
+            .collect()
     }
 }
 

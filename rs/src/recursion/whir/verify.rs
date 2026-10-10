@@ -290,6 +290,7 @@ fn core<O: Ops>(
     pf: &Proof,
 ) {
     let wc = &cfg.wc;
+    let lap = crate::recursion::ivc::timer_pub("        whir ");
     let s0 = wc.rounds[0];
     let zs: Vec<(O::V, O::V)> = pf
         .ood0
@@ -343,6 +344,7 @@ fn core<O: Ops>(
         prev_coef = vec![o.one()];
         prev = s;
     }
+    lap("rounds");
     // the final polynomial and queries
     let fin: Vec<O::V> = pf.final_poly.iter().map(|&c| t.absorb_free_ext(o, c)).collect();
     t.grind_check(o, prev.query_pow, pf.final_nonce);
@@ -356,6 +358,7 @@ fn core<O: Ops>(
     if t.has_pending() {
         t.flush(o);
     }
+    lap("final queries");
     // closing: σ = Σ_c coef·Σ_b w_c(α, b)·f_M(b) — for eq weights
     // eq(point[..pre], α)·f̂_M(point[pre..])
     let fv = wc.final_vars;
@@ -431,6 +434,7 @@ fn core<O: Ops>(
         });
     }
     o.assert_eq(expected.expect("a constraint"), sigma, "whir: closing check");
+    lap("closing");
 }
 
 /// The final polynomial's values on the cube from its monomial

@@ -221,15 +221,22 @@ fn wiring(pre: &trace::Pre) -> Wiring {
     }
     let n = rows.trailing_zeros();
     let x = |s: u32, c: u8| ((c as u32) << n) | (s / SLOTS as u32);
-    let mut entries = Vec::new();
+    let mut read_cells = Vec::new();
+    let mut by_write: std::collections::BTreeMap<u32, Vec<u32>> = std::collections::BTreeMap::new();
     for (i, &(r, a)) in reads_at.iter().enumerate() {
         let w = *writes.get(&a).expect("every read address is written");
         for &(c, kc) in &kappa[r as usize] {
-            entries.push((i as u32, x(r, c), kc));
+            read_cells.push((i as u32, x(r, c), super::Coef::of(kc)));
         }
+        by_write.entry(w).or_default().push(i as u32);
+    }
+    let (mut write_reads, mut write_at, mut write_cells) = (Vec::new(), vec![0u32], Vec::new());
+    for (j, (w, rs)) in by_write.into_iter().enumerate() {
+        write_reads.extend(rs);
+        write_at.push(write_reads.len() as u32);
         for &(c, kc) in &kappa[w as usize] {
-            entries.push((i as u32, x(w, c), -kc));
+            write_cells.push((j as u32, x(w, c), super::Coef::of(kc)));
         }
     }
-    Wiring { reads: reads_at.len(), entries }
+    Wiring { reads: reads_at.len(), read_cells, write_reads, write_at, write_cells }
 }

@@ -54,3 +54,17 @@ fn every_ledger_row_of_the_wrap_profiles_reaches_128_bits() {
         }
     }
 }
+
+#[test]
+fn a_coefficient_applies_as_the_field_product() {
+    let e = |i: u64| Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i * i + 11), Goldilocks::new(3 * i + 2));
+    let t = Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO);
+    for i in 0..5 {
+        let v = e(i);
+        for c in [Fp3::ONE, t, t * t, e(9)] {
+            assert_eq!(Coef::of(c).apply(v), c * v);
+        }
+    }
+    assert_eq!(Coef::of(t), Coef::T);
+    assert_eq!(Coef::of(t * t), Coef::T2);
+}

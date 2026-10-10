@@ -41,9 +41,13 @@ pub(crate) fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
     let w = k.wiring.as_ref().expect("final mode");
     let rows = 1usize << k.params.n;
     let lp = w.powers(lambda);
+    let ws = w.write_sums(&lp);
     let mut u = vec![Fp3::ZERO; WORD * rows];
-    for &(i, x, kc) in &w.entries {
-        u[x as usize] += lp[i as usize] * kc;
+    for &(i, x, kc) in &w.read_cells {
+        u[x as usize] += kc.apply(lp[i as usize]);
+    }
+    for &(j, x, kc) in &w.write_cells {
+        u[x as usize] -= kc.apply(ws[j as usize]);
     }
     u
 }
