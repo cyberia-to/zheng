@@ -113,7 +113,27 @@ pub fn derive_key_ivc(params: WrapParams, key: &Key) -> Result<WrapKey, String> 
     let step = ivc_program::dummy_proof(&key.params);
     let decider = decide::dummy(&key.dcfg);
     let proof = IvcProof { log_rows: key.params.n as u32, start: 0, segments: 1, chain: [nebu::Goldilocks::ZERO; 4], state, step, decider };
-    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n))
+    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n), false)
+}
+
+/// The layout a level would have, its key words not committed (a zero
+/// root): circuit rows and opening shapes for planning a chain, never for
+/// proving or verifying.
+pub fn derive_shape(params: WrapParams, inner: &WrapKey) -> Result<WrapKey, String> {
+    if !inner.inner() {
+        return Err("wrap: a final-mode level is verified natively only".into());
+    }
+    let proof = dummy_proof(inner);
+    derive_key(params, &Inner::Wrap { key: inner, proof: &proof }, inner.ivc, true)
+}
+
+/// [`derive_shape`] over the IVC final verifier.
+pub fn derive_shape_ivc(params: WrapParams, key: &Key) -> Result<WrapKey, String> {
+    let state = ivc_program::dummy_state(&key.params);
+    let step = ivc_program::dummy_proof(&key.params);
+    let decider = decide::dummy(&key.dcfg);
+    let proof = IvcProof { log_rows: key.params.n as u32, start: 0, segments: 1, chain: [nebu::Goldilocks::ZERO; 4], state, step, decider };
+    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n), true)
 }
 
 /// Derive the key of a wrap level over another wrap level's verifier.
@@ -125,12 +145,21 @@ pub fn derive_key_wrap(params: WrapParams, key: &WrapKey) -> Result<WrapKey, Str
         return Err("wrap: a final-mode level is verified natively only".into());
     }
     let proof = dummy_proof(key);
-    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc)
+    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc, false)
+}
+
+/// The opening's configuration of a level with `vars` variables per word
+/// and `fresh` OOD samples per trace word.
+pub(crate) fn level_config(params: &WrapParams, vars: usize, fresh: usize) -> Result<whir::Config, String> {
+    let committed = params.mode == Mode::Inner;
+    let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 3, &[1]) };
+    let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
+    Ok(whir::Config::derive(&params.whir, vars, groups, claims)?.with_arity(arity))
 }
 
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
 /// never read: layouts are fixed by shapes).
-fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize)) -> Result<WrapKey, String> {
+fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize), shape: bool) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
     let pn = ClaimV { point: vec![Fp3::ZERO; inner.pn_len()], value: Fp3::ZERO };
     let mut b = Builder::new(false);
@@ -142,22 +171,25 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
-    let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 3, &[1]) };
-    let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
-    let cfg = whir::Config::derive(&params.whir, vars, groups, claims)?.with_arity(arity);
+    let cfg = level_config(&params, vars, fresh)?;
+    let arity = cfg.arity;
     let wiring = (!committed).then(|| wiring(&pre));
-    let (key_root, key_ext) = if committed {
+    let any_ext = pre.cols.iter().flatten().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO);
+    let (kw, key_ext) = if committed && !shape {
         let (kw, ext) = KeyWords::commit(cfg.layout(0), n, &pre, arity);
-        (Some(kw.root), ext)
+        (Some(kw), ext)
     } else {
-        (None, pre.cols.iter().flatten().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO))
+        (None, any_ext)
     };
+    let key_root = if committed && shape { Some([nebu::Goldilocks::ZERO; 4]) } else { kw.as_ref().map(|k| k.root) };
     let sparse = pre
         .cols
         .iter()
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
     let (g, constraints) = g_graph(&air, params.mode);
+    let gc = g.compile();
+    let key_cols = super::key_used(&g, if committed { super::COLS } else { crate::recursion::circuit::layout::V1 });
     let w = if committed { super::COLS } else { crate::recursion::circuit::layout::V1 };
     let used = g.used_inputs();
     let next_cols: Vec<usize> = (0..w).filter(|&c| committed || used[w + c]).collect();
@@ -166,6 +198,7 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
         pre,
         sparse,
         key_root,
+        kw,
         wiring,
         key_ext,
         cfg,
@@ -173,6 +206,8 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
         out_row,
         g,
         constraints,
+        gc,
+        key_cols,
         next_cols,
         pn: inner.pn_len(),
         ivc,
@@ -245,5 +280,5 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
             write_cells.push((j as u32, x(w, c), super::Coef::of(kc)));
         }
     }
-    Wiring { reads: reads_at.len(), read_cells, write_reads, write_at, write_cells }
+    Wiring::new(reads_at.len(), read_cells, write_reads, write_at, write_cells)
 }

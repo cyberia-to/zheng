@@ -120,6 +120,25 @@ pub trait Ops {
     {
         super::expr::compile(self, g, inputs)
     }
+
+    /// A long message's values (written) and its digest
+    /// ([`super::msg`]).
+    fn message(&mut self, items: &[Fp3]) -> (Vec<Self::V>, [Self::V; 4])
+    where
+        Self: Sized,
+    {
+        super::msg::absorb_generic(self, items)
+    }
+
+    /// [`Self::graph`] with `g`'s compiled form at hand (a native
+    /// interpreter evaluates that; the circuit compiles `g` to gates).
+    fn graph_compiled(&mut self, g: &crate::air::num::Graph, c: &crate::air::num::Compiled, inputs: &[Self::V]) -> Vec<Self::V>
+    where
+        Self: Sized,
+    {
+        let _ = c;
+        self.graph(g, inputs)
+    }
 }
 
 /// Native interpretation: values, and the first failed check.
@@ -130,7 +149,7 @@ pub struct Native {
     /// [`Native::finish`] (the final verifier); off, every permutation is
     /// computed at once.
     pub batch: bool,
-    deferred: Vec<(Vec<NOp>, [Goldilocks; 4], &'static str)>,
+    deferred: Vec<Job>,
 }
 
 /// A deferred chain operation: a block's rate lanes (`None` keeps) or a
@@ -196,54 +215,21 @@ impl Native {
             self.error = Some(what.to_string());
         }
     }
-    /// Hash the deferred openings; `Ok` when no check failed.
+    /// Hash the deferred openings; `Ok` when no check failed. The chains
+    /// are independent: they are split over the verifier's threads, each
+    /// group hashed step by step in batches.
     pub fn finish(&mut self) -> Result<(), String> {
         let jobs = core::mem::take(&mut self.deferred);
         if self.error.is_none() && !jobs.is_empty() {
-            let mut fresh = [Goldilocks::ZERO; WIDTH];
-            fresh[RATE] = Goldilocks::new(super::perm::tag::LEAF);
-            let mut states = vec![fresh; jobs.len()];
-            let longest = jobs.iter().map(|j| j.0.len()).max().unwrap_or(0);
-            for k in 0..longest {
-                let idx: Vec<usize> = (0..jobs.len()).filter(|&q| k < jobs[q].0.len()).collect();
-                let mut batch: Vec<[Goldilocks; WIDTH]> = idx
-                    .iter()
-                    .map(|&q| {
-                        let prev = states[q];
-                        match &jobs[q].0[k] {
-                            NOp::Block(l) => {
-                                let mut x = prev;
-                                for (i, v) in l.iter().enumerate() {
-                                    match v {
-                                        Some(v) => x[i] = *v,
-                                        None if k == 0 => x[i] = Goldilocks::ZERO,
-                                        None => {}
-                                    }
-                                }
-                                x
-                            }
-                            NOp::Node(right, sib) => {
-                                let cur = [prev[0], prev[1], prev[2], prev[3]];
-                                let (l, r) = if *right { (*sib, cur) } else { (cur, *sib) };
-                                perm::node_input(l, r)
-                            }
-                            NOp::Node4(pos, sibs) => {
-                                let cur = [prev[0], prev[1], prev[2], prev[3]];
-                                perm::node4_input(perm::children4(cur, *pos, *sibs))
-                            }
-                        }
-                    })
-                    .collect();
-                perm::permute_many(&mut batch);
-                for (&q, s) in idx.iter().zip(batch) {
-                    states[q] = s;
-                }
-            }
-            for (s, j) in states.iter().zip(&jobs) {
-                if [s[0], s[1], s[2], s[3]] != j.1 {
-                    self.fail(j.2);
-                    break;
-                }
+            let threads = crate::recursion::wrap::verifier_threads().min(jobs.len().div_ceil(8)).max(1);
+            let size = jobs.len().div_ceil(threads);
+            let groups = jobs.len().div_ceil(size);
+            let bad: Option<&'static str> = super::pool::map_chunks(groups, threads, |r| r.filter_map(|g| run_chains(&jobs[g * size..((g + 1) * size).min(jobs.len())])).next())
+                .into_iter()
+                .flatten()
+                .next();
+            if let Some(what) = bad {
+                self.fail(what);
             }
         }
         match &self.error {
@@ -251,6 +237,53 @@ impl Native {
             Some(e) => Err(format!("recursion: {e}")),
         }
     }
+}
+
+type Job = (Vec<NOp>, [Goldilocks; 4], &'static str);
+
+/// Run deferred chains step by step (one batch per step); the first
+/// chain whose digest is not its root.
+fn run_chains(jobs: &[Job]) -> Option<&'static str> {
+    let mut fresh = [Goldilocks::ZERO; WIDTH];
+    fresh[RATE] = Goldilocks::new(super::perm::tag::LEAF);
+    let mut states = vec![fresh; jobs.len()];
+    let longest = jobs.iter().map(|j| j.0.len()).max().unwrap_or(0);
+    for k in 0..longest {
+        let idx: Vec<usize> = (0..jobs.len()).filter(|&q| k < jobs[q].0.len()).collect();
+        let mut batch: Vec<[Goldilocks; WIDTH]> = idx
+            .iter()
+            .map(|&q| {
+                let prev = states[q];
+                match &jobs[q].0[k] {
+                    NOp::Block(l) => {
+                        let mut x = prev;
+                        for (i, v) in l.iter().enumerate() {
+                            match v {
+                                Some(v) => x[i] = *v,
+                                None if k == 0 => x[i] = Goldilocks::ZERO,
+                                None => {}
+                            }
+                        }
+                        x
+                    }
+                    NOp::Node(right, sib) => {
+                        let cur = [prev[0], prev[1], prev[2], prev[3]];
+                        let (l, r) = if *right { (*sib, cur) } else { (cur, *sib) };
+                        perm::node_input(l, r)
+                    }
+                    NOp::Node4(pos, sibs) => {
+                        let cur = [prev[0], prev[1], prev[2], prev[3]];
+                        perm::node4_input(perm::children4(cur, *pos, *sibs))
+                    }
+                }
+            })
+            .collect();
+        perm::permute_many_recall(&mut batch);
+        for (&q, s) in idx.iter().zip(batch) {
+            states[q] = s;
+        }
+    }
+    states.iter().zip(jobs).find(|(s, j)| [s[0], s[1], s[2], s[3]] != j.1).map(|(_, j)| j.2)
 }
 
 fn base_of(x: Fp3) -> Option<Goldilocks> {
@@ -263,6 +296,15 @@ impl Ops for Native {
 
     fn graph(&mut self, g: &crate::air::num::Graph, inputs: &[Fp3]) -> Vec<Fp3> {
         g.eval(inputs)
+    }
+    fn message(&mut self, items: &[Fp3]) -> (Vec<Fp3>, [Fp3; 4]) {
+        if self.error.is_some() {
+            return (items.to_vec(), [Fp3::ZERO; 4]);
+        }
+        (items.to_vec(), super::msg::digest_native(items).map(Fp3::from_base))
+    }
+    fn graph_compiled(&mut self, _: &crate::air::num::Graph, c: &crate::air::num::Compiled, inputs: &[Fp3]) -> Vec<Fp3> {
+        c.eval(inputs)
     }
 
     fn value(&self, v: Fp3) -> Fp3 {

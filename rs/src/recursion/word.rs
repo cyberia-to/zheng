@@ -15,6 +15,7 @@ use nebu::{Fp3, Goldilocks};
 use super::ops::Ops;
 use super::perm::{self, RATE, WIDTH, tag};
 use super::sponge::Sponge;
+use super::stream::{self, Coeffs, STREAM_LOG};
 
 pub type Digest = [Goldilocks; 4];
 
@@ -119,8 +120,14 @@ fn par_chunks<T: Send, F: Fn(usize, &mut [T]) + Sync>(v: &mut [T], f: F) {
 
 /// Leaf digests of `leaves` leaves of `width` symbols each (`ext`: Fp3
 /// symbols), `symbol(j, t)` the `t`-th symbol of leaf `j` — the sponge of
-/// [`leaf_digest`], batched.
-fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3 + Sync) -> Vec<Digest> {
+/// [`leaf_digest`], batched, on this thread.
+pub(crate) fn hash_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3) -> Vec<Digest> {
+    hash_leaves_with(leaves, width, ext, symbol, false)
+}
+
+/// [`hash_leaves`]; `remember`: keep the permutations for the verifier
+/// ([`perm::permute_many_remember`]).
+pub(crate) fn hash_leaves_with(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3, remember: bool) -> Vec<Digest> {
     let lanes: Vec<usize> = if ext { vec![3; width] } else { vec![1; width] };
     // block boundaries: items never straddle the rate
     let mut blocks: Vec<Vec<usize>> = vec![vec![]];
@@ -137,42 +144,55 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
             used = 0;
         }
     }
-    let mut out = vec![[Goldilocks::ZERO; 4]; leaves];
-    par_chunks(&mut out, |start, chunk| {
-        let mut states: Vec<[Goldilocks; WIDTH]> = (0..chunk.len())
-            .map(|_| {
-                let mut s = [Goldilocks::ZERO; WIDTH];
-                s[RATE] = Goldilocks::new(tag::LEAF);
-                s
-            })
-            .collect();
-        for blk in &blocks {
-            for (k, s) in states.iter_mut().enumerate() {
-                let j = start + k;
-                let mut lane = 0;
-                for &t in blk {
-                    let v = symbol(j, t);
-                    if ext {
-                        s[lane] = v.c0;
-                        s[lane + 1] = v.c1;
-                        s[lane + 2] = v.c2;
-                        lane += 3;
-                    } else {
-                        s[lane] = v.c0;
-                        lane += 1;
-                    }
-                }
-                for x in s.iter_mut().take(RATE).skip(lane) {
-                    *x = Goldilocks::ZERO;
+    let mut states: Vec<[Goldilocks; WIDTH]> = (0..leaves)
+        .map(|_| {
+            let mut s = [Goldilocks::ZERO; WIDTH];
+            s[RATE] = Goldilocks::new(tag::LEAF);
+            s
+        })
+        .collect();
+    for blk in &blocks {
+        for (j, s) in states.iter_mut().enumerate() {
+            let mut lane = 0;
+            for &t in blk {
+                let v = symbol(j, t);
+                if ext {
+                    s[lane] = v.c0;
+                    s[lane + 1] = v.c1;
+                    s[lane + 2] = v.c2;
+                    lane += 3;
+                } else {
+                    s[lane] = v.c0;
+                    lane += 1;
                 }
             }
+            for x in s.iter_mut().take(RATE).skip(lane) {
+                *x = Goldilocks::ZERO;
+            }
+        }
+        if remember {
+            perm::permute_many_remember(&mut states);
+        } else {
             perm::permute_many(&mut states);
         }
-        for (o, s) in chunk.iter_mut().zip(&states) {
-            *o = perm::head(s);
-        }
+    }
+    states.iter().map(perm::head).collect()
+}
+
+/// [`hash_leaves`] on every core.
+fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3 + Sync) -> Vec<Digest> {
+    let mut out = vec![[Goldilocks::ZERO; 4]; leaves];
+    par_chunks(&mut out, |start, chunk| {
+        let d = hash_leaves(chunk.len(), width, ext, |j, t| symbol(start + j, t));
+        chunk.copy_from_slice(&d);
     });
     out
+}
+
+/// Leaf digests of members streamed coset by coset ([`stream`]).
+fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
+    let ext = members[0].is_ext();
+    stream::digests(members, layout.log_domain, layout.log_width, |rows| hash_leaves(rows.len(), rows[0].len(), ext, |j, t| rows[j][t]))
 }
 
 fn parents4(level: &[Digest]) -> Vec<Digest> {
@@ -206,23 +226,31 @@ fn parents(level: &[Digest]) -> Vec<Digest> {
     out
 }
 
+/// Whether a codeword over `layout` is streamed (never held).
+fn streamed(layout: LeafLayout) -> bool {
+    layout.log_domain > STREAM_LOG
+}
+
+fn encode_b(coeffs: &[Goldilocks], layout: LeafLayout) -> Vec<Goldilocks> {
+    if streamed(layout) { Vec::new() } else { encode_base(coeffs, layout.log_domain) }
+}
+
+fn encode_e(coeffs: &[Fp3], layout: LeafLayout) -> Vec<Fp3> {
+    if streamed(layout) { Vec::new() } else { encode_ext(coeffs, layout.log_domain) }
+}
+
 impl Word {
-    fn build(num_vars: usize, layout: LeafLayout, data: Data) -> Self {
-        Self::build_a(num_vars, layout, data, Arity::Two)
+    fn build_a(num_vars: usize, layout: LeafLayout, data: Data, arity: Arity) -> Self {
+        let mut w = Self { num_vars, layout, data, levels: Vec::new(), arity };
+        w.levels = tree(Group::digests(&[&w]), arity);
+        w
     }
 
-    fn build_a(num_vars: usize, layout: LeafLayout, data: Data, arity: Arity) -> Self {
-        let leaves = 1usize << layout.log_leaves();
-        let width = 1usize << layout.log_width;
-        let digests = match &data {
-            Data::Base { code, .. } => {
-                leaf_digests(leaves, width, false, |j, t| Fp3::from_base(code[j + t * leaves]))
-            }
-            Data::Ext { code, .. } | Data::Coeffs { code, .. } => {
-                leaf_digests(leaves, width, true, |j, t| code[j + t * leaves])
-            }
-        };
-        Self { num_vars, layout, data, levels: tree(digests, arity), arity }
+    fn coeff_ref(&self) -> Coeffs<'_> {
+        match &self.data {
+            Data::Base { coeffs, .. } => Coeffs::Base(coeffs),
+            Data::Ext { coeffs, .. } | Data::Coeffs { coeffs, .. } => Coeffs::Ext(coeffs),
+        }
     }
 
     /// Commit a Goldilocks table of `2^ℓ` entries under `layout`.
@@ -232,48 +260,44 @@ impl Word {
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
         mobius_base(&mut coeffs);
-        let code = encode_base(&coeffs, layout.log_domain);
+        let code = encode_b(&coeffs, layout);
         Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
+    }
+
+    /// An Fp3 word without its own tree (a member of a [`Group`]).
+    pub fn member_ext(layout: LeafLayout, evals: &[Fp3]) -> Self {
+        let num_vars = evals.len().trailing_zeros() as usize;
+        assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
+        let mut coeffs = evals.to_vec();
+        mobius_ext(&mut coeffs);
+        let code = encode_e(&coeffs, layout);
+        Self { num_vars, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
     }
 
     /// [`Self::commit_base`] under a tree of `arity`.
     pub fn commit_base_a(layout: LeafLayout, evals: &[Goldilocks], arity: Arity) -> Self {
         let mut w = Self::member_base(layout, evals);
-        let leaves = 1usize << layout.log_leaves();
-        let width = 1usize << layout.log_width;
-        let digests = match &w.data {
-            Data::Base { code, .. } => leaf_digests(leaves, width, false, |j, t| Fp3::from_base(code[j + t * leaves])),
-            _ => unreachable!("a base word"),
-        };
-        w.levels = tree(digests, arity);
+        w.levels = tree(Group::digests(&[&w]), arity);
         w.arity = arity;
         w
     }
 
     pub fn commit_base(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
-        let num_vars = evals.len().trailing_zeros() as usize;
-        assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
-        let mut coeffs = evals.to_vec();
-        mobius_base(&mut coeffs);
-        let code = encode_base(&coeffs, layout.log_domain);
-        Self::build(num_vars, layout, Data::Base { evals: evals.to_vec(), coeffs, code })
+        Self::commit_base_a(layout, evals, Arity::Two)
     }
 
     /// Commit an Fp3 table.
     pub fn commit_ext(layout: LeafLayout, evals: &[Fp3]) -> Self {
-        let num_vars = evals.len().trailing_zeros() as usize;
-        assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
-        let mut coeffs = evals.to_vec();
-        mobius_ext(&mut coeffs);
-        let code = encode_ext(&coeffs, layout.log_domain);
-        Self::build(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code })
+        let mut w = Self::member_ext(layout, evals);
+        w.levels = tree(Group::digests(&[&w]), Arity::Two);
+        w
     }
 
     /// Commit an Fp3 polynomial given by its `2^ℓ` monomial coefficients.
     pub fn commit_coeffs(layout: LeafLayout, coeffs: Vec<Fp3>, arity: Arity) -> Self {
         let num_vars = coeffs.len().trailing_zeros() as usize;
         assert!(coeffs.len().is_power_of_two() && layout.log_domain as usize > num_vars);
-        let code = encode_ext(&coeffs, layout.log_domain);
+        let code = encode_e(&coeffs, layout);
         Self::build_a(num_vars, layout, Data::Coeffs { coeffs, code }, arity)
     }
 
@@ -290,6 +314,13 @@ impl Word {
     }
     pub fn is_ext(&self) -> bool {
         !matches!(self.data, Data::Base { .. })
+    }
+    /// Whether the codeword is held (else streamed: recomputed per leaf).
+    fn held(&self) -> bool {
+        match &self.data {
+            Data::Base { code, .. } => !code.is_empty(),
+            Data::Ext { code, .. } | Data::Coeffs { code, .. } => !code.is_empty(),
+        }
     }
     /// The table, lifted to Fp3 (a word committed from coefficients has
     /// none: its table is computed from them).
@@ -323,16 +354,23 @@ impl Word {
     /// Codeword symbol `s`.
     pub fn symbol(&self, s: usize) -> Fp3 {
         match &self.data {
-            Data::Base { code, .. } => Fp3::from_base(code[s]),
-            Data::Ext { code, .. } | Data::Coeffs { code, .. } => code[s],
+            Data::Base { code, .. } if !code.is_empty() => Fp3::from_base(code[s]),
+            Data::Ext { code, .. } | Data::Coeffs { code, .. } if !code.is_empty() => code[s],
+            _ => stream::symbol(self.coeff_ref(), self.layout.log_domain, s),
         }
+    }
+    /// The symbols of leaf `j` in coset order.
+    fn leaf_symbols(&self, j: usize) -> Vec<Fp3> {
+        if !self.held() {
+            return stream::leaf(self.coeff_ref(), self.layout.log_domain, self.layout.log_width, j);
+        }
+        let leaves = 1usize << self.layout.log_leaves();
+        let width = 1usize << self.layout.log_width;
+        (0..width).map(|t| self.symbol(j + t * leaves)).collect()
     }
     /// Leaf `j`: its symbols in coset order and its sibling path.
     pub fn open(&self, j: usize) -> LeafOpening {
-        let leaves = 1usize << self.layout.log_leaves();
-        let width = 1usize << self.layout.log_width;
-        let symbols = (0..width).map(|t| self.symbol(j + t * leaves)).collect();
-        LeafOpening { symbols, path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
+        LeafOpening { symbols: self.leaf_symbols(j), path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
     }
 }
 
@@ -350,22 +388,28 @@ impl Group {
     /// [`Word::member_base`] or committed alone; their own trees unused).
     pub fn new(words: Vec<Word>, arity: Arity) -> Self {
         let layout = words[0].layout;
+        let digests = Self::digests(&words.iter().collect::<Vec<_>>());
+        Self { words, layout, levels: tree(digests, arity), arity }
+    }
+    /// Leaf digests of members of one layout and one symbol field.
+    fn digests(words: &[&Word]) -> Vec<Digest> {
+        let layout = words[0].layout;
         let ext = words[0].is_ext();
         assert!(words.iter().all(|w| w.layout == layout && w.is_ext() == ext), "group members");
+        if !words[0].held() {
+            let members: Vec<Coeffs<'_>> = words.iter().map(|w| w.coeff_ref()).collect();
+            return stream_digests(&members, layout);
+        }
         let leaves = 1usize << layout.log_leaves();
         let width = 1usize << layout.log_width;
-        let m = words.len();
-        let digests = leaf_digests(leaves, width * m, ext, |j, t| words[t / width].symbol(j + (t % width) * leaves));
-        Self { words, layout, levels: tree(digests, arity), arity }
+        leaf_digests(leaves, width * words.len(), ext, |j, t| words[t / width].symbol(j + (t % width) * leaves))
     }
     pub fn root(&self) -> Digest {
         self.levels.last().expect("root")[0]
     }
     /// Leaf `j` of every member (concatenated) and the group's path.
     pub fn open(&self, j: usize) -> LeafOpening {
-        let leaves = 1usize << self.layout.log_leaves();
-        let width = 1usize << self.layout.log_width;
-        let symbols = self.words.iter().flat_map(|w| (0..width).map(move |t| w.symbol(j + t * leaves))).collect();
+        let symbols = self.words.iter().flat_map(|w| w.leaf_symbols(j)).collect();
         LeafOpening { symbols, path: path_of(&self.levels, self.arity, j), leaf: Some(j) }
     }
 }
@@ -437,6 +481,21 @@ mod tests {
 
     fn layout(num_vars: usize) -> LeafLayout {
         LeafLayout { log_domain: num_vars as u32 + 2, log_width: 2 }
+    }
+
+    #[test]
+    fn streamed_leaf_digests_equal_the_held_codeword_s() {
+        let n = 8;
+        let lay = LeafLayout { log_domain: n as u32 + 4, log_width: 3 };
+        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 31 + 2)).collect();
+        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(i + 9), Goldilocks::new(3))).collect();
+        let (wb, wb2) = (Word::member_base(lay, &base), Word::member_base(lay, &base));
+        let (we, we2) = (Word::member_ext(lay, &ext), Word::member_ext(lay, &ext));
+        for (a, b) in [(&wb, &wb2), (&we, &we2)] {
+            let held = Group::digests(&[a, b]);
+            let streamed = stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay);
+            assert_eq!(held, streamed);
+        }
     }
 
     #[test]

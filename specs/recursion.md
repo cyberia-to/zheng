@@ -33,6 +33,12 @@ checked by the next step's circuit and only the last step's travel.
   `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`. Same code, domain and distance as a
   lens commitment; only the hashing differs. The last accumulator is a
   word like the others; the decider opens it field-natively (below).
+  A codeword above `2^25` symbols is streamed (`recursion::stream`): every
+  symbol of a leaf lies in one coset of the order-`2^ℓ` subgroup, so the
+  committer runs one size-`2^ℓ` NTT per coset, hashes that coset's leaves
+  and drops the values; an opening recomputes its leaf from the
+  coefficients. The commitment is the same; the prover holds the
+  coefficients and the tree, not the codeword.
 - **transcript**: an overwrite duplex sponge over hemera's permutation,
   rate 9 lanes (three Fp3), capacity 7 lanes with a domain tag; an Fp3
   item never straddles a block; challenges are output limbs (no byte
@@ -187,7 +193,10 @@ symbols; one path opens all). One word skips the batch: its claims are
 WHIR's initial weights — eq and pow points, a row polynomial (eq, or the
 successor `nxt`, at `ρ`) times a column vector, or a weight a native
 verifier evaluates (`NativeWeight`); the closing check sums each weight
-against the final polynomial on the cube. Trees are binary or 4-ary
+against the final polynomial on the cube. One word is opened only by a
+native verifier (the final wrap): it absorbs its final polynomial as a
+message digest (`recursion::msg`: eight part sponges, tag `MSG`, and a
+sponge over their digests) instead of coefficient by coefficient. Trees are binary or 4-ary
 (`word::Arity`): a 4-ary node is the truncated permutation of its four
 children (all sixteen lanes); over an odd power of two leaves the top
 level is one binary node; the circuit's `NODE4` input places the current
@@ -218,7 +227,8 @@ verifier of the level below. The relation: the circuit's AIR alone over
 transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root, OOD |
             final: λ; τ, μ; zerocheck (degree 9); the committed columns at
             ρ and their successors (final: only the columns the
-            constraints read at the next row, from the recorded graph);
+            constraints read at the next row, from the recorded graph;
+            absorbed as one message digest, `recursion::msg`);
             inner: the key at ρ, γ_k, the shift reduction of W1, W2 to one
             point, the key claim split over its two words, the batched
             opening | final: column batching (local, successor), one
@@ -227,7 +237,22 @@ transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root, OOD |
 ```
 
 The constraints are evaluated at the point through their recorded graph
-(`Σ μ^k C_k`, 267 constraints → 4,054 gates inner, 249 → 3,620 final).
+(`Σ μ^k C_k`, 267 constraints → 4,054 gates inner, 249 → 3,620 final;
+a native verifier evaluates the graph pruned and compiled, `Compiled`,
+and only the key columns it reads). The final verifier's closing check
+evaluates `u_λ` slot by slot: with `ℓ − fv ≤ n` every cell of one slot
+shares its row's `eq(α, ·)` factor, so the term is one product per slot
+and a Horner sum over the reads (`wrap::wiring`).
+
+The chain shipped (`wrap::SHIPPED` = `4i:16,8i,9f:24`): the IVC proof
+(rate 1/16, steps of `2^15` rows) → inner 1/16 grinding 16 bits (the IVC
+final verifier, 2^16 rows) → inner 1/256 grinding 24 (2^15 rows) → final
+1/512 grinding 24 (2^14 rows). The final level's circuit size (≤ 2^14,
+so `ℓ = 20`) fixes the inner level's rate (1/256: a lower rate adds
+queries the final circuit verifies); the final rate and grinding fix the
+proof's bytes (`examples/wrap_plan`, `examples/wrap_chain` plan a chain
+without proving). A verifying key travels as bytes (`WrapKey::vk_bytes`,
+pinned by `vk_digest`): it verifies, it does not prove.
 The outermost proof (`FinalProof`) is the deferred nox-public claim and
 the final wrap; `wrap::verify_final` refuses a key derived for another
 recursive proof (a wrap key records the IVC's WHIR parameters and step

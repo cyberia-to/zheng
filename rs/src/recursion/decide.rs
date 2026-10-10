@@ -58,7 +58,7 @@ impl KeyWords {
                 }
             }
             if ext {
-                Word::commit_ext(layout, &t)
+                Word::member_ext(layout, &t)
             } else {
                 Word::member_base(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
             }

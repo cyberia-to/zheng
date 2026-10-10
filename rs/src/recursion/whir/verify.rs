@@ -346,7 +346,12 @@ fn core<O: Ops>(
     }
     lap("rounds");
     // the final polynomial and queries
-    let fin: Vec<O::V> = pf.final_poly.iter().map(|&c| t.absorb_free_ext(o, c)).collect();
+    // one word (a native verifier): the final polynomial as a digest
+    let fin: Vec<O::V> = if cfg.direct() {
+        crate::recursion::msg::absorb(o, t, &pf.final_poly)
+    } else {
+        pf.final_poly.iter().map(|&c| t.absorb_free_ext(o, c)).collect()
+    };
     t.grind_check(o, prev.query_pow, pf.final_nonce);
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
@@ -361,80 +366,135 @@ fn core<O: Ops>(
     lap("final queries");
     // closing: σ = Σ_c coef·Σ_b w_c(α, b)·f_M(b) — for eq weights
     // eq(point[..pre], α)·f̂_M(point[pre..])
+    let expected = if cfg.direct() {
+        // one word, a native verifier: every term in the field, the
+        // constraints spread over the verifier's threads
+        let av: Vec<Fp3> = alphas.iter().map(|&v| o.value(v)).collect();
+        let fins: Vec<Fp3> = fin.iter().map(|&v| o.value(v)).collect();
+        let nc: Vec<Constraint<Fp3>> = cons.iter().map(|c| to_native(o, c)).collect();
+        let v = closing_native(wc, &nc, &av, &fins, natives);
+        o.constant(v)
+    } else {
+        let mut cube: Option<Vec<O::V>> = None;
+        let mut expected: Option<O::V> = None;
+        for c in &cons {
+            let ef = term(o, wc, c, &alphas, &fin, &mut cube, natives);
+            expected = Some(match expected {
+                None => o.mul(c.coef, ef),
+                Some(acc) => o.mul_add(c.coef, ef, acc),
+            });
+        }
+        expected.expect("a constraint")
+    };
+    o.assert_eq(expected, sigma, "whir: closing check");
+    lap("closing");
+}
+
+/// `w_c(α, ·)·f_M` summed over the cube for one constraint (without its
+/// coefficient).
+fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Constraint<O::V>, alphas: &[O::V], fin: &[O::V], cube: &mut Option<Vec<O::V>>, natives: &[&dyn NativeWeight]) -> O::V {
     let fv = wc.final_vars;
-    let mut cube: Option<Vec<O::V>> = None;
-    let mut expected: Option<O::V> = None;
-    for c in &cons {
-        let off = wc.alpha_offset(c.round);
-        let nv = wc.rounds[c.round].num_vars;
-        let pre = nv - fv;
-        let a = &alphas[off..off + pre];
-        let (e, f) = match &c.point {
-            Point::Multi(p) => {
-                let e = gm::eq(o, &p[..pre], a);
-                (e, gm::monomial(o, &fin, &p[pre..]))
-            }
-            Point::Pow(x) => {
-                let e = gm::eq_pow(o, *x, a);
-                let xs = gm::pow2k(o, *x, pre);
-                (e, gm::horner(o, &fin, xs))
-            }
-            Point::RowCol { next, rho, col } => {
-                let n = rho.len();
-                assert!(col.len() << n == 1 << nv, "whir: a row-column weight");
-                let fm = cube.get_or_insert_with(|| cube_values(o, &fin)).clone();
-                if pre >= n {
-                    // the rows inside α: one row factor, the columns split
-                    let e = if *next { gm::next_eval(o, rho, &a[..n]) } else { gm::eq(o, rho, &a[..n]) };
-                    let lo = pre - n;
-                    let mut acc: Option<O::V> = None;
+    let off = wc.alpha_offset(c.round);
+    let nv = wc.rounds[c.round].num_vars;
+    let pre = nv - fv;
+    let a = &alphas[off..off + pre];
+    let (e, f) = match &c.point {
+        Point::Multi(p) => {
+            let e = gm::eq(o, &p[..pre], a);
+            (e, gm::monomial(o, fin, &p[pre..]))
+        }
+        Point::Pow(x) => {
+            let e = gm::eq_pow(o, *x, a);
+            let xs = gm::pow2k(o, *x, pre);
+            (e, gm::horner(o, fin, xs))
+        }
+        Point::RowCol { next, rho, col } => {
+            let n = rho.len();
+            assert!(col.len() << n == 1 << nv, "whir: a row-column weight");
+            let fm = cube.get_or_insert_with(|| cube_values(o, fin)).clone();
+            if pre >= n {
+                // the rows inside α: one row factor, the columns split
+                let e = if *next { gm::next_eval(o, rho, &a[..n]) } else { gm::eq(o, rho, &a[..n]) };
+                let lo = pre - n;
+                let mut acc: Option<O::V> = None;
+                for (c, &w) in col.iter().enumerate() {
+                    let ec = gm::eq_row(o, c & ((1 << lo) - 1), &a[n..pre]);
+                    let wc = o.mul(w, ec);
+                    acc = Some(match acc {
+                        None => o.mul(wc, fm[c >> lo]),
+                        Some(s) => o.mul_add(wc, fm[c >> lo], s),
+                    });
+                }
+                (e, acc.expect("columns"))
+            } else {
+                // the last rows and every column among the final
+                // variables: the row factor per final row value
+                let rb = n - pre;
+                let (zero, one) = (o.zero(), o.one());
+                let mut acc: Option<O::V> = None;
+                for br in 0..1usize << rb {
+                    let pt: Vec<O::V> = a.iter().copied().chain((0..rb).map(|i| if (br >> i) & 1 == 1 { one } else { zero })).collect();
+                    let rv = if *next { gm::next_eval(o, rho, &pt) } else { gm::eq(o, rho, &pt) };
                     for (c, &w) in col.iter().enumerate() {
-                        let ec = gm::eq_row(o, c & ((1 << lo) - 1), &a[n..pre]);
-                        let wc = o.mul(w, ec);
+                        let rw = o.mul(rv, w);
+                        let f = fm[br + (c << rb)];
                         acc = Some(match acc {
-                            None => o.mul(wc, fm[c >> lo]),
-                            Some(s) => o.mul_add(wc, fm[c >> lo], s),
+                            None => o.mul(rw, f),
+                            Some(s) => o.mul_add(rw, f, s),
                         });
                     }
-                    (e, acc.expect("columns"))
-                } else {
-                    // the last rows and every column among the final
-                    // variables: the row factor per final row value
-                    let rb = n - pre;
-                    let (zero, one) = (o.zero(), o.one());
-                    let mut acc: Option<O::V> = None;
-                    for br in 0..1usize << rb {
-                        let pt: Vec<O::V> = a.iter().copied().chain((0..rb).map(|i| if (br >> i) & 1 == 1 { one } else { zero })).collect();
-                        let rv = if *next { gm::next_eval(o, rho, &pt) } else { gm::eq(o, rho, &pt) };
-                        for (c, &w) in col.iter().enumerate() {
-                            let rw = o.mul(rv, w);
-                            let f = fm[br + (c << rb)];
-                            acc = Some(match acc {
-                                None => o.mul(rw, f),
-                                Some(s) => o.mul_add(rw, f, s),
-                            });
-                        }
-                    }
-                    (one, acc.expect("rows"))
                 }
+                (one, acc.expect("rows"))
             }
-            Point::Native(i) => {
-                let av: Vec<Fp3> = a.iter().map(|&v| o.value(v)).collect();
-                let fins: Vec<Fp3> = fin.iter().map(|&v| o.value(v)).collect();
-                let part = natives[*i].partial(&av, fv);
-                let fm = cube_native(&fins);
-                let v = part.iter().zip(&fm).fold(Fp3::ZERO, |s, (&p, &f)| s + p * f);
-                (o.one(), o.constant(v))
-            }
-        };
-        let ef = o.mul(e, f);
-        expected = Some(match expected {
-            None => o.mul(c.coef, ef),
-            Some(acc) => o.mul_add(c.coef, ef, acc),
-        });
+        }
+        Point::Native(i) => {
+            let av: Vec<Fp3> = a.iter().map(|&v| o.value(v)).collect();
+            let fins: Vec<Fp3> = fin.iter().map(|&v| o.value(v)).collect();
+            let fm = cube_native(&fins);
+            let v = natives[*i].closing(&av, &fm);
+            (o.one(), o.constant(v))
+        }
+    };
+    o.mul(e, f)
+}
+
+fn to_native<O: Ops>(o: &mut O, c: &Constraint<O::V>) -> Constraint<Fp3> {
+    let v = |x: &O::V| o.value(*x);
+    let point = match &c.point {
+        Point::Multi(p) => Point::Multi(p.iter().map(v).collect()),
+        Point::Pow(x) => Point::Pow(v(x)),
+        Point::RowCol { next, rho, col } => Point::RowCol { next: *next, rho: rho.iter().map(v).collect(), col: col.iter().map(v).collect() },
+        Point::Native(i) => Point::Native(*i),
+    };
+    Constraint { round: c.round, point, coef: o.value(c.coef) }
+}
+
+/// The closing sum natively: the native weights first (they spread their
+/// own work), then the other constraints over the verifier's threads.
+fn closing_native(wc: &lens::rspcs::whir::WhirConfig, cons: &[Constraint<Fp3>], alphas: &[Fp3], fin: &[Fp3], natives: &[&dyn NativeWeight]) -> Fp3 {
+    use crate::recursion::ops::Native;
+    let mut total = Fp3::ZERO;
+    let mut rest = Vec::with_capacity(cons.len());
+    for c in cons {
+        if matches!(c.point, Point::Native(_)) {
+            let mut o = Native::new();
+            total += c.coef * term(&mut o, wc, c, alphas, fin, &mut None, natives);
+        } else {
+            rest.push(c);
+        }
     }
-    o.assert_eq(expected.expect("a constraint"), sigma, "whir: closing check");
-    lap("closing");
+    let cube = cube_native(fin);
+    let threads = crate::recursion::wrap::verifier_threads().min(rest.len().div_ceil(4)).max(1);
+    let size = rest.len().div_ceil(threads).max(1);
+    let part = |cs: &[&Constraint<Fp3>]| {
+        let mut o = Native::new();
+        let mut cube = Some(cube.clone());
+        cs.iter().fold(Fp3::ZERO, |acc, c| acc + c.coef * term(&mut o, wc, c, alphas, fin, &mut cube, &[]))
+    };
+    let groups = rest.len().div_ceil(size);
+    crate::recursion::pool::map_chunks(groups, threads, |r| r.map(|g| part(&rest[g * size..((g + 1) * size).min(rest.len())])).fold(Fp3::ZERO, |a, x| a + x))
+        .into_iter()
+        .fold(total, |a, x| a + x)
 }
 
 /// The final polynomial's values on the cube from its monomial

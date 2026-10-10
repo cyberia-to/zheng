@@ -39,7 +39,7 @@ fn graph_case(mode: Mode) {
 #[test]
 fn every_ledger_row_of_the_wrap_profiles_reaches_128_bits() {
     let base = crate::execution::succinct::params_for(20);
-    for (rate, pow, n, mode, reads) in [(6u8, 24u8, 16usize, Mode::Inner, 0usize), (8, 30, 15, Mode::Inner, 0), (8, 30, 14, Mode::Final, 1 << 18)] {
+    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (6, 24, 16, Mode::Inner, 0), (8, 24, 15, Mode::Inner, 0), (8, 30, 14, Mode::Final, 1 << 18), (9, 24, 14, Mode::Final, 1 << 18)] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;

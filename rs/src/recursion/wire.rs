@@ -27,7 +27,7 @@ use super::perm;
 use super::relation::{COLS, PUB_NOX, PUB_V};
 use super::state::{State, StateV};
 use super::step::StepProof;
-use super::word::{Arity, Digest, LeafOpening, leaf_digest};
+use super::word::{Arity, Digest, LeafOpening};
 use super::decide::Decider;
 use super::ivc::Key;
 use crate::machine::layout::{W1, W2};
@@ -196,7 +196,13 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
 
 /// Full paths of a multi-opening (hashing the computable nodes).
 pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_leaves: usize, ext: bool, arity: Arity) -> R<Vec<LeafOpening>> {
-    let mut nodes: Vec<(usize, Digest)> = leaves.iter().zip(&syms).map(|(&l, s)| (l, leaf_digest(ext, s))).collect();
+    // leaf digests batched (every leaf of one opening has one width)
+    let width = syms.first().map_or(0, |s| s.len());
+    if syms.iter().any(|s| s.len() != width) {
+        return Err(PcsError::Malformed);
+    }
+    let ld = super::word::hash_leaves_with(syms.len(), width, ext, |j, t| syms[j][t], true);
+    let mut nodes: Vec<(usize, Digest)> = leaves.iter().copied().zip(ld).collect();
     let mut paths: Vec<Vec<Digest>> = vec![Vec::with_capacity(arity.path_len(log_leaves)); leaves.len()];
     let mut it = sib.iter();
     let mut div = 1usize;
@@ -232,7 +238,7 @@ pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_
             next.push((base / a, input));
         }
         let mut states: Vec<[Goldilocks; 16]> = next.iter().map(|x| x.1).collect();
-        perm::permute_many(&mut states);
+        perm::permute_many_remember(&mut states);
         nodes = next.iter().zip(&states).map(|(x, s)| (x.0, perm::head(s))).collect();
         div *= a;
     }
