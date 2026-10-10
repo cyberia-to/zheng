@@ -36,7 +36,6 @@ mod tests;
 pub use prove::{prove, prove_direct};
 pub use verify::{check_shape, verify, verify_direct};
 
-use lens::rspcs::soundness::{ext_field_bits, log2_add, mca_log2, proximity};
 use lens::rspcs::whir::{LeafLayout, RoundSpec, WhirConfig};
 use lens::WhirParams;
 use nebu::Fp3;
@@ -77,7 +76,7 @@ impl Config {
             return Err("whir: every input word carries a claim".into());
         }
         let mut c = Self { whir: *whir, wc, inputs, groups: groups.to_vec(), claims, comb_pow: 0, arity: Arity::Two };
-        c.comb_pow = (MIN_BITS + c.comb_log_err()).ceil().max(0.0) as u32;
+        c.comb_pow = lens::rspcs::whir::batch::comb_pow(&c.wc, inputs, MIN_BITS);
         if c.comb_pow > COMB_POW_MAX {
             return Err(format!("whir: combination grinding {} > {COMB_POW_MAX}", c.comb_pow));
         }
@@ -111,44 +110,16 @@ impl Config {
         self.wc.rounds[i].queries
     }
 
-    fn log_list0(&self) -> f64 {
-        let s = self.wc.rounds[0];
-        proximity(s.regime, s.log_inv_rate, s.log_domain).log_list
-    }
-
     /// One input word: its claims are WHIR's initial weights (no batch
     /// sumcheck).
     pub fn direct(&self) -> bool {
         self.inputs == 1
     }
 
-    fn comb_log_err(&self) -> f64 {
-        if self.inputs <= 1 {
-            return f64::NEG_INFINITY;
-        }
-        let s = self.wc.rounds[0];
-        let d = ((self.inputs - 1) as f64).log2();
-        let mca = mca_log2(s.regime, s.log_inv_rate, s.log_domain) + d;
-        log2_add(mca, self.log_list0() + d - ext_field_bits())
-    }
-
-    /// Every round-by-round term as `(name, bits)`: the batch's (claim
-    /// batching `|Λ|(J−1)/|K|`, sumcheck `2|Λ|/|K|` a round, combination
-    /// `ε_mca(m−1) + |Λ|(m−1)/|K|` minus grinding — as an accumulation
-    /// step's) and lens's WHIR terms.
+    /// Every round-by-round term as `(name, bits)`: the batch's (lens
+    /// `whir::batch`) and lens's WHIR terms.
     pub fn terms(&self) -> Vec<(String, f64)> {
-        let k = ext_field_bits();
-        let list = self.log_list0();
-        let mut out = Vec::new();
-        if self.claims > 1 {
-            out.push(("batch γ".into(), k - list - ((self.claims - 1) as f64).log2()));
-        }
-        if !self.direct() {
-            out.push(("batch sumcheck".into(), k - list - 1.0));
-        }
-        if self.inputs > 1 {
-            out.push(("batch combine".into(), -self.comb_log_err() + f64::from(self.comb_pow)));
-        }
+        let mut out = lens::rspcs::whir::batch::terms(&self.wc, self.inputs, self.claims, self.comb_pow);
         out.extend(self.wc.terms());
         out
     }

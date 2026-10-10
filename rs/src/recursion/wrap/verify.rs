@@ -48,8 +48,24 @@ fn bind<O: Ops>(o: &mut O, t: &mut Sponge<O>, answers: &[Fp3]) -> Vec<ClaimRef<O
 
 /// The key's columns at `ρ` from the key itself.
 pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
+    use lens::rspcs::field::mul_base;
     let e = eq_table(rho);
-    k.sparse.iter().map(|col| col.iter().fold(Fp3::ZERO, |a, &(x, v)| a + v * e[x as usize])).collect()
+    let one = nebu::Goldilocks::ONE;
+    k.sparse
+        .iter()
+        .map(|col| {
+            col.iter().fold(Fp3::ZERO, |a, &(x, v)| {
+                let ex = e[x as usize];
+                if v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO {
+                    a + v * ex
+                } else if v.c0 == one {
+                    a + ex
+                } else {
+                    a + mul_base(ex, v.c0)
+                }
+            })
+        })
+        .collect()
 }
 
 /// The batched wiring vector `u_λ` as a weight of the opening: every
@@ -98,6 +114,7 @@ impl whir::NativeWeight for WiringWeight<'_> {
 /// interpreter only — the key and the wiring are evaluated in the field).
 pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     check_shape(k, pf).expect("wrap: proof shape");
+    let lap = crate::recursion::ivc::timer_pub("      wrap verify ");
     let n = k.params.n;
     let inner = k.inner();
     let mut t = Sponge::new(o, tag::WRAP);
@@ -144,6 +161,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         let r: Vec<Fp3> = rho.iter().map(|&v| o.value(v)).collect();
         key_at(k, &r).into_iter().map(|v| o.constant(v)).collect()
     };
+    lap("zerocheck, key");
     let e_out = gm::eq_row(o, k.out_row, &rho);
     let pin: Vec<O::V> = x.iter().map(|&xj| o.mul(e_out, xj)).collect();
     let e = gm::eq(o, &tau, &rho);
@@ -156,6 +174,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     ins.extend_from_slice(&[ab[0], ab[1], mu]);
     let g = expr::compile(o, &k.g, &ins)[0];
     o.assert_eq(g, c, "wrap: constraints");
+    lap("constraints");
     if !inner {
         // one word: its claims are the opening's weights — OOD, the
         // columns at ρ and at its successor, the wiring
@@ -182,6 +201,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         claims.push((whir::Weight::Native(0), zero));
         let wiring = WiringWeight { k, lambda: o.value(lambda.expect("final mode")) };
         whir::verify_direct(o, &k.cfg, &mut t, roots[0], false, claims, &[&wiring], &pf.whir);
+        lap("opening");
         return;
     }
     let gk = t.squeeze_exts(o, pre::LOG);
