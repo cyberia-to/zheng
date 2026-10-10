@@ -335,6 +335,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         let cfg = crate::recursion::whir::Config::derive(&whir, n + super::CBITS, groups, claims).unwrap();
         let constraints = super::View(&CircuitAir::default(), mode).constraints();
         let rows = ledger(&params, &cfg, constraints, reads);
+        for (nm, b) in &rows {
+            eprintln!("1/{} {mode:?} (constraints {constraints}): {nm:<40} {b:.2}", 1u32 << rate);
+        }
+        for (i, rd) in cfg.wc.rounds.iter().enumerate() {
+            eprintln!("1/{} {mode:?} round {i}: {rd:?}", 1u32 << rate);
+        }
         let (name, bits) = rows.iter().cloned().fold((String::new(), f64::INFINITY), |a, r| if r.1 < a.1 { r } else { a });
         assert!(bits >= 128.0, "{rate} {mode:?}: {name} {bits}");
         // the grinding rounds without their grinding: the interactive bound
@@ -359,12 +365,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         eprintln!("1/{} {mode:?} (pow {pow}, combination {}): weakest {name} {bits:.2}; interactive weakest {inter:.2}", 1u32 << rate, cfg.comb_pow);
         weakest.push((bits, inter));
     }
-    // the final level (1/512, 24 bits): fold_1 at 128.40, 104.70
-    // interactively; the inner levels 104.00 (1/16: the combination) and
-    // 104.29 (1/256)
-    assert!((weakest[2].0 - 128.40).abs() < 0.01, "{:?}", weakest[2]);
-    assert!((weakest[2].1 - 104.70).abs() < 0.01, "{:?}", weakest[2]);
-    assert!(weakest.iter().all(|w| w.1 >= 104.0), "{weakest:?}");
+    // the figures `specs/soundness.md` and the audit state: weakest
+    // 128.22 / 128.29 / 128.40, interactively 109.34 (1/16: the
+    // combination after its 19 bits) / 104.29 / 104.70 (final fold_1)
+    for (got, want) in weakest.iter().zip([(128.22, 109.34), (128.29, 104.29), (128.40, 104.70)]) {
+        assert!((got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01, "{weakest:?}");
+    }
 }
 
 /// A wrap key is bound to the recursive proof it was derived for: the

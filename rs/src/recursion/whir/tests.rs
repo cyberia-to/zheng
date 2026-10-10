@@ -279,3 +279,43 @@ fn direct_case(n: usize) {
     let mut r = lens::rspcs::wire::Reader::new(&w.buf);
     assert_eq!(wire::read(&mut r, &cfg, &[false]).unwrap(), pf);
 }
+
+/// The direct opening's native closing (constraints spread over the
+/// verifier's threads, every term in the field) is the generic
+/// per-constraint closing a circuit evaluates — for eq, pow and
+/// row-column weights, rows inside `α` and spilling into the final
+/// variables, constraints of every round (zheng #58 review).
+#[test]
+fn the_native_direct_closing_is_the_generic_closing() {
+    use super::verify::{Constraint, Point, closing_native, term};
+    let whir = params(2, 4, 4);
+    let ell = 14usize;
+    let cfg = Config::derive(&whir, ell, &[1], 6).unwrap();
+    let wc = &cfg.wc;
+    assert!(wc.rounds.len() >= 2);
+    let alphas: Vec<Fp3> = (0..wc.rounds.iter().map(|r| r.fold).sum::<usize>() as u64).map(|i| e(100 + i)).collect();
+    let fin: Vec<Fp3> = (0..1u64 << wc.final_vars).map(|i| e(500 + i)).collect();
+    for n in [4usize, 6, 12] {
+        let mut cons: Vec<Constraint<Fp3>> = Vec::new();
+        let mut s = 0u64;
+        let mut next = || {
+            s += 1;
+            e(1000 + s * 37)
+        };
+        for (round, rd) in wc.rounds.iter().enumerate() {
+            let nv = rd.num_vars;
+            cons.push(Constraint { round, point: Point::Multi((0..nv).map(|_| next()).collect()), coef: next() });
+            cons.push(Constraint { round, point: Point::Pow(next()), coef: next() });
+        }
+        for nx in [false, true] {
+            let rho: Vec<Fp3> = (0..n).map(|_| next()).collect();
+            let col: Vec<Fp3> = (0..1usize << (ell - n)).map(|c| if c % 3 == 1 { Fp3::ZERO } else { next() }).collect();
+            cons.push(Constraint { round: 0, point: Point::RowCol { next: nx, rho, col }, coef: next() });
+        }
+        let mut o = Native::new();
+        let mut cube = None;
+        let generic = cons.iter().fold(Fp3::ZERO, |a, c| a + c.coef * term(&mut o, wc, c, &alphas, &fin, &mut cube, &[]));
+        assert!(o.error.is_none());
+        assert_eq!(closing_native(wc, &cons, &alphas, &fin, &[]), generic, "n = {n}");
+    }
+}

@@ -50,6 +50,8 @@ pub use wiring::{Coef, Wiring};
 pub mod wire;
 
 #[cfg(test)]
+mod fastverify_review;
+#[cfg(test)]
 mod review;
 #[cfg(test)]
 mod tests;
