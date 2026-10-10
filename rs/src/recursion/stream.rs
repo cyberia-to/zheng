@@ -113,8 +113,14 @@ pub fn digests(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash: impl Fn
 /// [`digests`] for a device backend: cosets in groups of at least
 /// [`GROUP_LEAVES`] leaves; a group's cosets come from the prover
 /// backend's coset NTT (one call per member limb), its leaves are hashed
-/// by one `hash` call. The same digests as [`digests`].
-pub fn digests_grouped(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash: impl Fn(&[Vec<Fp3>]) -> Vec<[Goldilocks; 4]>) -> Vec<[Goldilocks; 4]> {
+/// by one `hash(leaves, symbols per leaf, symbol)` call. The same digests
+/// as [`digests`].
+pub fn digests_grouped(
+    members: &[Coeffs<'_>],
+    log_n: u32,
+    log_width: u32,
+    hash: impl Fn(usize, usize, &(dyn Fn(usize, usize) -> Fp3 + Sync)) -> Vec<[Goldilocks; 4]>,
+) -> Vec<[Goldilocks; 4]> {
     let k = members[0].len();
     let n = 1usize << log_n;
     let b = n / k;
@@ -125,38 +131,36 @@ pub fn digests_grouped(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash:
     let g = GROUP_LEAVES.div_ceil(per).clamp(1, b);
     let omega = root_of_unity(log_n);
     let be = lens::rspcs::backend::current();
-    let limbs = |f: &dyn Fn(usize) -> Goldilocks| -> Vec<u64> { (0..k).map(|i| f(i).as_u64()).collect() };
+    // every member's coefficient limbs, once
+    let limbs: Vec<Vec<Vec<u64>>> = members
+        .iter()
+        .map(|&m| match m {
+            Coeffs::Base(c) => vec![c.iter().map(|x| x.as_u64()).collect()],
+            Coeffs::Ext(e) => vec![
+                e.iter().map(|x| x.c0.as_u64()).collect(),
+                e.iter().map(|x| x.c1.as_u64()).collect(),
+                e.iter().map(|x| x.c2.as_u64()).collect(),
+            ],
+        })
+        .collect();
     let mut d = vec![[Goldilocks::ZERO; 4]; leaves];
     for s0 in (0..b).step_by(g) {
         let s1 = (s0 + g).min(b);
         let shifts: Vec<u64> = (s0..s1).map(|s| omega.exp(s as u64).as_u64()).collect();
-        // vals[m][c] = coset s0 + c of member m, Fp3 values
-        let vals: Vec<Vec<Vec<Fp3>>> = members
-            .iter()
-            .map(|&m| match m {
-                Coeffs::Base(c) => be
-                    .coset_ntt(&limbs(&|i| c[i]), &shifts)
-                    .into_iter()
-                    .map(|v| v.into_iter().map(|x| Fp3::from_base(Goldilocks::new(x))).collect())
-                    .collect(),
-                Coeffs::Ext(e) => {
-                    let l: Vec<Vec<Vec<u64>>> = [0, 1, 2]
-                        .iter()
-                        .map(|&q| be.coset_ntt(&limbs(&|i| [e[i].c0, e[i].c1, e[i].c2][q]), &shifts))
-                        .collect();
-                    (0..shifts.len())
-                        .map(|c| (0..k).map(|u| Fp3::new(Goldilocks::new(l[0][c][u]), Goldilocks::new(l[1][c][u]), Goldilocks::new(l[2][c][u]))).collect())
-                        .collect()
-                }
-            })
-            .collect();
-        let rows: Vec<Vec<Fp3>> = (0..s1 - s0)
-            .flat_map(|c| {
-                let vals = &vals;
-                (0..per).map(move |a| vals.iter().flat_map(|v| (0..w).map(move |t| v[c][a + t * per])).collect())
-            })
-            .collect();
-        let ds = hash(&rows);
+        // vals[m][limb][c] = coset s0 + c of member m's limb
+        let vals: Vec<Vec<Vec<Vec<u64>>>> = limbs.iter().map(|ls| ls.iter().map(|l| be.coset_ntt(l, &shifts)).collect()).collect();
+        let symbol = |j: usize, t: usize| -> Fp3 {
+            let (c, a) = (j / per, j % per);
+            let (m, tt) = (t / w, t % w);
+            let u = a + tt * per;
+            let v = &vals[m];
+            if v.len() == 1 {
+                Fp3::from_base(Goldilocks::new(v[0][c][u]))
+            } else {
+                Fp3::new(Goldilocks::new(v[0][c][u]), Goldilocks::new(v[1][c][u]), Goldilocks::new(v[2][c][u]))
+            }
+        };
+        let ds = hash((s1 - s0) * per, members.len() * w, &symbol);
         for (c, chunk) in ds.chunks_exact(per).enumerate() {
             for (a, x) in chunk.iter().enumerate() {
                 d[s0 + c + b * a] = *x;
@@ -248,8 +252,8 @@ mod tests {
                 let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |rows| {
                     rows.iter().map(|r| [r[0].c0, r[1].c0, r[r.len() - 1].c1, Goldilocks::new(r.len() as u64)]).collect()
                 });
-                let grouped = digests_grouped(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |rows| {
-                    rows.iter().map(|r| [r[0].c0, r[1].c0, r[r.len() - 1].c1, Goldilocks::new(r.len() as u64)]).collect()
+                let grouped = digests_grouped(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |leaves, len, sym| {
+                    (0..leaves).map(|j| [sym(j, 0).c0, sym(j, 1).c0, sym(j, len - 1).c1, Goldilocks::new(len as u64)]).collect()
                 });
                 assert_eq!(grouped, got);
                 for j in 0..leaves {

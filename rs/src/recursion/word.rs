@@ -270,8 +270,8 @@ fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
     if on_device() {
         // cosets in groups: their NTTs and their leaves' sponges in large
         // batches on the device
-        return stream::digests_grouped(members, layout.log_domain, layout.log_width, |rows| {
-            backend_leaves(rows.len(), rows[0].len(), ext, |j, t| rows[j][t])
+        return stream::digests_grouped(members, layout.log_domain, layout.log_width, |leaves, width, symbol| {
+            backend_leaves(leaves, width, ext, symbol)
         });
     }
     stream::digests(members, layout.log_domain, layout.log_width, |rows| hash_leaves(rows.len(), rows[0].len(), ext, |j, t| rows[j][t]))
