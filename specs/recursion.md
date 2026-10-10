@@ -265,3 +265,28 @@ body layout in `api.md` § envelope). The IVC wire (`recursion::wire`) is
 fixed-width little-endian with canonical Goldilocks limbs and no lengths
 but the header's; the envelope wraps it with a format byte, the WHIR
 header (admitted sets only), the machine statement and a length prefix.
+
+profile 6 carries the final proof of the wrap chain (`envelope::wrapped`,
+`api.md` § wrapped): a format byte, the admitted chain (IVC header, three
+levels' headers and modes), the machine statement and the length-prefixed
+`FinalProof` wire (`wrap::wire`).
+
+## key layouts (`recursion::vkey`)
+
+A recursion key is fixed by its parameters and the circuit's layout: the
+fixed columns `Pre`, the output row and, for committed keys (the IVC key,
+inner wrap levels), the root of the key words. `Key::layout_bytes` /
+`WrapKey::layout_bytes` write exactly these (sparse columns, canonical
+varints, values < p); `from_layout` rebuilds the rest — sparse columns,
+configs, the constraint graph `G`, the final mode's wiring — in
+milliseconds. A rebuilt IVC key commits its words only when a prover asks
+(`Key::words`, checked against the root).
+
+Deriving the final wrap key needs the inner levels' key roots, and
+committing those keys dominates (minutes, ~30 GB at 1/64 and 1/256). The
+roots are pinned (`envelope::wrapped::INNER_ROOTS`): the verifier derives
+the levels over the pinned roots (`derive_key_ivc_at`,
+`derive_key_wrap_at`) without committing, and the prover, which commits
+them anyway, refuses to run when its roots differ from the pins. Layout
+bundles a verifier persists are accepted only under pinned digests
+(`envelope::keys`), so a cached key is exactly a derived one.

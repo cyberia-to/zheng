@@ -101,7 +101,7 @@ pub(super) fn verify(
 
 /// The proof's wire bytes (the envelope's last field).
 pub fn proof_bytes(whir: &WhirParams, proof: &IvcProof) -> Result<Vec<u8>, String> {
-    Ok(proof.to_bytes(&key(whir, proof.log_rows)?.params))
+    Ok(proof.to_bytes(&*key(whir, proof.log_rows)?))
 }
 
 /// Encoding derives (or fetches) the key of the envelope's parameters; it
@@ -109,7 +109,7 @@ pub fn proof_bytes(whir: &WhirParams, proof: &IvcProof) -> Result<Vec<u8>, Strin
 /// them), which no prover produces. Decoding then admits only [`ADMITTED`].
 pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &IvcProof, w: &mut Writer) {
     let key = ivc::key(params, proof.log_rows as usize).expect("a recursion key for the envelope's parameters");
-    let bytes = proof.to_bytes(&key.params);
+    let bytes = proof.to_bytes(&key);
     w.raw(&[RECURSIVE_FORMAT]);
     w.raw(&params.header());
     statement(st, w);

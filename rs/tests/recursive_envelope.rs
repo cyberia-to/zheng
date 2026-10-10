@@ -101,12 +101,12 @@ fn every_truncation_and_a_trailing_byte_are_rejected() {
 #[test]
 fn a_wrong_profile_or_format_byte_is_rejected() {
     let (_, bytes) = envelope();
-    for profile in [0u8, 1, 2, 3, 4] {
+    for profile in [0u8, 1, 2, 3, 4, 6] {
         let mut bad = bytes.clone();
         bad[10] = profile;
         assert!(!accepted(&bad), "profile {profile}");
     }
-    for profile in [6u8, 0xff] {
+    for profile in [7u8, 0xff] {
         let mut bad = bytes.clone();
         bad[10] = profile;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));

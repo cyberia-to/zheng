@@ -48,7 +48,7 @@ pub mod wire;
 #[cfg(test)]
 mod tests;
 
-pub use program::{Inner, derive_key_ivc, derive_key_wrap, public_digest, public_digest_native};
+pub use program::{Inner, derive_key_ivc, derive_key_ivc_at, derive_key_wrap, derive_key_wrap_at, public_digest, public_digest_native};
 pub use prove::prove;
 pub use verify::{check_shape, verify};
 

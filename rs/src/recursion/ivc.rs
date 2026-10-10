@@ -66,8 +66,12 @@ pub struct Key {
     pub pre: Pre,
     /// The key's nonzero entries per column (`P̄_V` evaluations).
     pub sparse: Vec<Vec<(u32, Fp3)>>,
-    /// The key as two committed 64-column words (the decider opens them).
-    pub kw: KeyWords,
+    /// The root of the key as two committed 64-column words (the decider
+    /// opens them; the verifier needs only the root).
+    pub kw_root: Digest,
+    /// The words themselves, committed when a prover first needs them (a
+    /// key rebuilt from its layout has only the root).
+    kw: OnceLock<KeyWords>,
     /// Whether a key entry leaves the base field.
     pub key_ext: bool,
     /// The decider's batched opening: accumulator, two key words.
@@ -86,11 +90,21 @@ fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
     Ok((pre, out))
 }
 
+type Cache = Mutex<HashMap<([u8; 8], usize), Arc<Key>>>;
+
+fn key_cache() -> &'static Cache {
+    static CACHE: OnceLock<Cache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Whether the key of `(whir, n)` is in the process cache.
+pub fn cached(whir: &WhirParams, n: usize) -> bool {
+    key_cache().lock().expect("key cache").contains_key(&(whir.header(), n))
+}
+
 /// Derive (or fetch) the key of `(whir, n)`.
 pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
-    type Cache = Mutex<HashMap<([u8; 8], usize), Arc<Key>>>;
-    static CACHE: OnceLock<Cache> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let cache = key_cache();
     if let Some(k) = cache.lock().expect("key cache").get(&(whir.header(), n)) {
         return Ok(k.clone());
     }
@@ -102,18 +116,87 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
     if out2 != out {
         return Err("recursion: the circuit layout moved".into());
     }
-    let sparse = pre
-        .cols
-        .iter()
-        .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
-        .collect();
-    let (kw, key_ext) = KeyWords::commit(p.cfg.layout, p.n, &pre, super::word::Arity::Two);
-    let dcfg = whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2)?;
-    let g = g_graph(&p);
-    let k = Arc::new(Key { params: p, pre, sparse, kw, key_ext, dcfg, g });
+    let (kw, _) = KeyWords::commit(p.cfg.layout, p.n, &pre, super::word::Arity::Two);
+    let k = Arc::new(Key::assemble(p, pre, kw.root, Some(kw))?);
     cache.lock().expect("key cache").insert((whir.header(), n), k.clone());
     Ok(k)
 }
+
+/// Install a key rebuilt from its layout (`Key::from_layout`) in the
+/// process cache, as if derived; an already cached key of the same
+/// parameters stays.
+pub fn install(k: Key) -> Arc<Key> {
+    let cache = key_cache();
+    let mut c = cache.lock().expect("key cache");
+    c.entry((k.params.whir.header(), k.params.n)).or_insert_with(|| Arc::new(k)).clone()
+}
+
+impl Key {
+    /// Everything but the circuit layout, rebuilt from it.
+    fn assemble(params: Params, pre: Pre, kw_root: Digest, kw: Option<KeyWords>) -> Result<Self, String> {
+        let sparse = super::vkey::sparse(&pre);
+        let key_ext = super::vkey::ext(&pre);
+        let dcfg = whir::Config::derive(&params.whir, params.vars, &[1, 2], params.cfg.acc_claims() + 2)?;
+        let g = g_graph(&params);
+        let cell = OnceLock::new();
+        if let Some(kw) = kw {
+            let _ = cell.set(kw);
+        }
+        Ok(Key { params, pre, sparse, kw_root, kw: cell, key_ext, dcfg, g })
+    }
+
+    /// The key's committed words (committed on first use; their root is
+    /// the key's).
+    pub fn words(&self) -> &KeyWords {
+        self.kw.get_or_init(|| {
+            let (kw, _) = KeyWords::commit(self.params.cfg.layout, self.params.n, &self.pre, super::word::Arity::Two);
+            assert_eq!(kw.root, self.kw_root, "recursion: the key's words do not match its root");
+            kw
+        })
+    }
+
+    /// The key's layout as canonical bytes (`vkey`): tag, WHIR header,
+    /// step size, output row, the key words' root, the fixed columns.
+    pub fn layout_bytes(&self) -> Vec<u8> {
+        let mut w = crate::envelope::codec::Writer::default();
+        w.raw(LAYOUT_TAG);
+        w.raw(&self.params.whir.header());
+        w.varint(self.params.n as u64);
+        w.varint(self.params.out_row as u64);
+        super::vkey::write_digest(&mut w, &self.kw_root);
+        super::vkey::write_pre(&mut w, &self.pre);
+        w.bytes
+    }
+
+    /// Rebuild a key from [`Key::layout_bytes`]. The caller vouches for
+    /// the bytes (their digest is pinned: `envelope::keys`).
+    pub fn from_layout(bytes: &[u8]) -> Result<Self, String> {
+        use crate::execution::succinct::SuccinctPcs;
+        let e = |e: crate::envelope::EnvelopeError| format!("ivc key layout: {e}");
+        let mut r = crate::envelope::codec::Reader::new(bytes);
+        if r.raw(LAYOUT_TAG.len()).map_err(e)? != LAYOUT_TAG {
+            return Err("ivc key layout: tag".into());
+        }
+        let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "ivc key layout: header")?;
+        let n = r.varint().map_err(e)? as usize;
+        if !(10..=20).contains(&n) {
+            return Err("ivc key layout: step size".into());
+        }
+        let out_row = r.varint().map_err(e)? as usize;
+        if out_row >= 1 << n {
+            return Err("ivc key layout: output row".into());
+        }
+        let kw_root = super::vkey::read_digest(&mut r)?;
+        let pre = super::vkey::read_pre(&mut r, 1 << n)?;
+        r.finish().map_err(e)?;
+        let mut p = Params::new(&whir, n)?;
+        p.out_row = out_row;
+        Self::assemble(p, pre, kw_root, None)
+    }
+}
+
+/// Tag of an IVC key layout.
+const LAYOUT_TAG: &[u8; 8] = b"ZHKIVC01";
 
 /// `G` recorded once: inputs are the deferred point, the run's challenges
 /// and the statement constants (its structure is the statement's for no
@@ -280,7 +363,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let (state, step) = prev.expect("a segment");
     let fin = last_state.expect("a segment");
     let AccData::Word(word) = acc else { return Err("recursion: the last accumulator".into()) };
-    let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, &k.kw, n)?;
+    let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, k.words(), n)?;
     lap("decide");
     Ok(IvcProof { log_rows: n as u32, start: run.start as u64, segments: segs as u64, chain, state, step, decider })
 }
