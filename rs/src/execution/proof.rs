@@ -40,7 +40,10 @@ impl fmt::Display for DirectError {
 }
 impl std::error::Error for DirectError {}
 
-fn validate(instance: &CCSInstance, public: &[(usize, Goldilocks)]) -> Result<usize, DirectError> {
+pub(super) fn validate(
+    instance: &CCSInstance,
+    public: &[(usize, Goldilocks)],
+) -> Result<usize, DirectError> {
     let (m, n) = (instance.num_rows, instance.num_cols);
     if !m.is_power_of_two()
         || !n.is_power_of_two()

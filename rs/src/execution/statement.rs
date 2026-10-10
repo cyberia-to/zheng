@@ -249,3 +249,51 @@ pub fn verify_execution(statement: &ExecutionStatement, proof: &DirectProof) -> 
     )
     .map_err(|e| e.to_string())
 }
+
+/// Profile v3: prove by producing the free witness positions. The statement is
+/// the same as profile v2; the certificate replaces the Spartan proof.
+pub fn certify_execution(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+) -> Result<(ExecutionStatement, super::certificate::Certificate), String> {
+    let mut statement = ExecutionStatement {
+        program: ExecutionStatement::encode_program(program)?,
+        public_input: input.to_vec(),
+        public_output: vec![],
+        cycles: 0,
+        budget,
+    };
+    let relation = statement.relation()?;
+    let witness = relation
+        .witness(&statement.inputs())
+        .map_err(|e| format!("execution witness: {e:?}"))?;
+    statement.public_output = relation
+        .output_indices
+        .iter()
+        .map(|&i| witness.z[i].as_u64())
+        .collect();
+    statement.cycles = witness.z[relation.cost_index].as_u64();
+    if statement.cycles > budget {
+        return Err("execution cost exceeds budget".into());
+    }
+    let public = statement.bindings(&relation)?;
+    let certificate = super::certificate::certify(&relation.instance, &witness, &public)
+        .map_err(|e| e.to_string())?;
+    Ok((statement, certificate))
+}
+
+/// Profile v3: derive the relation from the statement and check the
+/// certificate exactly. Runs no nox, accepts no relation from the prover.
+pub fn verify_certificate(
+    statement: &ExecutionStatement,
+    certificate: &super::certificate::Certificate,
+) -> Result<(), String> {
+    let relation = statement.relation()?;
+    super::certificate::verify(
+        &relation.instance,
+        certificate,
+        &statement.bindings(&relation)?,
+    )
+    .map_err(|e| e.to_string())
+}
