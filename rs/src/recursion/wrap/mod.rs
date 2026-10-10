@@ -43,6 +43,7 @@
 mod program;
 mod prove;
 mod verify;
+mod vk;
 pub mod wire;
 
 #[cfg(test)]
@@ -354,15 +355,21 @@ pub fn verify_final(prep: &super::ivc::Prepared, k: &WrapKey, fp: &FinalProof) -
     if fp.pn.point.len() != k.pn {
         return Err("wrap: nox-public claim shape".into());
     }
+    let lap = super::ivc::timer_pub("    final ");
     check_shape(k, &fp.wrap)?;
     if super::prove::pbar_nox(&prep.global, &fp.pn.point, prep.key.params.n) != fp.pn.value {
         return Err("wrap: deferred nox publics".into());
     }
+    lap("nox-public claim");
     let x = program::public_digest_native(&prep.publics, &fp.pn)?;
+    lap("public digest");
     let mut o = Native::batched();
     let xv = x.map(|v| o.constant(Fp3::from_base(v)));
     verify(&mut o, k, xv, &fp.wrap);
-    o.finish()
+    lap("wrap verify");
+    let r = o.finish();
+    lap("merkle batch");
+    r
 }
 
 /// Verify the outermost proof of `st` (the recursive proof's WHIR

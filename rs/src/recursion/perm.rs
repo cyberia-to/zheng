@@ -45,8 +45,19 @@ fn from_h(x: HG) -> Goldilocks {
     Goldilocks::new(x.as_canonical_u64())
 }
 
+/// Permutations computed natively so far (one at a time, batched) — a
+/// counter for verifier profiles.
+pub static COUNT: [core::sync::atomic::AtomicU64; 2] = [core::sync::atomic::AtomicU64::new(0), core::sync::atomic::AtomicU64::new(0)];
+
+/// `(single, batched)` permutations computed so far.
+pub fn count() -> (u64, u64) {
+    use core::sync::atomic::Ordering::Relaxed;
+    (COUNT[0].load(Relaxed), COUNT[1].load(Relaxed))
+}
+
 /// Hemera's permutation in place.
 pub fn permute(s: &mut [Goldilocks; WIDTH]) {
+    COUNT[0].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     let mut h: [HG; WIDTH] = core::array::from_fn(|i| to_h(s[i]));
     hemera::permutation::permute(&mut h);
     *s = core::array::from_fn(|i| from_h(h[i]));
@@ -54,6 +65,7 @@ pub fn permute(s: &mut [Goldilocks; WIDTH]) {
 
 /// Many permutations at once (hemera's interleaved kernel).
 pub fn permute_many(states: &mut [[Goldilocks; WIDTH]]) {
+    COUNT[1].fetch_add(states.len() as u64, core::sync::atomic::Ordering::Relaxed);
     let mut h: Vec<[HG; WIDTH]> = states
         .iter()
         .map(|s| core::array::from_fn(|i| to_h(s[i])))
