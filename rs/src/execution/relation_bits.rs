@@ -34,7 +34,7 @@ impl Builder {
                     .map(|(i, c)| (i, c * F::new(1u64 << k))),
             );
         }
-        Ok(self.alloc_linear(l))
+        Ok(Value::Linear(normalize(l)))
     }
     pub(super) fn less_than(&mut self, a: &Value, b: &Value) -> Result<Value, RelationError> {
         let ab = self.bits(a, 64)?;
