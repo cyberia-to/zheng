@@ -4,6 +4,14 @@
 
 ### Added
 
+- **`recursion::wrap`: wrap steps.** The recursive proof's final verifier
+  (`recursion::finalv`, written over `Ops`) proved by wrap levels of the
+  recursion circuit: inner levels (memory argument, committed key, 4-ary
+  trees) and one final level (one word, linear wiring, the key evaluated
+  by the verifier). Field-native batched WHIR (`recursion::whir`), a
+  field-native decider, constraints over any arithmetic compiled into the
+  circuit (`air::num`, `recursion::expr`). Final proof 62.5–62.9 KB from
+  33 to 1.57M cycles, verify 12–15 ms. `audit/wrap-2026-10.md`.
 - **`machine`: the nox machine as one uniform step relation.** A run of any
   length is a trace of 64-column rows (init entries, one row per
   continuation-machine step, 32-row hemera permutation blocks for noun
