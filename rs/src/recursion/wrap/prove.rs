@@ -191,8 +191,11 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     }
     let mut kv = Vec::new();
     let mut opened: Vec<&dyn whir::Tree> = words.iter().map(|w| w as &dyn whir::Tree).collect();
-    let kw = k.key_root.map(|_| crate::recursion::decide::KeyWords::commit(layout, n, &k.pre, k.arity()).0);
-    if let Some(kw) = &kw {
+    let fresh_kw = match (&k.key_root, &k.kw) {
+        (Some(_), None) => Some(crate::recursion::decide::KeyWords::commit(layout, n, &k.pre, k.arity()).0),
+        _ => None,
+    };
+    if let Some(kw) = k.kw.as_ref().or(fresh_kw.as_ref()) {
         let zg: Vec<Fp3> = rho.iter().chain(&gk[..CBITS]).copied().collect();
         for wd in &kw.group.words {
             let v = ml_eval_ext(&wd.table(), &zg);

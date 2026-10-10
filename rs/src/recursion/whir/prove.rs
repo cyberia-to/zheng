@@ -177,13 +177,18 @@ fn core(
     let mut prev_words: Option<Word> = None;
     let mut prev = s0;
     let mut rounds = Vec::with_capacity(wc.rounds.len() - 1);
+    // openings in parallel (a streamed word recomputes each leaf)
     let open = |prev_words: &Option<Word>, idx: &[usize]| -> Vec<Vec<LeafOpening>> {
-        idx.iter()
-            .map(|&j| match prev_words {
-                Some(wd) => vec![wd.open(j)],
-                None => trees.iter().map(|tr| tr.open(j)).collect(),
-            })
-            .collect()
+        let one = |j: usize| match prev_words {
+            Some(wd) => vec![wd.open(j)],
+            None => trees.iter().map(|tr| tr.open(j)).collect::<Vec<_>>(),
+        };
+        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16).min(idx.len().max(1));
+        let size = idx.len().div_ceil(threads).max(1);
+        std::thread::scope(|s| {
+            let hs: Vec<_> = idx.chunks(size).map(|c| s.spawn(move || c.iter().map(|&j| one(j)).collect::<Vec<_>>())).collect();
+            hs.into_iter().flat_map(|h| h.join().expect("opening")).collect()
+        })
     };
     for (i, s) in wc.rounds.iter().enumerate().skip(1) {
         let wd = Word::commit_coeffs(cfg.layout(i), coeffs.clone(), cfg.arity);

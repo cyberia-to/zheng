@@ -51,7 +51,7 @@ mod review;
 #[cfg(test)]
 mod tests;
 
-pub use program::{Inner, derive_key_ivc, derive_key_wrap, public_digest, public_digest_native};
+pub use program::{Inner, derive_key_ivc, derive_key_wrap, derive_shape, derive_shape_ivc, public_digest, public_digest_native};
 pub use prove::prove;
 pub use verify::{check_shape, verify};
 
@@ -167,9 +167,11 @@ pub struct WrapKey {
     pub params: WrapParams,
     pub pre: Pre,
     pub sparse: Vec<Vec<(u32, Fp3)>>,
-    /// The root of the key's words (inner mode); the prover recommits
-    /// them for each proof (their codewords are large).
+    /// The root of the key's words (inner mode).
     pub key_root: Option<Digest>,
+    /// The key's words, committed once (inner mode, a derived key; a
+    /// key loaded from bytes has none and its prover recommits them).
+    pub kw: Option<super::decide::KeyWords>,
     /// The linear wiring (final mode).
     pub wiring: Option<Wiring>,
     pub key_ext: bool,

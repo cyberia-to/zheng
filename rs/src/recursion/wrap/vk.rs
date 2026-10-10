@@ -294,6 +294,7 @@ impl WrapKey {
             pre: Pre { cols: Vec::new() },
             sparse,
             key_root,
+            kw: None,
             wiring,
             key_ext,
             cfg,

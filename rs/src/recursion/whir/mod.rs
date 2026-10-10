@@ -130,7 +130,7 @@ impl Config {
 }
 
 /// A committed tree of one or more input words (the prover's side).
-pub trait Tree {
+pub trait Tree: Sync {
     fn arity(&self) -> Arity;
     fn members(&self) -> Vec<&Word>;
     fn root(&self) -> Digest;
