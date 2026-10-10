@@ -110,6 +110,65 @@ pub fn digests(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash: impl Fn
     d
 }
 
+/// [`digests`] for a device backend: cosets in groups of at least
+/// [`GROUP_LEAVES`] leaves; a group's cosets come from the prover
+/// backend's coset NTT (one call per member limb), its leaves are hashed
+/// by one `hash` call. The same digests as [`digests`].
+pub fn digests_grouped(members: &[Coeffs<'_>], log_n: u32, log_width: u32, hash: impl Fn(&[Vec<Fp3>]) -> Vec<[Goldilocks; 4]>) -> Vec<[Goldilocks; 4]> {
+    let k = members[0].len();
+    let n = 1usize << log_n;
+    let b = n / k;
+    let w = 1usize << log_width;
+    let leaves = n / w;
+    let per = leaves / b;
+    assert!(per >= 1 && leaves % b == 0, "a leaf lies in one coset");
+    let g = GROUP_LEAVES.div_ceil(per).clamp(1, b);
+    let omega = root_of_unity(log_n);
+    let be = lens::rspcs::backend::current();
+    let limbs = |f: &dyn Fn(usize) -> Goldilocks| -> Vec<u64> { (0..k).map(|i| f(i).as_u64()).collect() };
+    let mut d = vec![[Goldilocks::ZERO; 4]; leaves];
+    for s0 in (0..b).step_by(g) {
+        let s1 = (s0 + g).min(b);
+        let shifts: Vec<u64> = (s0..s1).map(|s| omega.exp(s as u64).as_u64()).collect();
+        // vals[m][c] = coset s0 + c of member m, Fp3 values
+        let vals: Vec<Vec<Vec<Fp3>>> = members
+            .iter()
+            .map(|&m| match m {
+                Coeffs::Base(c) => be
+                    .coset_ntt(&limbs(&|i| c[i]), &shifts)
+                    .into_iter()
+                    .map(|v| v.into_iter().map(|x| Fp3::from_base(Goldilocks::new(x))).collect())
+                    .collect(),
+                Coeffs::Ext(e) => {
+                    let l: Vec<Vec<Vec<u64>>> = [0, 1, 2]
+                        .iter()
+                        .map(|&q| be.coset_ntt(&limbs(&|i| [e[i].c0, e[i].c1, e[i].c2][q]), &shifts))
+                        .collect();
+                    (0..shifts.len())
+                        .map(|c| (0..k).map(|u| Fp3::new(Goldilocks::new(l[0][c][u]), Goldilocks::new(l[1][c][u]), Goldilocks::new(l[2][c][u]))).collect())
+                        .collect()
+                }
+            })
+            .collect();
+        let rows: Vec<Vec<Fp3>> = (0..s1 - s0)
+            .flat_map(|c| {
+                let vals = &vals;
+                (0..per).map(move |a| vals.iter().flat_map(|v| (0..w).map(move |t| v[c][a + t * per])).collect())
+            })
+            .collect();
+        let ds = hash(&rows);
+        for (c, chunk) in ds.chunks_exact(per).enumerate() {
+            for (a, x) in chunk.iter().enumerate() {
+                d[s0 + c + b * a] = *x;
+            }
+        }
+    }
+    d
+}
+
+/// Leaves per device batch of [`digests_grouped`].
+pub const GROUP_LEAVES: usize = 1 << 16;
+
 /// The `W` symbols of leaf `j` (`L` leaves over `2^log_n` points):
 /// `ĉ(x_0·ζ^t)` with `x_0 = ω^j`, `ζ = ω^L` of order `W`. Splitting
 /// `ĉ(X) = Σ_{r<W} X^r·g_r(X^W)`, symbol `t` is `Σ_r ζ^{tr}·x_0^r·g_r(x_0^W)`.
@@ -189,6 +248,10 @@ mod tests {
                 let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |rows| {
                     rows.iter().map(|r| [r[0].c0, r[1].c0, r[r.len() - 1].c1, Goldilocks::new(r.len() as u64)]).collect()
                 });
+                let grouped = digests_grouped(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |rows| {
+                    rows.iter().map(|r| [r[0].c0, r[1].c0, r[r.len() - 1].c1, Goldilocks::new(r.len() as u64)]).collect()
+                });
+                assert_eq!(grouped, got);
                 for j in 0..leaves {
                     let w = 1usize << log_w;
                     let row: Vec<Fp3> = (0..w).map(|t| Fp3::from_base(cb[j + t * leaves])).chain((0..w).map(|t| ce[j + t * leaves])).collect();
