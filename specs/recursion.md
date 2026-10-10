@@ -255,6 +255,13 @@ is conjectured, as for every deployed recursive proof system.
 
 ## not built
 
-- an envelope profile for wrapped proofs (joy);
 - the deferred nox-public claim evaluated in the circuit (it travels in
   the final proof: `n + 37` Fp3).
+
+## envelope
+
+profile 5 of `ZHENGPF1` carries a recursive proof (`envelope::recursive`,
+body layout in `api.md` § envelope). The IVC wire (`recursion::wire`) is
+fixed-width little-endian with canonical Goldilocks limbs and no lengths
+but the header's; the envelope wraps it with a format byte, the WHIR
+header (admitted sets only), the machine statement and a length prefix.

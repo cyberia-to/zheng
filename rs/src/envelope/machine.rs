@@ -41,8 +41,8 @@ fn read_tokens(r: &mut Reader) -> Result<Vec<NounToken>, E> {
         .collect()
 }
 
-pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &MachineProof, w: &mut Writer) {
-    w.raw(&params.header());
+/// The machine statement (profiles 4 and 5).
+pub(super) fn statement(st: &MachineStatement, w: &mut Writer) {
     tokens(&st.program, w);
     w.len(st.input.len());
     for &v in &st.input {
@@ -63,11 +63,9 @@ pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &Machine
             w.varint(v);
         }
     }
-    w.raw(&proof.to_bytes());
 }
 
-pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
-    let params = Whir::params_from_header(r.raw(8)?).map_err(|_| E::NonCanonical)?;
+pub(super) fn read_statement(r: &mut Reader) -> Result<MachineStatement, E> {
     let program = read_tokens(r)?;
     let input = r.fields(MAX_INPUTS)?;
     let output = read_tokens(r)?;
@@ -86,17 +84,29 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
     } else {
         None
     };
+    Ok(MachineStatement {
+        program,
+        input,
+        output,
+        cycles,
+        budget,
+        state,
+    })
+}
+
+pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &MachineProof, w: &mut Writer) {
+    w.raw(&params.header());
+    statement(st, w);
+    w.raw(&proof.to_bytes());
+}
+
+pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
+    let params = Whir::params_from_header(r.raw(8)?).map_err(|_| E::NonCanonical)?;
+    let statement = read_statement(r)?;
     let proof = MachineProof::from_bytes(r.raw(r.remaining())?).map_err(|_| E::NonCanonical)?;
     Ok(Envelope::Machine {
         params,
-        statement: MachineStatement {
-            program,
-            input,
-            output,
-            cycles,
-            budget,
-            state,
-        },
+        statement,
         proof: Box::new(proof),
     })
 }

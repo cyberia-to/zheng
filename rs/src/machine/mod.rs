@@ -253,6 +253,27 @@ pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) ->
     verify_with_state(st, proof, whir, None)
 }
 
+/// A statement with state: authenticate the evidence under the
+/// statement's root and check every read against it (the reads become
+/// init entries only after this). A statement without state needs none.
+/// Shared by the machine, recursive and wrapped profiles.
+pub fn authenticate_state(
+    st: &MachineStatement,
+    evidence: Option<&crate::execution::state_evidence::StateEvidence>,
+) -> Result<(), String> {
+    if let Some(state) = &st.state {
+        let auth = evidence
+            .ok_or("machine: the statement reads state; no state evidence")?
+            .authenticate(state.root)?;
+        for &(ns, key, value) in &state.reads {
+            if auth.cell(ns, key) != Some(value) {
+                return Err(format!("machine: read ({ns}, {key}) is not the authenticated value"));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Verify a machine proof against its statement under `whir` (admitted by
 /// the 128-bit policy). A statement with state needs the evidence: zheng
 /// authenticates it under the statement's root and checks every read
@@ -264,16 +285,7 @@ pub fn verify_with_state(
     evidence: Option<&crate::execution::state_evidence::StateEvidence>,
 ) -> Result<(), String> {
     let derived = st.derive()?;
-    if let Some(state) = &st.state {
-        let auth = evidence
-            .ok_or("machine: the statement reads state; no state evidence")?
-            .authenticate(state.root)?;
-        for &(ns, key, value) in &state.reads {
-            if auth.cell(ns, key) != Some(value) {
-                return Err(format!("machine: read ({ns}, {key}) is not the authenticated value"));
-            }
-        }
-    }
+    authenticate_state(st, evidence)?;
     let (n, start) = (proof.log_rows, proof.start as usize);
     let segs = proof.air.segments.len();
     let rows = 1usize << n;
