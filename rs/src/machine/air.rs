@@ -7,6 +7,7 @@
 use nebu::{Fp3, Goldilocks};
 
 use super::layout::*;
+use crate::air::num::Num;
 use crate::air::{Air, Public, Shape, Vals};
 
 // public columns
@@ -26,7 +27,8 @@ pub const PUB_PART: usize = 12;
 pub const PUB_OUT: usize = 13;
 pub const PUB_CONT: usize = 14;
 pub const PUB_RC: usize = 15;
-pub const PUBLICS: usize = PUB_RC + 16;
+pub const PUB_INIT_P2: usize = PUB_RC + 16;
+pub const PUBLICS: usize = PUB_INIT_P2 + 1;
 
 /// Statement constants the constraints read.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,6 +41,60 @@ pub struct Constants {
     /// Digest of the expected output noun.
     pub output: [Goldilocks; 4],
     pub cycles: u64,
+    /// Digest of the state root noun `[r0 [r1 [r2 r3]]]` every look's
+    /// subject must carry at axis 2 (zero without state: no look holds).
+    pub root: [Goldilocks; 4],
+}
+
+/// The statement constants as constraint values (inputs of a recorded
+/// constraint graph; field elements otherwise).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KConst<T> {
+    pub fml0: T,
+    pub obj0: T,
+    /// `P + 1`, the first allocated id.
+    pub p1: T,
+    pub output: [T; 4],
+    pub cycles: T,
+    pub root: [T; 4],
+}
+
+/// Number of statement constants a constraint reads ([`KConst::to_vec`]).
+pub const KCONSTS: usize = 12;
+
+impl<T: Copy> KConst<T> {
+    /// In the order `fml0, obj0, p1, output, cycles, root`.
+    pub fn to_vec(&self) -> Vec<T> {
+        let mut v = vec![self.fml0, self.obj0, self.p1];
+        v.extend_from_slice(&self.output);
+        v.push(self.cycles);
+        v.extend_from_slice(&self.root);
+        v
+    }
+    pub fn from_slice(v: &[T]) -> Self {
+        assert_eq!(v.len(), KCONSTS);
+        Self {
+            fml0: v[0],
+            obj0: v[1],
+            p1: v[2],
+            output: [v[3], v[4], v[5], v[6]],
+            cycles: v[7],
+            root: [v[8], v[9], v[10], v[11]],
+        }
+    }
+}
+
+impl Constants {
+    pub fn lift<T: Num>(&self) -> KConst<T> {
+        KConst {
+            fml0: T::from_u64(self.fml0),
+            obj0: T::from_u64(self.obj0),
+            p1: T::from_u64(self.p + 1),
+            output: self.output.map(T::from_base),
+            cycles: T::from_u64(self.cycles),
+            root: self.root.map(T::from_base),
+        }
+    }
 }
 
 /// The machine AIR for one statement and trace geometry.
@@ -50,13 +106,13 @@ pub struct Machine {
 }
 
 /// Collects constraint values in order.
-pub(crate) struct Out<'a> {
-    buf: &'a mut [Fp3],
+pub(crate) struct Out<'a, T = Fp3> {
+    buf: &'a mut [T],
     i: usize,
 }
 
-impl Out<'_> {
-    pub fn push(&mut self, v: Fp3) {
+impl<T: Num> Out<'_, T> {
+    pub fn push(&mut self, v: T) {
         if let Some(b) = self.buf.get_mut(self.i) {
             *b = v;
         }
@@ -64,8 +120,8 @@ impl Out<'_> {
     }
 }
 
-pub(crate) fn c(v: u64) -> Fp3 {
-    Fp3::from_base(Goldilocks::new(v))
+pub(crate) fn c<T: Num>(v: u64) -> T {
+    T::from_u64(v)
 }
 
 fn region(pattern: impl Fn(usize) -> Fp3, start: usize) -> Public {
@@ -77,11 +133,11 @@ fn region(pattern: impl Fn(usize) -> Fp3, start: usize) -> Public {
 
 impl Machine {
     /// The AIR of rows `[offset, offset + rows)` of a trace whose init
-    /// entries are `init` (`(tag, p0, p1)`) and whose region starts at
+    /// entries are `init` (`(tag, p0, p1, p2)`) and whose region starts at
     /// `start` (all global row indices).
     pub fn new(
         constants: Constants,
-        init: &[(u64, u64, u64)],
+        init: &[(u64, u64, u64, u64)],
         start: usize,
         offset: usize,
         rows: usize,
@@ -115,6 +171,7 @@ impl Machine {
                 start,
             ));
         }
+        publics.push(pre(&|i| init[i].3));
         let publics = publics.iter().map(|p| p.window(offset, rows)).collect();
         let mut m = Self {
             constants,
@@ -136,16 +193,25 @@ impl Machine {
                 next: &z,
                 publics: &p,
             },
+            &self.constants.lift(),
             &[Fp3::ZERO, Fp3::ZERO],
             &mut out,
         );
         out.i
     }
 
-    fn constrain(&self, v: &Vals<'_>, ch: &[Fp3], out: &mut Out<'_>) {
-        super::control::constrain(self, v, out);
+    fn constrain<T: Num>(&self, v: &Vals<'_, T>, k: &KConst<T>, ch: &[T], out: &mut Out<'_, T>) {
+        super::control::constrain(self, k, v, out);
         super::perm::constrain(self, v, out);
         super::memory::constrain(v, ch, out);
+    }
+
+    /// Every constraint at one assignment, in any arithmetic (`k`: the
+    /// statement constants as values of it).
+    pub fn eval_with<T: Num>(&self, v: &Vals<'_, T>, k: &KConst<T>, ch: &[T], out: &mut [T]) {
+        let mut o = Out { buf: out, i: 0 };
+        self.constrain(v, k, ch, &mut o);
+        debug_assert_eq!(o.i, self.constraints);
     }
 }
 
@@ -163,8 +229,6 @@ impl Air for Machine {
         &self.publics
     }
     fn eval(&self, v: &Vals<'_>, ch: &[Fp3], out: &mut [Fp3]) {
-        let mut o = Out { buf: out, i: 0 };
-        self.constrain(v, ch, &mut o);
-        debug_assert_eq!(o.i, self.constraints);
+        self.eval_with(v, &self.constants.lift(), ch, out);
     }
 }

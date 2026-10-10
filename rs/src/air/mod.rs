@@ -23,6 +23,7 @@
 //! The output is two evaluation claims on the committed words — instances
 //! for [`crate::accumulate`] (or a direct decider).
 
+pub mod num;
 mod prove;
 pub mod public;
 mod shift;
@@ -63,10 +64,10 @@ impl Shape {
 }
 
 /// Column values at one row (or one point): `local = W1 ‖ W2`.
-pub struct Vals<'a> {
-    pub local: &'a [Fp3],
-    pub next: &'a [Fp3],
-    pub publics: &'a [Fp3],
+pub struct Vals<'a, T = Fp3> {
+    pub local: &'a [T],
+    pub next: &'a [T],
+    pub publics: &'a [T],
 }
 
 /// A uniform AIR.

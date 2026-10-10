@@ -7,7 +7,8 @@
 //! state    its items in hashing order
 //! step     roots · OOD answers · boundary rows · zerocheck · columns at ρ
 //!          · publics · line folds · shift · values · accumulation step
-//! decider  lens wire (accumulate::DeciderProof)
+//! decider  the key claim's two values · the batched WHIR opening
+//!          (`whir::wire`) of the accumulator and the key words
 //! ```
 //!
 //! The accumulation step's openings are deduplicated per word: the spot
@@ -26,34 +27,35 @@ use super::perm;
 use super::relation::{COLS, PUB_NOX, PUB_V};
 use super::state::{State, StateV};
 use super::step::StepProof;
-use super::word::{Digest, LeafOpening, leaf_digest};
-use crate::accumulate::DeciderProof;
+use super::word::{Arity, Digest, LeafOpening, leaf_digest};
+use super::decide::Decider;
+use super::ivc::Key;
 use crate::machine::layout::{W1, W2};
 
 type R<T> = Result<T, PcsError>;
 
-fn digest(w: &mut Writer, d: &Digest) {
+pub(crate) fn digest(w: &mut Writer, d: &Digest) {
     for &x in d {
         w.base(x);
     }
 }
-fn read_digest(r: &mut Reader<'_>) -> R<Digest> {
+pub(crate) fn read_digest(r: &mut Reader<'_>) -> R<Digest> {
     Ok([r.base()?, r.base()?, r.base()?, r.base()?])
 }
-fn exts(w: &mut Writer, xs: &[Fp3]) {
+pub(crate) fn exts(w: &mut Writer, xs: &[Fp3]) {
     for &x in xs {
         w.ext(x);
     }
 }
-fn read_exts(r: &mut Reader<'_>, k: usize) -> R<Vec<Fp3>> {
+pub(crate) fn read_exts(r: &mut Reader<'_>, k: usize) -> R<Vec<Fp3>> {
     (0..k).map(|_| r.ext()).collect()
 }
-fn bases(w: &mut Writer, xs: &[Goldilocks]) {
+pub(crate) fn bases(w: &mut Writer, xs: &[Goldilocks]) {
     for &x in xs {
         w.base(x);
     }
 }
-fn read_bases(r: &mut Reader<'_>, k: usize) -> R<Vec<Goldilocks>> {
+pub(crate) fn read_bases(r: &mut Reader<'_>, k: usize) -> R<Vec<Goldilocks>> {
     (0..k).map(|_| r.base()).collect()
 }
 
@@ -76,28 +78,38 @@ fn read_state(r: &mut Reader<'_>, p: &Params) -> R<State> {
     Ok(StateV::from_items(&p.dims, &vals))
 }
 
-/// Sibling digests of a multi-opening of sorted distinct `leaves` (lens
-/// order: level by level, increasing index, only those not computable).
-fn multi_siblings(paths: &[(usize, &LeafOpening)], depth: usize) -> Vec<Digest> {
+/// Sibling digests of a multi-opening of sorted distinct `leaves` in a
+/// tree of `2^log_leaves` leaves and `arity` (level by level, increasing
+/// index, only those not computable).
+pub(crate) fn multi_siblings(paths: &[(usize, &LeafOpening)], log_leaves: usize, arity: Arity) -> Vec<Digest> {
     let mut out = Vec::new();
     let mut known: Vec<usize> = paths.iter().map(|p| p.0).collect();
-    for level in 0..depth {
+    let (mut off, mut div) = (0, 1usize);
+    for a in arity.levels(log_leaves) {
         let mut next = Vec::with_capacity(known.len());
         let mut i = 0;
         while i < known.len() {
-            let idx = known[i];
-            if i + 1 < known.len() && known[i + 1] == idx ^ 1 {
-                i += 2;
-            } else {
-                // the sibling from any path through this node
-                let leaf = paths.iter().find(|p| p.0 >> level == idx).expect("a path");
-                out.push(leaf.1.path[level]);
+            let base = known[i] / a * a;
+            let mut present = Vec::new();
+            while i < known.len() && known[i] / a * a == base {
+                present.push(known[i]);
                 i += 1;
             }
-            next.push(idx >> 1);
+            // any path through this group: its siblings are the group's
+            // other children in order
+            let own = present[0];
+            let path = paths.iter().find(|p| p.0 / div == own).expect("a path").1;
+            for c in base..base + a {
+                if !present.contains(&c) {
+                    let rank = c - base - usize::from(c > own);
+                    out.push(path.path[off + rank]);
+                }
+            }
+            next.push(base / a);
         }
-        next.dedup();
         known = next;
+        off += a - 1;
+        div *= a;
     }
     out
 }
@@ -130,7 +142,7 @@ fn acc_proof(w: &mut Writer, a: &AccProof, p: &Params) {
                 bases(w, &op.symbols.iter().map(|s| s.c0).collect::<Vec<_>>());
             }
         }
-        let sib = multi_siblings(&ops, depth);
+        let sib = multi_siblings(&ops, depth, Arity::Two);
         w.u32(sib.len());
         for d in &sib {
             digest(w, d);
@@ -170,7 +182,7 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
             .collect::<R<_>>()?;
         let ns = r.count(32)?;
         let sib: Vec<Digest> = (0..ns).map(|_| read_digest(r)).collect::<R<_>>()?;
-        per_word.push(expand(&distinct, syms, &sib, depth, word == 0)?);
+        per_word.push(expand(&distinct, syms, &sib, depth, word == 0, Arity::Two)?);
     }
     let openings = leaves
         .iter()
@@ -183,35 +195,46 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
 }
 
 /// Full paths of a multi-opening (hashing the computable nodes).
-fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], depth: usize, ext: bool) -> R<Vec<LeafOpening>> {
+pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_leaves: usize, ext: bool, arity: Arity) -> R<Vec<LeafOpening>> {
     let mut nodes: Vec<(usize, Digest)> = leaves.iter().zip(&syms).map(|(&l, s)| (l, leaf_digest(ext, s))).collect();
-    let mut paths: Vec<Vec<Digest>> = vec![Vec::with_capacity(depth); leaves.len()];
+    let mut paths: Vec<Vec<Digest>> = vec![Vec::with_capacity(arity.path_len(log_leaves)); leaves.len()];
     let mut it = sib.iter();
-    for level in 0..depth {
-        let mut next = Vec::with_capacity(nodes.len());
+    let mut div = 1usize;
+    for a in arity.levels(log_leaves) {
+        let mut next: Vec<(usize, [Goldilocks; 16])> = Vec::with_capacity(nodes.len());
         let mut i = 0;
         while i < nodes.len() {
-            let (idx, h) = nodes[i];
-            let (l, r, step) = if i + 1 < nodes.len() && nodes[i + 1].0 == idx ^ 1 {
-                (h, nodes[i + 1].1, 2)
-            } else {
-                let s = *it.next().ok_or(PcsError::Merkle)?;
-                if idx & 1 == 0 { (h, s, 1) } else { (s, h, 1) }
-            };
-            // every leaf under this node gets the sibling of its ancestor
-            let sib_of = |x: usize| if x & 1 == 0 { r } else { l };
+            let base = nodes[i].0 / a * a;
+            let mut children: Vec<Option<Digest>> = vec![None; a];
+            while i < nodes.len() && nodes[i].0 / a * a == base {
+                children[nodes[i].0 - base] = Some(nodes[i].1);
+                i += 1;
+            }
+            let full: Vec<Digest> = children
+                .iter()
+                .map(|c| c.map_or_else(|| it.next().copied().ok_or(PcsError::Merkle), Ok))
+                .collect::<R<_>>()?;
             for (q, &leaf) in leaves.iter().enumerate() {
-                let anc = leaf >> level;
-                if anc == idx || (step == 2 && anc == idx ^ 1) {
-                    paths[q].push(sib_of(anc));
+                let anc = leaf / div;
+                if anc / a * a == base {
+                    for (c, d) in full.iter().enumerate() {
+                        if base + c != anc {
+                            paths[q].push(*d);
+                        }
+                    }
                 }
             }
-            next.push((idx >> 1, perm::node_input(l, r)));
-            i += step;
+            let input = if a == 4 {
+                perm::node4_input([full[0], full[1], full[2], full[3]])
+            } else {
+                perm::node_input(full[0], full[1])
+            };
+            next.push((base / a, input));
         }
         let mut states: Vec<[Goldilocks; 16]> = next.iter().map(|x| x.1).collect();
         perm::permute_many(&mut states);
         nodes = next.iter().zip(&states).map(|(x, s)| (x.0, perm::head(s))).collect();
+        div *= a;
     }
     if it.next().is_some() {
         return Err(PcsError::Merkle);
@@ -281,10 +304,26 @@ fn read_step(r: &mut Reader<'_>, p: &Params) -> R<StepProof> {
     })
 }
 
+fn decider_ext(k: &Key) -> [bool; 2] {
+    [true, k.key_ext]
+}
+
+pub(crate) fn decider(w: &mut Writer, d: &Decider, k: &Key) {
+    exts(w, &d.key);
+    super::whir::wire::write(w, &k.dcfg, &decider_ext(k), &d.whir);
+}
+
+pub(crate) fn read_decider(r: &mut Reader<'_>, k: &Key) -> R<Decider> {
+    let v = read_exts(r, 2)?;
+    let whir = super::whir::wire::read(r, &k.dcfg, &decider_ext(k))?;
+    Ok(Decider { key: [v[0], v[1]], whir })
+}
+
 impl IvcProof {
     /// Bytes of each part: header, state, step (AIR part), accumulation
     /// step, decider.
-    pub fn sizes(&self, p: &Params) -> [(&'static str, usize); 5] {
+    pub fn sizes(&self, k: &Key) -> [(&'static str, usize); 5] {
+        let p = &k.params;
         let len = |f: &dyn Fn(&mut Writer)| {
             let mut w = Writer::default();
             f(&mut w);
@@ -297,11 +336,12 @@ impl IvcProof {
             ("state", len(&|w| state(w, &self.state))),
             ("step", all - acc),
             ("accumulation", acc),
-            ("decider", len(&|w| self.decider.write(w, true))),
+            ("decider", len(&|w| decider(w, &self.decider, k))),
         ]
     }
 
-    pub fn to_bytes(&self, p: &Params) -> Vec<u8> {
+    pub fn to_bytes(&self, k: &Key) -> Vec<u8> {
+        let p = &k.params;
         let mut w = Writer::default();
         w.u8(self.log_rows as u8);
         w.u64(self.start);
@@ -309,7 +349,7 @@ impl IvcProof {
         digest(&mut w, &self.chain);
         state(&mut w, &self.state);
         step(&mut w, &self.step, p);
-        self.decider.write(&mut w, true);
+        decider(&mut w, &self.decider, k);
         w.buf
     }
 
@@ -325,11 +365,8 @@ impl IvcProof {
         let chain = read_digest(&mut r).map_err(e)?;
         let st = read_state(&mut r, p).map_err(e)?;
         let stp = read_step(&mut r, p).map_err(e)?;
-        let (decider, ext) = DeciderProof::read(&mut r).map_err(e)?;
+        let decider = read_decider(&mut r, &key).map_err(e)?;
         r.finish().map_err(e)?;
-        if !ext {
-            return Err("recursive proof: decider of a base word".into());
-        }
         Ok(Self { log_rows, start, segments, chain, state: st, step: stp, decider })
     }
 }

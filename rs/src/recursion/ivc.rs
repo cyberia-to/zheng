@@ -9,20 +9,25 @@
 //! step i    circuit: verify step i−1 from state_{i−1} (base step: none) →
 //!           state_i, public input H(state_i); prove segment i ‖ circuit
 //! proof     state_{S−1}, step S−1's proof, the decider of its accumulator
-//! verify    step S−1 natively → state_S; state_S is final (context,
-//!           chain, step count, cyclic boundary), its deferred claims hold,
-//!           its accumulator is decided
+//!           and of the circuit key's claim
+//! verify    the final verifier (`finalv`) natively: step S−1 → state_S;
+//!           state_S is final (context, chain, step count, cyclic
+//!           boundary), the deferred constraint claim holds, the decider
+//!           accepts; then the deferred nox-public claim against the
+//!           statement's columns
 //! ```
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lens::{Commitment, Transcript, WhirParams};
+use lens::WhirParams;
 use nebu::{Fp3, Goldilocks};
 
 use super::circuit::air::CircuitAir;
 use super::circuit::builder::Builder;
 use super::circuit::trace::{self, Pre};
+use super::decide::{self, Decider, KeyWords};
+use super::finalv::{self, Publics};
 use super::ops::{Native, Ops};
 use super::params::Params;
 use super::perm::tag;
@@ -30,11 +35,12 @@ use super::program;
 use super::prove::{self, AccData, StepInput, pbar_nox, pbar_v};
 use super::relation::{G_POINT, Relation, WORD};
 use super::sponge::Sponge;
-use super::state::{self, AccV, CtxParts, State, ZeroWord};
+use super::state::{self, CtxParts, State, ZeroWord};
 use super::step::{self, StepProof};
+use super::whir;
 use super::word::{Digest, Word};
-use crate::accumulate::{self, Claim, DeciderProof, Instance, Witnessed};
 use crate::air::Public;
+use crate::air::num::{Graph, record};
 use crate::execution::ExecutionNoun;
 use crate::machine::air::{Constants, Machine};
 use crate::machine::layout::BLOCK;
@@ -51,7 +57,7 @@ pub struct IvcProof {
     /// The state the last step started from.
     pub state: State,
     pub step: StepProof,
-    pub decider: DeciderProof,
+    pub decider: Decider,
 }
 
 /// The circuit's key at one parameter set.
@@ -60,6 +66,15 @@ pub struct Key {
     pub pre: Pre,
     /// The key's nonzero entries per column (`P̄_V` evaluations).
     pub sparse: Vec<Vec<(u32, Fp3)>>,
+    /// The key as two committed 64-column words (the decider opens them).
+    pub kw: KeyWords,
+    /// Whether a key entry leaves the base field.
+    pub key_ext: bool,
+    /// The decider's batched opening: accumulator, two key words.
+    pub dcfg: whir::Config,
+    /// The step relation's constraint polynomial `G` as a graph over the
+    /// point, the run's challenges and the statement constants.
+    pub g: Graph,
 }
 
 fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
@@ -92,9 +107,25 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
         .iter()
         .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
         .collect();
-    let k = Arc::new(Key { params: p, pre, sparse });
+    let (kw, key_ext) = KeyWords::commit(p.cfg.layout, p.n, &pre, super::word::Arity::Two);
+    let dcfg = whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2)?;
+    let g = g_graph(&p);
+    let k = Arc::new(Key { params: p, pre, sparse, kw, key_ext, dcfg, g });
     cache.lock().expect("key cache").insert((whir.header(), n), k.clone());
     Ok(k)
+}
+
+/// `G` recorded once: inputs are the deferred point, the run's challenges
+/// and the statement constants (its structure is the statement's for no
+/// statement).
+fn g_graph(p: &Params) -> Graph {
+    use crate::machine::air::{KCONSTS, KConst};
+    let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [Goldilocks::ZERO; 4], cycles: 0, root: [Goldilocks::ZERO; 4] };
+    let rel = Relation::new(Machine::new(constants, &[], 1 << p.n, 0, 1 << p.n), [Fp3::ZERO; 2]);
+    record(G_POINT + 2 + KCONSTS, |i| {
+        let (pt, rest) = i.split_at(G_POINT);
+        vec![rel.g_with(pt, &[rest[0], rest[1]], &KConst::from_slice(&rest[2..]))]
+    })
 }
 
 /// The statement and the trace geometry, hashed.
@@ -138,26 +169,6 @@ fn parts(p: &Params, key: &[Vec<(u32, Fp3)>], rel: &Relation, global: &[Public],
         pn0: pbar_nox(global, &vec![Fp3::ZERO; p.dims.pn], p.n),
         pv0: pbar_v(key, &vec![Fp3::ZERO; p.dims.pv], p.n),
     }
-}
-
-fn decider_instance(acc: &AccV<Fp3>, vars: usize) -> Instance {
-    let mut bytes = [0u8; 32];
-    for (i, x) in acc.root.iter().enumerate() {
-        bytes[8 * i..8 * i + 8].copy_from_slice(&x.c0.as_u64().to_le_bytes());
-    }
-    let mut claims = vec![Claim { point: acc.rho.clone(), value: acc.v0 }];
-    claims.extend(acc.ood.iter().map(|&(z, y)| Claim::univariate(z, vars, y)));
-    claims.extend(acc.spot.iter().map(|&(x, y)| Claim::univariate(x, vars, y)));
-    Instance { root: Commitment(hemera::Hash::from_bytes(bytes)), ext: true, claims }
-}
-
-fn decider_transcript(st: &State) -> Result<Transcript, String> {
-    let d = state::digest_native(st)?;
-    let mut t = Transcript::new(b"zheng-ivc-decide-v1");
-    for x in d {
-        t.absorb_u64(x.as_u64());
-    }
-    Ok(t)
 }
 
 /// Run `program` and prove it recursively in steps of `2^n` rows.
@@ -256,7 +267,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
             key: &k.pre,
             sparse: &k.sparse,
         };
-        let (pf, data, _) = prove::prove(p, &input, &st, x, &acc, i + 1 == segs)?;
+        let (pf, data, _) = prove::prove(p, &input, &st, x, &acc)?;
         // the prover checks its own step
         let mut o = Native::batched();
         let next = step::verify(&mut o, p, &st, x.map(Fp3::from_base), &pf);
@@ -268,10 +279,8 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     }
     let (state, step) = prev.expect("a segment");
     let fin = last_state.expect("a segment");
-    let AccData::Lens(data) = acc else { return Err("recursion: the last accumulator".into()) };
-    let inst = decider_instance(&fin.acc, p.vars);
-    let mut t = decider_transcript(&fin)?;
-    let decider = accumulate::decide(&p.cfg, &Witnessed { instance: inst, data }, &mut t)?;
+    let AccData::Word(word) = acc else { return Err("recursion: the last accumulator".into()) };
+    let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, &k.kw, n)?;
     lap("decide");
     Ok(IvcProof { log_rows: n as u32, start: run.start as u64, segments: segs as u64, chain, state, step, decider })
 }
@@ -282,9 +291,10 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
 pub struct Prepared {
     pub key: Arc<Key>,
     pub header: (u32, u64, u64, Digest),
-    rel: Relation,
-    global: Vec<Public>,
-    ctx: Digest,
+    /// The final verifier's public values.
+    pub publics: Publics<Fp3>,
+    /// The run's nox public columns (the deferred nox-public claim).
+    pub global: Vec<Public>,
 }
 
 /// Prepare the verification of proofs of `st` with this header.
@@ -305,14 +315,23 @@ pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u
         p: derived.entries.len() as u64,
         output: derived.output,
         cycles: st.cycles,
+        root: derived.root,
     };
     let init = statement::init_columns(&derived.entries);
     let sd = statement_digest(st, n, start, segments);
     let ch = run_challenges(sd, chain);
     let global = Machine::new(constants.clone(), &init, st_row, 0, segs << n).publics;
-    let rel = Relation::new(Machine::new(constants, &init, st_row, 0, 1 << n), ch);
+    let rel = Relation::new(Machine::new(constants.clone(), &init, st_row, 0, 1 << n), ch);
     let ctx = state::ctx_native(&parts(&key.params, &key.sparse, &rel, &global, sd, chain));
-    Ok(Prepared { key, header: (log_rows, start, segments, chain), rel, global, ctx })
+    let base = |d: Digest| d.map(Fp3::from_base);
+    let publics = Publics {
+        ctx: base(ctx),
+        chain: base(chain),
+        segments: Fp3::from_base(Goldilocks::new(segments)),
+        ch,
+        k: constants.lift(),
+    };
+    Ok(Prepared { key, header: (log_rows, start, segments, chain), publics, global })
 }
 
 /// Verify a recursive proof of `st` under `whir`.
@@ -321,17 +340,11 @@ pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Res
     verify_prepared(&prep, proof)
 }
 
-/// Verify against a preparation whose header must be the proof's.
-pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> {
-    let lap = timer();
-    if prep.header != (proof.log_rows, proof.start, proof.segments, proof.chain) {
-        return Err("recursion: header".into());
-    }
-    let k = &prep.key;
-    let p = &k.params;
-    let n = p.n;
-    let (rel, global, ctx) = (&prep.rel, &prep.global, prep.ctx);
+/// Shapes of a proof's state, step and decider under `key`.
+pub fn check_shapes(key: &Key, proof: &IvcProof) -> Result<(), String> {
+    let p = &key.params;
     step::check_shape(p, &proof.step)?;
+    decide::check_shape(&key.dcfg, &proof.decider)?;
     let s = &proof.state;
     let shape_ok = s.b_first.len() == p.dims.boundary
         && s.b_last.len() == p.dims.boundary
@@ -342,37 +355,33 @@ pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> 
         && s.pn.point.len() == p.dims.pn
         && s.pv.point.len() == p.dims.pv
         && state::is_canonical(s);
-    if !shape_ok {
-        return Err("recursion: state shape".into());
+    if shape_ok { Ok(()) } else { Err("recursion: state shape".into()) }
+}
+
+/// Verify against a preparation whose header must be the proof's: the
+/// final verifier natively, then the deferred nox-public claim.
+pub fn verify_prepared(prep: &Prepared, proof: &IvcProof) -> Result<(), String> {
+    verify_claim(prep, proof).map(|_| ())
+}
+
+/// [`verify_prepared`], returning the deferred nox-public claim it checked
+/// (a wrap binds it in its public input).
+pub fn verify_claim(prep: &Prepared, proof: &IvcProof) -> Result<state::ClaimV<Fp3>, String> {
+    let lap = timer();
+    if prep.header != (proof.log_rows, proof.start, proof.segments, proof.chain) {
+        return Err("recursion: header".into());
     }
+    let k = &prep.key;
+    check_shapes(k, proof)?;
     lap("setup");
-    let x = state::digest_native(s)?;
     let mut o = Native::batched();
-    let fin = step::verify(&mut o, p, s, x.map(Fp3::from_base), &proof.step);
+    let pubs = finalv::constants(&mut o, &prep.publics);
+    let pn = finalv::run(&mut o, k, &pubs, &proof.state, &proof.step, &proof.decider);
     o.finish()?;
-    lap("step");
-    let base = |d: Digest| d.map(Fp3::from_base);
-    let b_out: Vec<Fp3> = proof.step.b_out.iter().map(|&b| Fp3::from_base(b)).collect();
-    if fin.ctx != base(ctx)
-        || fin.chain != base(proof.chain)
-        || fin.step != Fp3::from_base(Goldilocks::new(proof.segments))
-        || fin.b_first != b_out
-    {
-        return Err("recursion: the final state is not this run's".into());
-    }
-    if rel.g(&fin.g.point) != fin.g.value {
-        return Err("recursion: deferred constraints".into());
-    }
-    if pbar_nox(global, &fin.pn.point, n) != fin.pn.value {
+    lap("final verifier");
+    if pbar_nox(&prep.global, &pn.point, k.params.n) != pn.value {
         return Err("recursion: deferred nox publics".into());
     }
-    if pbar_v(&k.sparse, &fin.pv.point, n) != fin.pv.value {
-        return Err("recursion: deferred circuit key".into());
-    }
-    lap("deferred");
-    let inst = decider_instance(&fin.acc, p.vars);
-    let mut t = decider_transcript(&fin)?;
-    accumulate::verify_decider(&p.cfg, &inst, &proof.decider, &mut t)?;
-    lap("decider");
-    Ok(())
+    lap("nox publics");
+    Ok(pn)
 }

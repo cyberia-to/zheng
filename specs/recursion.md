@@ -31,8 +31,8 @@ checked by the next step's circuit and only the last step's travel.
   `LeafLayout`) under a field-native hemera Merkle tree: a leaf is the
   duplex sponge (tag `LEAF`) over its symbols, a node is
   `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`. Same code, domain and distance as a
-  lens commitment; only the hashing differs. The last accumulator is
-  committed with lens (`Whir::commit_ext`) for the decider.
+  lens commitment; only the hashing differs. The last accumulator is a
+  word like the others; the decider opens it field-natively (below).
 - **transcript**: an overwrite duplex sponge over hemera's permutation,
   rate 9 lanes (three Fp3), capacity 7 lanes with a domain tag; an Fp3
   item never straddles a block; challenges are output limbs (no byte
@@ -149,11 +149,100 @@ pre       commit every segment's word a → D; (α, β) = H(statement, D);
           nox phase 2 of every segment
 step i    circuit: verify step i−1 from state_{i−1} (base: none) → state_i;
           prove segment i ‖ circuit with public input H(state_i)
-proof     state_{S−1}, step S−1's proof, the decider of its accumulator
-verify    the state's base items are base (else refused); step S−1
-          natively from x = H(state) → state_S; ctx, chain = D, step = S,
-          the cyclic boundary; the three deferred claims; the decider
+proof     state_{S−1}, step S−1's proof, the decider
+verify    the final verifier (below) natively, then the deferred
+          nox-public claim against the statement's columns
 ```
+
+## final verifier (`finalv::run`, over `Ops`)
+
+```text
+state     the state's base items are base (else refused); absorb it →
+          x = H(state); verify step S−1 from it → state_S
+final     ctx, chain = D, step = S, the cyclic boundary — against the
+          public values (computed from the statement natively, the
+          public input of a wrap)
+G         the deferred constraint claim: G is recorded once as an
+          expression graph over (point, run challenges, statement
+          constants) and compiled to gates (870 constraints → 8,212
+          gates); natively the same gates are interpreted
+decider   tag DECIDE: the accumulator instance and the deferred key claim
+          absorbed; the key claim P̄_V(z, g) = (1 − g_6)·K̃_lo + g_6·K̃_hi
+          over the circuit key as two 64-column words committed under one
+          tree (fixed by the parameters); one batched field-native WHIR
+          opening of [accumulator, key words]
+out       the deferred nox-public claim (statement data: evaluated by
+          whoever holds the statement)
+```
+
+## field-native WHIR (`recursion::whir`)
+
+lens's WHIR schedule (`WhirConfig`) on the duplex transcript and
+field-native words, its verifier over `Ops`. `m` words, each with its own
+claims, are batched: `γ`; an `ℓ`-round sumcheck to one point `ρ'`; every
+word's value there; grinding; `r`; WHIR on `f_0 = Σ r^i f_i` (a round-0
+query opens its leaf in every word, combines, folds). Words committed
+together may share one tree (`word::Group`: a leaf hashes every member's
+symbols; one path opens all). One word skips the batch: its claims are
+WHIR's initial weights — eq and pow points, a row polynomial (eq, or the
+successor `nxt`, at `ρ`) times a column vector, or a weight a native
+verifier evaluates (`NativeWeight`); the closing check sums each weight
+against the final polynomial on the cube. Trees are binary or 4-ary
+(`word::Arity`): a 4-ary node is the truncated permutation of its four
+children (all sixteen lanes); over an odd power of two leaves the top
+level is one binary node; the circuit's `NODE4` input places the current
+digest at `b0 + 2·b1`. Soundness: lens `whir::batch` and WHIR's terms
+(`soundness.md` § wrap).
+
+## wrap (`recursion::wrap`)
+
+A wrap proof shows the recursion circuit ran a verifier on a proof it
+holds and output the digest of the public values that verifier binds:
+
+```text
+X = H_PUBLIC(ctx, chain, segments, run challenges, statement constants,
+             the deferred nox-public claim (point, value))
+```
+
+The inner verifier is the IVC final verifier (the first level) or the
+verifier of the level below. The relation: the circuit's AIR alone over
+`2^n` rows (`n` the smallest the program fits), `live = 1` on every row,
+`X` at the output row.
+
+| mode | words | wiring | key | verifier |
+|---|---|---|---|---|
+| inner | `W1` (phase 1), `W2` (memory phase, after `(α_V, β_V)`) — 4-ary trees | logUp memory | two words under one tree, opened in the batch | any interpreter (the circuit) |
+| final | `W1` — binary tree | linear: every read slot's value equals its write slot's, batched with powers of `λ` into one weight `u_λ` (`⟨u_λ, W1⟩ = 0`) | evaluated by the verifier (`O(key entries)`) | native |
+
+```text
+transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root, OOD |
+            final: λ; τ, μ; zerocheck (degree 9); the committed columns at
+            ρ and their successors (final: only the columns the
+            constraints read at the next row, from the recorded graph);
+            inner: the key at ρ, γ_k, the shift reduction of W1, W2 to one
+            point, the key claim split over its two words, the batched
+            opening | final: column batching (local, successor), one
+            direct opening with weights OOD, Σ_c eq(g_l, c)·W1(ρ, c),
+            Σ_{c ∈ next} eq(g_n, c)·W1(ρ + 1, c), u_λ (claimed 0)
+```
+
+The constraints are evaluated at the point through their recorded graph
+(`Σ μ^k C_k`, 267 constraints → 4,054 gates inner, 249 → 3,620 final).
+The outermost proof (`FinalProof`) is the deferred nox-public claim and
+the final wrap; `wrap::verify_final` refuses a key derived for another
+recursive proof (a wrap key records the IVC's WHIR parameters and step
+size; the header's must be them), evaluates the claim against the
+statement's columns, recomputes `X` and verifies the wrap natively. A
+final-mode level is verified natively only: `derive_key_wrap` refuses to
+put one inside a circuit (its verifier evaluates the key and the wiring
+weight in the field).
+
+The final verifier keeps #53's review checks: natively a state is read
+only if its base items are base (`state::is_canonical`); in the circuit a
+base item is absorbed as one free cell (`state::absorb_free` takes the
+base limb), so the state the circuit hashes is canonical by construction.
+A grinding nonce is a field element in the circuit; the native shape
+checks (step, field-native WHIR) refuse nonces `≥ p`.
 
 `verify(verify(π))`: a two-step proof is accepted only if the second
 step's circuit accepted the first step's proof (`tests/recursion.rs`).
@@ -171,8 +260,6 @@ is conjectured, as for every deployed recursive proof system.
 
 ## not built
 
-- the decider inside a step (decider-as-relation): the final proof keeps
-  one native WHIR opening;
-- a wrap step proving the final verifier with a small non-accumulating
-  proof (the route to ≤ 64 KB, `audit/recursion-2026-10.md`);
-- an envelope profile for recursive proofs.
+- an envelope profile for wrapped proofs (joy);
+- the deferred nox-public claim evaluated in the circuit (it travels in
+  the final proof: `n + 37` Fp3).

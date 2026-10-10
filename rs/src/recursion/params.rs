@@ -52,7 +52,7 @@ impl Params {
         let probe = AccConfig::derive(whir, vars, INPUTS, 3 * (fresh + 2))?;
         let claims = probe.acc_claims() + 3 * (fresh + 2);
         let cfg = AccConfig::derive(whir, vars, INPUTS, claims)?;
-        let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [nebu::Goldilocks::ZERO; 4], cycles: 0 };
+        let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [nebu::Goldilocks::ZERO; 4], cycles: 0, root: [nebu::Goldilocks::ZERO; 4] };
         let machine = Machine::new(constants, &[], 1 << n, 0, 1 << n);
         let rel = relation::Relation::new(machine, [nebu::Fp3::ZERO; 2]);
         let dims = Dims {
@@ -93,7 +93,7 @@ impl Params {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lens::MultilinearPcs;
+
 
     /// Every round of the recursion profile at its shipped parameters
     /// proves ≥ 128 bits (`specs/soundness.md` § recursion).
@@ -112,7 +112,8 @@ mod tests {
         eprintln!("rate 1/{}", 1u32 << rate);
         let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
         let mut rows = p.cfg.terms(INPUTS, j);
-        rows.push(("decider whir".into(), lens::Whir::security_bits(&whir, p.vars)));
+        let dcfg = super::super::whir::Config::derive(&whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2).unwrap();
+        rows.extend(dcfg.terms().into_iter().map(|(n, b)| (format!("decider {n}"), b)));
         let k = lens::rspcs::soundness::ext_field_bits();
         let log2 = |x: usize| (x as f64).log2();
         rows.push(("zerocheck μ (structured powers)".into(), k - log2(SEEDS * (p.base - 1))));

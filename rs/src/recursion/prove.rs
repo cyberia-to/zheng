@@ -1,9 +1,7 @@
 //! The step prover: the messages [`super::step::verify`] reads, in its
 //! transcript order.
 
-use lens::rspcs::WhirData;
 use lens::rspcs::field::{eq_table, pow_point, root_of_unity};
-use lens::Whir;
 use nebu::{Fp3, Goldilocks};
 
 use super::acc::AccProof;
@@ -25,8 +23,6 @@ use crate::machine::layout::{W1, W2};
 pub enum AccData {
     Zero(ZeroWord),
     Word(Word),
-    /// The last accumulator, committed for the decider.
-    Lens(WhirData),
 }
 
 impl AccData {
@@ -34,14 +30,12 @@ impl AccData {
         match self {
             AccData::Zero(_) => vec![Fp3::ZERO; 1 << vars],
             AccData::Word(w) => w.table(),
-            AccData::Lens(d) => d.table(),
         }
     }
     fn open(&self, leaf: usize) -> LeafOpening {
         match self {
             AccData::Zero(z) => LeafOpening { leaf: Some(leaf), ..z.opening.clone() },
             AccData::Word(w) => w.open(leaf),
-            AccData::Lens(_) => unreachable!("the decided word is never an input"),
         }
     }
 }
@@ -97,9 +91,8 @@ fn mle_ext(vals: &[Fp3], point: &[Fp3]) -> Fp3 {
     eq_table(point).iter().zip(vals).fold(Fp3::ZERO, |a, (&e, &v)| a + e * v)
 }
 
-/// Prove one step. `acc_in` is the accumulator the state carries;
-/// `last` commits the new accumulator for the decider.
-pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccData, last: bool) -> Result<(StepProof, AccData, AccV<Fp3>), String> {
+/// Prove one step. `acc_in` is the accumulator the state carries.
+pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccData) -> Result<(StepProof, AccData, AccV<Fp3>), String> {
     let n = p.n;
     let rows = 1usize << n;
     let layout = p.cfg.layout;
@@ -263,7 +256,7 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
         },
     };
     let words: [&dyn Opener; 4] = [acc_in, w.word_a, &word_b, &word_c];
-    let (acc, data, inst) = prove_acc(p, &mut t, &tables, &claims, &words, last)?;
+    let (acc, data, inst) = prove_acc(p, &mut t, &tables, &claims, &words)?;
     lap("accumulation");
     Ok((StepProof { acc, ..proof_partial }, data, inst))
 }
@@ -311,7 +304,6 @@ fn prove_acc(
     tables: &[Vec<Fp3>; 4],
     claims: &[Vec<(Vec<Fp3>, Fp3)>; 4],
     words: &[&dyn Opener; 4],
-    last: bool,
 ) -> Result<(AccProof, AccData, AccV<Fp3>), String> {
     let cfg = &p.cfg;
     let lap = super::ivc::timer_pub("      acc ");
@@ -346,15 +338,8 @@ fn prove_acc(
         }
     }
     let v0 = evals.iter().zip(&coef).fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
-    let (root, data): (Digest, AccData) = if last {
-        let (com, d) = Whir::commit_ext(&p.whir, &gt);
-        let b = com.as_bytes();
-        let limb = |i: usize| Goldilocks::new(u64::from_le_bytes(b[8 * i..8 * i + 8].try_into().expect("8 bytes")));
-        ([limb(0), limb(1), limb(2), limb(3)], AccData::Lens(d))
-    } else {
-        let wd = Word::commit_ext(cfg.layout, &gt);
-        (wd.root(), AccData::Word(wd))
-    };
+    let wd = Word::commit_ext(cfg.layout, &gt);
+    let (root, data) = (wd.root(), AccData::Word(wd));
     lap("commit");
     t.absorb_all(&root);
     let mut ood = Vec::with_capacity(cfg.ood);
@@ -363,7 +348,6 @@ fn prove_acc(
         let z = t.squeeze_ext();
         let y = match &data {
             AccData::Word(w) => w.univariate(z),
-            AccData::Lens(d) => d.univariate(z),
             AccData::Zero(_) => unreachable!(),
         };
         t.absorb_ext(y);

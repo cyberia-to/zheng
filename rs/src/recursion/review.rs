@@ -2,14 +2,13 @@
 //! attacks on the binding between a step's public input and the state the
 //! final verifier reads, and on the base step.
 
-use lens::Transcript;
 use nebu::{Fp3, Goldilocks};
 
-use crate::accumulate::{self, Claim, Instance, Witnessed};
 use crate::air::Trace;
 use crate::execution::ExecutionNoun;
 use crate::machine::{self, air::Machine};
 use crate::recursion::circuit::{air::CircuitAir, builder::Builder, trace};
+use crate::recursion::decide;
 use crate::recursion::ivc::{self, IvcProof};
 use crate::recursion::ops::{Native, Ops};
 use crate::recursion::params::Params;
@@ -17,7 +16,7 @@ use crate::recursion::perm::RATE;
 use crate::recursion::program;
 use crate::recursion::prove::{self, AccData, StepInput, pbar_nox, pbar_v};
 use crate::recursion::relation::{G_POINT, Relation, WORD};
-use crate::recursion::state::{self, AccV, CtxParts, State, ZeroWord};
+use crate::recursion::state::{self, CtxParts, State, ZeroWord};
 use crate::recursion::step;
 use crate::recursion::word::{Digest, Word};
 
@@ -58,23 +57,6 @@ fn unchecked_digest(st: &State) -> Digest {
     let mut o = Native::new();
     let d = state::digest(&mut o, st);
     [d[0].c0, d[1].c0, d[2].c0, d[3].c0]
-}
-
-/// `ivc::decider_instance` / `ivc::decider_transcript`, for the forger.
-fn decider_inputs(fin: &AccV<Fp3>, digest: Digest, vars: usize) -> (Instance, Transcript) {
-    let mut bytes = [0u8; 32];
-    for (i, x) in fin.root.iter().enumerate() {
-        bytes[8 * i..8 * i + 8].copy_from_slice(&x.c0.as_u64().to_le_bytes());
-    }
-    let mut claims = vec![Claim { point: fin.rho.clone(), value: fin.v0 }];
-    claims.extend(fin.ood.iter().map(|&(z, y)| Claim::univariate(z, vars, y)));
-    claims.extend(fin.spot.iter().map(|&(x, y)| Claim::univariate(x, vars, y)));
-    let inst = Instance { root: lens::Commitment(hemera::Hash::from_bytes(bytes)), ext: true, claims };
-    let mut t = Transcript::new(b"zheng-ivc-decide-v1");
-    for x in digest {
-        t.absorb_u64(x.as_u64());
-    }
-    (inst, t)
 }
 
 /// Where each state item lands in the state digest's sponge: `(block, lane)`.
@@ -177,13 +159,12 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
         sparse: &k.sparse,
     };
     let forge = |s: &State, x: Digest| -> IvcProof {
-        let (pf, data, _) = prove::prove(p, &input, s, x, &AccData::Zero(ZeroWord::new(&layout)), true).unwrap();
+        let (pf, data, _) = prove::prove(p, &input, s, x, &AccData::Zero(ZeroWord::new(&layout))).unwrap();
         let mut o = Native::batched();
         let fin = step::verify(&mut o, p, s, base_lift(x), &pf);
         o.finish().unwrap();
-        let AccData::Lens(data) = data else { panic!("last accumulator") };
-        let (inst, mut t) = decider_inputs(&fin.acc, unchecked_digest(&fin), p.vars);
-        let decider = accumulate::decide(&p.cfg, &Witnessed { instance: inst, data }, &mut t).unwrap();
+        let AccData::Word(word) = data else { panic!("last accumulator") };
+        let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, &k.kw, n).unwrap();
         IvcProof { log_rows: N, start: run.start as u64, segments: 2, chain, state: s.clone(), step: pf, decider }
     };
 
@@ -199,12 +180,20 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     let lanes = state_lanes(&s);
     let last = lanes.last().unwrap().0;
     let tail: Vec<usize> = (0..lanes.len()).filter(|&i| lanes[i].0 == last).collect();
-    assert_eq!(tail.len(), 3, "state sponge layout moved: {tail:?}");
     let pv = p.dims.pv;
-    s.pv.point[pv - 2] = Fp3::new(d[0], d[1], d[2]);
-    s.pv.point[pv - 1] = Fp3::new(d[3], Goldilocks::ZERO, Goldilocks::ZERO);
-    s.pv.value = pbar_v(&k.sparse, &s.pv.point, n);
-    assert_eq!(unchecked_digest(&s), d, "the unchecked digest is the raw lanes");
+    // the exact forgery needs the state's last sponge block to be
+    // pv.point[−2], pv.point[−1], pv.value (the layout of feat/ivc); other
+    // layouts keep the non-canonical state, which must be refused alike
+    let d = if tail.len() == 3 {
+        s.pv.point[pv - 2] = Fp3::new(d[0], d[1], d[2]);
+        s.pv.point[pv - 1] = Fp3::new(d[3], Goldilocks::ZERO, Goldilocks::ZERO);
+        s.pv.value = pbar_v(&k.sparse, &s.pv.point, n);
+        assert_eq!(unchecked_digest(&s), d, "the unchecked digest is the raw lanes");
+        d
+    } else {
+        s.pv.value = pbar_v(&k.sparse, &s.pv.point, n);
+        unchecked_digest(&s)
+    };
     assert!(!state::is_canonical(&s));
     let forged = forge(&s, d);
     let r = ivc::verify(&run.statement, &forged, &w);
@@ -213,7 +202,7 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     // the honest state of a base step in last position: refused by the
     // step count (the chain restarted at the base step)
     let x = unchecked_digest(&honest_prev);
-    assert_eq!(x, d);
+    assert_eq!(x, h.map(|v| b.value(v).c0));
     let restarted = forge(&honest_prev, x);
     let r = ivc::verify(&run.statement, &restarted, &w);
     assert!(r.is_err(), "a base step in the last position was accepted");

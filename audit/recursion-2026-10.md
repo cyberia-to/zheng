@@ -127,6 +127,9 @@ load 60–97; `rs/examples/ivc_flip`).
 
 ## 6. what is left, and the gap to ≤ 64 KB / ≤ 1 ms
 
+Follow-up: the wrap step is built — `audit/wrap-2026-10.md` (62.5–62.9 KB,
+verify 12–15 ms). The analysis below is the state of 2026-10-09.
+
 Where the bytes are (rate 1/16): the accumulation step's openings 140 KB
 (4 words × 53 spot checks, deduplicated paths of 21 levels), the decider
 104 KB (WHIR over an Fp3 word of ℓ = 21), the step's AIR messages 21 KB

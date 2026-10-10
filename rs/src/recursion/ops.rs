@@ -28,7 +28,25 @@ pub struct Gate {
 
 impl Gate {
     pub fn eval(&self, x: Fp3, y: Fp3, z: Fp3) -> Fp3 {
-        self.qm * x * (y + self.qs * z) + self.qa * x + self.qb * y + self.qc * z + self.qk
+        // the same value, skipping zero and unit coefficients (the native
+        // verifier runs every gate of its program)
+        let (zero, one) = (Fp3::ZERO, Fp3::ONE);
+        let scale = |c: Fp3, v: Fp3| if c == one { v } else { c * v };
+        let mut out = self.qk;
+        if self.qm != zero {
+            let t = if self.qs == zero { y } else { y + scale(self.qs, z) };
+            out += scale(self.qm, x * t);
+        }
+        if self.qa != zero {
+            out += scale(self.qa, x);
+        }
+        if self.qb != zero {
+            out += scale(self.qb, y);
+        }
+        if self.qc != zero {
+            out += scale(self.qc, z);
+        }
+        out
     }
 }
 
@@ -84,11 +102,24 @@ pub trait Ops {
     /// A Merkle node over the chain's last output (lanes 0..4) and a
     /// sibling: `bit = 0` puts the current digest left.
     fn node(&mut self, c: &mut Self::Chain, bit: Self::V, sibling: [Goldilocks; 4]);
+    /// A 4-ary Merkle node: the chain's last output sits at position
+    /// `bits[0] + 2·bits[1]`, the siblings fill the others in order.
+    fn node4(&mut self, c: &mut Self::Chain, bits: [Self::V; 2], siblings: [[Goldilocks; 4]; 3]);
     /// The chain's last output (lanes 0..4) equals `root`.
     fn digest_eq(&mut self, c: &Self::Chain, root: [Self::V; 4], what: &'static str);
     /// The canonical 64-bit decomposition of a base value; returns its
     /// low `want` bits.
     fn bits(&mut self, v: Self::V, want: usize) -> Vec<Self::V>;
+
+    /// A recorded expression graph at `inputs` (the circuit compiles it to
+    /// gates; a native interpreter evaluates it in the field — the same
+    /// polynomial).
+    fn graph(&mut self, g: &crate::air::num::Graph, inputs: &[Self::V]) -> Vec<Self::V>
+    where
+        Self: Sized,
+    {
+        super::expr::compile(self, g, inputs)
+    }
 }
 
 /// Native interpretation: values, and the first failed check.
@@ -108,6 +139,7 @@ pub struct Native {
 enum NOp {
     Block([Option<Goldilocks>; RATE]),
     Node(bool, [Goldilocks; 4]),
+    Node4(usize, [[Goldilocks; 4]; 3]),
 }
 
 /// A chain's state after its last block (`None` before the first).
@@ -195,6 +227,10 @@ impl Native {
                                 let (l, r) = if *right { (*sib, cur) } else { (cur, *sib) };
                                 perm::node_input(l, r)
                             }
+                            NOp::Node4(pos, sibs) => {
+                                let cur = [prev[0], prev[1], prev[2], prev[3]];
+                                perm::node4_input(perm::children4(cur, *pos, *sibs))
+                            }
                         }
                     })
                     .collect();
@@ -224,6 +260,10 @@ fn base_of(x: Fp3) -> Option<Goldilocks> {
 impl Ops for Native {
     type V = Fp3;
     type Chain = NChain;
+
+    fn graph(&mut self, g: &crate::air::num::Graph, inputs: &[Fp3]) -> Vec<Fp3> {
+        g.eval(inputs)
+    }
 
     fn value(&self, v: Fp3) -> Fp3 {
         v
@@ -347,6 +387,26 @@ impl Ops for Native {
         };
         let (l, r) = if right { (sibling, cur) } else { (cur, sibling) };
         c.state = Some(if self.error.is_none() { perm::node_state(l, r) } else { perm::node_input(l, r) });
+    }
+    fn node4(&mut self, c: &mut NChain, bits: [Fp3; 2], siblings: [[Goldilocks; 4]; 3]) {
+        let mut pos = 0;
+        for (k, &b) in bits.iter().enumerate() {
+            if b == Fp3::ONE {
+                pos |= 1 << k;
+            } else if b != Fp3::ZERO {
+                self.fail("a Merkle direction is not a bit");
+            }
+        }
+        if let Some(ops) = &mut c.ops {
+            ops.push(NOp::Node4(pos, siblings));
+            return;
+        }
+        let s = c.state.expect("a block");
+        let mut x = perm::node4_input(perm::children4([s[0], s[1], s[2], s[3]], pos, siblings));
+        if self.error.is_none() {
+            perm::permute(&mut x);
+        }
+        c.state = Some(x);
     }
     fn digest_eq(&mut self, c: &NChain, root: [Fp3; 4], what: &'static str) {
         if let Some(ops) = &c.ops {

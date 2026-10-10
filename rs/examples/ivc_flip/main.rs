@@ -31,7 +31,7 @@ fn main() {
         Some(path) if std::path::Path::new(path).exists() => std::fs::read(path).expect("read"),
         other => {
             let proof = ivc::prove_run(&run, &whir).expect("prove");
-            let b = proof.to_bytes(&key.params);
+            let b = proof.to_bytes(&key);
             if let Some(path) = other {
                 std::fs::write(path, &b).expect("write");
             }

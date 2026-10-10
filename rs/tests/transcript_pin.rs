@@ -2,6 +2,9 @@
 //! (zerocheck, shift reduction, accumulation sumcheck — the provers the
 //! recursion profile made generic over `fs::FiatShamir`) yields exactly the
 //! proofs it yielded before that refactor (`feat/accumulation`, #51).
+//! With the opcode coverage (#52) merged, the machine relation itself
+//! changed: the pins are #52's prover output (`feat/machine-opcodes`
+//! 9d758ed, checked byte for byte), which the recursion refactor keeps.
 
 mod common;
 
@@ -30,5 +33,5 @@ fn machine_proofs_are_byte_identical_to_the_pre_recursion_prover() {
     assert_eq!(many, PIN_TREE);
 }
 
-const PIN_ADD: &str = "196debd33bb9ac1d1cdd83b4ba8fe62b706d7b47b20b0f720b377031962a16c4";
-const PIN_TREE: &str = "ce2fd453e771029ec6cbf5f663e1a8099dab10f314f15280020d8cb45797dcbe";
+const PIN_ADD: &str = "ab2994916b45413cec6c63efd4a2086eb2637545786643e3fce0a6268909d812";
+const PIN_TREE: &str = "46c1735da6ca518d195f43fc9b1076d3354758bdd0d5cb9a370e081f21815b86";

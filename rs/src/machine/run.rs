@@ -4,9 +4,10 @@ use std::collections::BTreeMap;
 
 use nebu::Goldilocks;
 
-use super::exec::{Builder, Entry, MachineError, b1_flag, b2_of_b1, frame_flag, g, op_of};
+use super::exec::{Builder, Entry, MachineError, frame_flag, g, op_of};
 use super::hemera::{Tables, head4, hop_input};
 use super::layout::*;
+use super::run_ops::{self, Ctx};
 
 pub(crate) enum State {
     Eval { obj: u64, fml: u64, k: u64, d: u64 },
@@ -47,15 +48,15 @@ impl Digests {
     }
 }
 
-fn u(x: Goldilocks) -> u64 {
+pub(crate) fn u(x: Goldilocks) -> u64 {
     x.as_u64()
 }
 
-fn inv_or_zero(x: Goldilocks) -> Goldilocks {
+pub(crate) fn inv_or_zero(x: Goldilocks) -> Goldilocks {
     if x == Goldilocks::ZERO { Goldilocks::ZERO } else { x.inv() }
 }
 
-fn state(b: &mut Builder, r: usize, obj: u64, x: u64, k: u64, d: u64, cyc: u64) {
+pub(crate) fn state(b: &mut Builder, r: usize, obj: u64, x: u64, k: u64, d: u64, cyc: u64) {
     b.set(r, OBJ, obj);
     b.set(r, X, x);
     b.set(r, K, k);
@@ -66,7 +67,7 @@ fn state(b: &mut Builder, r: usize, obj: u64, x: u64, k: u64, d: u64, cyc: u64) 
 }
 
 /// hash_data(h): 4 atoms then 3 pairs; returns the top pair's id.
-fn hash_data(b: &mut Builder, h: [Goldilocks; 4], k: u64, cyc: u64) -> u64 {
+pub(crate) fn hash_data(b: &mut Builder, h: [Goldilocks; 4], k: u64, cyc: u64) -> u64 {
     let ra = b.row(K_HDA);
     state(b, ra, 0, 0, k, 0, cyc);
     let a0 = b.alloc;
@@ -83,41 +84,46 @@ fn hash_data(b: &mut Builder, h: [Goldilocks; 4], k: u64, cyc: u64) -> u64 {
     a0 + 6
 }
 
-/// Axis `a ≥ 2` from `obj`: AX1 rows peel `a` into the reversed path `R`,
-/// AX2 rows walk `R`; returns the node.
+/// `e = [cnt = k]` and its witness in columns `(e, i)`.
+pub(crate) fn indicator(b: &mut Builder, r: usize, e: usize, i: usize, cnt: u64, k: u64) {
+    b.set(r, e, u64::from(cnt == k));
+    b.setf(r, i, inv_or_zero(g(cnt) - g(k)));
+}
+
+/// Axis `a ≥ 2` from `obj`: one AXW row per level, the most significant
+/// path bit first; returns the node.
 fn axis(b: &mut Builder, obj: u64, a: u64, k: u64, cyc: u64) -> Result<u64, MachineError> {
-    if a >= 1 << 32 {
-        return Err(MachineError::Unsupported("axis address ≥ 2^32"));
-    }
-    let (mut rem, mut rev, mut cnt) = (a, 1u64, 0u64);
-    while rem != 1 {
-        let r = b.row(K_AX1);
-        state(b, r, obj, rem, k, 0, cyc);
-        let bit = rem & 1;
-        b.set(r, A_R, rev);
-        b.set(r, A_CNT, cnt);
-        b.setf(r, A_CINV, inv_or_zero(g(cnt) - g(AXIS_LEVELS)));
+    let path = run_ops::alias(a);
+    let levels = u64::from(63 - path.leading_zeros());
+    let (mut node, mut x) = (obj, 1u64);
+    let (mut ph, mut ah, mut ol) = (1u64, 1u64, 0u64);
+    for cnt in 0..levels {
+        let bit = (path >> (levels - 1 - cnt)) & 1;
+        let r = b.row(K_AXW);
+        state(b, r, node, x, k, a, cyc);
         b.set(r, A_BIT, bit);
-        rev = 2 * rev + bit;
-        rem >>= 1;
-        cnt += 1;
-    }
-    let (mut node, mut cnt) = (obj, 0u64);
-    while rev != 1 {
-        let r = b.row(K_AX2);
-        state(b, r, node, rev, k, 0, cyc);
-        let c = rev & 1;
         b.set(r, A_CNT, cnt);
-        b.setf(r, A_CINV, inv_or_zero(g(cnt) - g(AXIS_LEVELS)));
-        b.set(r, A_BIT, c);
+        b.setf(r, A_C63, (g(cnt) - g(AXIS_LEVELS)).inv());
+        b.set(r, A_PH, ph);
+        b.set(r, A_AH, ah);
+        b.set(r, A_OL, ol);
+        indicator(b, r, A_E30, A_I30, cnt, 30);
+        indicator(b, r, A_E62, A_I62, cnt, 62);
         let (l, rr) = match b.entry(node) {
             Some(Entry::Pair(l, rr)) => (l, rr),
             _ => return Err(MachineError::Native("axis error")),
         };
         b.read(r, 0, TAG_PAIR, node, [l, rr, 0, 0]);
-        node = if c == 1 { rr } else { l };
-        rev >>= 1;
-        cnt += 1;
+        node = if bit == 1 { rr } else { l };
+        x = 2 * x + bit;
+        if ph == 1 {
+            ah &= bit;
+        } else {
+            ol |= bit;
+        }
+        if cnt == 30 {
+            ph = 0;
+        }
     }
     Ok(node)
 }
@@ -127,6 +133,7 @@ pub(crate) fn run(
     b: &mut Builder,
     dg: &mut Digests,
     t: &Tables,
+    ctx: &mut Ctx<'_>,
     fml: u64,
     obj: u64,
     budget: u64,
@@ -155,17 +162,13 @@ pub(crate) fn run(
                     _ => return Err(MachineError::Native("malformed formula tag")),
                 };
                 b.read(r, 1, TAG_ATOM, tid, [tag, 0, 0, 0]);
-                let (op, cost) = match op_of(tag) {
-                    Some(x) => x,
-                    None if tag < 18 => return Err(MachineError::Unsupported("opcode")),
-                    None => return Err(MachineError::Native("unknown opcode")),
-                };
+                let (op, cost) = op_of(tag).ok_or(MachineError::Native("unknown opcode"))?;
                 b.set(r, op, 1);
                 cyc += cost;
                 if cyc > budget {
                     return Err(MachineError::Budget);
                 }
-                eval(b, dg, r, op, obj, body, k, d, cyc)?
+                eval(b, dg, r, op, tag, tid, obj, body, k, d, cyc)?
             }
             State::Ret { val, k } => {
                 let r = b.row(K_RET);
@@ -183,7 +186,7 @@ pub(crate) fn run(
                 let f = frame_flag(tag).expect("known frame");
                 b.set(r, f, 1);
                 b.read(r, 0, tag, k, p);
-                ret(b, dg, t, r, f, p, val, cyc)?
+                ret(b, dg, t, ctx, r, f, tag, p, val, cyc)?
             }
         };
     }
@@ -195,6 +198,8 @@ fn eval(
     dg: &mut Digests,
     r: usize,
     op: usize,
+    tag: u64,
+    tid: u64,
     obj: u64,
     body: u64,
     k: u64,
@@ -230,20 +235,26 @@ fn eval(
             b.alloc_frame(r, 3, fid, tag, [0, 0, 0, k]);
             State::Eval { obj, fml: body, k: fid, d: d + 1 }
         }
+        OP_NOT => {
+            let fid = b.fresh();
+            b.alloc_frame(r, 3, fid, TAG_B2 + T_NOT, [tid, obj, 0, k]);
+            State::Eval { obj, fml: body, k: fid, d: d + 1 }
+        }
         _ => {
             let (f, gg) = match b.entry(body) {
                 Some(Entry::Pair(f, gg)) => (f, gg),
                 _ => return Err(MachineError::Native("malformed body")),
             };
             b.read(r, 2, TAG_PAIR, body, [f, gg, 0, 0]);
-            let tag = match op {
+            let ftag = match op {
                 OP_COMPOSE => TAG_COMP1,
                 OP_CONS => TAG_CONS1,
                 OP_BRANCH => TAG_BR,
-                _ => b1_flag(op).1,
+                OP_CALL => TAG_CALL1,
+                _ => TAG_B1 + tag,
             };
             let fid = b.fresh();
-            b.alloc_frame(r, 3, fid, tag, [gg, obj, d, k]);
+            b.alloc_frame(r, 3, fid, ftag, [gg, obj, d, k]);
             State::Eval { obj, fml: f, k: fid, d: d + 1 }
         }
     })
@@ -254,22 +265,30 @@ fn ret(
     b: &mut Builder,
     dg: &mut Digests,
     t: &Tables,
+    ctx: &mut Ctx<'_>,
     r: usize,
     f: usize,
+    tag: u64,
     p: [u64; 4],
     val: u64,
     cyc: u64,
 ) -> Result<State, MachineError> {
     let [x, fobj, fd, parent] = p;
     Ok(match f {
-        F_CONS1 | F_COMP1 | F_B1ADD | F_B1SUB | F_B1MUL | F_B1EQ => {
+        F_CONS1 | F_COMP1 | F_B1 => {
             let fid = b.fresh();
-            let (tag, pay) = match f {
+            let (ntag, pay) = match f {
                 F_CONS1 => (TAG_CONS2, [val, 0, 0, parent]),
                 F_COMP1 => (TAG_COMP2, [val, 0, fd, parent]),
-                _ => (b2_of_b1(f).1, [val, 0, 0, parent]),
+                _ => {
+                    let op = tag - TAG_B1;
+                    b.set(r, R_OP, op);
+                    let y = B1_OPS[..5].iter().fold(Goldilocks::ONE, |a, &o| a * (g(op) - g(o)));
+                    b.setf(r, R_OPY, y);
+                    (tag - TAG_B1 + TAG_B2, [val, fobj, 0, parent])
+                }
             };
-            b.alloc_frame(r, 1, fid, tag, pay);
+            b.alloc_frame(r, 1, fid, ntag, pay);
             State::Eval { obj: fobj, fml: x, k: fid, d: fd + 1 }
         }
         F_CONS2 => {
@@ -288,22 +307,37 @@ fn ret(
             b.read(r, 2, TAG_PAIR, x, [yes, no, 0, 0]);
             State::Eval { obj: fobj, fml: if z { yes } else { no }, k: parent, d: fd + 1 }
         }
-        F_B2ADD | F_B2SUB | F_B2MUL => {
+        F_B2AR => {
             let ua = b.atom(x)?;
             let wa = b.atom(val)?;
             b.read(r, 1, TAG_ATOM, x, [ua, 0, 0, 0]);
             b.read(r, 2, TAG_ATOM, val, [wa, 0, 0, 0]);
+            let op = tag - TAG_B2;
+            b.set(r, R_OP, op);
             let (a, c) = (g(ua), g(wa));
-            let res = match f {
-                F_B2ADD => a + c,
-                F_B2SUB => a - c,
-                _ => a * c,
+            let (sel, res) = match op {
+                5 => (R_SADD, a + c),
+                6 => (R_SSUB, a - c),
+                _ => (R_SMUL, a * c),
             };
+            b.set(r, sel, 1);
             let id = b.fresh();
             b.alloc_noun(r, 3, id, Entry::Atom(u(res)));
             State::Ret { val: id, k: parent }
         }
         F_B2EQ => super::run_eq::eq(b, dg, r, x, val, parent, cyc)?,
+        F_B2W => run_ops::word(b, r, tag - TAG_B2, x, val, parent, cyc)?,
+        F_B2LOOK => run_ops::look(b, dg, ctx, r, x, val, fobj, parent, cyc)?,
+        F_CALL1 => run_ops::call(b, ctx, r, p, val, cyc)?,
+        F_CALL2 => {
+            let v = match b.entry(val) {
+                Some(Entry::Atom(0)) => 0,
+                Some(Entry::Atom(v)) if run_ops::call_accept() => v,
+                _ => return Err(MachineError::Native("call rejected")),
+            };
+            b.read(r, 1, TAG_ATOM, val, [v, 0, 0, 0]);
+            State::Ret { val: x, k: parent }
+        }
         F_UHASH => {
             let h = dg.hop(b, t, val);
             b.need_hop.push(val);
