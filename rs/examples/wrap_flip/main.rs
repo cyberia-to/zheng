@@ -97,7 +97,7 @@ fn main() {
         v[5],
         vs[5]
     );
-    if !env("ZHENG_FLIP", true) {
+    if std::env::var("ZHENG_FLIP").is_ok_and(|v| v == "0") {
         return;
     }
     let stride: usize = env("ZHENG_STRIDE", 1);
