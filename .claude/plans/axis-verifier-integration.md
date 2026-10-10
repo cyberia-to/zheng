@@ -1,5 +1,7 @@
 # axis (pattern 0) + look (pattern 17): verifier_steps() integration
 
+> superseded: written for the 0.3/0.4 folded trace API (feature `legacy`, unsound, deleted in phase 5); its size and decider figures are struck below. the uniform step relation and accumulation are replanned in soft3 `proposals/proof-system-repair.md` (phase 3, zheng specs/machine.md).
+
 ## status: approved 2026-09-07 — part of trident soft3-release M4
 
 ## context
@@ -331,8 +333,9 @@ coordination. B's path stays: pattern_axis gains 4 eq constraints on r11-r14.
 
 **what the spec says** (`specs/constraints.md` §"the combined constraint"):
 one step relation `C(t) = Σ_p selector_p(r0_t) · C_p(t)` over the 18
-patterns — ONE CCS structure for every trace row, therefore ONE HyperNova
-accumulator, ONE decider, ~2 KiB per proof regardless of program.
+patterns — ONE CCS structure for every trace row, therefore one folding
+accumulator and one decider. (the spec's per-proof size claim is struck:
+it was never real, and the fold it relied on was never checked.)
 
 **what commit() does**: builds a distinct CCS instance per pattern (and
 per Poseidon2 round constant set, per binding run) and folds
@@ -363,8 +366,8 @@ count is the bug.
    25 rows of a hash block. Binding eq-steps (VZ_LEN=3) stay a second,
    single accumulator (the original two-accumulator design) — or are
    widened into the universal row with their own selector. Result:
-   2 groups (main + bindings), ~4 KB per proof, constant in program size.
-   Decider cost per the spec's ~825 constraints. This also makes the
+   2 groups (main + bindings), constant in program size (the size
+   estimate is struck; no decider was ever measured). This also makes the
    option-B residual (binding steps ↔ main witness) expressible: the
    binding can reference the universal row's committed registers directly.
 

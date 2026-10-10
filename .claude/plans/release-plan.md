@@ -1,8 +1,10 @@
 # zheng: release-grade implementation plan
 
+> superseded: plan for the 0.3/0.4 folded trace API, now behind feature `legacy` (unsound) and deleted in phase 5; its spec targets were never real. current plan: soft3 `proposals/proof-system-repair.md`; bits per component: specs/soundness.md; measured figures: audit/succinct-profile-2026-10.md.
+
 ## goal
 
-working prover hitting spec numbers: ~2 KiB proof, ~5 μs verify, ~825-constraint decider.
+working prover hitting the spec numbers of the time (struck: those targets rested on an unsound design — see the banner).
 lens from day one.
 
 ## module structure
@@ -124,10 +126,9 @@ tests:
 tests:
 - prove(valid_trace) → verify always accepts
 - one row modified → verify rejects
-- proof size within 10% of ~2 KiB at N=2^20
-- verify time within 2x of ~5 μs
+- ~~proof size / verify time targets from specs/verifier.md~~ (struck: unreachable for a hash-only proof)
 
-### phase 5: HyperNova folding (3 sessions)
+### phase 5: folding (3 sessions) — retired, never sound
 
 `src/folding/fold.rs`:
 - cross_term(acc, instance) per specs/recursion.md
@@ -142,14 +143,14 @@ tests:
 - commit(): execute nox → trace → CCS → SuperSpartan → (Proof, Accumulator)
 - open(): Brakedown opening at sumcheck output point
 - verify(): standalone verifier
-- fold(): HyperNova fold step
+- fold(): fold step (unchecked — the reason this path is retired)
 - decide(): decider for accumulated folds
 
 tests:
 - single fold: fold(empty_acc, instance) → decide() → verifies
 - 100-fold sequence: correct proof at the end
 - mismatched instance → decide() rejects
-- Accumulator serialization round-trip (~200 bytes)
+- Accumulator serialization round-trip
 
 ### phase 6: test vectors + property tests (3 sessions)
 
@@ -168,15 +169,11 @@ property tests:
 
 targets from specs/verifier.md:
 
-| metric | spec | acceptable |
-|--------|------|------------|
-| proof size (N=2^20) | ~2 KiB | ≤ 2.5 KiB |
-| verify time | ~5 μs | ≤ 10 μs |
-| decider constraints | ~825 | ≤ 1000 |
+struck — the spec targets of this table were never real. the repair's goal is a proof ≤ 64 KB, verify ≤ 1 ms, constant in the number of steps; measured today (succinct, WHIR): 15,921 B / 7.96 ms for one hemera hash, 71,081 B / 270 ms at 2^20.
 
 optimization levers in order of impact:
 1. batch lens opening: all û_i share one Brakedown opening
-2. algebraic Fiat-Shamir: replace hemera in inner rounds with field arithmetic
+2. ~~replace hemera in inner Fiat–Shamir rounds with field arithmetic~~ (struck: unsound — every challenge comes from the hemera transcript)
 3. CCS jet: precomputed constraint eval for common pattern combinations
 4. rayon parallel bookkeeping fold for N > 2^18
 

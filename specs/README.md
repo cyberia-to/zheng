@@ -3,11 +3,25 @@ tags: computer science, cryptography
 ---
 # zheng: polynomial proof system
 
-one IOP: [[SuperSpartan]] + [[sumcheck]] (CCS constraints, O(N) prover, O(log N) verifier).
-one folding: [[HyperNova]] (CCS-native, ~30 field ops per fold, one decider at the end).
-one hash: [[hemera]] (~3 calls per proof — binding, Fiat-Shamir seed, domain separation).
-five [[lens|lenses]]: one trait, five algebras — each algebra sees through its own optic.
-five operations: **commit**, **open**, **verify**, **fold**, **decide**.
+one field: Goldilocks ([[nebu]]) for everything committed, its cubic extension Fp3 for every challenge and evaluation point.
+one hash: [[hemera]] (Poseidon2 over Goldilocks) — Merkle trees and Fiat–Shamir, used as a random oracle.
+one code: Reed–Solomon over Goldilocks, behind the [[lens]] PCS trait (WHIR shipped; TensorRs the bake-off loser).
+one IOP: [[SuperSpartan]] + [[sumcheck]] over CCS, challenges in Fp3.
+one wire format: the `ZHENGPF1` envelope (magic · version · profile · canonical body).
+
+zheng proofs are not STARKs: no AIR, no FRI. soundness of every production component is recorded, with its assumption and bits, in the [[soundness]] ledger.
+
+## profiles
+
+| envelope profile | name | what the verifier checks | size / verify (measured) |
+|---|---|---|---|
+| 0 | public certificate v3 | recompiles the CCS from the program, pins `z[0] = 1`, io and cycles, checks every row of the disclosed witness exactly; error 0 for the compiled relation | hash.tri 6,463 B envelope; linear, not succinct |
+| 3 | state-public v3 | as profile 0, plus every read authenticated against the statement's own state root (`StateEvidence`) | linear |
+| 1 | succinct | Spartan over Fp3, then one WHIR opening of the committed witness (rate 1/64, folding 4, 24 grinding bits); 128 proven bits | hash.tri 16,148 B envelope, verify 7.96 ms; 2^20 relation 71,081 B, 270 ms |
+| 2 | zk (veil; MPC-in-the-head fallback) | Libra-masked Spartan over Fp3 + one hiding RS tensor commitment opened by one zero-knowledge linear test; 128.2 proven bits | secret-preimage hash 63.9 KB, verify 10.0 ms (4.1 ms with a cached verifying key) |
+| 4 | machine proof (accumulation) | lands with phase 3: the nox machine as one step relation, accumulated per step, decided by one WHIR opening | goal ≤ 64 KB, constant in steps; measured TODO(F-numbers) |
+
+measurements: [succinct bake-off](../audit/succinct-profile-2026-10.md), [zk profile](../audit/zk-profile-2026-10.md) (Apple M4 Max, shared machine). the goal (owner, 2026-10-09): any nox computation → proof ≤ 64 KB, post-quantum (hash-only), verify ≤ 1 ms, constant in the number of steps. the succinct profile misses the size goal at 2^20 by 11 % and the verify goal everywhere today.
 
 ## spec pages
 
@@ -15,79 +29,55 @@ Implementation reviews and validation evidence are indexed in
 [audit](../audit/README.md).
 
 - [[soundness]] — the soundness ledger: one row per production component
-- [[execution]] — public and authenticated-state profile v3, the `ZHENGPF1` envelope
-- [[lens]] — polynomial commitment (separate repo: ~/git/lens/)
-- [[sumcheck]] — the engine: O(N) prover reduces exponential sum to one evaluation
-- [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one Lens opening
-- [[recursion]] — HyperNova folding + proof-carrying computation + cross-algebra
-- [[accumulator]] — universal accumulator: fold all 5 structural sync layers
-- [[decider]] — decide(acc) → proof: ~825 constraints, O(1) cost regardless of N
+- [[execution]] — profiles 0–3, verifying keys, the `ZHENGPF1` envelope
+- [[lens]] — polynomial commitment (separate repo; `specs/whir.md`, `specs/tensor-rs.md`)
+- [[sumcheck]] — the engine: O(N) prover reduces an exponential sum to one evaluation
+- [[superspartan]] — CCS IOP via sumcheck: any-degree constraints, one PCS opening
+- accumulation and machine (`accumulation.md`, `machine.md`) — phase 3, landing in this release: hash-based accumulation of RS evaluation claims (ARC/WARP-style) and the nox step relation
+- [[recursion]] — superseded: the legacy fold; recursion proper is composition only
+- [[accumulator]] — superseded: the legacy universal accumulator
+- [[decider]] — superseded: the legacy decider, kept for its soundness residuals
 - [[tensor]] — tensor compression for O(√N) prover memory
-- [[verifier]] — standalone verification algorithm: sumcheck + Brakedown opening
+- [[verifier]] — what each profile's verifier does
 - [[constraints]] — CCS format, pattern table, state operations
-- [[transcript]] — Fiat-Shamir via hemera (~3 calls)
-- [[api]] — commit/open/verify/fold/decide entry points
-- [[phi-spmv]] — φ* SpMV circuit: multi-row CCS SpMV + tri-kernel prove_phi_star
+- [[transcript]] — Fiat–Shamir via hemera, Fp3 challenges
+- [[api]] — the public API: certify / prove / verify / envelope / verifying keys
+- [[phi-spmv]] — φ* SpMV circuit (legacy feature)
 
 ## architecture
 
 ```
 zheng
-├── IOP layer (field-generic, shared across all algebras)
-│   ├── SuperSpartan          CCS constraint system
-│   ├── sumcheck              exponential sum reduction
-│   └── HyperNova             folding + composition
+├── execution (Rust: execution::*)
+│   ├── relation compiler      nox program + subject shape → CCS
+│   ├── certificate (v3)       profile 0 — exact row check
+│   ├── state (v3)             profile 3 — reads authenticated under the state root
+│   ├── succinct               profile 1 — Spartan/Fp3 + one lens opening
+│   ├── veil                   profile 2 — masked Spartan + hiding RS tensor opening
+│   ├── zk (MITH)              profile 2 scheme 1 — fallback, linear size
+│   └── vk                     verifying keys, digest = hemera tree root of the relation
 │
-├── lens layer (external: ~/git/lens/)
-│   ├── Brakedown lens        (nebu, F_p)       expander-graph codes, Merkle-free
-│   ├── Binius lens           (kuro, F₂)        binary Reed-Solomon
-│   ├── Ikat lens       (jali, R_q)       NTT batch, automorphisms, noise tracking
-│   ├── Isogeny lens          (genies, F_q)     Brakedown over isogeny field
-│   └── Tropical lens         (trop, min+)      witness-verify, delegates to Brakedown
+├── IOP layer
+│   ├── SuperSpartan           CCS constraint system
+│   └── sumcheck               generic over the challenge field (Goldilocks | Fp3)
+│
+├── lens layer (external repo)
+│   ├── WHIR                   shipped (id 1)
+│   └── TensorRs               bake-off loser (id 2), decodable until phase 5
 │
 ├── hash layer
-│   └── hemera                ~3 calls total
-│                             Fiat-Shamir + binding hash
+│   └── hemera                 Merkle trees + Fiat–Shamir (random oracle)
 │
-├── selector CCS (cross-algebra dispatch)
-│   ├── sel_Fp                Goldilocks rows
-│   ├── sel_F2                binary rows
-│   ├── sel_ring              ring-structured rows
-│   ├── sel_Fq                isogeny rows
-│   └── sel_trop              tropical witness-verify rows
+├── accumulation (phase 3, landing in this release)
+│   └── ARC/WARP-style         per step: batch claims by sumcheck, commit one word,
+│                              out-of-domain samples, a few queries; decider = one WHIR opening
 │
-└── composition
-    └── HyperNova folding     ~30 field ops + 1 hemera hash per fold
-        └── decider           one SuperSpartan + sumcheck + Brakedown proof
-                              covers ALL algebras, runs once in F_p
+└── legacy (feature `legacy`, off by default, unsound, removed in phase 5)
+    └── folded trace API       commit/open/verify/fold/decide, universal CCS, phi
 ```
 
-## five lenses
+## the legacy fold
 
-specs live in [[lens]] repo (~/git/lens/).
+the 0.3/0.4 folded trace API (`commit`, `open`, `verify_eval`, `verify`, `fold`, `decide`, the universal CCS, phi) compiles only with the cargo feature `legacy`. it is unsound — the fold is never checked, the statement is unbound, the constant wire is free, and the Brakedown code distance is unproven ([[decider]] §soundness). it folded with a homomorphic-commitment protocol that hemera, a hash, cannot support; accumulation replaces it. recursion proper (a verifier as a nox program) is for composition only, never for size.
 
-| lens | algebra | repo | commitment | verification | primary workloads |
-|------|---------|------|-----------|-------------|-------------------|
-| Brakedown | F_p | [[nebu]] | expander-graph linear code | ~660 F_p ops, ~5 μs | proofs, hashing, state |
-| Binius | F₂ | [[kuro]] | binary Reed-Solomon | ~660 F₂ ops | quantized inference, SpMV |
-| Ikat | R_q | [[jali]] | NTT-batched Brakedown | ring-structured | FHE bootstrapping, lattice KEM |
-| Isogeny | F_q | [[genies]] | Brakedown over F_q | ~660 F_q ops | stealth, VDF, blind signatures |
-| Tropical | min,+ | [[trop]] | witness-verify via Brakedown | F_p dual certificate | shortest path, assignment, Viterbi |
-
-## five operations
-
-| operation | what it does | cost |
-|-----------|-------------|------|
-| **commit** | encode trace as multilinear polynomial via Lens backend | O(N) field ops |
-| **open** | prove evaluation at sumcheck output point | O(N) field ops, proof ~1.3 KiB |
-| **verify** | check sumcheck transcript + Lens opening | O(λ log log N) field ops, ~5 μs |
-| **fold** | absorb one CCS instance into running accumulator | ~30 field ops + 1 hemera hash |
-| **decide** | produce final proof from accumulated folds | ~825 constraints (CCS jet + batch + algebraic FS) |
-
-## cross-algebra composition
-
-any nox program can mix algebras. each sub-trace proves via its native Lens. HyperNova folds all into one F_p accumulator. one decider, one proof, regardless of how many algebras participated.
-
-boundary cost: ~766 F_p constraints per algebra crossing. at 5 algebras max: ~3,830 overhead for a fully heterogeneous computation. negligible vs execution cost.
-
-for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/).
+for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/). canonical design record: [[soft3/proposals/proof-system-repair|proof-system repair]].

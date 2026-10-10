@@ -4,11 +4,9 @@ crystal-type: entity
 crystal-domain: computer science
 alias: Weights Help Improving Rate
 ---
-> **NOTE:** this document describes the historical WHIR (legacy) lens. zheng has evolved to use recursive Brakedown instead of WHIR. see reference/ for the current architecture.
+# WHIR
 
-# WHIR (legacy)
-
-WHIR (Weights Help Improving Rate) was the bootstrap lens for zheng before [[Brakedown]] replaced it. this page documents the historical lens for reference. the active lens specification is [[polynomial-commitment]].
+WHIR (Weights Help Improving Rate) is the polynomial commitment of zheng's succinct profile (envelope profile 1): the winner of the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] for both size classes, shipped at rate 1/64, folding factor k = 4, 24 grinding bits. it was also zheng's first lens; the expander-code commitment that briefly replaced it is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the implementation lives in [[lens]] (`Whir`, PCS id 1; contract `lens/specs/whir.md`).
 
 Weights Help Improving Rate. an interactive oracle proof of proximity for constrained Reed-Solomon codes that simultaneously serves as a multilinear polynomial commitment scheme. Arnon, Chiesa, Fenzi, Yogev (EUROCRYPT 2025). ePrint 2024/1586.
 
@@ -17,17 +15,17 @@ Weights Help Improving Rate. an interactive oracle proof of proximity for constr
 WHIR provides three operations:
 
 ```
-Brakedown_commit(f) → C
+WHIR_commit(f) → C
   input:  multilinear polynomial f(x₁, ..., x_k) over Goldilocks
   output: commitment C (hemera Merkle root over evaluation table)
   cost:   O(2^k log 2^k) hemera hashes
 
-Brakedown_open(f, r) → (v, π)
-  input:  polynomial f, evaluation point r ∈ F^k
+WHIR_open(f, r) → (v, π)
+  input:  polynomial f, evaluation point r ∈ Fp3^k (zheng draws evaluation points in the cubic extension)
   output: value v = f(r), proximity proof π
   cost:   O(2^k) field ops + O(log² 2^k) hemera hashes
 
-Brakedown_verify(C, r, v, π) → accept/reject
+WHIR_verify(C, r, v, π) → accept/reject
   input:  commitment C, point r, claimed value v, proof π
   output: accept if f(r) = v and f is close to a degree-bounded polynomial
   cost:   O(log² 2^k) hemera hashes + field ops
@@ -36,7 +34,7 @@ Brakedown_verify(C, r, v, π) → accept/reject
 ## verification algorithm
 
 ```
-Brakedown_verify(C, r, v, proof):
+WHIR_verify(C, r, v, proof):
   1. init transcript T from C
   2. for each folding round i = 1..log(N):
      a. absorb prover's round message into T
@@ -70,7 +68,7 @@ the evaluation domain is a multiplicative coset of a 2-adic subgroup of the [[Go
 
 rate ρ is the inverse of the blowup factor. ρ = 1/2 means the evaluation domain is 2× the polynomial degree; ρ = 1/4 means 4×. lower rate increases proof size but improves soundness per query.
 
-for a trace with 2^n rows and 2^4 columns (16 columns), the polynomial has 2^{n+4} evaluations. the Reed-Solomon evaluation domain size is 2^{n+4} / ρ. at ρ = 1/2 this gives a domain of size 2^{n+5}.
+in zheng the committed polynomial is the witness `w̃` of the compiled relation, with 2^ℓ evaluations; the Reed–Solomon evaluation domain has size 2^ℓ / ρ. at the shipped ρ = 1/64 that is 2^{ℓ+6}.
 
 domain generator: a primitive 2^k-th root of unity ω in Goldilocks. the Goldilocks field has multiplicative order p - 1 = 2^32 × (2^32 - 1), so primitive 2^k-th roots of unity exist for k up to 32. the subgroup ⟨ω⟩ = {ω^0, ω^1, ..., ω^{2^k - 1}} forms the base domain.
 
@@ -82,7 +80,7 @@ a WHIRProof contains:
 
 ```
 WHIRProof {
-  rounds: [RoundData; log₂(N)]
+  rounds: [RoundData; log₂(N) / k]           // k variables folded per round
   final_value: F                          // constant polynomial value after all folds
 }
 
@@ -99,21 +97,22 @@ number of queries per round: security_bits / log₂(1/ρ). at 100-bit security w
 
 ## parameters
 
-| parameter | 100-bit security | 128-bit security |
-|---|---|---|
-| argument size (standalone) | ~101 KiB | ~157 KiB |
-| verification time | ~290 μs | ~1.0 ms |
-| verifier hashes | ~1,800 | ~2,700 |
-| folding rounds | log₂(N) | log₂(N) |
-| queries per round | determined by security target | determined by security target |
-| field | [[Goldilocks field]] (p = 2^64 − 2^32 + 1) | [[Goldilocks field]] |
-| hash | [[hemera]] (Poseidon2) | [[hemera]] (Poseidon2) |
+zheng ships one parameter set for both size classes (lens `WhirConfig`, Johnson-bound decoding):
 
-the standalone WHIR argument size (~101 KiB at 100-bit) is larger than the full [[whirlaway]] proof (~60 KiB at 100-bit). the difference: Whirlaway's multilinear encoding and [[SuperSpartan]] sumcheck reduce the WHIR opening to ~58 KiB. see [[whirlaway]] for the composed proof breakdown.
+| parameter | value |
+|---|---|
+| rate ρ | 1/64 |
+| folding factor k | 4 |
+| grinding | 24 bits |
+| challenge and evaluation field | Fp3 over [[Goldilocks field|Goldilocks]] (p³ ≈ 2^192) |
+| hash | [[hemera]] (Poseidon2 over Goldilocks), Merkle trees and Fiat–Shamir |
+| proven soundness | ≥ 128 bits, round-by-round, grinding included (the policy rejects any set below 128) |
+
+measured inside the succinct profile (Apple M4 Max, shared machine, `audit/succinct-profile-2026-10.md`): one hemera hash (`hash.tri`, 2^10 committed slots) — 15,921 B proof, 7.96 ms verify; synthetic 2^20-row relation — 71,081 B, 270 ms verify. the goal of the repair is ≤ 64 KB and verify ≤ 1 ms; neither is met at 2^20 yet. bit-flip scans: 0 accepted.
 
 ## performance comparison
 
-at d = 2²⁴, 128-bit security:
+published figures from the WHIR paper (its own hash and field, not hemera; not zheng measurements). at d = 2²⁴, 128-bit security:
 
 | scheme | argument size | verifier hashes | verification time |
 |---|---|---|---|
@@ -142,7 +141,7 @@ at 100-bit security:
 
 ## verification circuit decomposition
 
-inside [[nox]], Brakedown_verify decomposes into two jets:
+for the planned verifier written as a [[nox]] program (in Trident, for composition only). the counts below are early estimates for a 100-bit, rate-1/2 configuration, not measurements of the shipped parameters. inside nox, WHIR_verify decomposes into two jets:
 
 ```
 merkle_verify(root, leaf, path, index)
@@ -152,7 +151,7 @@ fri_fold(poly_layer, challenge)        // nox jet
   N/2 constraints per folding round
 ```
 
-full Brakedown_verify:
+full WHIR_verify:
 
 ```
 1. Fiat-Shamir: derive challenges from transcript
@@ -208,8 +207,8 @@ vs full re-commit: O(N log N) hashes
 
 domain sizing strategy: start at 2^10, double when 75% full. amortized O(1) per insertion.
 
-### composed Brakedown_verify jet
+### composed WHIR_verify jet
 
-a single jet combining merkle_verify + fri_fold + Fiat-Shamir could reduce verification to ~100K constraints (from ~292K). trades ISA complexity for recursion depth. current two-jet decomposition suffices for depths up to ~10.
+a single jet combining merkle_verify + fri_fold + Fiat-Shamir could cut the in-circuit verifier by a constant factor (estimate, unmeasured). it trades ISA complexity for the cost of a composition step; recursion does not shrink proofs in a hash-only world, so this matters only where a proof is verified inside another.
 
-see [[polynomial-commitment]] for the commitment abstraction, [[sumcheck]] for the weight polynomial mechanism, [[verifier]] for the full zheng verification algorithm, [[whirlaway]] for the historical architecture
+see [[polynomial-commitments]] for the commitment abstraction, [[sumcheck]] for the weight polynomial mechanism, [[verifier]] for the full zheng verification algorithm, [[whirlaway]] for the architecture

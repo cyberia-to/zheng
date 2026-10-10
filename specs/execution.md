@@ -313,7 +313,7 @@ limbs, the root-in-subject flag and the reads.
 ## Legacy
 
 The 0.3.x folded trace API (`commit`, `open`, `verify_eval`, `verify`, `fold`,
-`decide`, the universal CCS, HyperNova folding, phi) compiles only with the
+`decide`, the universal CCS, the legacy fold, phi) compiles only with the
 cargo feature `legacy`, off by default. It is unsound — the fold is unchecked
 and the statement unbound ([decider](decider.md) §soundness) — and must not be
 used on a production path.

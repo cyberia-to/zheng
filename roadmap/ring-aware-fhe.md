@@ -6,7 +6,9 @@ status: draft
 ---
 # ring-aware FHE proving
 
-specialized constraint encoding and jet library for proving FHE bootstrapping operations. not a third prover — the IOP (SuperSpartan + sumcheck) and composition (HyperNova) are unchanged. the ring structure of R_q is exploited at the constraint level through ring-structured CCS encodings and dedicated jets.
+> superseded: drafted against the retired homomorphic-folding composition and the expander-code lens; composition now means hash-based accumulation of Reed–Solomon claims (phase 3 of the [[soft3/proposals/proof-system-repair|proof-system repair]]), and its per-step costs are not measured yet.
+
+specialized constraint encoding and jet library for proving FHE bootstrapping operations. not a third prover — the IOP (SuperSpartan + sumcheck) and composition (hash-based accumulation, phase 3) are unchanged. the ring structure of R_q is exploited at the constraint level through ring-structured CCS encodings and dedicated jets.
 
 depends on [[goldilocks-fhe]]: mudra choosing q = Goldilocks prime makes all R_q operations native nebu NTT.
 
@@ -21,7 +23,7 @@ TFHE bootstrapping refreshes ciphertext noise. four phases, each with a differen
 | key switching | matrix × vector over F_p | F_p (matrix) | Ten |
 | modulus switching | rescale coefficients | F_p (field) | Tri |
 
-bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (Brakedown or Binius). HyperNova folds across boundaries.
+bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (Reed–Solomon/WHIR over Goldilocks; Binius for F₂ remains research). the phases meet in one accumulator: each phase's evaluation claims are accumulated, and one decider closes the whole bootstrapping.
 
 ## where generic proving wastes work
 
@@ -69,11 +71,11 @@ generic:     per-operation range check
              n coefficients × m operations = 64nm constraints
 
 ring-aware:  running noise accumulator
-             fold noise bound through computation
+             accumulate the noise bound through the computation
              check once at end (decider)
-             cost: ~30 field ops per fold step
+             cost per step: one accumulation step (not yet measured)
 
-savings:     ~64nm / (30m) = ~2n per operation
+savings:     per-coefficient range checks replaced by one running bound
 ```
 
 ## jet library
@@ -98,30 +100,30 @@ fhe_bootstrap jets:
     cost: O(N × levels) binary constraints (1 each in F₂)
 
   noise_track(noise_bound, operation):
-    fold noise bound into running accumulator
+    accumulate the noise bound into the running accumulator
     check at bootstrapping boundary
-    cost: ~30 field ops per fold
+    cost: one accumulation step (not yet measured)
 ```
 
 ## cross-language bootstrapping flow
 
 ```
-step 1: gadget_decomp(ct)          → Bt (F₂, Binius)
-         fold into accumulator       ~766 F_p constraints
+step 1: gadget_decomp(ct)          → Bt (F₂, Binius — research)
+         accumulate claims
 
-step 2: blind_rotation(decomposed)  → Wav (F_p, Brakedown, ring-aware)
+step 2: blind_rotation(decomposed)  → Wav (F_p, RS/WHIR, ring-aware)
          ntt_batch jet               ~n × N constraints (batched)
-         fold into accumulator       ~766 F_p constraints
+         accumulate claims
 
-step 3: key_switch(rotated, ks)     → Ten (F_p, Brakedown)
+step 3: key_switch(rotated, ks)     → Ten (F_p, RS/WHIR)
          key_switch jet              ~k × log(N) constraints
-         fold into accumulator       ~766 F_p constraints
+         accumulate claims
 
-step 4: mod_switch(switched)        → Tri (F_p, Brakedown)
+step 4: mod_switch(switched)        → Tri (F_p, RS/WHIR)
          ~N constraints              (coefficient rescaling)
-         fold into accumulator       ~766 F_p constraints
+         accumulate claims
 
-total composition overhead: ~3,064 F_p constraints (4 boundary crossings)
+composition overhead: four accumulation steps (cost not yet measured)
 total computation: dominated by step 2 (blind rotation)
 ```
 

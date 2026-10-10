@@ -1,8 +1,8 @@
-> **NOTE:** this document describes the historical evolution from FRI to STIR to WHIR. zheng has evolved to use recursive Brakedown instead of WHIR. see reference/ for the current architecture.
+> note: this page tells the evolution from FRI to STIR to WHIR. WHIR is the shipped commitment of zheng's succinct profile (rate 1/64, folding factor 4, 24 grinding bits), chosen in the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]]; the detour through "recursive Brakedown" is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the figures below are the papers' published ones; zheng's measured figures are in `audit/succinct-profile-2026-10.md`.
 
-# from FRI to WHIR (legacy)
+# from FRI to WHIR
 
-the hash-based [[polynomial commitment schemes]] used in [[zheng]] have a lineage. [[FRI]] came first, establishing the paradigm. [[STIR]] refined it. [[WHIR (legacy)]] refined it further. each generation learned from the last, and each achieved something the previous could not. this is the story of that evolution.
+the hash-based [[polynomial commitment schemes]] used in [[zheng]] have a lineage. [[FRI]] came first, establishing the paradigm. [[STIR]] refined it. [[WHIR]] refined it further. each generation learned from the last, and each achieved something the previous could not. this is the story of that evolution.
 
 ## FRI: the foundation
 
@@ -22,7 +22,7 @@ after log(d) rounds, the polynomial has degree zero — a constant. the prover s
 
 FRI established what hash-based commitment schemes could achieve: transparent (no trusted setup), post-quantum (relies only on collision-resistant hashing), and efficient prover (quasi-linear time). every STARK built between 2018 and 2024 used FRI or a close variant.
 
-soundness comes from the field size: over the [[Goldilocks field]] (p = 2⁶⁴ − 2³² + 1), the error per query is roughly max_degree/|F|, which is negligible with ~30 queries per layer. the field's multiplicative subgroup of order 2³² enables FFTs up to length 2³² without extension fields — FRI folding operates on native 64-bit arithmetic.
+soundness has two parts: the folding challenges (error roughly degree/|F| each — over the 64-bit [[Goldilocks field]] (p = 2⁶⁴ − 2³² + 1) too large for 128 bits, so challenges are drawn from an extension field; zheng uses Fp3) and the queries (each catches a far-from-code word with probability set by the rate and the decoding regime, so tens of queries are needed for 128 bits). the field's multiplicative subgroup of order 2³² enables FFTs up to length 2³² without extension fields — FRI folding operates on native 64-bit arithmetic.
 
 the limitation is in the numbers. FRI operates at a fixed code rate — the ratio of the polynomial degree to the evaluation domain size stays constant across rounds. this rate determines how many queries the verifier needs for a given security level. at 128-bit security, FRI proofs run around 306 KiB with 3.9 ms verification time.
 
@@ -77,7 +77,7 @@ WHIR      157 KiB       1.0 ms         128-bit
 
 proof size drops by half from FRI to STIR, and stabilizes at WHIR. verification time drops by nearly 4x from STIR to WHIR. that 1.0 ms verification is faster than [[KZG]] pairing checks — and WHIR achieves this with no trusted setup and post-quantum security.
 
-WHIR (legacy) verification at 1.0 ms was fast enough to run inside a [[nox]] program. this is what enabled recursive proof composition in [[zheng]]: the verifier fits inside the prover, and the overhead is manageable. each recursive step adds roughly one millisecond of verification work to prove.
+fast verification also makes a verifier cheap to express as a program. zheng plans a verifier written as a [[nox]] program (in Trident) for composition — an old proof inside a new one, or proofs across domains. it is not used to shrink proofs: in a hash-only world the outer proof carries its own Merkle paths again. constant size for long computations comes from hash-based accumulation of Reed–Solomon claims instead (phase 3, ARC/WARP-style), whose decider is one WHIR opening.
 
 ## the dual nature
 
@@ -91,7 +91,7 @@ STIR:  tighter proximity test + separate evaluation → lens
 WHIR:  proximity test = evaluation proof → lens directly
 ```
 
-this unification simplifies [[zheng]] significantly. [[SuperSpartan]] reduces all constraints to one evaluation query via [[sumcheck]]. WHIR handles that query directly — proximity and evaluation in one protocol. no adapter layers, no conversion overhead.
+this unification is what zheng uses. [[SuperSpartan|Spartan]] reduces all constraints to one evaluation query via [[sumcheck]]. WHIR handles that query directly — proximity and evaluation in one protocol.
 
 ## the stable interface
 
@@ -105,12 +105,12 @@ verify(commitment, point, value, proof) → bool
 
 [[SuperSpartan]] calls commit and open. the [[sumcheck protocol]] runs between them. neither layer knows or cares whether FRI, STIR, or WHIR implements the commitment. the interface is a clean abstraction boundary.
 
-this means [[cyber]] can upgrade its lens without changing any layer above. when a future generation improves on the current lens — smaller proofs, faster verification, tighter security bounds — the upgrade is a swap at the commitment layer. the IOP, the constraint system, the VM trace encoding, the recursive verifier: all unchanged.
+this means [[cyber]] can swap its lens without changing any layer above. the phase-2 bake-off did exactly that: TensorRs (a Reed–Solomon tensor code with Ligero geometry) and WHIR ran under the same Spartan transcript and the same fixtures, and WHIR won both size classes.
 
 ## why this lineage matters for zheng
 
 the FRI-STIR-WHIR progression is a story of three insights compounding. FRI discovered that hash-based folding can prove proximity. STIR discovered that increasing the rate across rounds tightens proofs. WHIR discovered that weighting queries with sumcheck structure fuses proximity and evaluation into one protocol.
 
-[[zheng]] builds on these insights. the polynomial proof system — [[SuperSpartan]] IOP plus recursive Brakedown lens plus [[sumcheck protocol]] — achieves transparent, post-quantum proofs with sub-millisecond verification. the prover runs in quasi-linear time over the [[Goldilocks field]]. the verifier checks a proof in one millisecond using only [[Hemera]] hashes and field arithmetic.
+[[zheng]] builds on these insights. the succinct profile — [[SuperSpartan|Spartan]] over Fp3 plus one WHIR opening over Reed–Solomon codes and [[Hemera]] Merkle trees — is transparent and post-quantum, with 128 proven bits ([[zheng/specs/soundness|soundness ledger]]). measured on an Apple M4 Max: 15,921 B and 7.96 ms verification for one hemera hash, 71,081 B and 270 ms for a `2^20`-row relation. the goal is ≤ 64 KB for any nox computation and verification ≤ 1 ms; the size goal is missed by 11 % at `2^20` and the time goal is not met yet (hemera's speed inside the opening, an unstructured Spartan verifier, relation recompilation).
 
-each generation of lens made this architecture more viable. FRI made it possible. STIR made it compact. WHIR (legacy) made it fast enough to recurse. recursive Brakedown made it Merkle-free. and recursion is what turns a proof system into a foundation for [[planetary superintelligence]].
+each generation of lens made this architecture more viable. FRI made it possible. STIR made it compact. WHIR fused evaluation into proximity, so one opening closes the proof.

@@ -2,7 +2,7 @@
 
 zheng is a polynomial proof system. these documents explain the concepts, design decisions, and historical context.
 
-for formal definitions, see reference/. for the hash primitive, see [[hemera]]. for the VM whose traces we prove, see [[nox]].
+for formal definitions, see specs/ (soundness per component: [[zheng/specs/soundness|specs/soundness.md]]). for the hash primitive, see [[hemera]]. for the VM whose traces we prove, see [[nox]].
 
 ## reading path
 
@@ -53,7 +53,7 @@ for formal definitions, see reference/. for the hash primitive, see [[hemera]]. 
 | page | topic |
 |------|-------|
 | [[zheng/docs/explanation/stark|stark]] | [[STARKs]] — arithmetization (AIR, R1CS, [[CCS]]), univariate vs multilinear, heritage |
-| [[zheng/docs/explanation/CCS|CCS]] | [[CCS|Customizable Constraint Systems]] — why unified constraints matter for zheng and folding |
+| [[zheng/docs/explanation/CCS|CCS]] | [[CCS|Customizable Constraint Systems]] — why unified constraints matter for zheng and accumulation |
 | [[zheng/docs/explanation/landscape|landscape]] | proof system taxonomy — trusted setup vs transparent, pre-quantum vs post-quantum, [[SNARKs]] vs [[STARKs]] vs [[multilinear STARKs]] |
 
 ### core protocols
@@ -62,25 +62,27 @@ for formal definitions, see reference/. for the hash primitive, see [[hemera]]. 
 |------|-------|
 | [[zheng/docs/explanation/sumcheck|sumcheck]] | the heart of the system — reducing exponential verification to logarithmic via the [[sumcheck protocol]] |
 | [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] | the trust anchor — commit to data, prove evaluations, bind the prover to a single polynomial |
-| [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR (legacy)]], each generation's insight and what it unlocks |
-| [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] | why the perfect lens is O(log N + λ) — the recursive tensor-decomposition derivation behind the numbers in specs/verifier.md and specs/api.md |
+| [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR]], each generation's insight and what it unlocks |
+| [[zheng/docs/explanation/whir|whir]] | the shipped commitment of the succinct profile — protocol, parameters, measured figures |
+| [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] | a retired design: what it was and why it was unsound |
 
 ### architecture
 
 | page | topic |
 |------|-------|
 | [[zheng/docs/explanation/superspartan|superspartan]] | [[CCS]] as universal constraint system — why [[AIR]] matters for [[nox]] and how [[SuperSpartan]] unifies them |
-| [[zheng/docs/explanation/whirlaway|whirlaway]] | historical architecture — how [[sumcheck protocol]], [[WHIR (legacy)]], and [[SuperSpartan]] composed into the original proof system |
-| [[zheng/docs/explanation/trace-to-proof|trace-to-proof]] | from [[nox]] execution trace to zheng proof — the concrete pipeline |
+| [[zheng/docs/explanation/whirlaway|whirlaway]] | the architecture of the succinct profile — how [[sumcheck protocol]], [[WHIR]] and [[SuperSpartan]] compose |
+| [[zheng/docs/explanation/trace-to-proof|trace-to-proof]] | the legacy register trace, and the current pipeline from a [[nox]] program to a zheng proof |
+| [[zheng/docs/explanation/zheng-vs-starks|zheng-vs-starks]] | zheng proofs and [[STARKs]] — shared trust model, different IOP and commitment, measured figures |
 
 ### powers
 
 | page | topic |
 |------|-------|
-| [[zheng/docs/explanation/recursion|recursion]] | recursive composition — [[IVC]], [[folding]], O(1) verification regardless of computation depth |
-| [[zheng/docs/explanation/security|security]] | hash-based assumptions — post-quantum guarantees, concrete security levels, no trusted setup |
-| [[zheng/docs/explanation/performance|performance]] | prover costs, verifier costs, proof sizes — comparisons with [[Plonky3]], [[Binius]], [[Stwo]] |
-| [[zheng/docs/explanation/bbg-integration|bbg-integration]] | shared Brakedown primitives between proofs and [[BBG]] state — EdgeSets, LogUp, batch verification |
+| [[zheng/docs/explanation/recursion|recursion]] | accumulation (constant size in the number of steps) versus recursion proper (composition only) |
+| [[zheng/docs/explanation/security|security]] | hash-based assumptions — post-quantum guarantees, the soundness ledger explained, no trusted setup |
+| [[zheng/docs/explanation/performance|performance]] | measured proof sizes and verification times per profile, against the goal |
+| [[zheng/docs/explanation/bbg-integration|bbg-integration]] | how a proof reads [[BBG]] state — state roots, evidence, the QueryProof migration |
 
 ## see also
 

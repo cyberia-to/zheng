@@ -8,6 +8,11 @@
 //! Wraps a hemera hasher in sponge mode: absorb prover messages,
 //! squeeze verifier challenges. Each proof phase has a unique domain
 //! separator to prevent cross-phase attacks.
+//!
+//! hemera is modelled as a random oracle. The production profiles
+//! (succinct, veil) draw every challenge in Fp3 (`squeeze_fp3`, a set of
+//! p³ ≈ 2^192 elements); Goldilocks challenges (`new_v1`) serve only
+//! retired artifacts and the legacy path. Bounds: `specs/soundness.md`.
 
 use hemera::Hasher;
 use nebu::{field::P, Fp3, Goldilocks};
@@ -155,7 +160,7 @@ impl Transcript {
 
     // ── phase absorbers ──────────────────────────────────────────
 
-    /// Absorb a Brakedown commitment (domain-separated).
+    /// Absorb a PCS commitment — a hemera Merkle root (domain-separated).
     pub fn absorb_commitment(&mut self, c: &Commitment) {
         self.absorb(DOM_COMMIT);
         self.absorb(c.as_bytes());

@@ -6,158 +6,70 @@ alias: Fiat-Shamir transcript, proof transcript
 ---
 # transcript
 
-the Fiat-Shamir transcript converts [[zheng]]'s interactive proof into a non-interactive one. the prover maintains a running [[hemera]] hash of every message exchanged. each verifier challenge is derived by hashing the transcript so far. the verifier recomputes the same transcript and checks consistency.
+the Fiat–Shamir transcript converts [[zheng]]'s interactive protocols into non-interactive ones. the prover absorbs every message into a running [[hemera]] sponge; each verifier challenge is squeezed from the transcript so far; the verifier replays the same absorbs and squeezes. hemera is modelled as a random oracle — that assumption, and the hash's own bits, are rows of the [[soundness]] ledger.
 
-~3 hemera calls total per proof: (1) domain separation initialization, (2) Fiat-Shamir seed from commitment, (3) Brakedown binding hash. remaining challenges use the algebraic Fiat-Shamir path — field arithmetic derived from the sponge state without additional hash invocations.
+hemera is called throughout: once per absorb/squeeze and once per Merkle node the PCS opening authenticates. there is no "algebraic" shortcut that derives challenges without hashing; every challenge comes out of the sponge.
 
 ## construction
 
 ```
-transcript state: H = hemera_init(DOMAIN_SEP)
-
-DOMAIN_SEP = hemera(0x01 | "zheng-transcript-v1")
+transcript state: H = hemera_init(); absorb("\x01zheng-transcript-v1")
 
 absorb(message):
   H = hemera_absorb(H, message)
 
-squeeze(n_challenges):
-  challenges = hemera_squeeze(H, n_challenges)
-  H = hemera_absorb(H, challenges)
-  return challenges
+squeeze (wide rule, Transcript::new):
+  absorb("\x09squeeze-wide" ‖ n_limbs)
+  xof = hemera_finalize_xof(H)
+  chain = xof[0..32];  H = hemera_init(); absorb(chain)       // re-seed, chain forward
+  limb_j = (24 XOF bytes as a 192-bit integer) mod p           // one per output limb
 ```
 
-the transcript is a sponge: absorb prover messages, squeeze verifier challenges. [[hemera]]'s sponge construction (Poseidon2 with 1024-bit state, 512-bit capacity) provides 256-bit security against transcript manipulation.
+`squeeze_challenge` returns one Goldilocks limb; `squeeze_fp3` returns three limbs as an element of Fp3 = F_p[t]/(t³ − t − 1). each limb is within `p / 2^192 < 2^-128` of uniform (exactly uniform for hemera's canonical-limb output). every production profile — succinct, zk (veil) — draws its challenges with `squeeze_fp3`: the challenge set has `p³ ≈ 2^192` elements.
+
+`Transcript::new_v1` reproduces the 0.4.0 rule (the first 8 bytes of one 32-byte squeeze, Goldilocks challenges) only to read retired artifacts (public v2, state v1) and the legacy path for one release. Goldilocks challenges give `≈ 2^-56` sumcheck soundness at 2^20 — too small for any 128-bit claim, which is why the production profiles use Fp3.
 
 ## domain separation
 
-each proof phase uses a distinct domain separator to prevent cross-phase attacks:
-
 | phase | separator | purpose |
 |---|---|---|
-| commitment | `0x02 \| "commit"` | binds Brakedown commitment to transcript |
+| init | `0x01 \| "zheng-transcript-v1"` | transcript identity |
+| commitment | `0x02 \| "commit"` | binds the PCS root (a hemera Merkle root) |
 | sumcheck round i | `0x03 \| i` | each round gets a unique challenge domain |
-| evaluation | `0x04 \| "eval"` | separates evaluation point from constraint checks |
-| PCS opening | `0x05 \| "pcs-open"` | prevents reuse of sumcheck challenges in PCS |
-| recursive | `0x06 \| "recurse"` | inner proof transcripts isolated from outer |
+| evaluation | `0x04 \| "eval"` | separates evaluation claims from round messages |
+| PCS opening | `0x05 \| "pcs-open"` | prevents reuse of sumcheck challenges in the PCS |
+| wide squeeze | `0x09 \| "squeeze-wide"` | the wide challenge rule |
+| legacy only | `0x06` recurse, `0x07` statement, `0x08` linkage | the legacy folded trace API (feature `legacy`) |
 
-domain separators are absorbed before the corresponding message. this ensures that identical messages in different phases produce different challenges.
+each protocol also absorbs its own label first (`"zheng-succinct-v1"`, `"zheng-veil-v1"`), then `"zheng-vk" ‖ digest` of the verifying key and the statement bytes, so a proof is bound to its relation and statement ([[execution]]). the PCS opening runs on a separate lens transcript seeded by one 32-byte squeeze of the zheng transcript.
 
-## transcript format
+## encoding of absorbed values
 
-a serialized proof contains the full sequence of prover messages. the verifier reconstructs the transcript by absorbing each message in order and checking that derived challenges match.
-
-```
-proof = [
-  commitment: [u8; 32],           // Brakedown commitment (hemera digest)
-  sumcheck_polynomials: [         // one per round
-    [GoldilocksElement; deg+1],   // coefficients of univariate g_i
-  ],
-  evaluation_value: GoldilocksElement,  // f(r) at sumcheck output point
-  pcs_opening: BrakedownProof,    // recursive Brakedown opening proof
-]
-```
-
-the verifier processes this sequentially: absorb commitment -> squeeze sumcheck challenges -> absorb each sumcheck polynomial -> squeeze next challenge -> ... -> absorb evaluation -> verify Brakedown opening.
-
-## binary encoding
-
-all multi-byte integers are little-endian. all field elements are in canonical form (value < p where p = 2^64 - 2^32 + 1).
-
-### GoldilocksElement
-
-8 bytes. the canonical u64 representation in little-endian byte order. the value must satisfy 0 <= v < p. any encoding with v >= p is rejected by the verifier.
+all integers little-endian; all field elements canonical (`v < p`, `p = 2^64 − 2^32 + 1`), rejected otherwise.
 
 ```
-GoldilocksElement := u64_le(v)    // 8 bytes, v < 2^64 - 2^32 + 1
+Goldilocks := u64_le(v)                       // 8 bytes
+Fp3        := Goldilocks[3]                   // 24 bytes, c0 ‖ c1 ‖ c2
+Commitment := Goldilocks[4]                   // 32-byte hemera digest
+SumcheckPoly (absorbed) := 0x03 ‖ round u64 ‖ degree u8 ‖ coefficients (8 or 24 bytes each)
 ```
 
-### commitment
-
-32 bytes. a [[hemera]] digest consists of 4 GoldilocksElements concatenated in order, each encoded as 8 bytes LE.
-
-```
-Commitment := GoldilocksElement[0] || GoldilocksElement[1] || ... || GoldilocksElement[3]
-           // 4 * 8 = 32 bytes
-```
-
-### sumcheck polynomial (per round)
-
-each round emits one univariate polynomial g_i of degree d. the encoding is:
-
-```
-SumcheckPoly :=
-  degree: u8                          // 1 byte, value d
-  coefficients: GoldilocksElement[d+1] // (d+1) * 8 bytes
-```
-
-coefficients are in ascending order: [c_0, c_1, ..., c_d] where g_i(X) = c_0 + c_1*X + c_2*X^2 + ... + c_d*X^d. each coefficient is an 8-byte LE u64 in canonical form.
-
-total per round: 1 + 8*(d+1) bytes.
-
-### evaluation value
-
-8 bytes. a single GoldilocksElement encoding f(r) at the sumcheck output point.
-
-```
-EvaluationValue := GoldilocksElement    // 8 bytes LE
-```
-
-### BrakedownProof
-
-the Brakedown opening proof encodes recursive tensor reductions:
-
-```
-BrakedownProof :=
-  num_levels: u8                        // log log N recursion levels
-  for each level:
-    commitment: Commitment              // 32 bytes (Brakedown commitment of opening vector)
-    tensor_response: [GoldilocksElement] // tensor reduction at this level
-  final_elements: [GoldilocksElement; lambda]  // <= lambda direct field elements
-```
-
-the number of recursion levels and tensor dimensions are determined by the Brakedown parameters. the verifier knows these from the public configuration.
-
-### full proof wire format
-
-```
-Proof :=
-  commitment: Commitment               // 32 bytes
-  num_rounds: u16_le                   // 2 bytes
-  sumcheck_polys: SumcheckPoly[num_rounds]
-  evaluation: EvaluationValue          // 8 bytes
-  pcs_proof: BrakedownProof
-```
-
-the prover writes fields in this exact order. the verifier reads them sequentially, absorbing each into the Fiat-Shamir transcript as it goes.
-
-### proof size
-
-for N = 2^20 (typical nox trace), 128-bit security:
-- commitment: 32 bytes
-- num_rounds: 2 bytes
-- sumcheck_polys: ~660 bytes (20 rounds * ~33 bytes each)
-- evaluation: 8 bytes
-- pcs_proof: ~1,300 bytes (log log N levels of recursive tensor openings + lambda final elements)
-- **total: ~2 KiB**
-
-proof size is constant regardless of original computation size.
+round polynomials travel without their linear coefficient; the verifier restores `c_1 = claim − 2c_0 − Σ_{i≥2} c_i` before absorbing, so prover and verifier absorb the same polynomial. the wire bodies of each profile (succinct, veil, the certificates) are specified in [[execution]] and travel in the `ZHENGPF1` envelope.
 
 ## properties
 
 | property | value |
 |---|---|
-| hash function | [[hemera]] (Poseidon2 over [[Goldilocks field]]) |
-| hemera calls | ~3 per proof |
-| state size | 1024 bits (16 field elements) |
-| capacity | 512 bits (8 field elements) |
-| security | 256-bit classical, 170+ bit post-quantum |
-| challenge type | native [[Goldilocks field]] elements (no truncation) |
+| hash function | [[hemera]] (Poseidon2 over [[Goldilocks field]]), random-oracle model |
+| challenge field | Fp3 (production profiles); Goldilocks for retired artifacts only |
+| challenge bias | `< 2^-128` per limb (wide rule) |
+| digest | 32 bytes (4 limbs): 2^128 classical collision (birthday on p²), ~2^85 quantum (BHT) |
 | domain separation | per-phase prefix absorb |
+
+the digest row is why hemera profile v2 (hemera#15) proposes longer identity digests; in-proof Merkle nodes stay 32 bytes.
 
 ## soundness
 
-if hemera behaves as a random oracle, the Fiat-Shamir transcript is as sound as the interactive protocol. the soundness error per [[sumcheck]] round is at most d/p, where d is the polynomial degree and p = 2^64 - 2^32 + 1. across k rounds, total soundness error <= kd/p — negligible for any practical parameters.
+in the random-oracle model, a protocol that is round-by-round sound with per-round error `ε_r` stays sound after Fiat–Shamir: a prover making `Q` hemera queries succeeds with probability at most `Q · ε_r` plus hemera collisions (Canetti et al. 2019). for a sumcheck round of degree `d` over Fp3, `ε_r = d / p³`; the succinct and zk profiles keep every round, PCS grinding included, at or below `2^-128`. the composed bounds — 128.0 bits for succinct (set by the WHIR opening), 128.2 for veil — are derived in the [[soundness]] ledger, not here.
 
-the critical property: challenges are native [[Goldilocks field]] elements. no reduction, no truncation, no modular bias. hemera outputs field elements directly.
-
-see [[sumcheck]] for the protocol that generates transcript messages, [[Brakedown]] for the PCS opening proof format, [[hemera]] for the hash construction
+see [[sumcheck]] for the protocol that generates transcript messages, [[execution]] for each profile's transcript order, [[hemera]] for the hash construction.

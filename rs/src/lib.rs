@@ -7,9 +7,19 @@
 //!
 //! Production surface (default build):
 //!
-//! - [`execution`] — public profile v3 (statement + free witness positions,
-//!   checked exactly), authenticated-state profile v3, and the native private
-//!   MPC-in-the-head protocol (`ZHMITH01`);
+//! - [`execution`] — the statements and their profiles:
+//!   - [`execution::certificate`] — public profile v3 (statement + free
+//!     witness positions, checked exactly; envelope profile 0);
+//!   - [`execution::state`], [`execution::state_evidence`] — state profile v3,
+//!     every read authenticated against the statement's own root (profile 3);
+//!   - [`execution::succinct`] — succinct profile: witness committed, Spartan
+//!     over Fp3 and one lens PCS opening (WHIR, TensorRs; profile 1);
+//!   - [`execution::veil`] — zk profile: Libra-masked sumchecks and one hiding
+//!     Reed–Solomon tensor commitment (profile 2, scheme 2);
+//!   - [`execution::vk`] — verifying keys, derived by the verifier from the
+//!     program and absorbed by the succinct and zk transcripts;
+//!   - [`execution::zk`] — the native private MPC-in-the-head protocol
+//!     (`ZHMITH01`, profile 2, scheme 1);
 //! - [`envelope`] — the one wire format `ZHENGPF1` with a profile byte;
 //! - [`sumcheck`], [`spartan`], [`transcript`], [`field`] — the IOP machinery,
 //!   generic over the challenge field (Goldilocks or its cubic extension).

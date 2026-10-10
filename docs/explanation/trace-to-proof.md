@@ -1,3 +1,5 @@
+> superseded: this page describes the 16-register trace of the 0.3/0.4 folded trace API, now behind cargo feature `legacy` (unsound, off by default, deleted in phase 5); the current pipeline is in the last section and in [[zheng/docs/explanation/whirlaway|whirlaway]].
+
 # trace to proof
 
 the concrete journey from [[nox]] execution to zheng proof. this article bridges the VM and the proof system, showing exactly how computation becomes cryptographic evidence.
@@ -48,7 +50,7 @@ for any binary assignment (b₁, ..., b_n, c₁, ..., c₄):
 f(b₁, ..., b_n, c₁, ..., c₄) = trace[row(b₁...b_n)][col(c₁...c₄)]
 ```
 
-the polynomial f is the unique multilinear extension of this table. it agrees with the trace on all 2^{n+4} binary inputs and interpolates smoothly over the full [[Goldilocks field]]. this is the polynomial that Brakedown commits to.
+the polynomial f is the unique multilinear extension of this table. it agrees with the trace on all 2^{n+4} binary inputs and interpolates smoothly over the full [[Goldilocks field]]. this is the polynomial the legacy path committed to.
 
 ## AIR constraints from nox patterns
 
@@ -121,7 +123,7 @@ the input boundary fixes row 0: the initial registers must match the program's i
 
 the output boundary fixes the last active row: the result register must contain the program's output, and the status register must indicate clean halting.
 
-boundary constraints are point evaluations. they assert that f, evaluated at specific binary coordinates, equals specific field elements. Brakedown proves these directly as evaluation claims.
+boundary constraints are point evaluations. they assert that f, evaluated at specific binary coordinates, equals specific field elements. the legacy path proved these as evaluation claims.
 
 ## the combined constraint polynomial
 
@@ -133,7 +135,7 @@ C(t) = Σ_{p=0}^{17} selector_p(r0_t) × C_p(t)
 
 where selector_p(r0_t) equals 1 when r0_t = p and 0 otherwise. the selector is a polynomial in r0_t constructed via Lagrange interpolation over the 18 pattern values.
 
-if the trace is valid — every pattern was executed correctly — then C(t) = 0 for every row t. the [[sumcheck protocol]] verifies this: the sum of C over all 2^n rows equals zero. [[SuperSpartan]] orchestrates this sumcheck, reducing the exponential sum to a single evaluation point, which Brakedown opens.
+if the trace is valid — every pattern was executed correctly — then C(t) = 0 for every row t. the [[sumcheck protocol]] verifies this: the sum of C over all 2^n rows equals zero. [[SuperSpartan]] orchestrates this sumcheck, reducing the exponential sum to a single evaluation point, which the commitment opens.
 
 ## focus accounting
 
@@ -162,27 +164,28 @@ row  r0   r3   r4   r5   r6    r7   r14     description
 
 the AIR constraint for row 0: r0 = 5 (add pattern), so C₅ applies. check: r5₁ = 8 = 3 + 5 = r3₀ + r4₀. the constraint is satisfied. focus: r7₀ = 9 = 10 - 1 = r6₀ - cost(5). satisfied.
 
-this 2-row trace is padded to 2^1 = 2 rows (already a power of two). the multilinear polynomial f has 1 + 4 = 5 variables. Brakedown commits to f. [[SuperSpartan]] runs the sumcheck over 2 rows. the verifier checks the sumcheck transcript and one Brakedown evaluation proof. the entire proof attests that 3 + 5 = 8 — with cryptographic certainty, without revealing the trace.
+this 2-row trace is padded to 2^1 = 2 rows (already a power of two). the multilinear polynomial f has 1 + 4 = 5 variables. the legacy path committed to f, ran the sumcheck over 2 rows and opened f once. that opening was never sound: the expander-code commitment had no real opening (see [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]).
 
-## from trace to trust
+## the current pipeline
 
-the pipeline recapitulates:
+the shipped profiles do not prove a register trace. the relation compiler turns the nox program and the shape of its subject into one [[CCS]]; the verifier compiles the same CCS and places `z[0] = 1`, the inputs, the outputs and the cost itself.
 
 ```
-nox program → execution → trace table (2^n × 16)
-    → pad to power of two
-    → encode as multilinear polynomial f
-    → Brakedown_commit(f) → commitment C
-    → SuperSpartan sumcheck over AIR constraints → point r
-    → Brakedown_open(f, r) → proof π
-    → verifier checks transcript + evaluation proof
+nox program + statement (io, cycles)
+    → relation compiler → CCS (verifier and prover alike)
+    → prover fills the witness w
+    → public profile: disclose w; the verifier checks every row exactly
+    → succinct profile: commit w̃ (Reed–Solomon + hemera Merkle root)
+        → Spartan over Fp3 (outer + inner sumcheck) → point r
+        → one WHIR opening of w̃(r)
+    → zk profile "veil": masked sumchecks + one hiding RS tensor opening
 ```
 
-the trace is the witness. the polynomial is its algebraic encoding. the commitment binds the prover. the sumcheck verifies the constraints. the evaluation proof closes the loop. what enters as computation exits as evidence.
+the add example above is `add.tri`: its public certificate is a 185 B envelope; its succinct proof uses the same CCS with the witness committed. long programs will be proven step by step: one uniform step relation per nox reduction, accumulated (phase 3).
 
 ## references
 
-- see [[whirlaway]] for the historical architecture
+- see [[whirlaway]] for the architecture of the succinct profile
 - see [[superspartan]] for the IOP that verifies constraints
 - see [[nox]] for the VM specification and pattern definitions
-- see [[hemera]] for the Poseidon2 hash used in pattern 15 and in Brakedown commitments
+- see [[hemera]] for the Poseidon2 hash used in pattern 15 and in every Merkle commitment

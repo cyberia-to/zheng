@@ -1,137 +1,50 @@
 # performance characteristics
 
-[[zheng]] produces proofs that are larger than pairing-based schemes and
-smaller than FRI-based [[STARKs]], with verification speed that matches
-or beats both. the concrete numbers matter for system design, so this
-page presents them without hedging.
+[[zheng]] proofs are hash-only: larger than pairing-based proofs, and smaller than the proofs production [[STARKs]] publish. this page gives the figures that have been measured, and states the goal separately. every number here comes from `audit/succinct-profile-2026-10.md` or `audit/zk-profile-2026-10.md` (Apple M4 Max, 16 cores, a machine shared with other jobs — times are upper bounds of a quiet machine; sizes are deterministic).
 
-## proof sizes
+## proof sizes and verification time
 
-proof size depends on the security level and the size of the execution
-trace.
+| statement | profile | size | verify | proven bits |
+|---|---|---|---|---|
+| `add.tri` | public v3 (witness disclosed) | 185 B envelope | — | error 0 |
+| `hash.tri` (one hemera hash) | public v3 (witness disclosed) | 6,463 B envelope | — | error 0 |
+| `hash.tri` | succinct (Spartan + WHIR) | 15,921 B proof / 16,148 B envelope | 7.96 ms | 128 |
+| synthetic relation, 2^20 rows | succinct (Spartan + WHIR) | 71,081 B | 270 ms | 128 |
+| hash of a secret preimage | zk "veil" | 63.9 KB | 10.0 ms (4.1 ms with a cached verifying key) | 128.2 |
 
-| security level | proof size | verification time |
-|---|---|---|
-| 100-bit | ~60 KiB | ~290 μs |
-| 128-bit | ~157 KiB | ~1.0 ms |
+the public certificate of one hash shrank from 294,861 B (before phase 0 of the [[soft3/proposals/proof-system-repair|proof-system repair]]) to 15,608 B (phase 0) to 6,463 B (certificate v3). it stays linear in the witness: it is the sound fallback, not a succinct proof.
 
-the 128-bit level is the default for production use. 100-bit is suitable
-for applications where speed matters more than long-term security — fast
-interactive proofs, ephemeral attestations, or inner layers of recursive
-composition where the outer proof provides the full security guarantee.
+the succinct profile's WHIR parameters — rate 1/64, folding factor 4, 24 grinding bits — won the phase-2 bake-off against a Reed–Solomon tensor code (TensorRs) in both size classes. every proof is 128 proven bits; the derivation is in [[zheng/specs/soundness|the soundness ledger]].
 
-## verification time
+## the goal
 
-sub-millisecond verification at 100-bit security. approximately one
-millisecond at 128-bit security. the verifier performs a fixed sequence
-of hemera hashes and [[Goldilocks]] field operations — its cost is
-determined by the security parameter, independent of the original
-computation size.
+any nox computation → a proof ≤ 64 KB, post-quantum (hash-only), verified in ≤ 1 ms, constant in the number of steps; small statements ≤ 16–20 KB. where the measurements stand against it:
 
-this is the property that enables cheap [[recursive composition]]. the
-verifier runs inside [[nox]] as a program of roughly 70,000 constraints
-(with jets). at one microsecond per constraint, verification proving
-takes about 70 ms. this is the cost of one recursion level.
+- size: one hash is inside the small-statement target; the 2^20 relation misses 64 KB by 11 %.
+- verification: not met at any size. the causes, in order: hemera's speed inside the WHIR opening (most of the verifier's work is Merkle paths), an unstructured Spartan verifier (the matrices are evaluated generically), and recompiling the relation from the program on every verification — a cached verifying key removes the last (the zk profile drops from 10.0 to 4.1 ms with one).
+- constant in the number of steps: comes with accumulation (phase 3, in progress); no measured figure yet — decider proof ≤ 64 KB goal, measured size TODO(F-numbers).
 
 ## prover time
 
-the prover runs in time linear in the trace size, dominated by two
-components.
+the [[SuperSpartan|Spartan]] IOP is linear in the size of the relation: the [[sumcheck protocol]] streams through the hypercube variable by variable with no FFT. the commitment is not: Reed–Solomon encoding is an NTT over Goldilocks (O(N log N) field operations) and the Merkle tree costs one hemera hash per leaf group. for large relations the commitment and the WHIR rounds dominate. the zk profile proves the hash of a secret preimage in 143 ms.
 
-the [[SuperSpartan]] IOP processes the execution trace with O(N) field
-operations. the [[sumcheck protocol]] streams through the trace
-variable by variable, performing additions and multiplications with no
-NTT and no FFT. the absence of NTT is a structural advantage of
-multilinear polynomials over univariate ones — the prover avoids the
-O(N log N) bottleneck that FRI-based systems face in polynomial
-evaluation.
+## the hash inside the relation
 
-the Brakedown commitment constructs the polynomial commitment over the
-evaluations, costing O(N log N) hemera hashes. this dominates the total
-prover time for large traces. each hemera call processes [[Goldilocks]]
-field elements natively, so the constant factor is small.
+[[hemera]] is Poseidon2 over Goldilocks, so hashing inside a relation is native field arithmetic — no bit decomposition. in the current relation compiler one hemera hash of a digest costs about 2,670 witness wires (degree-7 S-box rows). a public statement is capped at 32,768 rows, so the longest hash chain one statement admits is eleven hashes; longer computations need the uniform step relation of phase 3.
 
-total prover cost: O(N log N), dominated by Brakedown's commitment construction,
-with the linear-time SuperSpartan IOP as the smaller term.
-
-## constraint costs for common operations
-
-these numbers reflect nox constraint counts and estimated proving times
-at one microsecond per constraint.
-
-| operation | constraints | proving time |
-|---|---|---|
-| identity proof (hemera preimage) | ~736 | ~0.7 ms |
-| anonymous [[cyberlink]] | ~13,000 | ~13 ms |
-| delivery proof per hop | ~60,000 | ~60 ms |
-| recursive verification (with jets) | ~70,000 | ~70 ms |
-| recursive verification (no jets) | ~600,000 | ~600 ms |
-
-the identity proof is the lightest operation: prove knowledge of a
-hemera preimage without revealing it. 736 constraints, proved in under
-a millisecond. this is the primitive that enables anonymous
-identity in [[cyber]].
-
-the anonymous cyberlink is the core operation of the knowledge graph:
-prove that a valid agent created a link between two content identifiers
-without revealing which agent. 13,000 constraints encode the signature
-verification, the merkle membership check, and the nullifier derivation.
-
-the delivery proof attests that a message was correctly forwarded at one
-hop of its path through the network. 60,000 constraints cover the
-hemera-based routing verification and the hop metadata commitment.
-
-recursive verification is the operation that makes all other operations
-composable. with jets — hardware-accelerated hemera and field arithmetic
-built into nox — the verifier compiles to 70,000 constraints. without
-jets, the hemera sponge must be decomposed into individual field
-operations, inflating the circuit to 600,000 constraints. jets provide
-an 8.5x reduction.
-
-## hemera as the zheng hash
-
-every hash operation inside a [[zheng]] proof — Fiat-Shamir challenges, commitments in Brakedown, commitment randomness — uses [[hemera]]. the choice of hash is the single largest factor in zheng performance.
-
-| hash | constraints per call | proof overhead |
-|---|---|---|
-| SHA-256 | ~25,000 | baseline |
-| Keccak-256 | ~150,000 | 6× worse |
-| Poseidon (original) | ~4,000 | 6× cheaper |
-| hemera (Poseidon2) | ~736 | 34× cheaper |
-
-hemera's ~736 constraints per hash means Merkle verification at depth 32 costs ~23,552 constraints instead of ~800,000 with SHA-256. this 34× reduction is what makes recursive proof composition practical at 70,000 total constraints.
-
-the hash is also the field: hemera operates natively on [[Goldilocks]] field elements. no bit-packing, no field conversion, no endianness gymnastics. eight elements in, eight elements out. the output is directly usable in polynomial commitments, constraint evaluations, and [[nox]] arithmetic.
-
-## verifier cost breakdown
-
-the verifier's 70,000-constraint budget (with jets) breaks down into five components:
-
-| component | Layer 1 only | with jets | reduction | role |
-|---|---|---|---|---|
-| parse proof | ~1,000 | ~1,000 | 1× | deserialize proof bytes |
-| Fiat-Shamir challenges | ~30,000 | ~5,000 | 6× | hash transcript → random challenges |
-| Merkle verification | ~500,000 | ~50,000 | 10× | verify Brakedown commitment tree paths |
-| constraint evaluation | ~10,000 | ~3,000 | 3× | evaluate AIR polynomials at challenge |
-| Brakedown verification | ~50,000 | ~10,000 | 5× | folding rounds + final check |
-| TOTAL | ~600,000 | ~70,000 | 8.5× | |
-
-Merkle verification dominates without jets (83% of cost). the merkle_verify jet reduces it 10×. this single jet is what makes recursion practical — without it, each recursion level would cost 600K constraints, limiting practical depth to 1-2 levels.
+the same hash builds every Merkle tree and drives every Fiat–Shamir challenge. its speed outside the relation is the largest single factor in verification time today.
 
 ## comparison at 128-bit security
 
-| system | proof size | verify time | setup | post-quantum |
-|---|---|---|---|---|
-| [[Groth16]] | 128 bytes | ~1.5 ms | trusted (per-circuit) | no |
-| [[PLONK]] | ~400 bytes | ~5 ms | universal ceremony | no |
-| univariate [[STARK]] (FRI) | ~200 KiB | 10-50 ms | transparent | yes |
-| zheng (SuperSpartan + recursive Brakedown) | ~157 KiB | ~1.0 ms | transparent | yes |
+| system | proof size | setup | post-quantum |
+|---|---|---|---|
+| [[Groth16]] | 128 bytes | trusted (per-circuit) | no |
+| [[PLONK]] | ~400 bytes | universal ceremony | no |
+| production STARK chains (Stwo, Triton, RISC Zero) | 150 KB – 1 MB | transparent | yes |
+| zheng succinct, one hash | 15,921 B | transparent | yes |
+| zheng succinct, 2^20 rows | 71,081 B | transparent | yes |
 
-Groth16 wins on proof size by three orders of magnitude. PLONK wins on
-proof size by two. both lose on trust assumptions and quantum resistance.
-FRI-based STARKs share zheng's transparency and quantum resistance but
-verify 10-50x slower. zheng occupies the unique position of hash-based
-security with pairing-competitive verification speed.
+pairing-based systems win on size by two to three orders of magnitude and lose on trust assumptions and quantum resistance. hash-only systems share zheng's model; zheng's proofs are smaller than the production chains' figures, and its verification is not yet faster than theirs.
 
 ## the Goldilocks advantage
 
@@ -150,26 +63,12 @@ handful of native CPU instructions. this is why [[nebu]] exists as a
 standalone library — the field implementation is performance-critical
 and benefits from assembly-level optimization.
 
-the constant factor matters because zheng's prover performs billions of
-field operations on large traces. a 2x improvement in field arithmetic
-translates directly to a 2x improvement in proving time. Goldilocks
-provides roughly 3-5x faster field operations compared to the 256-bit
-fields used by pairing-based systems.
+64 bits are too few for a challenge: zheng draws every challenge and evaluation point from the cubic extension Fp3 (p³ ≈ 2^192), which costs a few base-field multiplications per extension multiplication and only in the verifier-facing parts of the protocol.
 
 ## future: the Goldilocks field processor
 
-the current performance numbers assume commodity x86-64 hardware. the
-[[cyber]] roadmap includes a custom Goldilocks field processor — silicon
-optimized specifically for Goldilocks arithmetic and hemera hashing.
-the target is 10x acceleration over general-purpose CPUs.
-
-at 10x, the anonymous cyberlink drops from 13 ms to 1.3 ms proving
-time. recursive verification drops from 70 ms to 7 ms. an entire block
-of 1000 transactions, tree-aggregated with O(log 1000) ≈ 10 recursion
-levels, proves in under 100 ms on dedicated hardware. the proof size
-remains ~157 KiB. the verification time remains ~1.0 ms.
-
-the architecture is designed so that every performance gain in the field
-processor multiplies through the entire stack — prover, recursive
-composition, block production, epoch aggregation. the numbers on this
-page are the floor. the ceiling depends on silicon.
+the [[cyber]] roadmap includes a custom Goldilocks field processor —
+silicon optimized for Goldilocks arithmetic and hemera hashing. since
+hemera dominates both the prover's commitment and the verifier's Merkle
+checks, hardware hemera is the lever that matters most; no figure is
+claimed until it is measured.

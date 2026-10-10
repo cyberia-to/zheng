@@ -70,7 +70,7 @@ with O(√N) memory, a phone with 4 GB RAM can prove:
 - N = 2³⁰ traces (1B steps): needs ~32 × √(2³⁰) ≈ 1 MB
 - versus standard: 16 GB (impossible on phone)
 
-combined with proof-carrying computation: the phone folds each step incrementally. never materializes the full trace. proves arbitrary computations in bounded memory.
+combined with accumulation (`accumulation.md`, `machine.md`, phase 3): the nox machine is one uniform step relation, and each step's Reed–Solomon evaluation claims are accumulated hash-based (batched by a sumcheck, one combined word committed, out-of-domain samples, a few query openings). the accumulator is one root plus a fixed number of claims, so the prover never materializes the full trace and its memory is bounded by the step relation plus the accumulator; the decider is one WHIR opening at the end. measured prover memory and time on a phone: TODO(F-numbers).
 
 ## open questions
 
@@ -78,4 +78,4 @@ combined with proof-carrying computation: the phone folds each step incrementall
 2. **rank bound guarantee**: is r ≤ 32 provable for nox traces, or only empirically observed? a theoretical bound would strengthen the claim
 3. **checkpointing strategy**: √N checkpoints at equal intervals, or adaptive placement at pattern boundaries? pattern-aware checkpointing may reduce re-execution cost
 
-see [[sumcheck]] for the base protocol, [[recursion]] for proof-carrying computation, [[binius]] for binary workloads
+see [[sumcheck]] for the base protocol, `accumulation.md` for step-by-step accumulation, [[binius]] for binary workloads

@@ -3,7 +3,9 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! HyperNova fold: cross-term computation, beta challenge, witness folding.
+//! Legacy fold (unsound; feature `legacy`, removed in phase 5): cross-term
+//! computation, beta challenge, witness folding. The verifier never checks
+//! the fold — see specs/decider.md §soundness.
 //!
 //! For a sequence of CCS instances all sharing the same structure,
 //! fold() accumulates them into a single accumulator. The decider then
@@ -26,7 +28,7 @@ fn row_dot(matrix: &crate::types::SparseMatrix, r: usize, z: &[Goldilocks]) -> G
     })
 }
 
-/// Compute the HyperNova cross-term vector T (one entry per row).
+/// Compute the legacy fold's cross-term vector T (one entry per row).
 ///
 /// For each degree-2 term and each row r:
 ///   T[r] = c · ((M_i[r]·w_acc)·(M_k[r]·w_new) + (M_i[r]·w_new)·(M_k[r]·w_acc))
@@ -73,7 +75,7 @@ pub(crate) fn error_evals(instance: &CCSInstance, z: &[Goldilocks]) -> Vec<Goldi
 /// Fold one CCS step into the accumulator.
 ///
 /// On the first fold (step_count == 0): adopt the instance and witness directly.
-/// On subsequent folds: apply the HyperNova fold protocol.
+/// On subsequent folds: apply the legacy relaxed fold.
 ///
 /// Rejects a fresh `witness` that does not individually satisfy `instance`
 /// (`FoldError::UnsatisfyingWitness`) BEFORE folding it in. `commit()`
@@ -121,7 +123,7 @@ pub(crate) fn fold_step_unchecked(
 }
 
 /// Pad new witness to 64 elements (2^6) for PCS compatibility (already done
-/// by callers), then run the HyperNova fold. `z_new_error` is
+/// by callers), then run the legacy fold. `z_new_error` is
 /// `error_evals(instance, &z_new)`, computed once by the caller.
 fn fold_step_inner(
     acc: &mut Accumulator,
@@ -150,7 +152,7 @@ fn fold_step_inner(
         return Err(FoldError::WitnessMismatch);
     }
 
-    // ── HyperNova fold ───────────────────────────────────────────────────────
+    // ── legacy relaxed fold ──────────────────────────────────────────────────
 
     // 1. Compute cross-term T for Fiat-Shamir binding.
     let t = cross_term(instance, w_acc, &z_new);
@@ -311,7 +313,7 @@ mod tests {
         assert_eq!(acc.step_count, 0, "a rejected fold must not mutate the accumulator");
     }
 
-    /// The gate applies on the second (HyperNova relaxed-fold) path too, not
+    /// The gate applies on the second (legacy relaxed-fold) path too, not
     /// just the step_count == 0 adopt-directly path: a genuine first row
     /// followed by a fabricated second row is rejected before folding.
     #[test]

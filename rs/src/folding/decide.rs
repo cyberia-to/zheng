@@ -3,7 +3,8 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! HyperNova decider: SuperSpartan proof on the accumulated CCS instance.
+//! Legacy decider (unsound; feature `legacy`, removed in phase 5):
+//! SuperSpartan proof on the accumulated CCS instance of the legacy fold.
 
 use crate::spartan::prover::SpartanProver;
 use crate::transcript::Transcript;
