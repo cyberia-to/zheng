@@ -131,7 +131,7 @@ permutations for IVC + chain.
   backend give the CPU digests, held and streamed, base and Fp3.
 - zheng `cargo test --release`: 332 passed, 0 failed, 12 ignored on the
   pre-#58 stack (transcript_pin, recursion, recursive_envelope, wrap,
-  wrap_review included); on the #58 stack (379eda2): 330 passed, 0 failed, 7 ignored; lens rspcs 37
+  wrap_review included); on the #58 stack (379eda2): 330 passed, 0 failed, 7 ignored; on 5d7c959: 331 passed, 0 failed, 7 ignored; lens rspcs 37
   passed; joy 228 passed, 0 failed.
 
 ## 4. timings
