@@ -53,7 +53,8 @@ fn main() {
             let rows = wrap::ledger(&k.params, &k.cfg, k.constraints, reads);
             let weak = rows.iter().map(|r| r.1).fold(f64::INFINITY, f64::min);
             let q: Vec<usize> = k.cfg.wc.rounds.iter().map(|r| r.queries).collect();
-            line.push(format!("{l}: {} rows (perm blocks {}) → 2^{} · q {q:?} · {weak:.2} bits", k.rows, k.census[2], k.params.n));
+            let ext_cols: Vec<usize> = k.pre.cols.iter().enumerate().filter(|(_, c)| c.iter().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO)).map(|(i, _)| i).collect();
+            line.push(format!("{l}: {} rows (perm blocks {}) → 2^{} · q {q:?} · {weak:.2} bits · key columns with Fp3 entries {ext_cols:?}", k.rows, k.census[2], k.params.n));
             keys.push(k);
         }
         println!("{spec} ({:.1} s)\n  {}", t.elapsed().as_secs_f64(), line.join("\n  "));

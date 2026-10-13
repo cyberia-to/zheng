@@ -171,7 +171,7 @@ fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usi
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
-    let cfg = level_config(&params, vars, fresh)?;
+    let cfg = level_config(&params, vars, fresh).map_err(|e| format!("{e} (circuit {rows} rows → 2^{n})"))?;
     let arity = cfg.arity;
     let wiring = (!committed).then(|| wiring(&pre));
     let any_ext = pre.cols.iter().flatten().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO);
