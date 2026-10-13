@@ -54,6 +54,15 @@ impl Arity {
 /// The levels of a tree over `digests` (`levels[0]` the leaves).
 fn tree(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
     let log = digests.len().trailing_zeros() as usize;
+    if digests.len() >= perm::BACKEND_MIN && on_device() {
+        // every level on the device in one pass (no permutation batches)
+        let raw: Vec<[u64; 4]> = digests.iter().map(|d| d.map(|x| x.as_u64())).collect();
+        if let Some(lv) = lens::rspcs::backend::current().merkle_levels(&raw, &arity.levels(log), perm::NODE_TAG) {
+            let mut levels = vec![digests];
+            levels.extend(lv.into_iter().map(|l| l.into_iter().map(|d| d.map(Goldilocks::new)).collect()));
+            return levels;
+        }
+    }
     let mut levels = vec![digests];
     for a in arity.levels(log) {
         let next = if a == 4 { parents4(levels.last().expect("level")) } else { parents(levels.last().expect("level")) };
@@ -666,6 +675,9 @@ mod tests {
         fn coset_leaves(&self, job: &lens::rspcs::backend::CosetLeaves<'_>, cosets: core::ops::Range<usize>) -> Option<Vec<[u64; 4]>> {
             Some(lens::rspcs::backend::coset_leaves_reference(job, cosets))
         }
+        fn merkle_levels(&self, leaves: &[[u64; 4]], arities: &[usize], tag: u64) -> Option<Vec<Vec<[u64; 4]>>> {
+            Some(lens::rspcs::backend::merkle_levels_reference(leaves, arities, tag))
+        }
     }
 
     #[test]
@@ -680,7 +692,12 @@ mod tests {
         for (a, b) in [(&wb, &wb2), (&we, &we2)] {
             want.push((Group::digests(&[a, b]), stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay)));
         }
+        let leaves: Vec<Digest> = want[0].0.clone();
+        let trees: Vec<Vec<Vec<Digest>>> = [Arity::Two, Arity::Four].iter().map(|&a| tree(leaves.clone(), a)).collect();
         let prev = lens::rspcs::backend::install(std::sync::Arc::new(Device));
+        for (&a, t) in [Arity::Two, Arity::Four].iter().zip(&trees) {
+            assert_eq!(&tree(leaves.clone(), a), t, "device tree {a:?}");
+        }
         for ((a, b), (held, streamed)) in [(&wb, &wb2), (&we, &we2)].into_iter().zip(&want) {
             assert_eq!(&Group::digests(&[a, b]), held);
             assert_eq!(&stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay), streamed);
