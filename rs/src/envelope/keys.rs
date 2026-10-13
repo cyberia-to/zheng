@@ -71,7 +71,7 @@ fn bundle(profile: Profile, layouts: &[Vec<u8>]) -> Vec<u8> {
 /// process has not (profile 6 without an installed final key derives the
 /// whole chain).
 pub fn export(profile: Profile) -> Result<Vec<u8>, String> {
-    let ikey = |whir: &lens::WhirParams| ivc::key(whir, recursive::STEP_LOG_ROWS as usize);
+    let ikey = |whir: &lens::WhirParams| recursive::pinned_key(whir, ivc::key(whir, recursive::STEP_LOG_ROWS as usize)?);
     match profile {
         Profile::Recursive => Ok(bundle(profile, &[ikey(&recursive::params())?.layout_bytes()])),
         Profile::Wrapped => Ok(bundle(profile, &[ikey(&wrapped::chain().0)?.layout_bytes(), wrapped::final_key()?.layout_bytes()])),

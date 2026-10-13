@@ -173,7 +173,7 @@ pub fn final_key() -> Result<Arc<WrapKey>, String> {
         return Ok(k.clone());
     }
     let (ivc_whir, [l0, l1, l2]) = chain();
-    let ikey = ivc::key(&ivc_whir, STEP_LOG_ROWS as usize)?;
+    let ikey = recursive::pinned_key(&ivc_whir, ivc::key(&ivc_whir, STEP_LOG_ROWS as usize)?)?;
     let k0 = wrap::derive_key_ivc_at(l0, &ikey, pinned_root(0))?;
     let k1 = wrap::derive_key_wrap_at(l1, &k0, pinned_root(1))?;
     let k = Arc::new(wrap::derive_key_wrap(l2, &k1)?);

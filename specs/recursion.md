@@ -344,4 +344,12 @@ the levels over the pinned roots (`derive_key_ivc_at`,
 `derive_key_wrap_at`) without committing, and the prover, which commits
 them anyway, refuses to run when its roots differ from the pins. Layout
 bundles a verifier persists are accepted only under pinned digests
-(`envelope::keys`), so a cached key is exactly a derived one.
+(`envelope::keys`), so a cached key is exactly a derived one. A derived
+IVC key commits its words on the process's prover backend (Merkle
+levels, coset leaves, permutation batches); the profile-5 decider opens
+them against that root natively, so every verifier-facing IVC key — the
+admitted profile-5 sets and profile 6's IVC — must carry the key-word
+root pinned in `envelope::recursive::KEY_ROOTS` (the CPU's derivation):
+a faulty device kernel makes the verifier refuse, never accept against
+another root. Verification itself never calls the backend
+(`rs/tests/proof_stack_backend.rs`).
