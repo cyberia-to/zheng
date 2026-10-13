@@ -280,3 +280,31 @@ The size gate needs the 26 bits on the *queries* only (one query fewer
 in the last round); a schedule with separate query and fold budgets
 (26 / 22) would keep the bound and drop that cost — a lens schedule
 option (`WhirConfig::derive` couples them today).
+
+## 10. separate query and fold grinding budgets — evaluated, not adopted (2026-10-13)
+
+lens `feat/whir-fold-budget` (8ec1f2b, on a3ce318): `WhirParams::fold_pow_bits`
+(0: `pow_bits`; a version-2 header carries it), queries grinding
+`pow_bits`, each round's regime chosen within the fold budget; lens's
+39 rspcs tests pass with a test of the split schedule.
+
+The size gate's last-round query saving (15 → 14) does not come from the
+26 query bits: at rate 1/512, `ℓ = 20` the last round reaches 14 queries
+only through the Johnson regime that grinds 25 bits before each of its
+four folds; within a 22–24-bit fold budget it needs 15 at 26 query bits
+and 14 only from 27. The final level's grinding (permutations per proof:
+query grinds once per round, fold grinds once per folding challenge):
+
+| query / fold budget | queries | fold grinding per round | grinding | proof bound |
+|---|---|---|---|---|
+| 24 / 24 (§8) | 24 / 18 / 15 | 17 / 20 / 22 | 3·2^24 + 4·(2^17+2^20+2^22) ≈ 72 M | 65,177 B |
+| **26 / 26 (shipped)** | 24 / 18 / 14 | 17 / 20 / 25 | 3·2^26 + 4·(2^17+2^20+2^25) ≈ **340 M** | 64,213 B |
+| 26 / 22 | 24 / 18 / 15 | 17 / 20 / 22 | ≈ 223 M | 65,177 B — misses the gate |
+| 27 / 22 | 24 / 18 / 14 | 17 / 20 / 22 | 3·2^27 + 21.5 M ≈ 424 M | 64,213 B |
+| 28 / 22 | 23 / 18 / 14 | 22 / 20 / 22 | ≈ 843 M | < 64,213 B |
+
+Every configuration meeting the 64,213 B gate grinds at least as much as
+the shipped one, so zheng keeps `9f:26` and the lens branch is not
+merged into the stack. The lever left is a per-round query budget (24
+bits in rounds 0 and 1, 27 in the last with 22-bit folds: ≈ 190 M, about
+45 % less) — a further schedule option, not built.
