@@ -36,10 +36,10 @@ fn main() {
     };
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = 4;
-    whir.pow_bits = 24;
+    whir.pow_bits = ivc::SHIPPED_POW;
     let n = 15u32;
     let dir: String = std::env::var("ZHENG_IVC_DIR").expect("ZHENG_IVC_DIR");
-    let spec: String = env("ZHENG_WRAP", "6i,8i,8f:30".to_string());
+    let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());
     let specs: Vec<&str> = spec.split(',').collect();
     let run = machine::execute_exact(&prog, &input, 1 << 40, n).expect("run");
     let ikey = ivc::key(&whir, n as usize).expect("key");
@@ -49,7 +49,10 @@ fn main() {
         let mut parts = l.split(':');
         let head = parts.next().expect("level");
         let (rate, mode) = head.split_at(head.len() - 1);
+        // wrap levels grind 24 bits unless named (the IVC's own budget,
+        // `ivc::SHIPPED_POW`, is not theirs: as `wrap_bench`, `wrap_verify`)
         let mut w = whir;
+        w.pow_bits = 24;
         w.log_inv_rate = rate.parse().expect("rate");
         if let Some(p) = parts.next() {
             w.pow_bits = p.parse().expect("pow");

@@ -44,6 +44,7 @@ pub struct KeyWords {
 
 impl KeyWords {
     /// The key's columns as two words of 64 columns (column-major, the row
+    /// the low variables; streamed: a key never holds codewords)
     /// the low variables) in `layout`; whether an entry leaves the base
     /// field.
     pub fn commit(layout: LeafLayout, n: usize, pre: &Pre, arity: Arity) -> (Self, bool) {
@@ -58,9 +59,9 @@ impl KeyWords {
                 }
             }
             if ext {
-                Word::commit_ext(layout, &t)
+                Word::member_ext_streamed(layout, &t)
             } else {
-                Word::member_base(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
+                Word::member_base_streamed(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
             }
         });
         let group = Group::new(words.into(), arity);
@@ -99,19 +100,23 @@ fn inputs<V: Copy>(acc: &AccV<V>, key_root: [V; 4], key_ext: bool, z: &[V], v: [
 /// Prove the decider for the final state's accumulator (`table`: the
 /// accumulator word) and key claim.
 pub fn prove(cfg: &whir::Config, acc_word: &Word, acc: &AccV<Fp3>, pv: &ClaimV<Fp3>, key: &KeyWords, n: usize) -> Result<Decider, String> {
+    let lap = super::ivc::timer_pub("    decide ");
     let mut t = ProverTranscript::new(tag::DECIDE);
     absorb(&mut t.o, &mut t.sp, acc, pv);
     let zg = &pv.point[..n + 6];
     let v = [key.group.words[0].table(), key.group.words[1].table()].map(|tb| lens::rspcs::field::ml_eval_ext(&tb, zg));
     t.absorb_ext(v[0]);
     t.absorb_ext(v[1]);
+    lap("key claim");
     let vars = acc.rho.len();
     let up = |x: Fp3| lens::rspcs::field::pow_point(x, vars);
     let mut acc_claims = vec![(acc.rho.clone(), acc.v0)];
     acc_claims.extend(acc.ood.iter().map(|&(z, y)| (up(z), y)));
     acc_claims.extend(acc.spot.iter().map(|&(x, y)| (up(x), y)));
     let claims = vec![acc_claims, vec![(zg.to_vec(), v[0])], vec![(zg.to_vec(), v[1])]];
+    lap("claims");
     let whir = whir::prove(cfg, &mut t, &[acc_word as &dyn whir::Tree, &key.group], &claims)?;
+    lap("opening");
     Ok(Decider { key: v, whir })
 }
 

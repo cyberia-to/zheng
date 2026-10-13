@@ -86,6 +86,27 @@ fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
     Ok((pre, out))
 }
 
+/// The recursion profile's shipped grinding budget per challenge
+/// (`examples/ivc_plan`: at rate 1/16 and steps of 2^15 rows the step
+/// circuit fits with 16 bits — 29,628 of 32,768 rows — and a step's
+/// grinding falls from ≈ 2^24 to ≈ 2^18 permutations;
+/// `specs/soundness.md` § recursion).
+pub const SHIPPED_POW: u8 = 16;
+
+/// A step size and parameter set planned without committing the key: the
+/// step circuit's rows (it must fit the step's `2^n` with the nox
+/// segment beside it), its census (gates, decompositions, permutation
+/// blocks) and the parameters (`examples/ivc_plan`).
+pub fn plan(whir: &WhirParams, n: usize) -> Result<(Params, usize, [usize; 3]), String> {
+    let p = Params::new(whir, n)?;
+    let mut b = Builder::new(false);
+    let live = b.live_var();
+    let parts = CtxParts { statement: [Goldilocks::ZERO; 4], chain: [Goldilocks::ZERO; 4], g0: Fp3::ZERO, pn0: Fp3::ZERO, pv0: Fp3::ZERO };
+    program::run(&mut b, &p, live, &program::dummy_state(&p), &program::dummy_proof(&p), &parts, |b, c| b.set_output(c));
+    let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
+    Ok((p, b.rows(), census))
+}
+
 /// Derive (or fetch) the key of `(whir, n)`.
 pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
     type Cache = Mutex<HashMap<([u8; 8], usize), Arc<Key>>>;
@@ -186,11 +207,48 @@ fn timer() -> impl Fn(&str) {
 pub fn timer_pub(indent: &'static str) -> impl Fn(&str) {
     let on = std::env::var_os("ZHENG_TIMING").is_some();
     let clock = std::time::Instant::now();
+    let cpu0 = if on { thread_cpu_ms() } else { 0.0 };
+    let all0 = if on { process_cpu_ms() } else { 0.0 };
     move |what: &str| {
         if on {
-            eprintln!("{indent}{what}: {:.1} ms", clock.elapsed().as_secs_f64() * 1e3);
+            let (a, b) = super::perm::count();
+            eprintln!(
+                "{indent}{what}: {:.2} ms (this thread's CPU {:.2} ms, all threads' {:.0} ms) · permutations {a} single, {b} batched",
+                clock.elapsed().as_secs_f64() * 1e3,
+                thread_cpu_ms() - cpu0,
+                process_cpu_ms() - all0
+            );
         }
     }
+}
+
+/// CPU time of the calling thread, ms (laps on a shared machine).
+pub fn thread_cpu_ms() -> f64 {
+    // CLOCK_THREAD_CPUTIME_ID: 16 on macOS, 3 on Linux
+    cpu_clock(if cfg!(target_os = "macos") { 16 } else { 3 })
+}
+
+/// CPU time of the whole process (every thread), ms.
+pub fn process_cpu_ms() -> f64 {
+    // CLOCK_PROCESS_CPUTIME_ID: 12 on macOS, 2 on Linux
+    cpu_clock(if cfg!(target_os = "macos") { 12 } else { 2 })
+}
+
+fn cpu_clock(id: u32) -> f64 {
+    #[repr(C)]
+    struct Timespec {
+        sec: i64,
+        nsec: i64,
+    }
+    unsafe extern "C" {
+        fn clock_gettime(clock: u32, tp: *mut Timespec) -> i32;
+    }
+    let mut t = Timespec { sec: 0, nsec: 0 };
+    // SAFETY: `t` is a valid out-pointer for the duration of the call.
+    if unsafe { clock_gettime(id, &mut t) } != 0 {
+        return 0.0;
+    }
+    t.sec as f64 * 1e3 + t.nsec as f64 / 1e6
 }
 
 fn nox_row0(seg: &crate::air::Trace, n2: &crate::air::Trace) -> Vec<Goldilocks> {

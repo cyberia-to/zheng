@@ -113,8 +113,13 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let local = evals[..w].to_vec();
     let next: Vec<Fp3> = k.next_cols.iter().map(|&c| evals[w + c]).collect();
     let keyv = evals[2 * w..2 * w + pre::COUNT].to_vec();
-    for &v in local.iter().chain(&next) {
-        t.absorb_ext(v);
+    if is_inner {
+        for &v in local.iter().chain(&next) {
+            t.absorb_ext(v);
+        }
+    } else {
+        let both: Vec<Fp3> = local.iter().chain(&next).copied().collect();
+        t.absorb_all(&crate::recursion::msg::digest_native(&both));
     }
     if !is_inner {
         drop(local_cols);
@@ -191,8 +196,11 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     }
     let mut kv = Vec::new();
     let mut opened: Vec<&dyn whir::Tree> = words.iter().map(|w| w as &dyn whir::Tree).collect();
-    let kw = k.key_root.map(|_| crate::recursion::decide::KeyWords::commit(layout, n, &k.pre, k.arity()).0);
-    if let Some(kw) = &kw {
+    let fresh_kw = match (&k.key_root, &k.kw) {
+        (Some(_), None) => Some(crate::recursion::decide::KeyWords::commit(layout, n, &k.pre, k.arity()).0),
+        _ => None,
+    };
+    if let Some(kw) = k.kw.as_ref().or(fresh_kw.as_ref()) {
         let zg: Vec<Fp3> = rho.iter().chain(&gk[..CBITS]).copied().collect();
         for wd in &kw.group.words {
             let v = ml_eval_ext(&wd.table(), &zg);

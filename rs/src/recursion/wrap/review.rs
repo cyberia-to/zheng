@@ -316,15 +316,16 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
     }
 }
 
-/// The shipped chain's levels (`audit/wrap-2026-10.md`: `6i,8i,8f:30` —
-/// the 1/256 inner level grinds 24 bits, not the 30 the PR's own ledger
-/// test pins) reach 128 bits on every row; the weakest row of each level
-/// and its interactive value (grinding removed) as printed in the audit.
+/// The shipped chain's levels (`audit/wrap-fastverify-2026-10.md`:
+/// `4i:16,8i:24,9f:24`, grinding 16 / 24 / 24 bits) reach 128 bits on
+/// every row; the weakest row of each level and its interactive value
+/// (every grinding removed: folds, queries, the combination) as printed
+/// in the audit.
 #[test]
 fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated() {
     let base = crate::execution::succinct::params_for(20);
     let mut weakest = Vec::new();
-    for (rate, pow, n, mode, reads) in [(6u8, 24u8, 16usize, Mode::Inner, 0usize), (8, 24, 15, Mode::Inner, 0), (8, 30, 14, Mode::Final, 1 << 18)] {
+    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (8, 24, 15, Mode::Inner, 0), (9, 24, 14, Mode::Final, 1 << 18)] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;
@@ -334,6 +335,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         let cfg = crate::recursion::whir::Config::derive(&whir, n + super::CBITS, groups, claims).unwrap();
         let constraints = super::View(&CircuitAir::default(), mode).constraints();
         let rows = ledger(&params, &cfg, constraints, reads);
+        for (nm, b) in &rows {
+            eprintln!("1/{} {mode:?} (constraints {constraints}): {nm:<40} {b:.2}", 1u32 << rate);
+        }
+        for (i, rd) in cfg.wc.rounds.iter().enumerate() {
+            eprintln!("1/{} {mode:?} round {i}: {rd:?}", 1u32 << rate);
+        }
         let (name, bits) = rows.iter().cloned().fold((String::new(), f64::INFINITY), |a, r| if r.1 < a.1 { r } else { a });
         assert!(bits >= 128.0, "{rate} {mode:?}: {name} {bits}");
         // the grinding rounds without their grinding: the interactive bound
@@ -348,17 +355,22 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
                 }
             }
         }
+        if let Some((_, b)) = rows.iter().find(|r| r.0 == "batch combine") {
+            inter = inter.min(b - f64::from(cfg.comb_pow));
+        }
         let last = cfg.wc.rounds.last().unwrap();
         if let Some((_, b)) = rows.iter().find(|r| r.0 == "fin") {
             inter = inter.min(b - f64::from(last.query_pow));
         }
-        eprintln!("1/{} {mode:?} (pow {pow}): weakest {name} {bits:.2}; interactive weakest {inter:.2}", 1u32 << rate);
+        eprintln!("1/{} {mode:?} (pow {pow}, combination {}): weakest {name} {bits:.2}; interactive weakest {inter:.2}", 1u32 << rate, cfg.comb_pow);
         weakest.push((bits, inter));
     }
-    // the final level: shift_2 at 128.02 with 30 bits of grinding, 98.02
-    // interactively
-    assert!((weakest[2].0 - 128.02).abs() < 0.01, "{:?}", weakest[2]);
-    assert!((weakest[2].1 - 98.02).abs() < 0.01, "{:?}", weakest[2]);
+    // the figures `specs/soundness.md` and the audit state: weakest
+    // 128.22 / 128.29 / 128.40, interactively 109.34 (1/16: the
+    // combination after its 19 bits) / 104.29 / 104.70 (final fold_1)
+    for (got, want) in weakest.iter().zip([(128.22, 109.34), (128.29, 104.29), (128.40, 104.70)]) {
+        assert!((got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01, "{weakest:?}");
+    }
 }
 
 /// A wrap key is bound to the recursive proof it was derived for: the

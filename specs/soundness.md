@@ -67,6 +67,16 @@ of `m = 4` words with `J = 64` claims (`t = 53`, `s = 1`, `query_pow = 24`,
 `comb_pow = 22`). Every number below is printed and checked ≥ 128 by
 `recursion::params::tests::every_ledger_row_of_the_recursion_profile_reaches_128_bits`.
 
+Shipped since `audit/wrap-fastverify-2026-10.md` (`ivc::SHIPPED_POW`):
+the same profile with **16 grinding bits** per challenge — `J = 69`
+claims, `t = 58` spot checks, `query_pow = 16`, `comb_pow = 17`; the
+step circuit 29,628 of 2^15 rows (`examples/ivc_plan`). Its rows, checked
+≥ 128 by the same test: combine 128.34, spot 128.28; decider batch
+combine 128.92, fold ≥ 128.43, shift ≥ 128.22, fin 129.00, OOD ≥ 154.8;
+the other rows as below (they do not depend on grinding). Interactively
+(every grinding removed) the weakest round carries **111.34** bits (104.01
+at 24 grinding bits).
+
 | component | assumption | bits claimed | status | argument | controlling parameter | test |
 |---|---|---|---|---|---|---|
 | field-native transcript (`recursion::sponge`) | hemera's permutation as an ideal permutation; capacity 7 lanes | challenges: output limbs, exactly uniform on `F_p` (no byte reduction); indices: low `k ≤ 32` bits of a limb `v ≠ p − 1`, exactly uniform since `2^k \| p − 1`; generic sponge bound `2^{c·64/2} = 2^{224}` for 7 capacity lanes, above the hash row's `2^128` digest bound | proven given the ideal permutation; hemera conjectured (hash row) | overwrite duplex with a fixed message schedule (every protocol absorbs a fixed number of items per round), domain tags per use | rate 9, tags | `recursion::sponge` via every recursion test |
@@ -86,16 +96,23 @@ of `m = 4` words with `J = 64` claims (`t = 53`, `s = 1`, `query_pow = 24`,
 
 Every number below is printed and checked ≥ 128 by
 `recursion::wrap::tests::every_ledger_row_of_the_wrap_profiles_reaches_128_bits`
-(inner 1/64 with 24 grinding bits, inner 1/256 with 30, final 1/256 with
-30), by `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the chain measured in `audit/wrap-2026-10.md`, `6i,8i,8f:30`: inner
-1/64 and 1/256 with 24 grinding bits, final 1/256 with 30 — weakest rows
-128.24 / 128.29 / 128.02) and by `examples/wrap_bench` for the derived
-keys. The ≥ 128 figures price grinding as hemera work: interactively
-(grinding removed) the weakest rounds carry 104.42 / 104.29 / **98.02**
-bits (the final level's shift round after its 30-bit query grinding), so
-the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
-grinding permutation.
+(inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, final
+1/256 with 30 and 1/512 with 24), by
+`recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
+(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:24`, measured in
+`audit/wrap-fastverify-2026-10.md`: inner 1/16 with 16 grinding bits
+(2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 24 (2^14) —
+weakest rows 128.22 / 128.29 / 128.40) and by `examples/wrap_bench` for
+the derived keys. The ≥ 128 figures price grinding as hemera work:
+interactively (every grinding removed — fold, query and combination
+challenges) the weakest rounds carry **109.34 / 104.29 / 104.70** bits
+(the 1/16 level's combination after its 19 bits; the 1/256 and the
+final level's `shift_1` after their 24-bit query grinding — the final
+level's weakest priced row, `fold_1`, carries 22 fold-grinding bits and
+106.40 interactively), so the
+non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
+grinding permutation. The previous chain (`6i,8i,8f:30`,
+`audit/wrap-2026-10.md`) carried 98.02 interactively at its final level.
 
 | component | assumption | bits claimed | status | argument | controlling parameter | test |
 |---|---|---|---|---|---|---|
@@ -107,6 +124,7 @@ grinding permutation.
 | final wrap linear wiring | Schwartz–Zippel in `λ` | `#reads/|K|` → 174.0 at `2^18` reads | proven | every read slot's value minus its write slot's value (linear in the row's phase-1 cells, the key fixed) batched with powers of `λ` drawn after `W1` is bound; a nonzero difference vector makes `⟨u_λ, W1⟩` a nonzero polynomial of degree `< #reads` | — | `tests/wrap.rs` |
 | final wrap column batching (local, successor) | Schwartz–Zippel (multilinear in the column index) | `6/|K|` → 189.4 | proven | the claims on `W1` at `ρ` and its successor become weights of the direct opening; the successor claim covers the columns the constraints read (from the recorded graph); the others are not constrained and not read | — | `tests/wrap.rs` |
 | recursion circuit = the wrapped verifier | as the "recursion circuit = the step verifier" row, for the final verifier, the field-native WHIR verifier and the wrap verifier | — | tested, not proven: the circuit and the native interpreter run one program (`finalv`, `wrap::verify`); honest runs satisfy every row; tampered proofs are refused by both | `recursion::whir::tests`, `tests/wrap.rs` |
+| final-level message digests (`recursion::msg`) | hemera collision resistance (4-limb digests) | binding as the hash row (`2^128` classical) | conjectured (hash row) | the final level's direct opening absorbs its final polynomial, and the final wrap absorbs its column values at `ρ` and their successors, as one digest: eight part sponges (tag `MSG`) and a sponge over the message's length and the parts' digests (the length fixes every part's size; a part zero-pads its last block, so without the length `m ‖ 0` and `m` collide — zheng #58 review); the length is also the key's (`check_shape`, the parser); a second message with the same digest is a hemera collision, so the transcript binds the message as if absorbed whole (Fiat–Shamir over a collision-resistant message hash) | — | `recursion::msg::tests`, `wrap::fastverify_review::message_digests_bind_length_order_and_content`, `tests/wrap.rs` |
 | wrap composition | every row above; hemera as a random oracle inside the circuit (a level recomputes the transcript of the level below) | per round ≥ 128 (non-interactive: `Q·2^-128` per proof plus hemera collisions, if recursive Fiat–Shamir is sound) | **conjectured** — the IVC composition row's heuristic, one level per wrap | the outermost proof's public input binds the statement's context, chain, segment count, run challenges, constants and the deferred nox-public claim the verifier evaluates itself | — | `tests/wrap.rs` |
 
 ## informational

@@ -5,7 +5,7 @@
 //! IVC parameters as `ivc_bench` (`ZHENG_RATE`, `ZHENG_POW`, `ZHENG_STEP`).
 //! `ZHENG_WRAP` lists the wrap levels, innermost first, as
 //! `<log inv rate><i|f>[:<pow>[:<fold>]]` (`i`: inner mode, `f`: final
-//! mode — only the last level), default `6i,8i:30,8f:30`. `ZHENG_IVC_DIR=<dir>`: store / reuse IVC proofs there
+//! mode — only the last level), default `wrap::SHIPPED`. `ZHENG_IVC_DIR=<dir>`: store / reuse IVC proofs there
 //! (`<fixture>.ivc`).
 
 #[path = "../../tests/common/mod.rs"]
@@ -37,7 +37,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 }
 
 fn levels(base: &lens::WhirParams) -> Vec<WrapParams> {
-    let spec: String = env("ZHENG_WRAP", "6i,8i:30,8f:30".to_string());
+    let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());
     spec.split(',')
         .map(|l| {
             let mut parts = l.split(':');
@@ -64,7 +64,7 @@ fn ms(t: Instant) -> f64 {
 fn main() {
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = env("ZHENG_RATE", 4);
-    whir.pow_bits = env("ZHENG_POW", 24);
+    whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: u32 = env("ZHENG_STEP", 15);
     let args: Vec<String> = std::env::args().skip(1).collect();
     let names = if args.is_empty() { vec!["add.tri".into()] } else { args };
@@ -75,10 +75,12 @@ fn main() {
     let ikey = ivc::key(&whir, n as usize).expect("key");
     eprintln!("ivc key: {:.0} ms", ms(t0));
 
-    let mut keys = Vec::new();
-    for (i, p) in lv.iter().enumerate() {
+    // keys derive level by level as the chain proves: a level's key is
+    // kept only while it proves and while the next level verifies it
+    let derive = |i: usize, prev: Option<&wrap::WrapKey>| -> wrap::WrapKey {
+        let p = &lv[i];
         let t = Instant::now();
-        let k = match keys.last() {
+        let k = match prev {
             None => wrap::derive_key_ivc(*p, &ikey),
             Some(prev) => wrap::derive_key_wrap(*p, prev),
         }
@@ -102,9 +104,13 @@ fn main() {
             k.cfg.security_bits(),
             ms(t)
         );
-        keys.push(k);
-    }
+        k
+    };
     if std::env::var_os("ZHENG_KEYS_ONLY").is_some() {
+        let mut prev: Option<wrap::WrapKey> = None;
+        for i in 0..lv.len() {
+            prev = Some(derive(i, prev.as_ref()));
+        }
         return;
     }
     for name in names {
@@ -133,22 +139,27 @@ fn main() {
         let pn = ivc::verify_claim(&prep, &proof).expect("ivc verify");
         println!("{name}: cycles {} · {} steps · IVC proof {ivc_bytes} B · IVC verify {:.2} ms", run.statement.cycles, run.segments(), ms(t));
         let mut wraps = Vec::new();
-        let spec: String = env("ZHENG_WRAP", "6i,8i:30,8f:30".to_string());
+        let spec: String = env("ZHENG_WRAP", wrap::SHIPPED.to_string());
         let specs: Vec<&str> = spec.split(',').collect();
-        for (i, k) in keys.iter().enumerate() {
+        let levels = lv.len();
+        let mut prev_key: Option<wrap::WrapKey> = None;
+        let mut last_key: Option<wrap::WrapKey> = None;
+        for i in 0..levels {
+            let key_i = derive(i, prev_key.as_ref());
+            let k = &key_i;
             let t = Instant::now();
             // a stored proof of this level (the levels up to it named in the file)
             let wfile = std::env::var("ZHENG_IVC_DIR").ok().map(|d| format!("{d}/{name}.w{i}-{}", specs[..=i].join("_")));
             let stored = wfile.as_ref().and_then(|f| std::fs::read(f).ok());
             let (wp, x, tp) = match stored {
-                Some(b) if i + 1 < keys.len() => {
+                Some(b) if i + 1 < levels => {
                     let wp = wrap::WrapProof::from_bytes(&b, k).expect("stored wrap");
                     let x = wrap::public_digest_native(&prep.publics, &pn).expect("digest");
                     eprintln!("{name}: wrap {i} from {}", wfile.as_ref().unwrap());
                     (wp, x, f64::NAN)
                 }
                 _ => {
-                    let inner = if i == 0 { Inner::Ivc { key: &ikey, proof: &proof } } else { Inner::Wrap { key: &keys[i - 1], proof: &wraps[i - 1] } };
+                    let inner = if i == 0 { Inner::Ivc { key: &ikey, proof: &proof } } else { Inner::Wrap { key: prev_key.as_ref().expect("previous key"), proof: &wraps[i - 1] } };
                     let (wp, x) = wrap::prove(k, &inner, &prep.publics, &pn).expect("wrap prove");
                     let tp = ms(t);
                     if let Some(f) = &wfile {
@@ -169,8 +180,15 @@ fn main() {
             v.sort_by(|a, b| a.partial_cmp(b).unwrap());
             println!("{name}: wrap {i}: proof {} B · prove {tp:.0} ms · verify median {:.2} ms", bytes.len(), v[2]);
             wraps.push(parsed);
+            // the previous level's key is no longer needed
+            if i + 1 == levels {
+                last_key = Some(key_i);
+            } else {
+                prev_key = Some(key_i);
+            }
         }
-        let last = keys.last().expect("a level");
+        drop(prev_key);
+        let last = last_key.as_ref().expect("a level");
         let fp = FinalProof { log_rows: proof.log_rows, start: proof.start, segments: proof.segments, chain: proof.chain, pn: pn.clone(), wrap: wraps.pop().expect("a wrap") };
         let bytes = fp.to_bytes(last);
         let fp = FinalProof::from_bytes(&bytes, last).expect("parse");

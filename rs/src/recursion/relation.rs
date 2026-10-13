@@ -161,4 +161,11 @@ impl Air for View<'_> {
     fn eval(&self, v: &Vals<'_>, challenges: &[Fp3], out: &mut [Fp3]) {
         self.0.eval(v.local, v.next, v.publics, challenges, out);
     }
+    fn eval_mix(&self, v: &Vals<'_, crate::air::mix::Mix>, challenges: &[Fp3], out: &mut [crate::air::mix::Mix]) -> bool {
+        use crate::air::mix::Mix;
+        let ch_v: Vec<Mix> = challenges.iter().map(|&c| Mix::of(c)).collect();
+        let ch = self.0.ch.map(Mix::of);
+        self.0.eval_with(v.local, v.next, v.publics, &ch_v, &ch, &self.0.machine.constants.lift(), out);
+        true
+    }
 }

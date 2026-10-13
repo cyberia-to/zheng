@@ -24,6 +24,7 @@
 //! for [`crate::accumulate`] (or a direct decider).
 
 pub mod num;
+pub mod mix;
 mod prove;
 pub mod public;
 mod shift;
@@ -77,6 +78,12 @@ pub trait Air: Sync {
     fn publics(&self) -> &[Public];
     /// Constraint values; all must vanish on every row of a valid trace.
     fn eval(&self, v: &Vals<'_>, challenges: &[Fp3], out: &mut [Fp3]);
+    /// [`Self::eval`] in mixed arithmetic (`mix::Mix`: base-field values
+    /// stay base until they meet an Fp3 one); `false` when the AIR does
+    /// not provide it (the zerocheck then evaluates in Fp3).
+    fn eval_mix(&self, _v: &Vals<'_, mix::Mix>, _challenges: &[Fp3], _out: &mut [mix::Mix]) -> bool {
+        false
+    }
 }
 
 /// A row-major trace of base-field cells.

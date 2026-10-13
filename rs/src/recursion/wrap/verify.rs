@@ -47,7 +47,7 @@ fn bind<O: Ops>(o: &mut O, t: &mut Sponge<O>, answers: &[Fp3]) -> Vec<ClaimRef<O
 
 /// Threads of the native verifier's field passes (`ZHENG_VERIFY_THREADS`,
 /// default every core up to 16).
-pub(crate) fn threads() -> usize {
+pub fn threads() -> usize {
     std::env::var("ZHENG_VERIFY_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -55,26 +55,28 @@ pub(crate) fn threads() -> usize {
         .max(1)
 }
 
-/// `f` over `0..n` in contiguous chunks on [`threads`] threads, in order.
-fn par_chunks<T: Send>(n: usize, f: impl Fn(core::ops::Range<usize>) -> T + Sync) -> Vec<T> {
-    let t = threads().min(n.max(1));
-    let size = n.div_ceil(t);
-    if t == 1 {
-        return vec![f(0..n)];
+/// `f` over `0..n` in contiguous chunks on [`threads`] threads, in order
+/// (the persistent pool, [`crate::recursion::pool`]).
+pub(crate) fn par_chunks<T: Send>(n: usize, f: impl Fn(core::ops::Range<usize>) -> T + Sync) -> Vec<T> {
+    crate::recursion::pool::map_chunks(n, threads(), f)
+}
+
+/// `eq(point, ·)` on the cube, blocks of the high variables in parallel
+/// (`eq(p, x) = eq(p_lo, lo)·eq(p_hi, hi)`).
+pub(crate) fn par_eq_table(point: &[Fp3]) -> Vec<Fp3> {
+    let k = point.len().min(8);
+    if point.len() < 12 {
+        return eq_table(point);
     }
-    std::thread::scope(|s| {
-        let hs: Vec<_> = (0..t).map(|i| {
-            let f = &f;
-            s.spawn(move || f(i * size..((i + 1) * size).min(n)))
-        }).collect();
-        hs.into_iter().map(|h| h.join().expect("verifier thread")).collect()
-    })
+    let (lo, hi) = (eq_table(&point[..k]), eq_table(&point[k..]));
+    let (lo, hi) = (&lo, &hi);
+    par_chunks(hi.len(), |r| r.flat_map(|h| lo.iter().map(move |&l| l * hi[h])).collect::<Vec<_>>()).concat()
 }
 
 /// The key's columns at `ρ` from the key itself.
 pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
     use lens::rspcs::field::mul_base;
-    let e = eq_table(rho);
+    let e = par_eq_table(rho);
     let one = nebu::Goldilocks::ONE;
     let col = |c: &[(u32, Fp3)]| {
         c.iter().fold(Fp3::ZERO, |a, &(x, v)| {
@@ -88,11 +90,11 @@ pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
             }
         })
     };
-    par_chunks(k.sparse.len(), |r| r.map(|j| col(&k.sparse[j])).collect::<Vec<_>>()).concat()
+    par_chunks(k.sparse.len(), |r| r.map(|j| if k.key_cols[j] { col(&k.sparse[j]) } else { Fp3::ZERO }).collect::<Vec<_>>()).concat()
 }
 
 /// `λ^i` for `i < n`, in parallel chunks.
-fn powers(lambda: Fp3, n: usize) -> Vec<Fp3> {
+pub(crate) fn powers(lambda: Fp3, n: usize) -> Vec<Fp3> {
     let pow = |mut e: usize| {
         let (mut acc, mut b) = (Fp3::ONE, lambda);
         while e > 0 {
@@ -116,57 +118,6 @@ fn powers(lambda: Fp3, n: usize) -> Vec<Fp3> {
     .concat()
 }
 
-/// The batched wiring vector `u_λ` as a weight of the opening: every
-/// read slot's value minus its write slot's, with powers of `λ`.
-pub(crate) struct WiringWeight<'a> {
-    pub k: &'a WrapKey,
-    pub lambda: Fp3,
-}
-
-impl whir::NativeWeight for WiringWeight<'_> {
-    fn table(&self) -> Vec<Fp3> {
-        super::prove::wiring_table(self.k, self.lambda)
-    }
-    /// `u_λ(α, b)` for every `b`: the word's index `x = col·2^n + row`,
-    /// `α` its low `ℓ − fv` bits, `b` the rest.
-    fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3> {
-        let w = self.k.wiring.as_ref().expect("final mode");
-        let pre = alpha.len();
-        let ea = eq_table(alpha);
-        let mask = (1usize << pre) - 1;
-        let lp = powers(self.lambda, w.reads);
-        let writes = w.write_at.len() - 1;
-        let ws: Vec<Fp3> = par_chunks(writes, |r| {
-            r.map(|j| w.write_reads[w.write_at[j] as usize..w.write_at[j + 1] as usize].iter().fold(Fp3::ZERO, |a, &i| a + lp[i as usize]))
-                .collect::<Vec<_>>()
-        })
-        .concat();
-        let nr = w.read_cells.len();
-        let parts = par_chunks(nr + w.write_cells.len(), |r| {
-            let mut out = vec![Fp3::ZERO; 1 << fv];
-            for e in r {
-                if e < nr {
-                    let (i, x, kc) = w.read_cells[e];
-                    let x = x as usize;
-                    out[x >> pre] += kc.apply(lp[i as usize] * ea[x & mask]);
-                } else {
-                    let (j, x, kc) = w.write_cells[e - nr];
-                    let x = x as usize;
-                    out[x >> pre] -= kc.apply(ws[j as usize] * ea[x & mask]);
-                }
-            }
-            out
-        });
-        let mut out = vec![Fp3::ZERO; 1 << fv];
-        for p in parts {
-            for (o, v) in out.iter_mut().zip(p) {
-                *o += v;
-            }
-        }
-        out
-    }
-}
-
 /// Verify a wrap proof whose public input is `x` (final mode: a native
 /// interpreter only — the key and the wiring are evaluated in the field).
 pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
@@ -174,6 +125,9 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     let lap = crate::recursion::ivc::timer_pub("      wrap verify ");
     let n = k.params.n;
     let inner = k.inner();
+    // final mode evaluates the key, the wiring and the closing in the
+    // field and enters them as constants: a circuit would leave them free
+    assert!(inner || o.native(), "wrap: a final-mode level is verified natively only");
     let mut t = Sponge::new(o, tag::WRAP);
     t.absorb_all(o, &x);
     let mut roots = Vec::with_capacity(2);
@@ -205,20 +159,28 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         claim = gm::interpolate(o, &h, a);
         rho.push(a);
     }
-    let local: Vec<O::V> = pf.local.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
-    let sent: Vec<O::V> = pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
+    // final mode (a native verifier): the columns as one digest
+    let (local, sent): (Vec<O::V>, Vec<O::V>) = if inner {
+        (pf.local.iter().map(|&v| t.absorb_free_ext(o, v)).collect(), pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect())
+    } else {
+        let both: Vec<Fp3> = pf.local.iter().chain(&pf.next).copied().collect();
+        let mut v = crate::recursion::msg::absorb(o, &mut t, &both);
+        let next = v.split_off(pf.local.len());
+        (v, next)
+    };
     let zero = o.zero();
     let mut next = vec![zero; k.cols()];
     for (&c, &v) in k.next_cols.iter().zip(&sent) {
         next[c] = v;
     }
+    lap("zerocheck");
     let key: Vec<O::V> = if inner {
         pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect()
     } else {
         let r: Vec<Fp3> = rho.iter().map(|&v| o.value(v)).collect();
         key_at(k, &r).into_iter().map(|v| o.constant(v)).collect()
     };
-    lap("zerocheck, key");
+    lap("key");
     let e_out = gm::eq_row(o, k.out_row, &rho);
     let pin: Vec<O::V> = x.iter().map(|&xj| o.mul(e_out, xj)).collect();
     let e = gm::eq(o, &tau, &rho);
@@ -229,7 +191,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     ins.extend_from_slice(&key);
     ins.extend_from_slice(&pin);
     ins.extend_from_slice(&[ab[0], ab[1], mu]);
-    let g = o.graph(&k.g, &ins)[0];
+    let g = o.graph_compiled(&k.g, &k.gc, &ins)[0];
     o.assert_eq(g, c, "wrap: constraints");
     lap("constraints");
     if !inner {
@@ -256,7 +218,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         claims.push((whir::Weight::RowCol { next: false, rho: rho.clone(), col: cl }, vl));
         claims.push((whir::Weight::RowCol { next: true, rho: rho.clone(), col: cn }, vn));
         claims.push((whir::Weight::Native(0), zero));
-        let wiring = WiringWeight { k, lambda: o.value(lambda.expect("final mode")) };
+        let wiring = super::wiring::WiringWeight { k, lambda: o.value(lambda.expect("final mode")) };
         whir::verify_direct(o, &k.cfg, &mut t, roots[0], false, claims, &[&wiring], &pf.whir);
         lap("opening");
         return;
