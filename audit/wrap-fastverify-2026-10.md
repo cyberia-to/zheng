@@ -325,8 +325,10 @@ the same bytes.
 | verify, statement prepared, 16 threads warm / cold | 2.50 / 3.44 ms | |
 | verify, one thread warm / cold | 5.14 / 6.14 ms | |
 
-Against #56 (`audit/wrap-2026-10.md`): the wrap chain from 985 s to
-≈ 40 s on Metal (the whole joy prove, IVC and keys included, 46 s),
+Against #56 (`audit/wrap-2026-10.md`): the wrap chain alone took 985 s;
+now a whole profile-6 prove (IVC and wrap chain) of hash.tri takes 36.8 s
+on Metal and 73.7 s on the CPU (the joy prove of loop.tri, keys included,
+46 s),
 peak memory from 32–38 GB to 14.2 GB, verify from 6.4–7.2 ms to 2.5 ms
 on 16 threads (10.1–10.9 → 5.1 ms on one), the proof bounded by
 construction at 64,213 B. Checks: zheng suites green on #61, the bit-flip
