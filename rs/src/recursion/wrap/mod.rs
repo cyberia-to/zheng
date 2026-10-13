@@ -74,7 +74,7 @@ use crate::air::{Air, Public, Shape, Vals};
 /// the benches spell it (`<log inv rate><i|f>[:<grinding bits>]`): inner
 /// 1/16 grinding 16 bits (2^16 rows), inner 1/256 grinding 24 (2^15),
 /// final 1/512 grinding 24 (2^14) — `audit/wrap-fastverify-2026-10.md`.
-pub const SHIPPED: &str = "4i:16,8i,9f:24";
+pub const SHIPPED: &str = "4i:16,8i:24,9f:24";
 
 /// Committed columns (phase 1 ‖ phase 2).
 pub const COLS: usize = V1 + V2;

@@ -317,7 +317,7 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 }
 
 /// The shipped chain's levels (`audit/wrap-fastverify-2026-10.md`:
-/// `4i:16,8i,9f:24`, grinding 16 / 24 / 24 bits) reach 128 bits on
+/// `4i:16,8i:24,9f:24`, grinding 16 / 24 / 24 bits) reach 128 bits on
 /// every row; the weakest row of each level and its interactive value
 /// (every grinding removed: folds, queries, the combination) as printed
 /// in the audit.

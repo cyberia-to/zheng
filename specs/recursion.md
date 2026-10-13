@@ -244,7 +244,7 @@ evaluates `u_λ` slot by slot: with `ℓ − fv ≤ n` every cell of one slot
 shares its row's `eq(α, ·)` factor, so the term is one product per slot
 and a Horner sum over the reads (`wrap::wiring`).
 
-The chain shipped (`wrap::SHIPPED` = `4i:16,8i,9f:24`): the IVC proof
+The chain shipped (`wrap::SHIPPED` = `4i:16,8i:24,9f:24`): the IVC proof
 (rate 1/16, steps of `2^15` rows) → inner 1/16 grinding 16 bits (the IVC
 final verifier, 2^16 rows) → inner 1/256 grinding 24 (2^15 rows) → final
 1/512 grinding 24 (2^14 rows). The final level's circuit size (≤ 2^14,

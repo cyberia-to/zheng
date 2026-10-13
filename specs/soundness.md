@@ -99,7 +99,7 @@ Every number below is printed and checked ≥ 128 by
 (inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, final
 1/256 with 30 and 1/512 with 24), by
 `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the shipped chain `wrap::SHIPPED` = `4i:16,8i,9f:24`, measured in
+(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:24`, measured in
 `audit/wrap-fastverify-2026-10.md`: inner 1/16 with 16 grinding bits
 (2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 24 (2^14) —
 weakest rows 128.22 / 128.29 / 128.40) and by `examples/wrap_bench` for
