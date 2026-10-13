@@ -42,11 +42,13 @@ process.
 | hash.tri | 6 | **62,962** | 2,511 s † | 29.2 GB (peak footprint 60.0 GB) | 4,216–4,613 ms | 20.9–24.1 ms (10.3 ms in the prover's process) |
 | tree-12 (16,383 cycles, 2 steps) | 1 | — (relation compiler: size/depth limit) | | | | |
 | tree-12 | 5 | 396,931 | 103.2 s | 7.47 GB | 3,302–3,455 ms | 71–154 ms |
-| tree-12 | 6 | PENDING | | | | |
+| tree-12 | 6 | 136,671 (final proof 62,877 B; statement 73,766 B) | 1,672 s ‡ | 27.1 GB (peak footprint 60.3 GB) | 1,928–1,942 ms | 28.9–29.1 ms |
 
 † shared machine: two other agents' wrap chains ran during this prove and
 the process swapped (swap up to 42 GB); #56 measured 43 s + 1,207 s for
-hash.tri alone.
+hash.tri alone. ‡ alone on the machine for most of the run (#56: 47 s +
+1,235 s). A first tree-12 run, during other agents' chains, died after
+863 s with a 57.8 GB footprint and no output; the rerun above passed.
 
 Cold verify = deriving the keys in the process: the IVC key (1.5–2 s)
 and, for profile 6, the final key over the pinned roots; with an installed
@@ -71,3 +73,12 @@ bytes, a final proof of another step size, a bit-flip sample.
 `tests/keys.rs`: pinned digests equal the derived keys', layouts rebuild
 the same keys (wiring included), tampered/truncated/relabelled bundles
 are refused.
+
+## follow-up: #58
+
+zheng #58 (`feat/wrap-fastverify`, on `feat/wrap`) changes the wrap
+chain's levels and proof shapes; proofs of #56 do not verify under #58's
+keys. When #58 merges, profile 6 must follow it: `wrapped::chain()` (the
+allow-list), `wrapped::INNER_ROOTS`, `keys::WRAPPED_DIGEST` re-derived
+(`examples/wrap_keys`), `WRAPPED_FORMAT` bumped, and these numbers
+re-measured.
