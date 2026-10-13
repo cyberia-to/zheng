@@ -331,13 +331,65 @@ rspcs 39 passed. WebGPU has no line session, coset leaves or device
 Merkle levels yet: on WebGPU those fall back to the per-round device path
 and the CPU.
 
+## 4d. round 4 (2026-10-13): WebGPU parity, a WebGPU bug found by byte identity
+
+lens (`gpu/src/wgsl2.rs`, `webgpu2.rs`, in release/0.2 via lens#23): WGSL
+line sessions (columns resident, fold on the device), coset NTTs (scatter,
+nine stages in workgroup memory, single stages), streamed coset leaves and
+Merkle levels — at most four storage buffers per kernel (PowerVR).
+Differential tests with `LENS_GPU_REQUIRE=metal,webgpu` fail when a
+required backend declines an operation (13 tests green).
+
+**The bug.** The first WebGPU wrap chains produced final proofs that
+*verified* (also in a fresh process with the CPU backend: `wrap_verify`)
+but differed from the CPU's in about half the runs — different roots over
+unopened leaves. Located with three debugging backends kept in lens
+(`check-*` with `LENS_CHECK=op,…`, `spot-*`, and `record-*`: per-call
+input/output hashes to `LENS_RECORD`) and an asynchronous audit of every
+device coset-leaves call: the mismatching groups were the ragged last ones
+(cosets 242..256 at k = 2²¹, 493..512 at k = 2²⁰). Cause: the WGSL
+`ntt_block` kernel lacked a bounds check, and the 2-D workgroup grid
+(rows of 32,768) held more workgroups than blocks when the block count was
+not a multiple of the row — the extra workgroups wrote, index-clamped, into
+the end of the coset values. Fixed (lens 5569559) with a regression test
+(`ragged_coset_groups_equal_the_reference`, which fails without the fix at
+the same leaf, 1,704,447). Timing decided which groups the device took
+next to the CPU workers, hence the run-to-run variation; Metal's dispatch
+is exact and was never affected. Lesson recorded: a verifying proof is not
+evidence of a correct prover — byte identity against the CPU is the test.
+
+After the fix (load 1–7, quiet):
+
+| add.tri | metal | webgpu (wgpu on Metal) |
+|---|---|---|
+| IVC step (hash.tri, `ivc_bench`) | 4.2 s, 9.4 CPU-s | 6.6 s, 10.0 CPU-s |
+| IVC prove (in the chain) | 4.0 s | 6.3 s |
+| key derivation (once per chain) | 0.6 + 2.6 + 11.8 + 0.9 s | 1.2 + 4.2 + 29.9 + 0.9 s |
+| wrap 0 / 1 / 2 | 4.6 / 19.7 / 10.3 s | 7.1 / 38.4 / 25.0 s |
+| wrap chain | **34.5 s** | **70.5 s** |
+| whole process | 54.6 s wall, 176 CPU-s | 113.7 s wall, 190 CPU-s |
+| final proof | `0e9b923e…` | `0e9b923e…` (two runs) |
+
+Browsers: an asynchronous readback path (`read_async`: the map callback
+wakes the task, no blocking wait) with async coset NTT and Merkle levels;
+the crate builds for `wasm32-unknown-unknown`; tested natively through
+`pollster` (`webgpu_async_ops_equal_cpu`). No headless browser with WebGPU
+on this machine: not run in a browser. Android: joy (`--backend webgpu`,
+Vulkan) builds and links for `aarch64-linux-android` (NDK 27.3, API 30);
+no device attached: not run on a phone.
+
+Verifier paths are backend-free (zheng `fix/verifier-backend-free` on
+release/0.4; 361 tests passed, 0 failed): `permute_many_remember` / `permute_many_recall` — the
+verifier's parse and Merkle checks — run hemera on the CPU whatever
+backend is installed; test `verifier_permutations_never_reach_the_backend`.
+
 ## 5. what reaches seconds, what does not
 
 | profile | today (best backend, this machine, loaded) | seconds? |
 |---|---|---|
 | 1 (one relation ≤ 2¹⁵ rows) | 0.4 s library, 1.4 s CLI on Metal; 0.6 s WebGPU; 1.9–2.4 s CPU | **yes** — every backend |
 | 5 (IVC), per 2¹⁵-row step | **4.2–4.7 s** Metal (9.5 CPU-s), 7.4 s CPU | **yes on Metal** — a few seconds |
-| 6 (wrap chain) | **38.8 s** Metal (+ 17 s of once-per-chain key derivation), 138 s CPU | under a minute on Metal; not yet seconds |
+| 6 (wrap chain) | **34.5 s** Metal, 70.5 s WebGPU (+ 16–36 s of once-per-chain key derivation), 138 s CPU | under a minute on Metal; not yet seconds |
 
 What still costs time, from the profiles above:
 
