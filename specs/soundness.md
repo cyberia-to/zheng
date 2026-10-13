@@ -106,10 +106,11 @@ Every number below is printed and checked ≥ 128 by
 weakest rows 128.22 / 128.08 / 128.43) and by `examples/wrap_bench` for
 the derived keys. The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
-challenges) the weakest rounds carry **109.34 / 102.76 / 102.62** bits
-(the 1/16 level's combination after its 19 bits; the 1/128 level's
-combination after its 26 bits — five words, the key's three among them; the final level's `shift_2`
-after its 26-bit query grinding — 26 bits buy one query fewer in the
+challenges) the weakest rounds carry **108.92 / 102.35 / 102.62** bits
+(the 1/16 level's combination after its 20 bits; the 1/128 level's
+combination after its 26 bits — five words at each inner level, the
+key's three among them; the final level's `fin` after its 26-bit query
+grinding — 26 bits buy one query fewer in the
 final round, so that the proof is ≤ 64,213 B over every transcript), so
 the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,

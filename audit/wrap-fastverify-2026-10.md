@@ -233,7 +233,8 @@ the coordinator's decision the final level grinds 26 bits (`9f:26`): the
 outermost proof is ≤ 64,213 B over every transcript, so a profile-6
 envelope is ≤ 64 KiB whenever its encoded statement takes ≤ 1,272 B
 (`specs/recursion.md` § size gate). Ledger: final weakest 128.43,
-interactively 102.62 (`shift_2` after 26 query-grinding bits).
+interactively 102.62 (`fin` after 26 query-grinding bits; review D1:
+`shift_2` is 104.00).
 
 **Split key** (`feat/split-key`, stacked on #60). An inner level's key
 columns with Fp3 entries (the four gates' `qa`, `qb`, `qc`: 12 of 108)
@@ -245,8 +246,10 @@ ones for `G` and batches the physical ones over 8 variables
 costs the next circuit 6 permutations instead of 11, so the final
 circuit verifying a 1/128 second level fits 2^14 (16,230 of 16,384
 rows; 15,236 at 1/256). Shipped chain `4i:16,7i:22,9f:26`; level 1
-weakest 128.08, interactively 102.76 (its combination after 26 bits:
-five words now). `WRAPPED_FORMAT` 5; `INNER_ROOTS`, `WRAPPED_DIGEST`
+weakest 128.08, interactively 102.35 (its combination after 26 bits:
+five words now; level 0 108.92 after 20 combination bits — corrected by
+`audit/proof-stack-review-2026-10.md` D1, the earlier 102.76 / 109.34
+priced two key words). `WRAPPED_FORMAT` 5; `INNER_ROOTS`, `WRAPPED_DIGEST`
 re-pinned.
 
 Measured (machine shared, load 15–56; add.tri unless named):

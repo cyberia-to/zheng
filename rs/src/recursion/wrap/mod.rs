@@ -16,8 +16,8 @@
 //! - [`Mode::Inner`] (a proof another wrap verifies): the circuit's AIR
 //!   over `2^n` rows with committed words `W1` (circuit phase 1), `W2`
 //!   (phase 2: the memory argument, after the memory challenges) and the
-//!   circuit's key as two fixed words; any interpreter verifies it, the
-//!   circuit included;
+//!   circuit's key as fixed base words (`splitkey`); any interpreter
+//!   verifies it, the circuit included;
 //! - [`Mode::Final`] (the outermost proof, verified natively): one
 //!   committed word `W1`; the memory argument is replaced by its linear
 //!   form — every read slot's value equals its write slot's, batched with
@@ -33,7 +33,7 @@
 //!             OOD | final: λ; τ, μ; zerocheck (degree 9); the committed
 //!             columns at ρ and its successor; inner: the key columns at
 //!             ρ, γ_k; the shift reduction to one point per word; inner:
-//!             the key claim split over its two words | final: the wiring
+//!             the key claim over its words | final: the wiring
 //!             sumcheck; one batched field-native WHIR opening
 //! ```
 //!
@@ -212,7 +212,8 @@ pub struct WrapProof {
     pub key: Vec<Fp3>,
     pub shift: Vec<Fp3>,
     pub vals: Vec<Fp3>,
-    /// The key claim over its two words (inner mode; empty otherwise).
+    /// The key claim over its words, one value per word (inner mode;
+    /// empty otherwise).
     pub kv: Vec<Fp3>,
     pub whir: whir::Proof,
 }
