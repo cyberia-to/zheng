@@ -82,6 +82,12 @@ pub fn permute_many(states: &mut [[Goldilocks; WIDTH]]) {
         }
         return;
     }
+    permute_many_local(states);
+}
+
+/// [`permute_many`] on this machine's CPU, never the prover backend: the
+/// verifier's paths (a verifier trusts no installed device).
+pub fn permute_many_local(states: &mut [[Goldilocks; WIDTH]]) {
     let mut h: Vec<[HG; WIDTH]> = states
         .iter()
         .map(|s| core::array::from_fn(|i| to_h(s[i])))
@@ -137,10 +143,11 @@ fn key(s: &[Goldilocks; WIDTH]) -> [u64; WIDTH] {
     core::array::from_fn(|i| s[i].as_u64())
 }
 
-/// [`permute_many`], remembering every input's output.
+/// [`permute_many_local`], remembering every input's output (the
+/// verifier's parse: backend-free).
 pub fn permute_many_remember(states: &mut [[Goldilocks; WIDTH]]) {
     let inputs: Vec<[u64; WIDTH]> = states.iter().map(key).collect();
-    permute_many(states);
+    permute_many_local(states);
     let mut g = MEMO.lock().expect("memo");
     let m = g.get_or_insert_with(Default::default);
     if m.len() + states.len() > MEMO_CAP {
@@ -151,7 +158,8 @@ pub fn permute_many_remember(states: &mut [[Goldilocks; WIDTH]]) {
     }
 }
 
-/// [`permute_many`], reading remembered outputs where there are any.
+/// [`permute_many_local`], reading remembered outputs where there are any
+/// (the verifier's Merkle checks: backend-free).
 pub fn permute_many_recall(states: &mut [[Goldilocks; WIDTH]]) {
     let mut miss = Vec::new();
     {
@@ -169,11 +177,11 @@ pub fn permute_many_recall(states: &mut [[Goldilocks; WIDTH]]) {
         }
     }
     if miss.len() == states.len() {
-        permute_many(states);
+        permute_many_local(states);
         return;
     }
     let mut batch: Vec<[Goldilocks; WIDTH]> = miss.iter().map(|&i| states[i]).collect();
-    permute_many(&mut batch);
+    permute_many_local(&mut batch);
     for (&i, s) in miss.iter().zip(batch) {
         states[i] = s;
     }
@@ -224,6 +232,45 @@ pub fn head(s: &[Goldilocks; WIDTH]) -> [Goldilocks; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The CPU backend, counting the calls made from one thread (other
+    /// tests may run beside this one with the same process backend).
+    struct Watch(std::thread::ThreadId, core::sync::atomic::AtomicUsize);
+    impl lens::rspcs::backend::Backend for Watch {
+        fn name(&self) -> &'static str {
+            "cpu-watched"
+        }
+        fn permute(&self, s: &mut [lens::rspcs::backend::State]) {
+            if std::thread::current().id() == self.0 {
+                self.1.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            }
+            lens::rspcs::backend::Cpu.permute(s)
+        }
+    }
+
+    #[test]
+    fn verifier_permutations_never_reach_the_backend() {
+        use lens::rspcs::backend::Backend;
+        let many = |k: u64| -> Vec<[Goldilocks; WIDTH]> { (0..BACKEND_MIN as u64 * 2).map(|j| core::array::from_fn(|i| Goldilocks::new(j * 31 + i as u64 + k))).collect() };
+        let mut want = many(1);
+        permute_many_local(&mut want);
+        let watch = std::sync::Arc::new(Watch(std::thread::current().id(), Default::default()));
+        let prev = lens::rspcs::backend::install(watch.clone());
+        let mut a = many(1);
+        permute_many_remember(&mut a);
+        let mut b = many(1);
+        permute_many_recall(&mut b);
+        let mut c = many(2);
+        permute_many_recall(&mut c);
+        // the prover's batch does reach it
+        let mut d = many(3);
+        permute_many(&mut d);
+        lens::rspcs::backend::install(prev);
+        assert_eq!(a, want);
+        assert_eq!(b, want);
+        assert_eq!(watch.1.load(core::sync::atomic::Ordering::Relaxed), 1, "only the prover's batch");
+        let _ = watch.name();
+    }
 
     #[test]
     fn batch_agrees_with_single() {
