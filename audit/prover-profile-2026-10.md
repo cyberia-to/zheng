@@ -199,6 +199,27 @@ pair is open.
 Peers, for scale: #58's own run (`audit/wrap-fastverify-2026-10.md`, load
 24–41): wrap 11.8 / 42.5 / 28.7 s = 83.0 s.
 
+### C′. wrap chain on #58 at 5d7c959 (lean streaming, IVC grinding 16 bits)
+
+The same pair after rebasing onto #58's later head (2026-10-13 14:13–14:23,
+load 40 → 156: the CPU run's second half ran at a load of 110–156, so its
+level times are inflated; CPU seconds are the steadier comparison):
+
+| | cpu (#58's path) | metal |
+|---|---|---|
+| IVC prove | 22.6 s | **9.6 s** |
+| wrap 0 / 1 / 2 prove | 26.6 / 126.3 / 86.2 s | 30.5 / 55.2 / 29.8 s |
+| wrap chain | 239.1 s | **115.5 s** |
+| key derivation (once per chain) | 2.3 + 7.7 + 57.4 + 1.3 s | 2.1 + 12.7 + 109.8 + 2.6 s |
+| whole process | 330.7 s wall, **1,771 CPU-s** | 253.1 s wall, **330 CPU-s** |
+| peak RSS | 7.3 GB | 10.0 GB |
+| proofs (IVC, wrap 0–2, final) | — | SHA-1 equal to cpu (final `d9feb171…`) |
+
+The 1/256 level's key derivation (its key words always streamed now, Fp3
+over 2²⁹ points) ran slower through the device path than on 16 cores in
+this pair (110 vs 57 s): the CPU still runs every coset NTT there and the
+lanes cross into the device buffer by a copy; open (§5, item 2).
+
 ### D. kernels (`cyber-lens-gpu` `gpu_bench`)
 
 | backend | hemera permutations | grind 24 bits (62.0 M nonces) | grind 30 bits (1.08 G nonces) | coset NTT 16 × 2²⁰ |
@@ -218,8 +239,8 @@ explicit 32-bit limb products — all within noise of each other.
 | profile | today (best backend, this machine, loaded) | seconds? |
 |---|---|---|
 | 1 (one relation ≤ 2¹⁵ rows) | 0.4 s library, 1.4 s CLI on Metal; 0.6 s WebGPU; 1.9–2.4 s CPU | **yes** — every backend |
-| 5 (IVC), per 2¹⁵-row step | 19–24 s Metal, 36–42 s CPU | no — tens of seconds |
-| 6 (wrap chain) | 112 s Metal, 130 s CPU (#58 alone: 83 s on a quieter machine) | no — minutes → ~2 minutes |
+| 5 (IVC), per 2¹⁵-row step | 9.6 s Metal on #58's head (19–24 s on the pre-#58 stack), 22–42 s CPU | close — single-digit seconds per step on Metal, tens on CPU |
+| 6 (wrap chain) | 112–116 s Metal; 130–239 s CPU under load (#58 alone: 83 s on a quieter machine) | no — about two minutes |
 
 What still costs time, from the profiles above:
 
