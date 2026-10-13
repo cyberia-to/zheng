@@ -131,7 +131,7 @@ permutations for IVC + chain.
   backend give the CPU digests, held and streamed, base and Fp3.
 - zheng `cargo test --release`: 332 passed, 0 failed, 12 ignored on the
   pre-#58 stack (transcript_pin, recursion, recursive_envelope, wrap,
-  wrap_review included); on the #58 stack (379eda2): 330 passed, 0 failed, 7 ignored; on 5d7c959: 331 passed, 0 failed, 7 ignored; lens rspcs 37
+  wrap_review included); on the #58 stack (379eda2): 330 passed, 0 failed, 7 ignored; on 5d7c959: 331 passed, 0 failed, 7 ignored; round 2 on b7ad573: 333 passed, 0 failed, 7 ignored; joy on zheng#57 (e788c10) + lens round 2: 228 passed, 0 failed; lens rspcs 37
   passed; joy 228 passed, 0 failed.
 
 ## 4. timings
@@ -234,30 +234,66 @@ states per thread sharing the partial-round inversion (no gain: register
 pressure), threadgroup sizes 32–1024, full loop unrolling, `mulhi` vs
 explicit 32-bit limb products — all within noise of each other.
 
+## 4b. round 2 (2026-10-13): zerocheck and streamed commitments on the device
+
+On #58 at b7ad573 (`4i:16,8i:24,9f:24`):
+
+- **zerocheck on the device** — an AIR records its combination
+  `Σ_k μ^k C_k` as an `air::num` graph with the challenges and `μ` folded
+  in as constants (`Air::combine_graph`, provided by the IVC step relation
+  and the wrap circuit); compiled, depth-first scheduled and
+  register-allocated into a lens `program::Program` (step relation: 12,311
+  operations, **67 registers** — 891 values were live in recording order);
+  `Backend::line_sums` evaluates it along every pair's line at the round's
+  points (Metal: an interpreter kernel, one thread a pair and point; WGSL:
+  the same, three storage buffers). Tests: the program equals the graph;
+  device rounds equal the AIR rounds (step relation, random rows, on and
+  off the cube); Metal and WebGPU line sums equal the CPU interpreter.
+- **streamed commitments on device and CPU together** —
+  `Backend::coset_leaves` runs a group of cosets on the device (coefficient
+  limbs in, coset NTTs and the leaf sponges reading the coset values in
+  device memory, digests out — the codeword never leaves the device);
+  zheng's `stream::digests_device` lets the device claim coset groups and
+  15 CPU workers claim single cosets from one counter, so the faster side
+  takes more and a declining backend falls back to the CPU. This removed
+  the key-derivation regression.
+
+Same bytes: IVC proof, wrap 0/1/2 and the final proof SHA-1 equal on cpu
+and metal (final `d9feb171…`); hash.tri IVC `5c08a7e6…` on both.
+
+| (add.tri, 15:03–15:09, load 50–150) | cpu | metal |
+|---|---|---|
+| IVC prove | 15.6 s | **9.6 s** |
+| key derivation (once per chain) | 4.0 + 7.4 + 66.1 + 2.6 s | 0.8 + 5.0 + **22.3** + 2.0 s |
+| wrap 0 / 1 / 2 prove | 15.4 / 108.3 / 52.7 s | 10.4 / 36.2 / 18.4 s |
+| wrap chain | 176.4 s | **65.0 s** |
+| whole process (keys + IVC + chain) | 272.4 s wall, 1,878 CPU-s | **105.5 s** wall, **207 CPU-s** |
+| peak RSS | 12.0 GB | 13.2 GB |
+
+hash.tri IVC step alone (`ivc_bench`, load 150): metal 14.1 s wall /
+18 CPU-s, cpu 17.9 s / 121 CPU-s; the Metal run's own thread spent 4.9 s
+of CPU (serial transcript, packing and WHIR work) and the machine gave it
+a fraction of a core — the step is CPU-thread-bound on the device path,
+not device-bound.
+
 ## 5. what reaches seconds, what does not
 
 | profile | today (best backend, this machine, loaded) | seconds? |
 |---|---|---|
 | 1 (one relation ≤ 2¹⁵ rows) | 0.4 s library, 1.4 s CLI on Metal; 0.6 s WebGPU; 1.9–2.4 s CPU | **yes** — every backend |
-| 5 (IVC), per 2¹⁵-row step | 9.6 s Metal on #58's head (19–24 s on the pre-#58 stack), 22–42 s CPU | close — single-digit seconds per step on Metal, tens on CPU |
-| 6 (wrap chain) | 112–116 s Metal; 130–239 s CPU under load (#58 alone: 83 s on a quieter machine) | no — about two minutes |
+| 5 (IVC), per 2¹⁵-row step | 9.6 s Metal (load 150: the device path is bound by the main thread's serial work), 15.6–22.6 s CPU | close — single-digit seconds on Metal |
+| 6 (wrap chain) | **65 s** Metal (round 2), 176 s CPU in the same window | about a minute on Metal; not yet "well under" |
 
 What still costs time, from the profiles above:
 
-1. **Constraint evaluation in the zerocheck** (IVC step: `Relation::eval`
-   over Fp3, ≈ 50 % of the remaining CPU; the wrap levels' `zerocheck` laps,
-   5–9 s each) — generic Rust over `air::num`; it runs on the CPU in every
-   backend. A device kernel needs the constraint graph compiled to MSL/WGSL
-   (`air::num::Graph` already records it; #58 compiles it for the
-   verifier), evaluated per row on the device.
-2. **Streamed commitments** — coset NTTs and leaf sponges of words of
-   2²⁵–2²⁹ symbols. On a device the sponge is fast; the coset NTT stays on
-   the CPU (the Metal NTT, one radix-2 stage per dispatch, is at parity with
-   16 cores) and the lanes are laid out by the CPU and copied into the
-   device buffer. Next: a fused NTT-in-threadgroup-memory kernel feeding the
-   sponge kernel directly from device memory (no lane copies: the codeword
-   never leaves the GPU, unimem's zero-copy rule), and pipelining measured
-   on a quiet machine.
+1. **Constraint evaluation in the zerocheck** — on the device since round
+   2 (§4b). Left: the round's columns are re-packed and copied every round
+   (430 MB in round 0 of a step); keeping them in device memory and folding
+   there removes the copy.
+2. **Streamed commitments** — on the device since round 2, with CPU
+   workers alongside. Left: the Merkle levels above the leaves still run
+   through `permute` batches with copies; the NTT is one radix-2 stage per
+   dispatch (a threadgroup-memory NTT would cut its passes).
 3. **Serial main-thread work** — transcripts, openings, the round loop of
    WHIR (`this thread's CPU` 2–8 s a level).
 4. **Algorithmic size** (agent V / #58): key derivation of the 1/256 level
