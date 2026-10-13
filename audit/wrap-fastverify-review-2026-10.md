@@ -5,7 +5,8 @@ crystal-domain: crypto
 ---
 # wrap fast verifier — adversarial review, 2026-10-10
 
-Review of zheng #58 (`feat/wrap-fastverify` 379eda2, stacked on #56
+Review of zheng #58 (`feat/wrap-fastverify` 379eda2, extended to
+5d7c959 in §5, stacked on #56
 `feat/wrap` 606cda1): streamed commitments, key words committed once per
 key, the chain `4i:16,8i,9f:24`, message digests in the final level's
 transcript, the compiled constraint graph and its used key columns, the
@@ -79,3 +80,25 @@ test's levels are one chain.
 | `tests/wrap_review.rs` (546 tampers) | passed, 176 s, 10.4 GB max RSS |
 | bit-flip scan of the re-proved final proof (`wrap_flip add.tri`, 16 threads) | 509,128 flips, 508,284 decoded, **0 accepted**, 716 s |
 | a final proof of `feat/wrap-fastverify` under this branch | refused (`recursion: grinding`): the transcript changed; stored final proofs must be re-proved (inner proofs and keys unchanged) |
+
+## 5. addendum — b82fd5a, 5d7c959 (IVC grinding 16 bits, lean streaming)
+
+The review branch rebased onto 5d7c959 without conflict.
+
+| change | review | result |
+|---|---|---|
+| IVC grinding 16 bits per challenge (`ivc::SHIPPED_POW`; `J = 69`, `t = 58`, `query_pow = 16`, `comb_pow = 17`) | ledger recomputed independently (the Python recomputation of §3 extended to the accumulation's batch, sumcheck, combination, OOD and spot rows and the decider's WHIR over `[1, 2]`): 33 rows, every one equal to `params::ledger` within the printout's rounding, at 1/16 pow 24, 1/64 pow 24 and the shipped 1/16 pow 16. Shipped: weakest priced decider `shift_2` 128.22 (combine 128.34, spot 128.28, decider batch combine 128.92, decider fin 129.00); interactive weakest **111.34** = the accumulation's combination after its 17 bits (spot 112.28, decider `shift_2` 112.22, decider batch combine 111.92). The grinding attribution in `params::ledger` (combine → `comb_pow_for(4)`, spot → `query_pow`, decider fold/shift/fin/combine → their round's bits) matches lens's terms: no grinding-carrying row is left out of the interactive figure | `fastverify_review::the_shipped_ivc_profile_rows_and_interactive_figure` asserts the figures `soundness.md` states |
+| the verifier's grinding parameter | the IVC verifier's `query_pow`/`comb_pow` come from the parameters of the key; the final vk pins the IVC's `WhirParams` (`ivc` field) and a statement prepared under other parameters is refused (`review::a_final_proof_under_another_step_size_is_refused_by_its_key`) | sound |
+| zerocheck skips the first round's cube points (`h(0) = h(1) = 0`) | prover only: the verifier derives `h(1) = claim − h(0)` as before; a dishonest trace gives a wrong message, refused | sound |
+| lean streaming: limb cosets, digests written in place (`unsafe` raw writes), no leaf level for streamed trees (leaf-level siblings recomputed on opening), key words always streamed | prover only (the verifier checks symbols and paths to the absorbed root). The raw writes: worker for coset `s` writes `s + b·a`, `a < L/B` — disjoint, in bounds. A truly streamed word (`FORCE_STREAM`) has the held word's root and openings; a leaf recomputed from other coefficients is refused | `a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients` (now with a streamed word) |
+| `wrap_flip` example | it derived the wrap levels at the IVC's 16 grinding bits and refused the 1/256 level (`whir: 121.43 bits < 128`) | fixed (examples only): wrap levels at 24 bits unless named, as `wrap_bench` and `wrap_verify` |
+
+Runs on the rebased branch (load 70–155):
+
+| run | result |
+|---|---|
+| `cargo test --release -p zheng --lib` | 290 passed, 3 ignored |
+| `wrap_bench add.tri` from scratch (IVC at 16 bits, the whole chain) | IVC proof 346,781 B; wrap 0 circuit 57,385 rows → 2^16; final proof **64,217 B** (opening 58,160); max RSS 7.4 GB (two keys at a time) |
+| `wrap_verify add.tri` | vk 8,978,744 B; verify warm median 6.81 ms (min 3.78, 41 runs, load ≈ 112); 107 single + 1,511 batched permutations |
+| `tests/wrap_fastverify_review.rs --ignored` | 2 passed: 241 cases × 12 threads × 3 rounds, every result as alone; shipped key's rows, columns, graph, slot closing |
+| bit-flip scan (`wrap_flip add.tri`) | 513,736 flips, 512,943 decoded, **0 accepted**, 797 s |
