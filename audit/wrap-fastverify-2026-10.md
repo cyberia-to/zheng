@@ -163,7 +163,7 @@ each run; the chain's run rose to 28). Same fixture (add.tri), chain
 
 | gate | #56 (`audit/wrap-2026-10.md`) | §2 of this audit (2026-10-10, loaded) | now (quiet) |
 |---|---|---|---|
-| final proof | 62,589 B | 63,865 B | **64,217 B** (this proof; the size varies with the queries' shared Merkle nodes: 63,257–64,217 B over four proofs; simulated sibling counts put the 1-in-200,000 tail ≈ 1 KB above the mean, ≤ 65,536 B) |
+| final proof | 62,589 B | 63,865 B | **64,217 B** (this proof; the size varies with the queries' shared Merkle nodes: 63,257–64,217 B over three proofs of this chain; a simulation of the sibling counts over 200,000 transcripts puts the largest ≈ 32 siblings (≈ 1 KB) above the mean — not a deterministic bound) |
 | verify 16 threads, warm | 6.4–7.2 ms | 6.2–8.6 ms (load 37–60) | **2.46–2.55 ms** median of 41 (min 2.34) |
 | verify 16 threads, cold | — | 7.8–8.4 ms | **3.4–3.8 ms** |
 | verify 1 thread, warm | 10.1–10.9 ms | 5.3–5.7 ms (CPU) | **5.12–5.30 ms** |
