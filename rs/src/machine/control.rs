@@ -27,7 +27,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(init * (l[slot(0, KEY)] - p[PUB_INIT_KEY]));
     out.push(init * (l[slot(0, P0)] - p[PUB_INIT_P0]));
     out.push(init * (l[slot(0, P0 + 1)] - p[PUB_INIT_P1]));
-    out.push(init * l[slot(0, P0 + 2)]);
+    out.push(init * (l[slot(0, P0 + 2)] - p[PUB_INIT_P2]));
     out.push(init * l[slot(0, P0 + 3)]);
     // the first machine row: EVAL of the program on the subject
     let first = p[PUB_FIRST_M];
@@ -40,7 +40,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(first * l[CYC]);
     out.push(first * (l[ALLOC] - c(k.p + 1)));
 
-    // flags: boolean and one-hot in EVAL and RET rows
+    // flags: boolean and one-hot in EVAL and RET rows (RET uses 15)
     let (ev, rt) = (l[K_EVAL], l[K_RET]);
     let mut fsum = Fp3::ZERO;
     for i in 0..FLAGS {
@@ -49,9 +49,17 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
         fsum += f;
     }
     out.push((ev + rt) * (fsum - one));
-    for i in OPS.len()..FLAGS {
-        out.push(ev * l[FLAG0 + i]);
+    for i in RET_FLAGS..FLAGS {
+        out.push(rt * l[FLAG0 + i]);
     }
+    // AUX sub-kinds: boolean, one-hot
+    let aux = l[K_AUX];
+    let mut ssum = Fp3::ZERO;
+    for &sk in &SUBKINDS {
+        out.push(aux * l[sk] * (l[sk] - one));
+        ssum += l[sk];
+    }
+    out.push(aux * (ssum - one));
 
     // sequencing: machine rows chain until TERM; TERM and PAD end it
     let mach = MACHINE.iter().fold(Fp3::ZERO, |a, &kd| a + l[kd]);
@@ -61,7 +69,8 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(term * nmach);
     out.push(l[K_PAD] * nmach);
     // CYC carries through every machine step (EVAL adds the cost)
-    let cost = OPS.iter().fold(Fp3::ZERO, |a, &(o, _, cst)| a + l[FLAG0 + o] * c(cst));
+    let cost = OPS.iter().fold(Fp3::ZERO, |a, &(o, _, cst)| a + l[FLAG0 + o] * c(cst))
+        + l[OP_WORD] * c(WORD_COST);
     out.push((mach - term) * (n[CYC] - l[CYC] - ev * cost));
     // TERM: empty continuation, the expected output digest and cycles
     out.push(term * l[K]);
@@ -72,5 +81,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(term * (l[CYC] - c(k.cycles)));
 
     super::control_eval::constrain(v, out);
-    super::control_ret::constrain(v, out);
+    super::control_ret::constrain(m, v, out);
+    super::control_aux::constrain(m, v, out);
+    super::control_word::constrain(v, out);
 }

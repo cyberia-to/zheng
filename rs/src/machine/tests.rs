@@ -27,7 +27,7 @@ pub(crate) fn op1(t: u64, x: N) -> N {
     p(a(t), x)
 }
 
-fn arena(r: &mut nox::Reduction<8192>, n: &N) -> nox::Order {
+pub(crate) fn arena(r: &mut nox::Reduction<8192>, n: &N) -> nox::Order {
     match n {
         N::Atom(v) => r.atom(Goldilocks::new(*v)).unwrap(),
         N::Pair(x, y) => {
@@ -38,7 +38,7 @@ fn arena(r: &mut nox::Reduction<8192>, n: &N) -> nox::Order {
     }
 }
 
-fn read_back(r: &nox::Reduction<8192>, o: nox::Order) -> N {
+pub(crate) fn read_back(r: &nox::Reduction<8192>, o: nox::Order) -> N {
     match r.get(o).unwrap().inner {
         nox::data::Data::Atom { value } => N::Atom(value.as_u64()),
         nox::data::Data::Pair { left, right } => p(read_back(r, left), read_back(r, right)),
@@ -56,7 +56,7 @@ pub(crate) fn native(program: &N, input: &[u64], budget: u64) -> Option<(N, u64)
     }
 }
 
-fn challenges() -> [Fp3; 2] {
+pub(crate) fn challenges() -> [Fp3; 2] {
     let e = |a, b, c| Fp3::new(Goldilocks::new(a), Goldilocks::new(b), Goldilocks::new(c));
     [e(91, 7, 1234567), e(5, 77, 31)]
 }
@@ -141,7 +141,7 @@ fn tampered_traces_violate_the_relation() {
         (0..rows).find(|&r| pred(run.trace.row(r))).expect("row")
     };
     let one = Goldilocks::ONE;
-    let add_ret = find(&|r| r[layout::K_RET] == one && r[layout::F_B2ADD] == one);
+    let add_ret = find(&|r| r[layout::K_RET] == one && r[layout::F_B2AR] == one);
     let first_eval = run.constants.p as usize;
     let round = run.start + layout::PH_ROUND0 + 5;
     // a forged result atom, a forged cycle count, a forged frame id, a

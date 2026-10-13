@@ -12,6 +12,21 @@ use crate::execution::{ExecutionNoun as N, NounToken};
 /// Largest program / output in tokens.
 pub const MAX_TOKENS: usize = 1 << 20;
 pub const MAX_INPUTS: usize = 64;
+/// Bound on the state reads a statement may carry.
+pub const MAX_READS: usize = 4096;
+/// Namespaces `look` reads (nox: `namespace > 9` is unavailable).
+pub const MAX_LOOK_NAMESPACE: u64 = 9;
+
+/// The state a run's `look`s read: the root every look's subject carries
+/// at axis 2 as `[r0 [r1 [r2 r3]]]`, and every read `(namespace, key,
+/// value)` once. The verifier authenticates evidence under `root` and
+/// checks each read against it before the reads enter the trace.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MachineState {
+    pub root: [u64; 4],
+    pub reads: Vec<(u64, u64, u64)>,
+}
 
 /// A public nox execution statement proven by the machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,6 +38,9 @@ pub struct MachineStatement {
     pub output: Vec<NounToken>,
     pub cycles: u64,
     pub budget: u64,
+    /// The state read by `look` (`None`: the run reads no state).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub state: Option<MachineState>,
 }
 
 /// Parse prefix tokens into a noun (canonical atoms, exact length).
@@ -84,6 +102,14 @@ pub(crate) struct Derived {
     pub fml0: u64,
     pub obj0: u64,
     pub output: [Goldilocks; 4],
+    /// Digest of the state root noun (zero without state).
+    pub root: [Goldilocks; 4],
+}
+
+/// The state root noun `[r0 [r1 [r2 r3]]]`.
+pub fn root_noun(root: &[u64; 4]) -> N {
+    let a = |i: usize| Box::new(N::Atom(root[i]));
+    N::Pair(a(0), Box::new(N::Pair(a(1), Box::new(N::Pair(a(2), a(3))))))
 }
 
 impl MachineStatement {
@@ -94,6 +120,23 @@ impl MachineStatement {
             || self.budget >= nebu::field::P
         {
             return Err("machine: statement bounds".into());
+        }
+        if let Some(st) = &self.state {
+            let canonical = |v: u64| v < nebu::field::P;
+            let mut keys: Vec<(u64, u64)> = st.reads.iter().map(|&(n, k, _)| (n, k)).collect();
+            keys.sort_unstable();
+            keys.dedup();
+            if st.reads.is_empty()
+                || st.reads.len() > MAX_READS
+                || keys.len() != st.reads.len()
+                || !st.root.iter().all(|&v| canonical(v))
+                || st
+                    .reads
+                    .iter()
+                    .any(|&(n, k, v)| n > MAX_LOOK_NAMESPACE || !canonical(k) || !canonical(v))
+            {
+                return Err("machine: state bounds".into());
+            }
         }
         Ok(())
     }
@@ -113,11 +156,17 @@ impl MachineStatement {
         let mut entries = Vec::new();
         let fml0 = intern(&program, &mut ids, &mut entries);
         let obj0 = intern(&subject(&self.input), &mut ids, &mut entries);
+        let mut root = [Goldilocks::ZERO; 4];
+        if let Some(st) = &self.state {
+            entries.extend(st.reads.iter().map(|&(n, k, v)| Entry::State(n, k, v)));
+            root = digest(&root_noun(&st.root));
+        }
         Ok(Derived {
             entries,
             fml0,
             obj0,
             output: [Goldilocks::ZERO; 4],
+            root,
         })
     }
 
@@ -142,19 +191,32 @@ impl MachineStatement {
         }
         b.extend_from_slice(&self.cycles.to_le_bytes());
         b.extend_from_slice(&self.budget.to_le_bytes());
+        if let Some(st) = &self.state {
+            b.extend_from_slice(b"state");
+            for v in st.root {
+                b.extend_from_slice(&v.to_le_bytes());
+            }
+            b.extend_from_slice(&(st.reads.len() as u64).to_le_bytes());
+            for &(n, k, v) in &st.reads {
+                for x in [n, k, v] {
+                    b.extend_from_slice(&x.to_le_bytes());
+                }
+            }
+        }
         b
     }
 }
 
-/// `(tag, p0, p1)` of every init entry.
-pub(crate) fn init_columns(entries: &[Entry]) -> Vec<(u64, u64, u64)> {
-    use super::layout::{TAG_ATOM, TAG_PAIR};
+/// `(tag, p0, p1, p2)` of every init entry.
+pub(crate) fn init_columns(entries: &[Entry]) -> Vec<(u64, u64, u64, u64)> {
+    use super::layout::{TAG_ATOM, TAG_PAIR, TAG_STATE};
     entries
         .iter()
         .map(|e| match *e {
-            Entry::Atom(v) => (TAG_ATOM, v, 0),
-            Entry::Pair(a, b) => (TAG_PAIR, a, b),
-            Entry::Frame(..) => unreachable!("init entries are nouns"),
+            Entry::Atom(v) => (TAG_ATOM, v, 0, 0),
+            Entry::Pair(a, b) => (TAG_PAIR, a, b, 0),
+            Entry::State(n, k, v) => (TAG_STATE, n, k, v),
+            Entry::Frame(..) => unreachable!("init entries are nouns and reads"),
         })
         .collect()
 }

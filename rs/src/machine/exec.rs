@@ -30,6 +30,8 @@ pub(crate) enum Entry {
     Atom(u64),
     Pair(u64, u64),
     Frame(u64, [u64; 4]),
+    /// An authenticated state read `(namespace, key, value)` (init only).
+    State(u64, u64, u64),
 }
 
 /// One memory access: `(tag, key, payload)`, at `(row, slot)`.
@@ -120,6 +122,7 @@ impl Builder {
         match e {
             Entry::Atom(v) => self.write(r, s, TAG_ATOM, id, [v, 0, 0, 0]),
             Entry::Pair(a, b) => self.write(r, s, TAG_PAIR, id, [a, b, 0, 0]),
+            Entry::State(ns, k, v) => self.write(r, s, TAG_STATE, id, [ns, k, v, 0]),
             Entry::Frame(..) => unreachable!("frames go through alloc_frame"),
         }
         self.put(id, e);
@@ -136,7 +139,9 @@ impl Builder {
         match e {
             Entry::Atom(v) => self.read(r, s, TAG_ATOM, id, [v, 0, 0, 0]),
             Entry::Pair(a, b) => self.read(r, s, TAG_PAIR, id, [a, b, 0, 0]),
-            Entry::Frame(..) => return Err(MachineError::Native("frame read as noun")),
+            Entry::Frame(..) | Entry::State(..) => {
+                return Err(MachineError::Native("frame read as noun"));
+            }
         }
         Ok(e)
     }
@@ -171,33 +176,41 @@ pub(crate) fn intern(
     id
 }
 
-/// The tag-ordered frame flag for an EVAL binary opcode flag.
-pub(crate) fn b1_flag(op: usize) -> (usize, u64) {
-    match op {
-        OP_ADD => (F_B1ADD, TAG_B1ADD),
-        OP_SUB => (F_B1SUB, TAG_B1SUB),
-        OP_MUL => (F_B1MUL, TAG_B1MUL),
-        _ => (F_B1EQ, TAG_B1EQ),
-    }
-}
-
-pub(crate) fn b2_of_b1(f: usize) -> (usize, u64) {
-    match f {
-        F_B1ADD => (F_B2ADD, TAG_B2ADD),
-        F_B1SUB => (F_B2SUB, TAG_B2SUB),
-        F_B1MUL => (F_B2MUL, TAG_B2MUL),
-        _ => (F_B2EQ, TAG_B2EQ),
-    }
-}
-
 /// The RET frame flag of a frame tag.
 pub(crate) fn frame_flag(tag: u64) -> Option<usize> {
-    FRAME_TAGS.iter().find(|&&(_, t)| t == tag).map(|&(f, _)| f)
+    if let Some(&(f, _)) = FRAME_TAGS.iter().find(|&&(_, t)| t == tag) {
+        return Some(f);
+    }
+    if (TAG_B1..TAG_B2).contains(&tag) {
+        return matches!(tag - TAG_B1, 5..=7 | 9..=12 | 14 | 17).then_some(F_B1);
+    }
+    match tag.checked_sub(TAG_B2)? {
+        5..=7 => Some(F_B2AR),
+        10..=14 => Some(F_B2W),
+        _ => None,
+    }
 }
 
 /// The EVAL opcode flag and cost of a nox tag.
 pub(crate) fn op_of(tag: u64) -> Option<(usize, u64)> {
+    if WORD_TAGS.contains(&tag) {
+        return Some((OP_WORD, WORD_COST));
+    }
     OPS.iter()
         .find(|&&(_, t, _)| t == tag)
         .map(|&(o, _, c)| (FLAG0 + o, c))
+}
+
+/// A call-witness source: `(tag, subject) → witness`.
+pub type WitnessFn<'a> = &'a dyn Fn(u64, &crate::execution::ExecutionNoun) -> Option<crate::execution::ExecutionNoun>;
+
+/// What a run needs beyond the program and its inputs: witnesses for
+/// `call` (the prover's choice; the relation checks them) and the state
+/// `look` reads, authenticated under its root before any read.
+#[derive(Clone, Copy, Default)]
+pub struct Hints<'a> {
+    /// `(tag, subject) → witness`; `None` halts the run, as nox's provider.
+    pub witness: Option<WitnessFn<'a>>,
+    /// The state evidence and the root it must authenticate under.
+    pub state: Option<(&'a crate::execution::state_evidence::StateEvidence, [u64; 4])>,
 }

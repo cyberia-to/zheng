@@ -3,7 +3,8 @@
 //!
 //! ```text
 //! params     8 B      WHIR header (policy: ≥ 128 proven bits)
-//! statement           program tokens, inputs, output tokens, cycles, budget
+//! statement           program tokens, inputs, output tokens, cycles, budget,
+//!                     state (bool; root 4 fields, reads: len, (ns, key, value)…)
 //! proof               the rest: `MachineProof::to_bytes`
 //! ```
 //!
@@ -17,8 +18,8 @@ use super::codec::{Reader, Writer};
 use super::{Envelope, EnvelopeError as E};
 use crate::execution::NounToken;
 use crate::execution::succinct::SuccinctPcs;
-use crate::machine::statement::{MAX_INPUTS, MAX_TOKENS};
-use crate::machine::{MachineProof, MachineStatement};
+use crate::machine::statement::{MAX_INPUTS, MAX_READS, MAX_TOKENS};
+use crate::machine::{MachineProof, MachineState, MachineStatement};
 
 fn tokens(ts: &[NounToken], w: &mut Writer) {
     w.len(ts.len());
@@ -50,6 +51,18 @@ pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &Machine
     tokens(&st.output, w);
     w.varint(st.cycles);
     w.varint(st.budget);
+    w.bool(st.state.is_some());
+    if let Some(state) = &st.state {
+        for v in state.root {
+            w.varint(v);
+        }
+        w.len(state.reads.len());
+        for &(n, k, v) in &state.reads {
+            w.varint(n);
+            w.varint(k);
+            w.varint(v);
+        }
+    }
     w.raw(&proof.to_bytes());
 }
 
@@ -63,6 +76,16 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
     if cycles > budget {
         return Err(E::NonCanonical);
     }
+    let state = if r.bool()? {
+        let root = [r.field()?, r.field()?, r.field()?, r.field()?];
+        let n = r.len(MAX_READS, 3)?;
+        let reads = (0..n)
+            .map(|_| Ok((r.field()?, r.field()?, r.field()?)))
+            .collect::<Result<_, E>>()?;
+        Some(MachineState { root, reads })
+    } else {
+        None
+    };
     let proof = MachineProof::from_bytes(r.raw(r.remaining())?).map_err(|_| E::NonCanonical)?;
     Ok(Envelope::Machine {
         params,
@@ -72,6 +95,7 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
             output,
             cycles,
             budget,
+            state,
         },
         proof: Box::new(proof),
     })

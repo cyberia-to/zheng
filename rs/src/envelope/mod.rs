@@ -256,7 +256,7 @@ impl Envelope {
                 params,
                 statement,
                 proof,
-            } => crate::machine::verify(statement, proof, params),
+            } => crate::machine::verify_with_state(statement, proof, params, state),
         }
     }
 }
