@@ -288,7 +288,8 @@ impl WrapKey {
         let no = r.count(2)?;
         let outputs = (0..no).map(|_| read_sym(&mut r, nn)).collect::<R<Vec<_>>>()?;
         r.finish()?;
-        let cfg = super::program::level_config(&params, n + super::CBITS, fresh).map_err(|_| PcsError::Malformed)?;
+        let key_phys = if mode == Mode::Inner { crate::recursion::splitkey::columns(&crate::recursion::splitkey::ext_columns(&sparse)) } else { Vec::new() };
+        let cfg = super::program::level_config(&params, n + super::CBITS, fresh, crate::recursion::splitkey::words(key_phys.len())).map_err(|_| PcsError::Malformed)?;
         let g = Graph { nodes, inputs, outputs };
         let w = if mode == Mode::Inner { super::COLS } else { crate::recursion::circuit::layout::V1 };
         if g.inputs != super::g_inputs(w) {
@@ -297,6 +298,7 @@ impl WrapKey {
         let key_cols = super::key_used(&g, w);
         let gc = g.compile();
         let key = WrapKey {
+            key_phys,
             params,
             pre: Pre { cols: Vec::new() },
             sparse,

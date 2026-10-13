@@ -16,6 +16,7 @@ pub mod ops;
 pub mod perm;
 pub mod sponge;
 pub mod msg;
+pub mod splitkey;
 pub mod pool;
 pub mod word;
 pub mod stream;

@@ -16,8 +16,8 @@
 //!
 //! Decoding admits only the chain of [`chain`] (`wrap::SHIPPED`: IVC at
 //! rate 1/16 with `ivc::SHIPPED_POW` = 16 grinding bits over steps of
-//! 2^15 rows; wrap levels 1/16 inner with 16 grinding bits, 1/256 inner
-//! with 24, 1/512 final with 26) and only that step size in the proof's
+//! 2^15 rows; wrap levels 1/16 inner with 16 grinding bits, 1/128 inner
+//! with 22 (its key over the base field), 1/512 final with 26) and only that step size in the proof's
 //! header, so a verifier needs exactly one final key
 //! and one IVC key; a hostile header cannot make it derive another. The
 //! proof must fill its length exactly and the length must fill the
@@ -51,8 +51,9 @@ use crate::recursion::wrap::{self, FinalProof, Inner, Mode, WrapKey, WrapParams}
 /// Version of the profile-6 body (2: the program bound by its digest; 3:
 /// the chain `wrap::SHIPPED`, IVC at 16 grinding bits, the final level's
 /// message digests; 4: the final level at 26 grinding bits — its proof
-/// ≤ 64,213 B over every transcript).
-pub const WRAPPED_FORMAT: u8 = 4;
+/// ≤ 64,213 B over every transcript; 5: the inner levels' keys over the
+/// base field, the second level at 1/128 with 22 grinding bits).
+pub const WRAPPED_FORMAT: u8 = 5;
 /// Upper bound on the final proof bytes: 64 KiB, by construction — the
 /// admitted final key's `wrap::max_proof_bytes` (64,213 B, over every
 /// transcript) is ≤ this, checked when the key is built.
@@ -72,7 +73,7 @@ pub fn chain() -> (WhirParams, [WrapParams; LEVELS]) {
         whir.pow_bits = pow;
         WrapParams { whir, n: 0, mode }
     };
-    (ivc, [level(4, 16, Mode::Inner), level(8, 24, Mode::Inner), level(9, 26, Mode::Final)])
+    (ivc, [level(4, 16, Mode::Inner), level(7, 22, Mode::Inner), level(9, 26, Mode::Final)])
 }
 
 /// The chain as it travels: IVC header, level count, per level header and
@@ -92,8 +93,8 @@ pub fn chain_bytes() -> Vec<u8> {
 /// the prover's derivation (`examples/wrap_keys`; checked by the prover
 /// and by `tests/keys.rs`).
 pub const INNER_ROOTS: [[u64; 4]; LEVELS - 1] = [
-    [9437345888482789319, 4265812953260487618, 3335018687198983249, 12846741501872388097],
-    [18283988425026477892, 7726983002045212636, 8626497495061532232, 7321266016051363173],
+    [9424149308736220142, 1252847857400947362, 16082525008623423067, 12699283013654701103],
+    [9447790832169561912, 8521740006649493922, 8698659443445922790, 15837982093646391183],
 ];
 
 fn pinned_root(i: usize) -> Digest {

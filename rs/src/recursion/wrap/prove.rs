@@ -10,7 +10,7 @@ use crate::air::public::next_table;
 use crate::air::{Public, Trace, shift_prove, zerocheck_prove};
 use crate::recursion::circuit::air::CircuitAir;
 use crate::recursion::circuit::builder::Builder;
-use crate::recursion::circuit::layout::{V1, pre};
+use crate::recursion::circuit::layout::V1;
 use crate::recursion::circuit::trace;
 use crate::recursion::finalv::Publics;
 use crate::recursion::ops::Ops;
@@ -112,7 +112,8 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     lap("zerocheck");
     let local = evals[..w].to_vec();
     let next: Vec<Fp3> = k.next_cols.iter().map(|&c| evals[w + c]).collect();
-    let keyv = evals[2 * w..2 * w + pre::COUNT].to_vec();
+    // an inner level sends its key's physical columns at ρ (`splitkey`)
+    let keyv = if is_inner { crate::recursion::splitkey::at(&k.sparse, &k.key_phys, &rho) } else { Vec::new() };
     if is_inner {
         for &v in local.iter().chain(&next) {
             t.absorb_ext(v);
@@ -160,7 +161,7 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
             t.absorb_ext(v);
         }
     }
-    let gk = if is_inner { t.squeeze_exts(pre::LOG) } else { vec![] };
+    let gk = if is_inner { t.squeeze_exts(crate::recursion::splitkey::BITS) } else { vec![] };
     // shift
     let nw = words.len();
     let gs: Vec<Vec<Fp3>> = (0..nw).map(|_| t.squeeze_exts(CBITS)).collect();
@@ -197,7 +198,7 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let mut kv = Vec::new();
     let mut opened: Vec<&dyn whir::Tree> = words.iter().map(|w| w as &dyn whir::Tree).collect();
     let fresh_kw = match (&k.key_root, &k.kw) {
-        (Some(_), None) => Some(crate::recursion::decide::KeyWords::commit(layout, n, &k.pre, k.arity()).0),
+        (Some(_), None) => Some(crate::recursion::splitkey::commit(layout, n, &k.pre, &k.key_phys, k.arity())),
         _ => None,
     };
     if let Some(kw) = k.kw.as_ref().or(fresh_kw.as_ref()) {

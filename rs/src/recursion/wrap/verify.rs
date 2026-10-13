@@ -24,10 +24,10 @@ pub fn check_shape(k: &WrapKey, pf: &WrapProof) -> Result<(), String> {
         && pf.zerocheck.iter().all(|m| m.len() == DEGREE + 1)
         && pf.local.len() == k.cols()
         && pf.next.len() == k.next_cols.len()
-        && pf.key.len() == if inner { pre::COUNT } else { 0 }
+        && pf.key.len() == if inner { k.key_phys.len() } else { 0 }
         && pf.shift.len() == if inner { 2 * n } else { 0 }
         && pf.vals.len() == if inner { words } else { 0 }
-        && pf.kv.len() == if inner { 2 } else { 0 };
+        && pf.kv.len() == if inner { k.key_words() } else { 0 };
     if !ok {
         return Err("wrap: proof shape".into());
     }
@@ -174,8 +174,11 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         next[c] = v;
     }
     lap("zerocheck");
+    // inner: the key's physical columns at ρ (sent), the logical ones
+    // rebuilt for the constraints (`splitkey`); final: evaluated here
+    let phys: Vec<O::V> = if inner { pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect() } else { Vec::new() };
     let key: Vec<O::V> = if inner {
-        pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect()
+        crate::recursion::splitkey::logical(o, &k.key_phys, &phys, pre::COUNT)
     } else {
         let r: Vec<Fp3> = rho.iter().map(|&v| o.value(v)).collect();
         key_at(k, &r).into_iter().map(|v| o.constant(v)).collect()
@@ -223,7 +226,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         lap("opening");
         return;
     }
-    let gk = t.squeeze_exts(o, pre::LOG);
+    let gk = t.squeeze_exts(o, crate::recursion::splitkey::BITS);
     // shift: every word's local and successor claims to one point
     let words = k.trace_words();
     let gs: Vec<Vec<O::V>> = (0..words).map(|_| t.squeeze_exts(o, CBITS)).collect();
@@ -264,14 +267,23 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         inputs.push(InstV { root, ext: false, claims });
     }
     if let Some(key_root) = k.key_root {
-        let kv = gm::mle(o, &key, &gk);
-        let v = [t.absorb_free_ext(o, pf.kv[0]), t.absorb_free_ext(o, pf.kv[1])];
-        let line = o.lerp(gk[CBITS], v[0], v[1]);
-        o.assert_eq(line, kv, "wrap: key claim");
+        // Σ_p eq(γ, p)·P_p(ρ) = Σ_w eq(γ_hi, w)·v_w, v_w the w-th word at
+        // (ρ, γ_lo), opened with the batch
+        let kv = gm::mle(o, &phys, &gk);
+        let v: Vec<O::V> = pf.kv.iter().map(|&x| t.absorb_free_ext(o, x)).collect();
+        let mut sum: Option<O::V> = None;
+        for (w, &vw) in v.iter().enumerate() {
+            let e = gm::eq_row(o, w, &gk[CBITS..]);
+            sum = Some(match sum {
+                None => o.mul(e, vw),
+                Some(acc) => o.mul_add(e, vw, acc),
+            });
+        }
+        o.assert_eq(sum.expect("a key word"), kv, "wrap: key claim");
         let zg: Vec<O::V> = rho.iter().chain(&gk[..CBITS]).copied().collect();
         for &vh in &v {
             let root = key_root.map(|x| o.constant(Fp3::from_base(x)));
-            inputs.push(InstV { root, ext: k.key_ext, claims: vec![ClaimRef::Multi(zg.clone(), vh)] });
+            inputs.push(InstV { root, ext: false, claims: vec![ClaimRef::Multi(zg.clone(), vh)] });
         }
     }
     whir::verify(o, &k.cfg, &mut t, &inputs, &pf.whir);
