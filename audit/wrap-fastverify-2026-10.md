@@ -208,3 +208,20 @@ rate needs ≈ 300 fewer rows in the final circuit, e.g. base-field key
 words: the key's 12 Fp3 gate-coefficient columns make the key group's
 leaf 11 permutations instead of 4); a 16 GB laptop is within reach
 (10.6 GB footprint).
+
+## 8. a hard size bound; the integrated stack (2026-10-13, `feat/proof-stack`)
+
+- `wrap::max_proof_bytes` bounds the outermost proof over every
+  transcript: all message shapes are the key's; a multi-opening of `q`
+  leaves carries at most `Σ (a·n_{l+1} − n_l)` siblings, `n_l = min(q,
+  nodes at level l)` (exact). Shipped chain: **65,177 B ≤ 65,536**, with
+  no parameter change (a looser per-level bound gave 66,905 B and would
+  have needed 27 grinding bits at the final level). The measured proofs
+  (63,257–64,217 B) sit 1–2 KB under it.
+- The envelope's `MAX_PROOF_BYTES` is `wrap::MAX_FINAL_BYTES`; the
+  admitted final key is checked against it. The envelope itself adds its
+  header, the chain and the statement (≈ 0.6–0.9 KB for small programs).
+- Integrated with #57 (profile 6) and #59 (GPU backends): profile-6
+  envelopes of hash.tri 64,003 B and tree-12 63,772 B; joy proves
+  loop.tri wrapped in 75 s on Metal and 170 s on the CPU backend (keys
+  derived in-process; load 12–50), peak 13.7 GB.
