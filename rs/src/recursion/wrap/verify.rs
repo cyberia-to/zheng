@@ -125,6 +125,9 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     let lap = crate::recursion::ivc::timer_pub("      wrap verify ");
     let n = k.params.n;
     let inner = k.inner();
+    // final mode evaluates the key, the wiring and the closing in the
+    // field and enters them as constants: a circuit would leave them free
+    assert!(inner || o.native(), "wrap: a final-mode level is verified natively only");
     let mut t = Sponge::new(o, tag::WRAP);
     t.absorb_all(o, &x);
     let mut roots = Vec::with_capacity(2);

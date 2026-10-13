@@ -12,7 +12,7 @@ use crate::recursion::word::{Arity, LeafOpening, verify_leaf};
 
 /// A weight term of WHIR's closing check: `coef·Z·eq(point, X)`, or a
 /// direct claim's weight (round 0).
-enum Point<V> {
+pub(super) enum Point<V> {
     /// A point of the round's variables.
     Multi(Vec<V>),
     /// `pow(x)` over the round's variables.
@@ -21,10 +21,10 @@ enum Point<V> {
     Native(usize),
 }
 
-struct Constraint<V> {
-    round: usize,
-    point: Point<V>,
-    coef: V,
+pub(super) struct Constraint<V> {
+    pub(super) round: usize,
+    pub(super) point: Point<V>,
+    pub(super) coef: V,
 }
 
 /// The batch: claims of every input reduced to one point; returns the
@@ -429,9 +429,11 @@ fn core<O: Ops>(
     lap("final queries");
     // closing: σ = Σ_c coef·Σ_b w_c(α, b)·f_M(b) — for eq weights
     // eq(point[..pre], α)·f̂_M(point[pre..])
-    let expected = if cfg.direct() {
+    let expected = if cfg.direct() && o.native() {
         // one word, a native verifier: every term in the field, the
-        // constraints spread over the verifier's threads
+        // constraints spread over the verifier's threads (a circuit takes
+        // the generic path: lifting the terms out of it as constants would
+        // leave the closing check unconstrained)
         let av: Vec<Fp3> = alphas.iter().map(|&v| o.value(v)).collect();
         let fins: Vec<Fp3> = fin.iter().map(|&v| o.value(v)).collect();
         let nc: Vec<Constraint<Fp3>> = cons.iter().map(|c| to_native(o, c)).collect();
@@ -455,7 +457,7 @@ fn core<O: Ops>(
 
 /// `w_c(α, ·)·f_M` summed over the cube for one constraint (without its
 /// coefficient).
-fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Constraint<O::V>, alphas: &[O::V], fin: &[O::V], cube: &mut Option<Vec<O::V>>, natives: &[&dyn NativeWeight]) -> O::V {
+pub(super) fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Constraint<O::V>, alphas: &[O::V], fin: &[O::V], cube: &mut Option<Vec<O::V>>, natives: &[&dyn NativeWeight]) -> O::V {
     let fv = wc.final_vars;
     let off = wc.alpha_offset(c.round);
     let nv = wc.rounds[c.round].num_vars;
@@ -511,6 +513,8 @@ fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Constraint<O:
             }
         }
         Point::Native(i) => {
+            // evaluated in the field: sound for a native verifier only
+            assert!(o.native(), "whir: a native weight needs a native verifier");
             let av: Vec<Fp3> = a.iter().map(|&v| o.value(v)).collect();
             let fins: Vec<Fp3> = fin.iter().map(|&v| o.value(v)).collect();
             let fm = cube_native(&fins);
@@ -534,7 +538,7 @@ fn to_native<O: Ops>(o: &mut O, c: &Constraint<O::V>) -> Constraint<Fp3> {
 
 /// The closing sum natively: the native weights first (they spread their
 /// own work), then the other constraints over the verifier's threads.
-fn closing_native(wc: &lens::rspcs::whir::WhirConfig, cons: &[Constraint<Fp3>], alphas: &[Fp3], fin: &[Fp3], natives: &[&dyn NativeWeight]) -> Fp3 {
+pub(super) fn closing_native(wc: &lens::rspcs::whir::WhirConfig, cons: &[Constraint<Fp3>], alphas: &[Fp3], fin: &[Fp3], natives: &[&dyn NativeWeight]) -> Fp3 {
     use crate::recursion::ops::Native;
     let mut total = Fp3::ZERO;
     let mut rest = Vec::with_capacity(cons.len());

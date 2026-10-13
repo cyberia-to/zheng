@@ -106,7 +106,10 @@ weakest rows 128.22 / 128.29 / 128.40) and by `examples/wrap_bench` for
 the derived keys. The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
 challenges) the weakest rounds carry **109.34 / 104.29 / 104.70** bits
-(the final level's `fold_1` after its 24-bit fold grinding), so the
+(the 1/16 level's combination after its 19 bits; the 1/256 and the
+final level's `shift_1` after their 24-bit query grinding — the final
+level's weakest priced row, `fold_1`, carries 22 fold-grinding bits and
+106.40 interactively), so the
 non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,
 `audit/wrap-2026-10.md`) carried 98.02 interactively at its final level.
@@ -121,7 +124,7 @@ grinding permutation. The previous chain (`6i,8i,8f:30`,
 | final wrap linear wiring | Schwartz–Zippel in `λ` | `#reads/|K|` → 174.0 at `2^18` reads | proven | every read slot's value minus its write slot's value (linear in the row's phase-1 cells, the key fixed) batched with powers of `λ` drawn after `W1` is bound; a nonzero difference vector makes `⟨u_λ, W1⟩` a nonzero polynomial of degree `< #reads` | — | `tests/wrap.rs` |
 | final wrap column batching (local, successor) | Schwartz–Zippel (multilinear in the column index) | `6/|K|` → 189.4 | proven | the claims on `W1` at `ρ` and its successor become weights of the direct opening; the successor claim covers the columns the constraints read (from the recorded graph); the others are not constrained and not read | — | `tests/wrap.rs` |
 | recursion circuit = the wrapped verifier | as the "recursion circuit = the step verifier" row, for the final verifier, the field-native WHIR verifier and the wrap verifier | — | tested, not proven: the circuit and the native interpreter run one program (`finalv`, `wrap::verify`); honest runs satisfy every row; tampered proofs are refused by both | `recursion::whir::tests`, `tests/wrap.rs` |
-| final-level message digests (`recursion::msg`) | hemera collision resistance (4-limb digests) | binding as the hash row (`2^128` classical) | conjectured (hash row) | the final level's direct opening absorbs its final polynomial, and the final wrap absorbs its column values at `ρ` and their successors, as one digest: eight part sponges (tag `MSG`) and a sponge over their digests; a second message with the same digest is a hemera collision, so the transcript binds the message as if absorbed whole (Fiat–Shamir over a collision-resistant message hash) | — | `recursion::msg::tests`, `tests/wrap.rs` |
+| final-level message digests (`recursion::msg`) | hemera collision resistance (4-limb digests) | binding as the hash row (`2^128` classical) | conjectured (hash row) | the final level's direct opening absorbs its final polynomial, and the final wrap absorbs its column values at `ρ` and their successors, as one digest: eight part sponges (tag `MSG`) and a sponge over the message's length and the parts' digests (the length fixes every part's size; a part zero-pads its last block, so without the length `m ‖ 0` and `m` collide — zheng #58 review); the length is also the key's (`check_shape`, the parser); a second message with the same digest is a hemera collision, so the transcript binds the message as if absorbed whole (Fiat–Shamir over a collision-resistant message hash) | — | `recursion::msg::tests`, `wrap::fastverify_review::message_digests_bind_length_order_and_content`, `tests/wrap.rs` |
 | wrap composition | every row above; hemera as a random oracle inside the circuit (a level recomputes the transcript of the level below) | per round ≥ 128 (non-interactive: `Q·2^-128` per proof plus hemera collisions, if recursive Fiat–Shamir is sound) | **conjectured** — the IVC composition row's heuristic, one level per wrap | the outermost proof's public input binds the statement's context, chain, segment count, run challenges, constants and the deferred nox-public claim the verifier evaluates itself | — | `tests/wrap.rs` |
 
 ## informational

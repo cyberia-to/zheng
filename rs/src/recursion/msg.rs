@@ -4,7 +4,10 @@
 //! transcript absorbs that digest instead of the message, so the
 //! verifier's serial chain of permutations shortens from `⌈len/3⌉` to the
 //! last sponge's few blocks; the parts run side by side (one batched
-//! permutation per step natively). Binding is the hash row's collision
+//! permutation per step natively). The last sponge absorbs the message's
+//! length first: a part zero-pads its last block, so without it
+//! `m ‖ 0` and `m` of the next length up could share a digest (the parts'
+//! sizes follow from the length). Binding is the hash row's collision
 //! resistance, as for a Merkle root.
 
 use nebu::{Fp3, Goldilocks};
@@ -38,6 +41,8 @@ pub fn absorb_generic<O: Ops>(o: &mut O, items: &[Fp3]) -> (Vec<O::V>, [O::V; 4]
         }
     }
     let mut sp = Sponge::new(o, tag::MSG);
+    let len = o.constant(Fp3::from_base(Goldilocks::new(items.len() as u64)));
+    sp.absorb(o, len);
     for &h in &heads {
         sp.absorb(o, h);
     }
@@ -75,7 +80,7 @@ pub fn digest_native(items: &[Fp3]) -> [Goldilocks; 4] {
             states[q] = s;
         }
     }
-    let heads: Vec<Goldilocks> = states.iter().flat_map(|s| [s[0], s[1], s[2], s[3]]).collect();
+    let heads: Vec<Goldilocks> = core::iter::once(Goldilocks::new(items.len() as u64)).chain(states.iter().flat_map(|s| [s[0], s[1], s[2], s[3]])).collect();
     let mut s = fresh;
     for block in heads.chunks(RATE) {
         for (k, x) in s.iter_mut().take(RATE).enumerate() {

@@ -241,7 +241,7 @@ fn parents(level: &[Digest]) -> Vec<Digest> {
 #[cfg(test)]
 thread_local! {
     /// Tests stream every word (the streamed paths at small sizes).
-    static FORCE_STREAM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(crate) static FORCE_STREAM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
 /// Whether a codeword over `layout` is streamed (never held).
