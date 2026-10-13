@@ -308,3 +308,32 @@ the shipped one, so zheng keeps `9f:26` and the lens branch is not
 merged into the stack. The lever left is a per-round query budget (24
 bits in rounds 0 and 1, 27 in the last with 22-bit folds: ≈ 190 M, about
 45 % less) — a further schedule option, not built.
+
+## 11. the stack at merge time (2026-10-13, #61 on #60 on #58)
+
+Measured 18:24–18:33 (1-minute load 5–20 except the verify runs, 51);
+chain `4i:16,7i:22,9f:26`, IVC at 16 grinding bits; Metal and CPU give
+the same bytes.
+
+| | Metal | CPU (16 threads) |
+|---|---|---|
+| `joy prove loop.tri --succinct --wrap` (keys derived in-process) | **45.9 s**, 14.2 GB | **96.6 s**, 13.1 GB |
+| profile-6 prove hash.tri / tree-12 (`wrapped_sizes`, keys derived first: 5.4 s / 12.5 s) | 36.8 / 41.7 s | 73.7 / 82.8 s |
+| envelope hash.tri / tree-12 / loop.tri | 63,103 / 63,448 / 63,131 B | same |
+| final proof (add.tri) / bound over every transcript | 62,965 B / **64,213 B** | |
+| `joy verify loop.tri --proof` (keys cached) | 0.30–0.31 s per process | |
+| verify, statement prepared, 16 threads warm / cold | 2.50 / 3.44 ms | |
+| verify, one thread warm / cold | 5.14 / 6.14 ms | |
+
+Against #56 (`audit/wrap-2026-10.md`): the wrap chain from 985 s to
+≈ 40 s on Metal (the whole joy prove, IVC and keys included, 46 s),
+peak memory from 32–38 GB to 14.2 GB, verify from 6.4–7.2 ms to 2.5 ms
+on 16 threads (10.1–10.9 → 5.1 ms on one), the proof bounded by
+construction at 64,213 B. Checks: zheng suites green on #61, the bit-flip
+scan (503,720 flips, 0 accepted) and the ignored envelope tests (bit-flip
+sample 0 accepted) on #61's code; joy's 34 suites and the end-to-end
+profile-6 test green on it. joy wraps by default from 16 GiB available
+(the 14.6 GB peak plus 15 %).
+
+Open: verify ≤ 1 ms (≈ 2 ms of single-thread work); the final level's
+grinding (a per-round query budget, §10).
