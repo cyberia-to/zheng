@@ -6,8 +6,8 @@
 //! ```text
 //! format     u8       RECURSIVE_FORMAT (the IVC wire's version)
 //! params     8 B      WHIR header — one of the admitted parameter sets
-//! statement           program tokens, inputs, output tokens, cycles,
-//!                     budget (exactly as profile 4)
+//! statement  32 B     the program's digest, then inputs, output tokens,
+//!                     cycles, budget, state (exactly as profile 4)
 //! proof      varint n, then n bytes: `IvcProof::to_bytes` — fixed-width
 //!            little-endian, every limb a canonical Goldilocks value (< p)
 //! ```
@@ -25,11 +25,11 @@ use super::machine::{read_statement, statement};
 use super::{Envelope, EnvelopeError as E};
 use crate::execution::ExecutionNoun;
 use crate::execution::state_evidence::StateEvidence;
-use crate::machine::{self, MachineStatement};
+use crate::machine::{self, MachinePublic, MachineStatement};
 use crate::recursion::ivc::{self, IvcProof};
 
-/// Version of the IVC proof wire inside a profile-5 body.
-pub const RECURSIVE_FORMAT: u8 = 1;
+/// Version of the profile-5 body (2: the program bound by its digest).
+pub const RECURSIVE_FORMAT: u8 = 2;
 /// The step size of every admitted parameter set (log2 rows).
 pub const STEP_LOG_ROWS: u32 = 15;
 /// Upper bound on the IVC proof bytes (measured 233–285 KB).
@@ -80,7 +80,7 @@ pub fn prove(
     let proof = ivc::prove_run(&run, whir)?;
     Ok(Envelope::Recursive {
         params: *whir,
-        statement: run.statement,
+        statement: run.statement.public(),
         proof: Box::new(proof),
     })
 }
@@ -107,7 +107,7 @@ pub fn proof_bytes(whir: &WhirParams, proof: &IvcProof) -> Result<Vec<u8>, Strin
 /// Encoding derives (or fetches) the key of the envelope's parameters; it
 /// panics only on parameters no key exists for (`Params::new` refuses
 /// them), which no prover produces. Decoding then admits only [`ADMITTED`].
-pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &IvcProof, w: &mut Writer) {
+pub(super) fn encode(params: &WhirParams, st: &MachinePublic, proof: &IvcProof, w: &mut Writer) {
     let key = ivc::key(params, proof.log_rows as usize).expect("a recursion key for the envelope's parameters");
     let bytes = proof.to_bytes(&key);
     w.raw(&[RECURSIVE_FORMAT]);
@@ -117,7 +117,7 @@ pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &IvcProo
     w.raw(&bytes);
 }
 
-pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
+pub(super) fn decode(r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<Envelope, E> {
     if r.byte()? != RECURSIVE_FORMAT {
         return Err(E::NonCanonical);
     }
@@ -127,7 +127,7 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
         .map(|&(rate, _)| params_at(rate))
         .find(|p| p.header()[..] == *header)
         .ok_or(E::NonCanonical)?;
-    let statement = read_statement(r)?;
+    let statement = read_statement(r, expect)?;
     let n = r.len(MAX_PROOF_BYTES, 1)?;
     let bytes = r.raw(n)?;
     // the header's step size must be admitted before any key is derived

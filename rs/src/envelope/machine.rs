@@ -2,15 +2,20 @@
 //! uniform step relation, its words accumulated and decided once.
 //!
 //! ```text
+//! format     u8       MACHINE_FORMAT
 //! params     8 B      WHIR header (policy: ≥ 128 proven bits)
-//! statement           program tokens, inputs, output tokens, cycles, budget,
-//!                     state (bool; root 4 fields, reads: len, (ns, key, value)…)
+//! statement  32 B     the program's digest (`machine::program_digest`),
+//!                     then inputs, output tokens, cycles, budget, state
+//!                     (bool; root 4 fields, reads: len, (ns, key, value)…)
 //! proof               the rest: `MachineProof::to_bytes`
 //! ```
 //!
-//! Tokens: `len`, then per token `bool pair`, an atom as a canonical field
-//! varint. Lengths are bounded by `machine::statement::MAX_TOKENS` and
-//! `MAX_INPUTS`.
+//! The statement of profiles 4–6 binds the program by its digest; the
+//! verifier is given the program out of band (`Envelope::verify_program`,
+//! `Envelope::from_bytes_for` refuses another program's envelope before
+//! the proof is parsed). Tokens: `len`, then per token `bool pair`, an
+//! atom as a canonical field varint. Lengths are bounded by
+//! `machine::statement::MAX_TOKENS` and `MAX_INPUTS`.
 
 use lens::{Whir, WhirParams};
 
@@ -19,7 +24,10 @@ use super::{Envelope, EnvelopeError as E};
 use crate::execution::NounToken;
 use crate::execution::succinct::SuccinctPcs;
 use crate::machine::statement::{MAX_INPUTS, MAX_READS, MAX_TOKENS};
-use crate::machine::{MachineProof, MachineState, MachineStatement};
+use crate::machine::{MachineProof, MachinePublic, MachineState};
+
+/// Version of the profile-4 body (2: the program bound by its digest).
+pub const MACHINE_FORMAT: u8 = 2;
 
 fn tokens(ts: &[NounToken], w: &mut Writer) {
     w.len(ts.len());
@@ -41,9 +49,9 @@ fn read_tokens(r: &mut Reader) -> Result<Vec<NounToken>, E> {
         .collect()
 }
 
-/// The machine statement (profiles 4 and 5).
-pub(super) fn statement(st: &MachineStatement, w: &mut Writer) {
-    tokens(&st.program, w);
+/// The machine statement (profiles 4–6).
+pub(super) fn statement(st: &MachinePublic, w: &mut Writer) {
+    w.raw(&st.program);
     w.len(st.input.len());
     for &v in &st.input {
         w.varint(v);
@@ -65,8 +73,13 @@ pub(super) fn statement(st: &MachineStatement, w: &mut Writer) {
     }
 }
 
-pub(super) fn read_statement(r: &mut Reader) -> Result<MachineStatement, E> {
-    let program = read_tokens(r)?;
+/// Read a statement; with `expect`, a program digest other than the
+/// expected one is refused here, before anything after the statement.
+pub(super) fn read_statement(r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<MachinePublic, E> {
+    let program: [u8; 32] = r.raw(32)?.try_into().expect("32 bytes");
+    if expect.is_some_and(|d| *d != program) {
+        return Err(E::ProgramMismatch);
+    }
     let input = r.fields(MAX_INPUTS)?;
     let output = read_tokens(r)?;
     let cycles = r.field()?;
@@ -84,7 +97,7 @@ pub(super) fn read_statement(r: &mut Reader) -> Result<MachineStatement, E> {
     } else {
         None
     };
-    Ok(MachineStatement {
+    Ok(MachinePublic {
         program,
         input,
         output,
@@ -94,15 +107,19 @@ pub(super) fn read_statement(r: &mut Reader) -> Result<MachineStatement, E> {
     })
 }
 
-pub(super) fn encode(params: &WhirParams, st: &MachineStatement, proof: &MachineProof, w: &mut Writer) {
+pub(super) fn encode(params: &WhirParams, st: &MachinePublic, proof: &MachineProof, w: &mut Writer) {
+    w.raw(&[MACHINE_FORMAT]);
     w.raw(&params.header());
     statement(st, w);
     w.raw(&proof.to_bytes());
 }
 
-pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
+pub(super) fn decode(r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<Envelope, E> {
+    if r.byte()? != MACHINE_FORMAT {
+        return Err(E::NonCanonical);
+    }
     let params = Whir::params_from_header(r.raw(8)?).map_err(|_| E::NonCanonical)?;
-    let statement = read_statement(r)?;
+    let statement = read_statement(r, expect)?;
     let proof = MachineProof::from_bytes(r.raw(r.remaining())?).map_err(|_| E::NonCanonical)?;
     Ok(Envelope::Machine {
         params,

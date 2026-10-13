@@ -42,7 +42,7 @@ mod tests_review;
 
 pub use exec::{Hints, MachineError};
 pub use execute::{execute, execute_exact, execute_hinted, execute_with};
-pub use statement::{MachineState, MachineStatement};
+pub use statement::{MachinePublic, MachineState, MachineStatement, program_digest};
 
 use lens::{MultilinearPcs, Transcript, WhirParams};
 

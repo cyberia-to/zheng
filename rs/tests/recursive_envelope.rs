@@ -53,8 +53,12 @@ fn with_inner(inner: &[u8]) -> Vec<u8> {
     out
 }
 
+fn program() -> Vec<zheng::execution::NounToken> {
+    zheng::machine::statement::tokens(&common::parse(common::HASH))
+}
+
 fn accepted(bytes: &[u8]) -> bool {
-    Envelope::from_bytes(bytes).is_ok_and(|e| e.verify(None).is_ok())
+    Envelope::from_bytes(bytes).is_ok_and(|e| e.verify_program(&program(), None).is_ok())
 }
 
 #[test]
@@ -66,15 +70,23 @@ fn a_recursive_envelope_round_trips_canonically_and_verifies() {
     let back = Envelope::from_bytes(bytes).unwrap();
     assert_eq!(&back, e);
     assert_eq!(&back.to_bytes(), bytes, "one encoding per value");
-    back.verify(None).unwrap();
-    // the statement is bound
+    back.verify_program(&program(), None).unwrap();
+    // the program is given out of band: without it, or another, nothing verifies
+    assert!(back.verify(None).is_err());
+    let add = zheng::machine::statement::tokens(&common::parse(common::ADD));
+    assert!(back.verify_program(&add, None).is_err());
+    assert_eq!(Envelope::from_bytes_for(bytes, &add), Err(EnvelopeError::ProgramMismatch));
+    // the statement is bound, its program digest included
     let Envelope::Recursive { params, statement, proof } = back else { unreachable!() };
     let mut other = statement.clone();
+    other.program = zheng::machine::program_digest(&add);
+    assert!(Envelope::Recursive { params, statement: other, proof: proof.clone() }.verify_program(&add, None).is_err());
+    let mut other = statement.clone();
     other.input = vec![8];
-    assert!(Envelope::Recursive { params, statement: other, proof: proof.clone() }.verify(None).is_err());
+    assert!(Envelope::Recursive { params, statement: other, proof: proof.clone() }.verify_program(&program(), None).is_err());
     let mut other = statement.clone();
     other.cycles += 1;
-    assert!(Envelope::Recursive { params, statement: other, proof }.verify(None).is_err());
+    assert!(Envelope::Recursive { params, statement: other, proof }.verify_program(&program(), None).is_err());
 }
 
 #[test]
@@ -111,7 +123,7 @@ fn a_wrong_profile_or_format_byte_is_rejected() {
         bad[10] = profile;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
     }
-    for format in [0u8, 2, 0xff] {
+    for format in [0u8, 1, 3, 0xff] {
         let mut bad = bytes.clone();
         bad[HEADER_BYTES] = format;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical));
@@ -163,7 +175,7 @@ fn a_sample_of_bit_flips_is_never_accepted() {
         tried += 1;
         if let Ok(e) = Envelope::from_bytes(&bad) {
             decoded += 1;
-            assert!(e.verify(None).is_err(), "bit {bit} accepted");
+            assert!(e.verify_program(&program(), None).is_err(), "bit {bit} accepted");
         }
     }
     eprintln!("bit flips: {tried} tried, {decoded} decoded, 0 accepted");

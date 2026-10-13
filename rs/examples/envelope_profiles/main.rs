@@ -7,8 +7,9 @@
 //! `cargo run --release -p zheng --example envelope_profiles -- [fixture…]`
 //! fixtures: add.tri hash.tri merkle-32 tree-<k>. `ZHENG_PROFILES=1,4,5,6`
 //! selects (default 1,4,5). `ZHENG_ENVELOPE_DIR=<dir>` writes each envelope
-//! to `<dir>/<fixture>.p<profile>.zheng`. `ZHENG_VERIFY=<file>` only
-//! decodes and verifies that envelope (a fresh process: cold keys).
+//! to `<dir>/<fixture>.p<profile>.zheng`. `ZHENG_VERIFY=<file> … <fixture>`
+//! only decodes and verifies that envelope of the fixture (a fresh
+//! process: cold keys).
 
 #[path = "../../tests/common/mod.rs"]
 mod common;
@@ -43,7 +44,7 @@ fn prove(profile: u8, prog: &N, input: &[u64]) -> Result<Envelope, String> {
         4 => {
             let params = zheng::execution::succinct::params_for(20);
             let (statement, proof) = machine::prove(prog, input, BUDGET, &params)?;
-            Ok(Envelope::Machine { params, statement, proof: Box::new(proof) })
+            Ok(Envelope::Machine { params, statement: statement.public(), proof: Box::new(proof) })
         }
         5 => recursive::prove(prog, input, BUDGET, &recursive::params()),
         6 => zheng::envelope::wrapped::prove(prog, input, BUDGET),
@@ -51,17 +52,19 @@ fn prove(profile: u8, prog: &N, input: &[u64]) -> Result<Envelope, String> {
     }
 }
 
-fn check(bytes: &[u8]) -> f64 {
+fn check(bytes: &[u8], program: &[zheng::execution::NounToken]) -> f64 {
     let t = Instant::now();
-    Envelope::from_bytes(bytes).expect("decode").verify(None).expect("verify");
+    Envelope::from_bytes_for(bytes, program).expect("decode").verify_program(program, None).expect("verify");
     t.elapsed().as_secs_f64() * 1e3
 }
 
 fn main() {
     if let Ok(file) = std::env::var("ZHENG_VERIFY") {
         let bytes = std::fs::read(&file).expect("envelope");
-        let first = check(&bytes);
-        let mut v: Vec<f64> = (0..5).map(|_| check(&bytes)).collect();
+        let name = std::env::args().nth(1).expect("the envelope's fixture");
+        let program = machine::statement::tokens(&fixture(&name).expect("fixture").0);
+        let first = check(&bytes, &program);
+        let mut v: Vec<f64> = (0..5).map(|_| check(&bytes, &program)).collect();
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
         println!("{file}: {} B · profile {} · decode+verify cold {first:.2} ms, warm median {:.2} ms", bytes.len(), bytes[10], v[2]);
         return;
@@ -88,8 +91,9 @@ fn main() {
             if let Ok(dir) = std::env::var("ZHENG_ENVELOPE_DIR") {
                 std::fs::write(format!("{dir}/{name}.p{profile}.zheng"), &bytes).expect("write envelope");
             }
-            let first = check(&bytes);
-            let mut v: Vec<f64> = (0..5).map(|_| check(&bytes)).collect();
+            let program = machine::statement::tokens(&prog);
+            let first = check(&bytes, &program);
+            let mut v: Vec<f64> = (0..5).map(|_| check(&bytes, &program)).collect();
             v.sort_by(|a, b| a.partial_cmp(b).unwrap());
             println!(
                 "{name} · profile {profile}: {} B · prove {t_prove:.1} s · decode+verify first {first:.2} ms, median {:.2} ms",

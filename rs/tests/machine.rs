@@ -146,19 +146,25 @@ fn the_machine_rides_the_envelope_as_profile_four() {
     let proof = machine::prove_run(&run, &w).unwrap();
     let env = Envelope::Machine {
         params: w,
-        statement: run.statement.clone(),
+        statement: run.statement.public(),
         proof: Box::new(proof),
     };
+    let program = &run.statement.program;
     let bytes = env.to_bytes();
     assert_eq!(bytes[10], Profile::Machine as u8);
-    let back = Envelope::from_bytes(&bytes).unwrap();
+    let back = Envelope::from_bytes_for(&bytes, program).unwrap();
     assert_eq!(back, env);
-    back.verify(None).unwrap();
+    back.verify_program(program, None).unwrap();
+    // the program is given out of band: without it, or another, nothing verifies
+    assert!(back.verify(None).is_err());
+    let hash = machine::statement::tokens(&common::parse(common::HASH));
+    assert!(back.verify_program(&hash, None).is_err());
+    assert_eq!(Envelope::from_bytes_for(&bytes, &hash), Err(zheng::envelope::EnvelopeError::ProgramMismatch));
     // weak parameters in the header are refused by the policy
     let mut weak = bytes.clone();
-    weak[11 + 1] = 1; // log_inv_rate 1
+    weak[11 + 2] = 1; // log_inv_rate 1 (after the format byte and the header's version)
     if let Ok(e) = Envelope::from_bytes(&weak) {
-        assert!(e.verify(None).is_err());
+        assert!(e.verify_program(program, None).is_err());
     }
     // truncation and trailing bytes are rejected
     assert!(Envelope::from_bytes(&bytes[..bytes.len() - 1]).is_err());
@@ -180,9 +186,10 @@ fn bit_flip_scan_of_a_full_machine_envelope() {
     let proof = machine::prove_run(&run, &w).unwrap();
     let env = Envelope::Machine {
         params: w,
-        statement: run.statement.clone(),
+        statement: run.statement.public(),
         proof: Box::new(proof),
     };
+    let program = &run.statement.program;
     let bytes = env.to_bytes();
     let accepted = AtomicUsize::new(0);
     let decoded = AtomicUsize::new(0);
@@ -198,7 +205,7 @@ fn bit_flip_scan_of_a_full_machine_envelope() {
                         b[i] ^= 1 << bit;
                         if let Ok(e) = Envelope::from_bytes(&b) {
                             decoded.fetch_add(1, Ordering::Relaxed);
-                            if e.verify(None).is_ok() {
+                            if e.verify_program(program, None).is_ok() {
                                 accepted.fetch_add(1, Ordering::Relaxed);
                             }
                         }

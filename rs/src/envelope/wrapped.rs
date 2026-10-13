@@ -8,8 +8,8 @@
 //! format     u8       WRAPPED_FORMAT (the final proof wire's version)
 //! ivc        8 B      the recursive proof's WHIR header
 //! levels     u8 L, then L × (8 B WHIR header, u8 mode: 0 inner, 1 final)
-//! statement           program tokens, inputs, output tokens, cycles,
-//!                     budget, state (exactly as profiles 4 and 5)
+//! statement  32 B     the program's digest, then inputs, output tokens,
+//!                     cycles, budget, state (exactly as profiles 4 and 5)
 //! proof      varint n, then n bytes: `FinalProof::to_bytes` — fixed-width
 //!            little-endian, every limb a canonical Goldilocks value (< p)
 //! ```
@@ -42,13 +42,13 @@ use super::recursive::{self, STEP_LOG_ROWS};
 use super::{Envelope, EnvelopeError as E};
 use crate::execution::ExecutionNoun;
 use crate::execution::state_evidence::StateEvidence;
-use crate::machine::{self, MachineStatement};
+use crate::machine::{self, MachinePublic, MachineStatement};
 use crate::recursion::ivc;
 use crate::recursion::word::Digest;
 use crate::recursion::wrap::{self, FinalProof, Inner, Mode, WrapKey, WrapParams};
 
-/// Version of the final proof wire inside a profile-6 body.
-pub const WRAPPED_FORMAT: u8 = 1;
+/// Version of the profile-6 body (2: the program bound by its digest).
+pub const WRAPPED_FORMAT: u8 = 2;
 /// Upper bound on the final proof bytes (measured 62.5–62.9 KB; the
 /// target is ≤ 64 KB).
 pub const MAX_PROOF_BYTES: usize = 1 << 17;
@@ -204,7 +204,7 @@ pub fn wrap_recursive(st: &MachineStatement, proof: &ivc::IvcProof) -> Result<En
         wrap: last.expect("a level"),
     };
     Ok(Envelope::Wrapped {
-        statement: st.clone(),
+        statement: st.public(),
         proof: Box::new(fp),
     })
 }
@@ -230,7 +230,7 @@ pub fn proof_bytes(fp: &FinalProof) -> Result<Vec<u8>, String> {
 
 /// Encoding fetches (or derives) the final key; the envelope names the
 /// admitted chain.
-pub(super) fn encode(st: &MachineStatement, fp: &FinalProof, w: &mut Writer) {
+pub(super) fn encode(st: &MachinePublic, fp: &FinalProof, w: &mut Writer) {
     let bytes = proof_bytes(fp).expect("the wrapped chain's final key");
     w.raw(&[WRAPPED_FORMAT]);
     w.raw(&chain_bytes());
@@ -239,7 +239,7 @@ pub(super) fn encode(st: &MachineStatement, fp: &FinalProof, w: &mut Writer) {
     w.raw(&bytes);
 }
 
-pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
+pub(super) fn decode(r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<Envelope, E> {
     if r.byte()? != WRAPPED_FORMAT {
         return Err(E::NonCanonical);
     }
@@ -247,7 +247,7 @@ pub(super) fn decode(r: &mut Reader) -> Result<Envelope, E> {
     if r.raw(want.len())? != want.as_slice() {
         return Err(E::NonCanonical);
     }
-    let statement = read_statement(r)?;
+    let statement = read_statement(r, expect)?;
     let n = r.len(MAX_PROOF_BYTES, 1)?;
     let bytes = r.raw(n)?;
     // the proof's step size must be the admitted key's (`WrapKey::ivc`)

@@ -24,15 +24,22 @@ fn header() -> Vec<u8> {
     b
 }
 
-/// A minimal statement: program `0`, no inputs, output `0`, 0 cycles,
-/// budget 0, no state.
-const STATEMENT: [u8; 9] = [1, 0, 0, 0, 1, 0, 0, 0, 0];
+/// The program of the cheap bodies: the atom `0`.
+fn zero() -> Vec<zheng::execution::NounToken> {
+    zheng::machine::statement::tokens(&zheng::execution::ExecutionNoun::Atom(0))
+}
 
-/// A body under the admitted chain with `proof` as its final proof.
+/// A minimal statement after the program digest: no inputs, output `0`,
+/// 0 cycles, budget 0.
+const STATEMENT: [u8; 6] = [0, 1, 0, 0, 0, 0];
+
+/// A body under the admitted chain, the program `0`, with `proof` as its
+/// final proof.
 fn body_with(proof: &[u8]) -> Vec<u8> {
     let mut b = header();
     b.push(WRAPPED_FORMAT);
     b.extend(wrapped::chain_bytes());
+    b.extend(zheng::machine::program_digest(&zero()));
     b.extend(STATEMENT);
     b.push(0); // state: none
     b.extend(varint(proof.len() as u64));
@@ -66,7 +73,7 @@ fn a_chain_outside_the_admitted_one_is_refused_before_any_key() {
             assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical), "chain byte {i}");
         }
     }
-    for format in [0u8, 2, 0xff] {
+    for format in [0u8, 1, 3, 0xff] {
         let mut bad = good.clone();
         bad[HEADER_BYTES] = format;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical), "format {format}");
@@ -80,7 +87,18 @@ fn a_chain_outside_the_admitted_one_is_refused_before_any_key() {
     bad.extend(varint(MAX_PROOF_BYTES as u64 + 1));
     assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::TooLarge));
     assert_eq!(Envelope::from_bytes(&body_with(&[])), Err(EnvelopeError::Truncated));
+    // another program's envelope is refused right after the statement:
+    // the proof (here not even a proof) is never parsed, no key is built
+    let other = zheng::machine::statement::tokens(&zheng::execution::ExecutionNoun::Atom(1));
+    for proof in [&[][..], &[15u8][..], &[15u8; 64][..]] {
+        assert_eq!(Envelope::from_bytes_for(&body_with(proof), &other), Err(EnvelopeError::ProgramMismatch));
+    }
+    assert_eq!(Envelope::from_bytes_for(&body_with(&[]), &zero()), Err(EnvelopeError::Truncated));
     assert!(!wrapped::final_key_cached() || std::env::var_os("ZHENG_WRAPPED_ENVELOPE").is_some(), "a key was built");
+}
+
+fn program() -> Vec<zheng::execution::NounToken> {
+    zheng::machine::statement::tokens(&common::parse(common::HASH))
 }
 
 fn envelope() -> &'static (Envelope, Vec<u8>) {
@@ -88,7 +106,7 @@ fn envelope() -> &'static (Envelope, Vec<u8>) {
     E.get_or_init(|| {
         let file = std::env::var("ZHENG_WRAPPED_ENVELOPE").ok();
         if let Some(bytes) = file.as_ref().and_then(|f| std::fs::read(f).ok()) {
-            return (Envelope::from_bytes(&bytes).expect("stored envelope"), bytes);
+            return (Envelope::from_bytes_for(&bytes, &program()).expect("stored envelope"), bytes);
         }
         let e = wrapped::prove(&common::parse(common::HASH), &[7], BUDGET).unwrap();
         let bytes = e.to_bytes();
@@ -118,7 +136,7 @@ fn with_inner(inner: &[u8]) -> Vec<u8> {
 }
 
 fn accepted(bytes: &[u8]) -> bool {
-    Envelope::from_bytes(bytes).is_ok_and(|e| e.verify(None).is_ok())
+    Envelope::from_bytes_for(bytes, &program()).is_ok_and(|e| e.verify_program(&program(), None).is_ok())
 }
 
 #[test]
@@ -132,18 +150,28 @@ fn a_wrapped_envelope_round_trips_canonically_and_verifies() {
     let back = Envelope::from_bytes(bytes).unwrap();
     assert_eq!(&back, e);
     assert_eq!(&back.to_bytes(), bytes, "one encoding per value");
-    back.verify(None).unwrap();
-    // the statement is bound
+    back.verify_program(&program(), None).unwrap();
+    assert_eq!(&Envelope::from_bytes_for(bytes, &program()).unwrap(), e);
+    // the program is given out of band: without it, or another program
+    // (the same digest length, another digest), nothing verifies
+    assert!(back.verify(None).is_err());
+    let add = zheng::machine::statement::tokens(&common::parse(common::ADD));
+    assert!(back.verify_program(&add, None).is_err());
+    assert_eq!(Envelope::from_bytes_for(bytes, &add), Err(EnvelopeError::ProgramMismatch));
+    // the statement is bound, its program digest included
     let Envelope::Wrapped { statement, proof } = back else { unreachable!() };
+    let mut other = statement.clone();
+    other.program = zheng::machine::program_digest(&add);
+    assert!(Envelope::Wrapped { statement: other, proof: proof.clone() }.verify_program(&add, None).is_err());
     for f in [
-        (|s: &mut zheng::machine::MachineStatement| s.input = vec![8]) as fn(&mut _),
+        (|s: &mut zheng::machine::MachinePublic| s.input = vec![8]) as fn(&mut _),
         |s| s.cycles += 1,
         |s| s.budget += 1,
         |s| s.output = zheng::machine::statement::tokens(&zheng::execution::ExecutionNoun::Atom(13)),
     ] {
         let mut other = statement.clone();
         f(&mut other);
-        assert!(Envelope::Wrapped { statement: other, proof: proof.clone() }.verify(None).is_err());
+        assert!(Envelope::Wrapped { statement: other, proof: proof.clone() }.verify_program(&program(), None).is_err());
     }
 }
 
@@ -182,7 +210,7 @@ fn a_wrong_profile_or_format_byte_is_rejected() {
         bad[10] = profile;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
     }
-    for format in [0u8, 2, 0xff] {
+    for format in [0u8, 1, 3, 0xff] {
         let mut bad = bytes.clone();
         bad[HEADER_BYTES] = format;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical));
@@ -211,7 +239,7 @@ fn a_sample_of_bit_flips_is_never_accepted() {
         tried += 1;
         if let Ok(e) = Envelope::from_bytes(&bad) {
             decoded += 1;
-            assert!(e.verify(None).is_err(), "bit {bit} accepted");
+            assert!(e.verify_program(&program(), None).is_err(), "bit {bit} accepted");
         }
     }
     eprintln!("bit flips: {tried} tried, {decoded} decoded, 0 accepted");

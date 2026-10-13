@@ -91,6 +91,8 @@ pub enum EnvelopeError {
     TrailingBytes,
     NonCanonical,
     TooLarge,
+    /// A profile 4–6 statement names another program (`from_bytes_for`).
+    ProgramMismatch,
 }
 
 impl fmt::Display for EnvelopeError {
@@ -123,16 +125,16 @@ pub enum Envelope {
     },
     Machine {
         params: lens::WhirParams,
-        statement: crate::machine::MachineStatement,
+        statement: crate::machine::MachinePublic,
         proof: Box<crate::machine::MachineProof>,
     },
     Recursive {
         params: lens::WhirParams,
-        statement: crate::machine::MachineStatement,
+        statement: crate::machine::MachinePublic,
         proof: Box<crate::recursion::ivc::IvcProof>,
     },
     Wrapped {
-        statement: crate::machine::MachineStatement,
+        statement: crate::machine::MachinePublic,
         proof: Box<crate::recursion::wrap::FinalProof>,
     },
 }
@@ -213,6 +215,18 @@ impl Envelope {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EnvelopeError> {
+        Self::decode(bytes, None)
+    }
+
+    /// Decode an envelope of `program`: a profile 4–6 statement naming
+    /// another program's digest is refused right after it is read — before
+    /// the proof is parsed or any key built. Other profiles carry their
+    /// program and decode as [`Envelope::from_bytes`].
+    pub fn from_bytes_for(bytes: &[u8], program: &[crate::execution::NounToken]) -> Result<Self, EnvelopeError> {
+        Self::decode(bytes, Some(&crate::machine::program_digest(program)))
+    }
+
+    fn decode(bytes: &[u8], expect: Option<&[u8; 32]>) -> Result<Self, EnvelopeError> {
         if bytes.len() > MAX_BYTES {
             return Err(EnvelopeError::TooLarge);
         }
@@ -234,7 +248,7 @@ impl Envelope {
             6 => Profile::Wrapped,
             other => return Err(EnvelopeError::UnknownProfile(other)),
         };
-        let envelope = body::decode(profile, &mut r)?;
+        let envelope = body::decode(profile, &mut r, expect)?;
         r.finish()?;
         Ok(envelope)
     }
@@ -282,17 +296,50 @@ impl Envelope {
                 state.ok_or("state envelope: no state evidence")?,
             ),
             Self::Succinct { statement, proof } => succinct::verify(statement, proof, state),
+            Self::Machine { .. } | Self::Recursive { .. } | Self::Wrapped { .. } => {
+                Err("profiles 4–6 bind the program by its digest: verify_program".into())
+            }
+        }
+    }
+
+    /// Verify against `program`, given out of band. Profiles 4–6: the
+    /// program's digest must be the statement's — checked first — and the
+    /// proof is then verified against the full statement (the program's
+    /// init entries, its digest in every transcript). Other profiles carry
+    /// their program: their statement's must be `program`, then
+    /// [`Envelope::verify`].
+    pub fn verify_program(&self, program: &[crate::execution::NounToken], state: Option<&StateEvidence>) -> Result<(), String> {
+        match self {
             Self::Machine {
                 params,
                 statement,
                 proof,
-            } => crate::machine::verify_with_state(statement, proof, params, state),
+            } => crate::machine::verify_with_state(&statement.with_program(program)?, proof, params, state),
             Self::Recursive {
                 params,
                 statement,
                 proof,
-            } => recursive::verify(params, statement, proof, state),
-            Self::Wrapped { statement, proof } => wrapped::verify(statement, proof, state),
+            } => recursive::verify(params, &statement.with_program(program)?, proof, state),
+            Self::Wrapped { statement, proof } => wrapped::verify(&statement.with_program(program)?, proof, state),
+            _ => {
+                if self.program().is_some_and(|p| p != program) {
+                    return Err("envelope: the statement's program is not the one given".into());
+                }
+                self.verify(state)
+            }
+        }
+    }
+
+    /// The program tokens a profile 0–3 statement carries (`None` for
+    /// profiles 4–6, which carry its digest).
+    pub fn program(&self) -> Option<&[crate::execution::NounToken]> {
+        match self {
+            Self::Public { statement, .. } => Some(&statement.program),
+            Self::Zk { statement, .. } => Some(&statement.execution.program),
+            Self::StatePublic { statement, .. } => Some(&statement.execution.program),
+            Self::Succinct { statement: SuccinctStatement::Execution(s), .. } => Some(&s.program),
+            Self::Succinct { statement: SuccinctStatement::State(s), .. } => Some(&s.execution.program),
+            _ => None,
         }
     }
 }

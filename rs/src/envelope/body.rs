@@ -71,7 +71,7 @@ pub(super) fn state(statement: &StateStatement, w: &mut Writer) {
     }
 }
 
-pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
+pub(super) fn decode(profile: Profile, r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<Envelope, E> {
     match profile {
         Profile::Public => Ok(Envelope::Public {
             statement: read_execution(r)?,
@@ -103,9 +103,9 @@ pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
             certificate: read_free(r)?,
         }),
         Profile::Succinct => super::succinct::decode(r),
-        Profile::Machine => super::machine::decode(r),
-        Profile::Recursive => super::recursive::decode(r),
-        Profile::Wrapped => super::wrapped::decode(r),
+        Profile::Machine => super::machine::decode(r, expect),
+        Profile::Recursive => super::recursive::decode(r, expect),
+        Profile::Wrapped => super::wrapped::decode(r, expect),
     }
 }
 
