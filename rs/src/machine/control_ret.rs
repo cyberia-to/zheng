@@ -1,17 +1,17 @@
 //! RET rows (a value meets the top frame), the hash_data rows HDA / HDB
 //! and the pair-equality row EQD.
 
-use nebu::Fp3;
+use crate::air::num::Num;
 
 use super::air::{Out, c};
 use super::control_eval::go;
 use super::layout::*;
 use crate::air::Vals;
 
-pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_>) {
+pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     let l = v.local;
     let n = v.next;
-    let one = Fp3::ONE;
+    let one = T::ONE;
     let rt = l[K_RET];
     let f = |i: usize| rt * l[i];
     let key = |s: usize| l[slot(s, KEY)];
@@ -36,7 +36,7 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
     // B1: the frame's op is a B1 opcode — otherwise `TAG_B1 + op` could
     // name any other frame and B1's step would replace that frame's own
     let gb1 = f(F_B1);
-    let factor = |ops: &[u64]| ops.iter().fold(one, |a, &o| a * (op - c(o)));
+    let factor = |ops: &[u64]| ops.iter().fold(one, |a, &o| a * (op - c::<T>(o)));
     out.push(gb1 * (l[R_OPY] - factor(&B1_OPS[..5])));
     out.push(gb1 * l[R_OPY] * factor(&B1_OPS[5..]));
     go(
@@ -85,12 +85,12 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
     // B2AR: add / sub / mul selected one-hot by the frame's op
     let g = f(F_B2AR);
     let sel = [(R_SADD, 5u64), (R_SSUB, 6), (R_SMUL, 7)];
-    let mut ssum = Fp3::ZERO;
-    let mut sop = Fp3::ZERO;
+    let mut ssum = T::ZERO;
+    let mut sop = T::ZERO;
     for &(col, code) in &sel {
         out.push(g * l[col] * (l[col] - one));
         ssum += l[col];
-        sop += l[col] * c(code);
+        sop += l[col] * c::<T>(code);
     }
     out.push(g * (ssum - one));
     out.push(g * (sop - op));
@@ -105,7 +105,7 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
     let iseq = l[Q_ISEQ];
     out.push(atoms * ((u - w) * l[Q_EINV] - (one - iseq)));
     out.push(atoms * (u - w) * iseq);
-    let mixed = g * (ka + kb - c(2) * ka * kb);
+    let mixed = g * (ka + kb - c::<T>(2) * ka * kb);
     out.push(atoms * (pay(3, 0) - (one - iseq)) + mixed * (pay(3, 0) - one));
     let pairs = g * (one - ka) * (one - kb);
     go(out, n, pairs, K_EQD, &[(OBJ, x), (X, val), (K, parent), (ALLOC, alloc)]);
@@ -122,7 +122,7 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
     for i in 1..4 {
         out.push(g * pay(3, i));
     }
-    let wsum = WOPS.iter().fold(Fp3::ZERO, |a, &(col, code)| a + n[col] * c(code));
+    let wsum = WOPS.iter().fold(T::ZERO, |a, &(col, code)| a + n[col] * c::<T>(code));
     out.push(g * (wsum - op));
     go(
         out,
@@ -136,7 +136,7 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
             (D, pay(3, 0)),
             (K, parent),
             (ALLOC, alloc + one),
-            (B_CNT, Fp3::ZERO),
+            (B_CNT, T::ZERO),
         ],
     );
     // B2LOOK: (namespace, key) atoms, the authenticated state read
@@ -176,7 +176,7 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
         n,
         g,
         K_AUX,
-        &[(OBJ, fobj), (X, x), (D, fd), (K, parent), (ALLOC, alloc), (W_SP, Fp3::ZERO)],
+        &[(OBJ, fobj), (X, x), (D, fd), (K, parent), (ALLOC, alloc), (W_SP, T::ZERO)],
     );
     out.push(g * (one - n[S_WATOM] - n[S_WPAIR] - n[S_WJOIN]));
     // CALL2: the check returned the atom 0; the witness is the value
@@ -188,27 +188,27 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
     // HDA: atoms h0..h3 at ALLOC..ALLOC+3; HDB: their pairs
     let ga = l[K_HDA];
     for s in 0..4 {
-        out.push(ga * (key(s) - alloc - c(s as u64)));
+        out.push(ga * (key(s) - alloc - c::<T>(s as u64)));
         for i in 1..4 {
             out.push(ga * pay(s, i));
         }
     }
-    go(out, n, ga, K_HDB, &[(K, l[K]), (ALLOC, alloc + c(4))]);
+    go(out, n, ga, K_HDB, &[(K, l[K]), (ALLOC, alloc + c::<T>(4))]);
     let gb = l[K_HDB];
-    let base = alloc - c(4);
+    let base = alloc - c::<T>(4);
     let pairs3 = [
         (base, base + one),
-        (base + c(2), base + c(3)),
+        (base + c::<T>(2), base + c::<T>(3)),
         (alloc, alloc + one),
     ];
     for (s, &(a, b)) in pairs3.iter().enumerate() {
-        out.push(gb * (key(s) - alloc - c(s as u64)));
+        out.push(gb * (key(s) - alloc - c::<T>(s as u64)));
         out.push(gb * (pay(s, 0) - a));
         out.push(gb * (pay(s, 1) - b));
         out.push(gb * pay(s, 2));
         out.push(gb * pay(s, 3));
     }
-    go(out, n, gb, K_RET, &[(X, alloc + c(2)), (K, l[K]), (ALLOC, alloc + c(3))]);
+    go(out, n, gb, K_RET, &[(X, alloc + c::<T>(2)), (K, l[K]), (ALLOC, alloc + c::<T>(3))]);
 
     // EQD: two digests, all four limbs equal or not
     let ge = l[K_EQD];
@@ -216,7 +216,7 @@ pub(crate) fn constrain(_m: &super::air::Machine, v: &Vals<'_>, out: &mut Out<'_
     out.push(ge * (key(1) - l[X]));
     let iseq = l[Q_ISEQ];
     out.push(ge * iseq * (iseq - one));
-    let mut dot = Fp3::ZERO;
+    let mut dot = T::ZERO;
     for i in 0..4 {
         let d = pay(0, i) - pay(1, i);
         out.push(ge * iseq * d);

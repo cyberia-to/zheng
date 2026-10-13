@@ -155,6 +155,11 @@ state-restoration knowledge soundness).
 A step sends `2ℓ + m + s` Fp3 elements, one root, two nonces and `m`
 multi-openings of up to `t` leaves. The verifier reads `t` leaves of every
 input word: an accumulation proof is linear in the number of words it
-folds. Constant-size proofs of unbounded computations need the step's
-verifier to run inside the next step's relation (recursion); that is not
-built (`audit/accumulation-2026-10.md` § not done).
+folds, and a chain of steps verified natively is linear in the number of
+steps. Accumulation alone therefore does not give constant size: the
+accumulator is constant, the proof of how it was reached is not.
+Constant-size proofs of unbounded computations come from recursion — the
+accumulation step's verifier runs inside the next step's relation, so only
+the last step's openings travel (`recursion.md`; built in
+`rs/src/recursion/`, which runs this protocol on a field-native transcript
+and Merkle tree with four input words per step).

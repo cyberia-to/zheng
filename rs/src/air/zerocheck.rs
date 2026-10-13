@@ -11,7 +11,7 @@
 //! prover ends with every column's value at the point `ρ`; the verifier
 //! checks the last claim against `eq(τ, ρ)·Σ_k μ^k C_k(values)`.
 
-use lens::Transcript;
+use crate::fs::FiatShamir;
 use nebu::{Fp3, Goldilocks};
 
 use super::{Air, Vals};
@@ -136,7 +136,7 @@ pub(crate) fn prove<A: Air>(
     mut eq: Vec<Fp3>,
     ch: &[Fp3],
     mu: &[Fp3],
-    t: &mut Transcript,
+    t: &mut impl FiatShamir,
 ) -> (Vec<Vec<Fp3>>, Vec<Fp3>, Vec<Fp3>) {
     let deg = air.shape().degree + 1;
     let n = eq.len().trailing_zeros() as usize;
@@ -161,7 +161,7 @@ pub(crate) fn prove<A: Air>(
 /// Verifier: returns the point and the final claim (to be checked by the
 /// caller against `eq(τ, ρ)·Σ μ^k C_k`), or `None` on a malformed message.
 pub(crate) fn verify(
-    t: &mut Transcript,
+    t: &mut impl FiatShamir,
     msgs: &[Vec<Fp3>],
     n: usize,
     degree: usize,

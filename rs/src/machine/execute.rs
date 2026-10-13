@@ -19,6 +19,12 @@ pub fn execute_with(
     execute_hinted(program, input, budget, seg_max, &Hints::default())
 }
 
+/// Run and build the trace in segments of exactly `2^seg_log` rows (the
+/// recursion profile's fixed step size).
+pub fn execute_exact(program: &ExecutionNoun, input: &[u64], budget: u64, seg_log: u32) -> Result<Run, MachineError> {
+    execute_sized(program, input, budget, seg_log, seg_log, &Hints::default())
+}
+
 /// [`execute_with`] at the default segment size.
 pub fn execute(program: &ExecutionNoun, input: &[u64], budget: u64) -> Result<Run, MachineError> {
     execute_with(program, input, budget, SEGMENT_LOG_ROWS)
@@ -32,6 +38,19 @@ pub fn execute_hinted(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
+    seg_max: u32,
+    hints: &Hints<'_>,
+) -> Result<Run, MachineError> {
+    execute_sized(program, input, budget, 0, seg_max, hints)
+}
+
+/// Segments of one power of two of at least `2^seg_min` rows, or a
+/// multiple of `2^seg_max` rows.
+fn execute_sized(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    seg_min: u32,
     seg_max: u32,
     hints: &Hints<'_>,
 ) -> Result<Run, MachineError> {
@@ -92,7 +111,7 @@ pub fn execute_hinted(
         }
         st.cycles = cycles;
         st.output = statement::tokens(&run_ops::noun_of(&b, result));
-        let (trace, start, seg_log) = trace::finish(b, &mut dg, &tables, seg_max);
+        let (trace, start, seg_log) = trace::finish(b, &mut dg, &tables, seg_min, seg_max);
         let constants = Constants {
             fml0: derived.fml0,
             obj0: derived.obj0,

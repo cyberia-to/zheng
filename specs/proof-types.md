@@ -132,7 +132,7 @@ Layer 3 jets make recursive composition practical.
 
 ```
 Level 0: Prove computation C → proof π₀
-Level 1: Prove verify(π₀) → proof π₁ (goal ≤ 64 KB; recursion not built (no verifier relation; `audit/accumulation-2026-10.md` §7 estimates ≈ 2^17 rows per accumulation step))
+Level 1: Prove verify(π₀) → proof π₁ (goal ≤ 64 KB; built as IVC over the nox machine, `recursion.md`: measured ≈ 283 KB constant in steps, `audit/recursion-2026-10.md`)
 Level 2: Prove verify(π₁) → proof π₂ (same size)
 
 AGGREGATION:

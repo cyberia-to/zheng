@@ -2,7 +2,7 @@
 //! (lens order, low bit first); used to reduce the local and next-row
 //! column claims of the zerocheck to one point.
 
-use lens::Transcript;
+use crate::fs::FiatShamir;
 use lens::rspcs::field::quadratic_at;
 use nebu::Fp3;
 
@@ -18,7 +18,7 @@ fn fold(v: &mut Vec<Fp3>, alpha: Fp3) {
 /// Prover: round messages `(h(0), h(2))`, the point. `bs` are folded
 /// alongside `b` so the caller can read their values at the point.
 pub(crate) fn prove(
-    t: &mut Transcript,
+    t: &mut impl FiatShamir,
     mut a: Vec<Fp3>,
     mut b: Vec<Fp3>,
     extra: &mut [Vec<Fp3>],
@@ -49,7 +49,7 @@ pub(crate) fn prove(
 
 /// Verifier: the point and the final claim.
 pub(crate) fn verify(
-    t: &mut Transcript,
+    t: &mut impl FiatShamir,
     sigma: Fp3,
     msgs: &[Fp3],
     n: usize,

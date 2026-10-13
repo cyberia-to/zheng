@@ -25,6 +25,7 @@ pub mod layout;
 mod memory;
 mod perm;
 mod phase2;
+pub(crate) use phase2::build as phase2_build;
 mod run;
 mod run_eq;
 mod run_ops;
@@ -33,14 +34,14 @@ pub mod statement;
 mod trace;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 mod tests_ops;
 #[cfg(test)]
 mod tests_review;
 
 pub use exec::{Hints, MachineError};
-pub use execute::{execute, execute_hinted, execute_with};
+pub use execute::{execute, execute_exact, execute_hinted, execute_with};
 pub use statement::{MachineState, MachineStatement};
 
 use lens::{MultilinearPcs, Transcript, WhirParams};

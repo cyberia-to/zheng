@@ -2,17 +2,17 @@
 //! statement, the value atom) and the call witness (built in post-order on
 //! a stack of cells, then paired with the subject).
 
-use nebu::Fp3;
+use crate::air::num::Num;
 
-use super::air::{Machine, Out, c};
+use super::air::{KConst, Out, c};
 use super::control_eval::go;
 use super::layout::*;
 use crate::air::Vals;
 
-pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
+pub(crate) fn constrain<T: Num>(k: &KConst<T>, v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     let l = v.local;
     let n = v.next;
-    let one = Fp3::ONE;
+    let one = T::ONE;
     let aux = l[K_AUX];
     let key = |s: usize| l[slot(s, KEY)];
     let pay = |s: usize, i: usize| l[slot(s, P0 + i)];
@@ -24,7 +24,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(g * (key(0) - l[OBJ]));
     out.push(g * (key(1) - pay(0, 0)));
     for i in 0..4 {
-        out.push(g * (pay(1, i) - Fp3::from_base(m.constants.root[i])));
+        out.push(g * (pay(1, i) - k.root[i]));
     }
     out.push(g * (key(2) - alloc));
     out.push(g * (pay(2, 0) - l[X]));
@@ -40,7 +40,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
     );
 
     // witness rows carry the call's subject, check formula, depth, parent
-    let carry = |out: &mut Out<'_>, g: Fp3, sp: Fp3| {
+    let carry = |out: &mut Out<'_, T>, g: T, sp: T| {
         go(
             out,
             n,
@@ -51,7 +51,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
                 (X, l[X]),
                 (D, l[D]),
                 (K, l[K]),
-                (ALLOC, alloc + c(2)),
+                (ALLOC, alloc + c::<T>(2)),
                 (W_SP, sp),
             ],
         );
@@ -112,7 +112,7 @@ pub(crate) fn constrain(m: &Machine, v: &Vals<'_>, out: &mut Out<'_>) {
             (X, l[X]),
             (K, alloc + one),
             (D, l[D] + one),
-            (ALLOC, alloc + c(2)),
+            (ALLOC, alloc + c::<T>(2)),
         ],
     );
 }

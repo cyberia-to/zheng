@@ -18,30 +18,30 @@
 //!   comparison runs from the low bit (the last differing bit decides) on
 //!   both halves, `D = 1 − [u < w]`.
 
-use nebu::Fp3;
+use crate::air::num::Num;
 
 use super::air::{Out, c};
 use super::control_eval::go;
 use super::layout::*;
 use crate::air::Vals;
 
-pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
+pub(crate) fn constrain<T: Num>(v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     let l = v.local;
     let n = v.next;
-    let one = Fp3::ONE;
+    let one = T::ONE;
     let g = l[K_AUX] * l[S_WBIT];
     let (cnt, last, first) = (l[B_CNT], l[B_LAST], l[B_FIRST]);
 
     // opcode flags: boolean, one-hot
-    let mut fsum = Fp3::ZERO;
+    let mut fsum = T::ZERO;
     for &(col, _) in &WOPS {
         out.push(g * l[col] * (l[col] - one));
         fsum += l[col];
     }
     out.push(g * (fsum - one));
     // the counter: 0 on the first row, 31 on the last
-    out.push(g * ((cnt - c(31)) * l[B_LINV] - (one - last)));
-    out.push(g * (cnt - c(31)) * last);
+    out.push(g * ((cnt - c::<T>(31)) * l[B_LINV] - (one - last)));
+    out.push(g * (cnt - c::<T>(31)) * last);
     out.push(g * (cnt * l[B_FINV] - (one - first)));
     out.push(g * cnt * first);
     let gc = g * (one - last);
@@ -68,10 +68,10 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     let bs = [G_B0, G_B1, G_B2, G_B3];
     for (&r, &b) in rs.iter().zip(&bs) {
         out.push(g * l[b] * (l[b] - one));
-        out.push(g * (l[r] - l[b] - c(2) * (one - last) * n[r]));
+        out.push(g * (l[r] - l[b] - c::<T>(2) * (one - last) * n[r]));
     }
     let (b0, b1, b2, b3) = (l[G_B0], l[G_B1], l[G_B2], l[G_B3]);
-    let xor = |a: Fp3, b: Fp3| a + b - c(2) * a * b;
+    let xor = |a: T, b: T| a + b - c::<T>(2) * a * b;
 
     // xor / and / not
     let fl = |col: usize| g * l[col];
@@ -93,7 +93,7 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(sf * (l[G_R3] - l[G_HI]));
     out.push(sf * b3);
     out.push(sf * (l[G_P] - one));
-    out.push(sf * (l[G_Q] - c(2)));
+    out.push(sf * (l[G_Q] - c::<T>(2)));
     let sc = gs * (one - last);
     for col in [G_Z, G_CI, G_HI] {
         out.push(sc * (n[col] - l[col]));
@@ -102,31 +102,31 @@ pub(crate) fn constrain(v: &Vals<'_>, out: &mut Out<'_>) {
     out.push(sc * (n[G_Q] - l[G_Q] * l[G_Q]));
     let (z, i5) = (l[G_Z], l[G_I5]);
     out.push(gs * z * (z - one));
-    out.push(gs * ((cnt - c(5)) * l[G_V5] - (one - i5)));
-    out.push(gs * (cnt - c(5)) * i5);
+    out.push(gs * ((cnt - c::<T>(5)) * l[G_V5] - (one - i5)));
+    out.push(gs * (cnt - c::<T>(5)) * i5);
     out.push(gs * i5 * z * l[G_R1]);
     out.push(gs * i5 * (l[G_R1] * l[G_ZI] - (one - z)));
-    out.push(gs * i5 * z * (l[OBJ] * l[G_P] - l[G_CI] - c(1 << 31) * l[G_HI]));
+    out.push(gs * i5 * z * (l[OBJ] * l[G_P] - l[G_CI] - c::<T>(1 << 31) * l[G_HI]));
     out.push(gs * (l[D] - z * l[G_CI]));
 
     // lt
     let gl = fl(B_LT);
     let lf = gl * first;
-    let two32 = c(1 << 32);
+    let two32 = c::<T>(1 << 32);
     out.push(lf * (l[G_R0] + two32 * l[G_R2] - l[OBJ]));
     out.push(lf * (l[G_R1] + two32 * l[G_R3] - l[X]));
     for (col, init) in [
         (G_NA, one),
-        (G_OA, Fp3::ZERO),
+        (G_OA, T::ZERO),
         (G_NB, one),
-        (G_OB, Fp3::ZERO),
-        (G_LL, Fp3::ZERO),
-        (G_LH, Fp3::ZERO),
+        (G_OB, T::ZERO),
+        (G_LL, T::ZERO),
+        (G_LH, T::ZERO),
         (G_EH, one),
     ] {
         out.push(lf * (l[col] - init));
     }
-    let or = |acc: Fp3, b: Fp3| acc + b - acc * b;
+    let or = |acc: T, b: T| acc + b - acc * b;
     let (ll, lh, eh) = (l[G_LL], l[G_LH], l[G_EH]);
     let after = [
         (G_NA, G_NA2, l[G_NA] * b2),

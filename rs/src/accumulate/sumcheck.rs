@@ -12,7 +12,7 @@
 //! polynomial `h`; `h(1) = claim − h(0)`. The verifier ends with the claim
 //! `Σ_i w_i(ρ) · f_i(ρ)` and the prover sends every `f_i(ρ)`.
 
-use lens::Transcript;
+use crate::fs::FiatShamir;
 use lens::rspcs::field::{eq_eval, eq_table, quadratic_at};
 use nebu::Fp3;
 
@@ -45,7 +45,7 @@ impl Weight {
 /// Run the prover over tables `f_i` and their weights; returns the round
 /// messages `(h(0), h(2))…`, the point `ρ` and every `f_i(ρ)`.
 pub fn prove(
-    t: &mut Transcript,
+    t: &mut impl FiatShamir,
     mut f: Vec<Vec<Fp3>>,
     weights: &[Weight],
     vars: usize,
@@ -101,7 +101,7 @@ fn fold(v: &mut Vec<Fp3>, alpha: Fp3) {
 /// Verifier: replay the rounds on claim `sigma`; returns `ρ` and the final
 /// claim, or `None` on a malformed message list.
 pub fn verify(
-    t: &mut Transcript,
+    t: &mut impl FiatShamir,
     sigma: Fp3,
     msgs: &[Fp3],
     vars: usize,
@@ -126,6 +126,7 @@ pub fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lens::Transcript;
     use lens::rspcs::field::ml_eval_ext;
     use nebu::Goldilocks;
 
