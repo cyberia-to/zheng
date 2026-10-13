@@ -170,6 +170,69 @@ fn open_fold<O: Ops>(
         .collect()
 }
 
+/// [`open_fold`] for a native verifier (one opened word): every leaf is
+/// checked in transcript order (its Merkle chain deferred), then the
+/// folds — independent per query — run in the field over the verifier's
+/// threads.
+#[allow(clippy::too_many_arguments)]
+fn open_fold_native<O: Ops>(
+    o: &mut O,
+    spec: &RoundSpec,
+    trees: &[([O::V; 4], bool, usize)],
+    arity: Arity,
+    coef: &[O::V],
+    bits: &[Vec<O::V>],
+    open: &[Vec<LeafOpening>],
+    alphas: &[O::V],
+) -> Vec<(O::V, O::V)> {
+    use crate::recursion::ops::Native;
+    let width = 1usize << spec.fold;
+    let coef: Vec<Fp3> = coef.iter().map(|&c| o.value(c)).collect();
+    let alphas: Vec<Fp3> = alphas.iter().map(|&a| o.value(a)).collect();
+    // leaves combined with the coefficients, as values
+    let leaves: Vec<(Vec<Fp3>, Vec<Fp3>)> = bits
+        .iter()
+        .zip(open)
+        .map(|(b, ops)| {
+            let mut leaf: Option<Vec<Fp3>> = None;
+            let mut c = coef.iter();
+            for (&(root, ext, members), op) in trees.iter().zip(ops) {
+                let syms = verify_leaf(o, ext, arity, op, b, root, "whir: opening");
+                for part in syms.chunks(width).take(members) {
+                    let k = *c.next().expect("a coefficient per word");
+                    let part: Vec<Fp3> = part.iter().map(|&s| o.value(s)).collect();
+                    leaf = Some(match leaf {
+                        None => part.iter().map(|&s| k * s).collect(),
+                        Some(acc) => acc.iter().zip(&part).map(|(&a, &s)| a + k * s).collect(),
+                    });
+                }
+            }
+            (leaf.expect("a word"), b.iter().map(|&x| o.value(x)).collect())
+        })
+        .collect();
+    let omega = root_of_unity(spec.log_domain);
+    let res = crate::recursion::pool::map_chunks(leaves.len(), crate::recursion::wrap::verifier_threads(), |r| {
+        let mut n = Native::new();
+        r.map(|i| {
+            let (leaf, b) = &leaves[i];
+            let x = gm::pow_bits(&mut n, omega, b);
+            let x_inv = n.inv(x, "whir: a domain point is invertible");
+            let shift = gm::pow2k(&mut n, x, spec.fold);
+            let al = alphas.clone();
+            let v = fold_leaf(&mut n, leaf, &al, spec.log_domain, x_inv);
+            (v, shift, n.error.is_some())
+        })
+        .collect::<Vec<_>>()
+    })
+    .concat();
+    if res.iter().any(|r| r.2) {
+        // a zero domain point cannot occur (ω^j ≠ 0); keep the check
+        let z = o.zero();
+        o.inv(z, "whir: a domain point is invertible");
+    }
+    res.into_iter().map(|(v, s, _)| (o.constant(v), o.constant(s))).collect()
+}
+
 /// Panics on a proof of the wrong shape (callers check first).
 pub fn check_shape(cfg: &Config, inputs: usize, pf: &Proof) -> Result<(), String> {
     let wc = &cfg.wc;
@@ -327,7 +390,7 @@ fn core<O: Ops>(
         let bits = query_bits(o, t, &prev);
         let gamma = t.squeeze_ext(o);
         let pa = alphas[alphas.len() - prev.fold..].to_vec();
-        let folded = open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa);
+        let folded = if cfg.direct() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) };
         let mut g = gamma;
         for &(z, y) in &zs {
             sigma = o.mul_add(g, y, sigma);
@@ -355,7 +418,7 @@ fn core<O: Ops>(
     t.grind_check(o, prev.query_pow, pf.final_nonce);
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
-    let folded = open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa);
+    let folded = if cfg.direct() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) };
     for &(v, x) in &folded {
         let f = gm::horner(o, &fin, x);
         o.assert_eq(f, v, "whir: final queries");

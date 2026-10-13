@@ -61,10 +61,22 @@ pub(crate) fn par_chunks<T: Send>(n: usize, f: impl Fn(core::ops::Range<usize>) 
     crate::recursion::pool::map_chunks(n, threads(), f)
 }
 
+/// `eq(point, ·)` on the cube, blocks of the high variables in parallel
+/// (`eq(p, x) = eq(p_lo, lo)·eq(p_hi, hi)`).
+pub(crate) fn par_eq_table(point: &[Fp3]) -> Vec<Fp3> {
+    let k = point.len().min(8);
+    if point.len() < 12 {
+        return eq_table(point);
+    }
+    let (lo, hi) = (eq_table(&point[..k]), eq_table(&point[k..]));
+    let (lo, hi) = (&lo, &hi);
+    par_chunks(hi.len(), |r| r.flat_map(|h| lo.iter().map(move |&l| l * hi[h])).collect::<Vec<_>>()).concat()
+}
+
 /// The key's columns at `ρ` from the key itself.
 pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
     use lens::rspcs::field::mul_base;
-    let e = eq_table(rho);
+    let e = par_eq_table(rho);
     let one = nebu::Goldilocks::ONE;
     let col = |c: &[(u32, Fp3)]| {
         c.iter().fold(Fp3::ZERO, |a, &(x, v)| {
