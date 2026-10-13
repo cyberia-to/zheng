@@ -72,6 +72,16 @@ lands with accumulation (`accumulation.md`, `machine.md`, in progress in this re
 
 the nox run proven by incrementally verifiable computation (`recursion.md`): each 2^15-row step's circuit verifies the previous step, so the proof is the last step's proof, the state it started from, its accumulation step and one decider — constant in the number of steps. the verifier admits only the parameter sets of `envelope::recursive::ADMITTED` (WHIR rate 1/16 or 1/64, folding 4, 24 grinding bits, steps of 2^15 rows; every ledger row ≥ 128 bits), derives the circuit key of that set once per process (`ivc::key`, cached), prepares the statement side (`ivc::prepare`), verifies the step natively, checks the final state against this run (context, pre-commitment chain, step count, cyclic boundary), the three deferred claims, and the decider.
 
+## the program of profiles 4–6
+
+the statement carries the program's digest (`machine::program_digest`:
+hemera over the canonical tokens). the verifier is given the program out of
+band and checks its digest against the statement's before anything else
+(`Envelope::from_bytes_for` refuses another program's envelope before the
+proof is parsed; `verify_program` checks it again before any key work),
+then derives the init entries from it. the transcripts commit to the same
+digest (`MachineStatement::bytes` v2).
+
 ## profile 6 — wrapped proof
 
 the profile-5 proof's final verifier, proved by three wrap levels of the recursion circuit (`recursion.md` § wrap): the final proof is the recursive proof's header, the deferred nox-public claim and one final-mode wrap proof — ≤ 64 KB, constant in the number of steps. the verifier admits only the chain of `envelope::wrapped::chain()` (IVC at 1/16 over 2^15-row steps; wrap 1/64 inner, 1/256 inner, 1/256 final, 30 grinding bits on the last two; every ledger row ≥ 128 bits), prepares the statement side under the proof's header (`ivc::prepare`, IVC key cached), evaluates the deferred claim against the statement's columns, recomputes the public digest `X` and verifies the final wrap natively (`wrap::verify_statement`). the final key is cached per process; a fresh process derives it over the inner levels' pinned key roots (`wrapped::INNER_ROOTS`) or installs it from a pinned key bundle (`envelope::keys`).

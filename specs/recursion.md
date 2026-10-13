@@ -271,6 +271,13 @@ fixed-width little-endian with canonical Goldilocks limbs and no lengths
 but the header's; the envelope wraps it with a format byte, the WHIR
 header (admitted sets only), the machine statement and a length prefix.
 
+The statement digest (`ivc::statement_digest`) absorbs
+`MachineStatement::bytes` v2: the program enters as its hemera digest
+(`machine::program_digest`), the digest profiles 4–6 carry in place of the
+tokens, so the public digest `X` every wrap level outputs commits to the
+32 bytes the envelope shows. The verifier derives the init entries from
+the program it is given after checking that digest.
+
 profile 6 carries the final proof of the wrap chain (`envelope::wrapped`,
 `api.md` § wrapped): a format byte, the admitted chain (IVC header, three
 levels' headers and modes), the machine statement and the length-prefixed
