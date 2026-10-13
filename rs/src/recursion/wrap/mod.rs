@@ -254,6 +254,11 @@ impl Air for View<'_> {
     fn eval(&self, v: &Vals<'_>, ch: &[Fp3], out: &mut [Fp3]) {
         self.eval_with(v.local, v.next, v.publics, ch[0], ch[1], out);
     }
+    fn eval_mix(&self, v: &Vals<'_, crate::air::mix::Mix>, ch: &[Fp3], out: &mut [crate::air::mix::Mix]) -> bool {
+        use crate::air::mix::Mix;
+        self.eval_with(v.local, v.next, v.publics, Mix::of(ch[0]), Mix::of(ch[1]), out);
+        true
+    }
 }
 
 /// Inputs of the constraint graph: local, next (`w` each), key, public
