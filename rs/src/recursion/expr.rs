@@ -216,6 +216,22 @@ mod tests {
             let (pt, rest) = i.split_at(G_POINT);
             vec![rel.g_with(pt, &[rest[0], rest[1]], &KConst::from_slice(&rest[2..]))]
         });
+        {
+            use crate::air::num::Sym;
+            let cols = 2 * crate::recursion::relation::COLS + crate::recursion::relation::PUBS;
+            let gc = record(cols, |i| {
+                let mut pt: Vec<Sym> = i.to_vec();
+                pt.extend((0..(G_POINT - cols) as u64).map(|k| Sym::C(e(k + 900))));
+                vec![rel.g_with(&pt, &[Sym::C(e(1)), Sym::C(e(2))], &KConst::from_slice(&(0..KCONSTS as u64).map(|k| Sym::C(e(k + 7))).collect::<Vec<_>>()))]
+            });
+            let c = gc.compile();
+            let (ops, consts, inputs, outputs) = c.parts();
+            let p = lens::rspcs::program::Program::from_slots(ops, consts.iter().map(|&x| lens::rspcs::program::from_fp3(x)).collect(), inputs, outputs[0]);
+            // the backend program: few registers (depth-first schedule), same value
+            assert!(p.regs <= 160, "registers {}", p.regs);
+            let x: Vec<Fp3> = (0..inputs as u64).map(|i| e(i + 3)).collect();
+            assert_eq!(p.eval(&x, &mut Vec::new()), gc.eval(&x)[0]);
+        }
         let x: Vec<Fp3> = (0..(G_POINT + 2 + KCONSTS) as u64).map(|i| e(i + 40)).collect();
         let (pt, rest) = x.split_at(G_POINT);
         let want = rel.g_with(pt, &[rest[0], rest[1]], &KConst::from_slice(&rest[2..]));

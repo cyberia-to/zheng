@@ -168,4 +168,16 @@ impl Air for View<'_> {
         self.0.eval_with(v.local, v.next, v.publics, &ch_v, &ch, &self.0.machine.constants.lift(), out);
         true
     }
+    fn combine_graph(&self, inputs: usize, challenges: &[Fp3], mu: &[Fp3]) -> Option<crate::air::num::Graph> {
+        use crate::air::num::{Sym, record};
+        let rel = self.0;
+        Some(record(inputs, |i| {
+            let (local, rest) = i.split_at(COLS);
+            let (next, pubs) = rest.split_at(COLS);
+            let ch_v: Vec<Sym> = challenges.iter().map(|&c| Sym::C(c)).collect();
+            let mut out = vec![Sym::ZERO; rel.constraints];
+            rel.eval_with(local, next, pubs, &ch_v, &rel.ch.map(Sym::C), &rel.machine.constants.lift(), &mut out);
+            vec![out.iter().zip(mu).fold(Sym::ZERO, |acc, (&c, &m)| acc + c * Sym::C(m))]
+        }))
+    }
 }

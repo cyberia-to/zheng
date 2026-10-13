@@ -66,6 +66,9 @@ fn main() {
         let proof = ivc::prove_run(&run, &whir).expect("prove");
         let t_prove = t2.elapsed();
         let bytes = proof.to_bytes(&key);
+        if let Ok(dir) = std::env::var("ZHENG_PROOF_DIR") {
+            std::fs::write(format!("{dir}/{name}.ivc"), &bytes).expect("write proof");
+        }
         let parsed = ivc::IvcProof::from_bytes(&bytes, |lr| ivc::key(&whir, lr as usize)).expect("parse");
         assert_eq!(parsed, proof);
         let mut v = Vec::new();

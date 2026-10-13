@@ -281,6 +281,11 @@ impl Compiled {
         }
         self.outputs.iter().map(|&o| v[o as usize]).collect()
     }
+    /// The slot form: `(ops, consts, inputs, outputs)` (slots: inputs,
+    /// then constants, then one per op; `OP_MULB`'s `b` indexes consts).
+    pub fn parts(&self) -> (&[(u8, u32, u32)], &[Fp3], usize, &[u32]) {
+        (&self.ops, &self.consts, self.inputs, &self.outputs)
+    }
     /// Operations evaluated.
     pub fn len(&self) -> usize {
         self.ops.len()
@@ -375,3 +380,4 @@ mod tests {
         assert_eq!(g.eval(&[x, y]), vec![poly(x, y), poly(Fp3::ONE, y)]);
     }
 }
+

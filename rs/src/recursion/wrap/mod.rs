@@ -261,6 +261,17 @@ impl Air for View<'_> {
         self.eval_with(v.local, v.next, v.publics, Mix::of(ch[0]), Mix::of(ch[1]), out);
         true
     }
+    fn combine_graph(&self, inputs: usize, ch: &[Fp3], mu: &[Fp3]) -> Option<crate::air::num::Graph> {
+        use crate::air::num::{Sym, record};
+        let (w, k) = (self.width(), self.constraints());
+        Some(record(inputs, |i| {
+            let (local, rest) = i.split_at(w);
+            let (next, pubs) = rest.split_at(w);
+            let mut out = vec![Sym::ZERO; k];
+            self.eval_with(local, next, pubs, Sym::C(ch[0]), Sym::C(ch[1]), &mut out);
+            vec![out.iter().zip(mu).fold(Sym::ZERO, |acc, (&c, &m)| acc + c * Sym::C(m))]
+        }))
+    }
 }
 
 /// Inputs of the constraint graph: local, next (`w` each), key, public
