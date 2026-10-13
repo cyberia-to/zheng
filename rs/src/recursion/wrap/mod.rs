@@ -75,8 +75,21 @@ use crate::air::{Air, Public, Shape, Vals};
 /// The shipped chain of levels over the IVC proof, innermost first, as
 /// the benches spell it (`<log inv rate><i|f>[:<grinding bits>]`): inner
 /// 1/16 grinding 16 bits (2^16 rows), inner 1/256 grinding 24 (2^15),
-/// final 1/512 grinding 24 (2^14) — `audit/wrap-fastverify-2026-10.md`.
+/// final 1/512 grinding 24 (2^14): the outermost proof is ≤ 65,177 B
+/// over every transcript ([`max_proof_bytes`] ≤ [`MAX_FINAL_BYTES`]) —
+/// `audit/wrap-fastverify-2026-10.md`.
 pub const SHIPPED: &str = "4i:16,8i:24,9f:24";
+
+/// The outermost proof's size bound: 64 KiB, by construction.
+pub const MAX_FINAL_BYTES: usize = 65_536;
+
+/// The most bytes an outermost proof under the final key `k` takes over
+/// every transcript (no two queries sharing a Merkle node): every message
+/// shape is fixed by the key; the multi-openings' siblings are bounded
+/// level by level (`whir::wire::max_siblings`).
+pub fn max_proof_bytes(k: &WrapKey) -> usize {
+    FinalProof::max_bytes(k)
+}
 
 /// Committed columns (phase 1 ‖ phase 2).
 pub const COLS: usize = V1 + V2;

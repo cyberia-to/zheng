@@ -253,7 +253,13 @@ final verifier, 2^16 rows) → inner 1/256 grinding 24 (2^15 rows) → final
 so `ℓ = 20`) fixes the inner level's rate (1/256: a lower rate adds
 queries the final circuit verifies); the final rate and grinding fix the
 proof's bytes (`examples/wrap_plan`, `examples/wrap_chain` plan a chain
-without proving). A verifying key travels as bytes (`WrapKey::vk_bytes`,
+without proving). The outermost proof's size is bounded by construction, not measured:
+every message shape is fixed by the final key and a multi-opening of `q`
+leaves carries at most `Σ_levels (a·n_{l+1} − n_l)` siblings with
+`n_l = min(q, nodes at level l)` (`whir::wire::max_siblings`, exact);
+`wrap::max_proof_bytes` = 65,177 B for the shipped chain, ≤
+`wrap::MAX_FINAL_BYTES` = 65,536 (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`);
+`FinalProof::from_bytes` refuses longer input. A verifying key travels as bytes (`WrapKey::vk_bytes`,
 pinned by `vk_digest`): it verifies, it does not prove.
 The outermost proof (`FinalProof`) is the deferred nox-public claim and
 the final wrap; `wrap::verify_final` refuses a key derived for another

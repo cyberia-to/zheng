@@ -55,6 +55,18 @@ pub fn read(r: &mut Reader<'_>, k: &WrapKey) -> R<WrapProof> {
     Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals, kv, whir })
 }
 
+/// The most bytes a wrap proof under `k` can take (over every
+/// transcript): the AIR messages are fixed by the key, the opening is
+/// bounded by `whir::wire::max_bytes`.
+pub fn max_bytes(k: &WrapKey) -> usize {
+    let n = k.params.n;
+    let inner = k.inner();
+    let words = k.trace_words();
+    let ext = 24 * (words * k.fresh + n * (DEGREE + 1) + k.cols() + k.next_cols.len());
+    let inner_msgs = if inner { 24 * (pre::COUNT + 2 * n + words + 2) } else { 0 };
+    32 * words + ext + inner_msgs + whir::wire::max_bytes(&k.cfg, &k.exts())
+}
+
 impl WrapProof {
     pub fn to_bytes(&self, k: &WrapKey) -> Vec<u8> {
         let mut w = Writer::default();
@@ -70,6 +82,12 @@ impl WrapProof {
 }
 
 impl FinalProof {
+    /// The most bytes an outermost proof under `k` can take, over every
+    /// transcript (`header · nox-public claim · wrap`): a hard bound, not
+    /// a measurement.
+    pub fn max_bytes(k: &WrapKey) -> usize {
+        1 + 8 + 8 + 32 + 24 * (k.pn + 1) + max_bytes(k)
+    }
     pub fn to_bytes(&self, k: &WrapKey) -> Vec<u8> {
         let mut w = Writer::default();
         w.u8(self.log_rows as u8);
@@ -83,6 +101,9 @@ impl FinalProof {
     }
     pub fn from_bytes(bytes: &[u8], k: &WrapKey) -> Result<Self, String> {
         let e = |e: PcsError| format!("final proof: {e}");
+        if bytes.len() > Self::max_bytes(k) {
+            return Err("final proof: longer than its key allows".into());
+        }
         let mut r = Reader::new(bytes);
         let log_rows = u32::from(r.u8().map_err(e)?);
         let start = r.u64().map_err(e)?;

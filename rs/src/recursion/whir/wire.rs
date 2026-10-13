@@ -170,6 +170,64 @@ pub fn write(w: &mut Writer, cfg: &Config, ext: &[bool], p: &Proof) {
     openings(w, &p.final_open, e, last.log_leaves() as usize, cfg.arity);
 }
 
+/// The most siblings a multi-opening of `q` distinct leaves can carry in
+/// a tree of `2^log_leaves` leaves. A level of fan-in `a` with `n` nodes
+/// present under `p` parents carries `a·p − n` siblings, and the parents
+/// are the next level's nodes, so the total is
+/// `Σ_levels (a·n_{l+1} − n_l)`; it is largest when every level holds as
+/// many nodes as it can, `n_l = min(q, nodes at level l)` (exact: leaves
+/// in distinct subtrees reach it).
+pub fn max_siblings(q: usize, log_leaves: usize, arity: Arity) -> usize {
+    let mut log = log_leaves;
+    let mut n = q.min(1usize << log);
+    let mut total = 0;
+    for a in arity.levels(log_leaves) {
+        log -= a.trailing_zeros() as usize;
+        let up = q.min(1usize << log);
+        total += a * up - n;
+        n = up;
+    }
+    total
+}
+
+/// The most bytes [`openings`] can write for `q` queries of round `s`
+/// (every query a distinct leaf, no shared node).
+fn max_openings(s: &RoundSpec, ext: &[bool], members: &[usize], arity: Arity) -> usize {
+    let q = queries(s);
+    let depth = s.log_leaves() as usize;
+    let distinct = q.min(1usize << depth);
+    let mut b = 4 * q;
+    for (&x, &m) in ext.iter().zip(members) {
+        b += distinct * (m << s.fold) * if x { 24 } else { 8 };
+        b += 4 + 32 * max_siblings(distinct, depth, arity);
+    }
+    b
+}
+
+/// The most bytes [`write`] can produce under `cfg` (over every
+/// transcript): every shape but the multi-openings is fixed; those are
+/// bounded by [`max_siblings`].
+pub fn max_bytes(cfg: &Config, ext: &[bool]) -> usize {
+    let wc = &cfg.wc;
+    let s0 = wc.rounds[0];
+    let b = if cfg.direct() { 0 } else { 1 };
+    let fold_n = |s: &RoundSpec| if s.fold_pow > 0 { s.fold } else { 0 };
+    let nonce = |bits: u32| if bits > 0 { 8 } else { 0 };
+    let mut n = 24 * (2 * wc.num_vars * b + cfg.inputs * b) + nonce(cfg.comb_pow);
+    n += 24 * (s0.ood + 2 * s0.fold) + 8 * fold_n(&s0);
+    for i in 1..wc.rounds.len() {
+        let (prev, s) = (wc.rounds[i - 1], wc.rounds[i]);
+        n += 32 + 24 * s.ood + nonce(prev.query_pow);
+        let (e, g): (&[bool], &[usize]) = if i == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
+        n += max_openings(&prev, e, g, cfg.arity);
+        n += 24 * 2 * s.fold + 8 * fold_n(&s);
+    }
+    let last = *wc.rounds.last().expect("a round");
+    n += 24 * (1usize << wc.final_vars) + nonce(last.query_pow);
+    let (e, g): (&[bool], &[usize]) = if wc.rounds.len() == 1 { (ext, &cfg.groups) } else { (&[true], &[1]) };
+    n + max_openings(&last, e, g, cfg.arity)
+}
+
 /// Read an opening whose round-0 trees have symbol fields `ext`.
 pub fn read(r: &mut Reader<'_>, cfg: &Config, ext: &[bool]) -> R<Proof> {
     let wc = &cfg.wc;

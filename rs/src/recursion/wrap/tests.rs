@@ -68,3 +68,59 @@ fn a_coefficient_applies_as_the_field_product() {
     assert_eq!(Coef::of(t), Coef::T);
     assert_eq!(Coef::of(t * t), Coef::T2);
 }
+
+/// The shipped chain's outermost proof is ≤ 64 KiB over every transcript
+/// (a hard bound from the key's shapes, not a measurement), and the bound
+/// is tight: a proof whose queries share no Merkle node reaches it.
+#[test]
+fn the_shipped_final_proof_is_at_most_64_kib_over_every_transcript() {
+    use crate::recursion::ivc;
+    let mut whir = crate::execution::succinct::params_for(20);
+    whir.log_inv_rate = 4;
+    whir.pow_bits = ivc::SHIPPED_POW;
+    let ikey = ivc::key(&whir, 15).unwrap();
+    let mut prev: Option<WrapKey> = None;
+    for l in super::SHIPPED.split(',') {
+        let mut parts = l.split(':');
+        let head = parts.next().unwrap();
+        let (rate, mode) = head.split_at(head.len() - 1);
+        let mut w = whir;
+        w.log_inv_rate = rate.parse().unwrap();
+        w.pow_bits = parts.next().unwrap().parse().unwrap();
+        let params = WrapParams { whir: w, n: 0, mode: if mode == "f" { Mode::Final } else { Mode::Inner } };
+        prev = Some(match &prev {
+            None => super::derive_shape_ivc(params, &ikey).unwrap(),
+            Some(p) => super::derive_shape(params, p).unwrap(),
+        });
+    }
+    let k = prev.unwrap();
+    let max = super::max_proof_bytes(&k);
+    eprintln!("shipped final proof ≤ {max} B");
+    assert!(max <= super::MAX_FINAL_BYTES, "{max}");
+}
+
+/// The sibling bound is exact: leaves spread over distinct subtrees at
+/// every level reach it.
+#[test]
+fn the_size_bound_is_the_worst_case_encoding() {
+    use crate::recursion::whir::wire::max_siblings;
+    use crate::recursion::word::Arity;
+    // the sibling bound is reached by leaves spread over distinct subtrees
+    for (q, d) in [(1usize, 5usize), (3, 6), (8, 10), (24, 25), (5, 3)] {
+        // leaves in distinct subtrees at every level they can be
+        let top = q.next_power_of_two().trailing_zeros() as usize;
+        let spread: Vec<usize> = if top <= d { (0..q).map(|i| nebu::ntt::bit_reverse(i, top as u32) << (d - top)).collect() } else { (0..1 << d).collect() };
+        let mut spread = spread;
+        spread.sort_unstable();
+        let q = spread.len();
+        let mut known = spread.clone();
+        let mut sib = 0;
+        for _ in 0..d {
+            let mut par: Vec<usize> = known.iter().map(|x| x / 2).collect();
+            par.dedup();
+            sib += 2 * par.len() - known.len();
+            known = par;
+        }
+        assert_eq!(sib, max_siblings(q, d, Arity::Two), "{q} {d}");
+    }
+}

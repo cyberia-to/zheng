@@ -55,6 +55,9 @@ fn main() {
             let q: Vec<usize> = k.cfg.wc.rounds.iter().map(|r| r.queries).collect();
             let ext_cols: Vec<usize> = k.pre.cols.iter().enumerate().filter(|(_, c)| c.iter().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO)).map(|(i, _)| i).collect();
             line.push(format!("{l}: {} rows (perm blocks {}) → 2^{} · q {q:?} · {weak:.2} bits · key columns with Fp3 entries {ext_cols:?}", k.rows, k.census[2], k.params.n));
+            if !k.inner() {
+                line.push(format!("final proof ≤ {} B over every transcript", wrap::FinalProof::max_bytes(&k)));
+            }
             keys.push(k);
         }
         println!("{spec} ({:.1} s)\n  {}", t.elapsed().as_secs_f64(), line.join("\n  "));

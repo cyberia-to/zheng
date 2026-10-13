@@ -143,8 +143,9 @@ fn main() {
         std::process::Command::new("sysctl").args(["-n", "vm.loadavg"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
     });
     println!(
-        "{name}: final proof {} B · threads {threads} · verify cold {cold:.3} ms · warm median {:.3} ms (min {:.3}, max {:.3}, {runs} runs; main-thread CPU median {:.3} ms, of it parsing {:.3} ms) · permutations {} single + {} batched · load {}",
+        "{name}: final proof {} B (≤ {} B over every transcript) · threads {threads} · verify cold {cold:.3} ms · warm median {:.3} ms (min {:.3}, max {:.3}, {runs} runs; main-thread CPU median {:.3} ms, of it parsing {:.3} ms) · permutations {} single + {} batched · load {}",
         bytes.len(),
+        wrap::max_proof_bytes(&last),
         v[runs / 2],
         v[0],
         v[runs - 1],
