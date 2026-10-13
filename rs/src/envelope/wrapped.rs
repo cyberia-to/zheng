@@ -14,10 +14,11 @@
 //!            little-endian, every limb a canonical Goldilocks value (< p)
 //! ```
 //!
-//! Decoding admits only the chain of [`chain`] (IVC at rate 1/16 over
-//! steps of 2^15 rows; wrap levels 1/64 inner, 1/256 inner with 30
-//! grinding bits, 1/256 final with 30 grinding bits) and only that step
-//! size in the proof's header, so a verifier needs exactly one final key
+//! Decoding admits only the chain of [`chain`] (`wrap::SHIPPED`: IVC at
+//! rate 1/16 with `ivc::SHIPPED_POW` = 16 grinding bits over steps of
+//! 2^15 rows; wrap levels 1/16 inner with 16 grinding bits, 1/256 inner
+//! with 24, 1/512 final with 24) and only that step size in the proof's
+//! header, so a verifier needs exactly one final key
 //! and one IVC key; a hostile header cannot make it derive another. The
 //! proof must fill its length exactly and the length must fill the
 //! envelope.
@@ -47,25 +48,30 @@ use crate::recursion::ivc;
 use crate::recursion::word::Digest;
 use crate::recursion::wrap::{self, FinalProof, Inner, Mode, WrapKey, WrapParams};
 
-/// Version of the profile-6 body (2: the program bound by its digest).
-pub const WRAPPED_FORMAT: u8 = 2;
-/// Upper bound on the final proof bytes (measured 62.5–62.9 KB; the
-/// target is ≤ 64 KB).
-pub const MAX_PROOF_BYTES: usize = 1 << 17;
+/// Version of the profile-6 body (2: the program bound by its digest; 3:
+/// the chain `wrap::SHIPPED`, IVC at 16 grinding bits, the final level's
+/// message digests).
+pub const WRAPPED_FORMAT: u8 = 3;
+/// Upper bound on the final proof bytes: 64 KiB, by construction — the
+/// admitted final key's `wrap::max_proof_bytes` (65,177 B, over every
+/// transcript) is ≤ this, checked when the key is built.
+pub const MAX_PROOF_BYTES: usize = wrap::MAX_FINAL_BYTES;
 /// Wrap levels of the admitted chain.
 pub const LEVELS: usize = 3;
 
 /// The admitted chain: the IVC parameters and the wrap levels, innermost
-/// first (`audit/wrap-2026-10.md`: every ledger row ≥ 128 bits).
+/// first (`wrap::SHIPPED`; `audit/wrap-fastverify-2026-10.md`: every
+/// ledger row ≥ 128 bits).
 pub fn chain() -> (WhirParams, [WrapParams; LEVELS]) {
-    let ivc = recursive::params();
+    let mut ivc = recursive::params();
+    ivc.pow_bits = ivc::SHIPPED_POW;
     let level = |rate: u8, pow: u8, mode: Mode| {
         let mut whir = ivc;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;
         WrapParams { whir, n: 0, mode }
     };
-    (ivc, [level(6, 24, Mode::Inner), level(8, 30, Mode::Inner), level(8, 30, Mode::Final)])
+    (ivc, [level(4, 16, Mode::Inner), level(8, 24, Mode::Inner), level(9, 24, Mode::Final)])
 }
 
 /// The chain as it travels: IVC header, level count, per level header and
@@ -85,8 +91,8 @@ pub fn chain_bytes() -> Vec<u8> {
 /// the prover's derivation (`examples/wrap_keys`; checked by the prover
 /// and by `tests/keys.rs`).
 pub const INNER_ROOTS: [[u64; 4]; LEVELS - 1] = [
-    [14389027377253845461, 15555800269249080548, 3521345733669323714, 22083444109560741],
-    [989228952576624314, 15013242504697526569, 11425159540609263336, 6725416139839815059],
+    [9437345888482789319, 4265812953260487618, 3335018687198983249, 12846741501872388097],
+    [18283988425026477892, 7726983002045212636, 8626497495061532232, 7321266016051363173],
 ];
 
 fn pinned_root(i: usize) -> Digest {
@@ -142,6 +148,10 @@ fn check_bound(k: &WrapKey) -> Result<(), String> {
     let last = chain().1[LEVELS - 1];
     if k.ivc != admitted_ivc() || k.params.whir != last.whir || k.params.mode != last.mode {
         return Err("wrapped: the final key is not the admitted chain's".into());
+    }
+    // its proofs fit the envelope over every transcript
+    if wrap::max_proof_bytes(k) > MAX_PROOF_BYTES {
+        return Err("wrapped: the final key's proofs can exceed 64 KiB".into());
     }
     Ok(())
 }

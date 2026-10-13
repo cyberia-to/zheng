@@ -35,10 +35,11 @@ pub const RECURSIVE_DIGEST: [u8; 32] = [
     0x11, 0xe1, 0x58, 0xef, 0x53, 0x75, 0x59, 0x0c, 0x68, 0xac, 0xe1, 0x3b, 0x34, 0x8f, 0xd5, 0x32,
     0xd1, 0xe7, 0xcf, 0x11, 0x99, 0x27, 0x9d, 0x3c, 0x2e, 0xb4, 0x64, 0x30, 0x41, 0x17, 0x05, 0x03,
 ];
-/// Digest of the profile-6 bundle (IVC key and the chain's final key).
+/// Digest of the profile-6 bundle (the IVC key at 16 grinding bits and the
+/// final key of `wrap::SHIPPED`).
 pub const WRAPPED_DIGEST: [u8; 32] = [
-    0x81, 0xa9, 0xa4, 0xe1, 0x0d, 0x0a, 0x6b, 0xd8, 0x15, 0x5d, 0x9f, 0xe1, 0x5f, 0xe0, 0x76, 0x0d,
-    0x28, 0xd2, 0xcc, 0xe0, 0x15, 0x1c, 0x5f, 0xe1, 0x65, 0x50, 0x44, 0x49, 0xc0, 0x32, 0xce, 0xc8,
+    0xc2, 0x99, 0xa5, 0x67, 0xc4, 0x5a, 0x7c, 0x21, 0x19, 0xe7, 0x98, 0x77, 0x2d, 0x70, 0x61, 0x16,
+    0xfc, 0x4d, 0xea, 0x54, 0xcf, 0x71, 0x0b, 0x1a, 0x9b, 0xa6, 0x81, 0xd7, 0x07, 0x5f, 0x7a, 0x3f,
 ];
 
 /// The pinned digest of a profile's bundle (profiles 5 and 6 only).
@@ -70,20 +71,20 @@ fn bundle(profile: Profile, layouts: &[Vec<u8>]) -> Vec<u8> {
 /// process has not (profile 6 without an installed final key derives the
 /// whole chain).
 pub fn export(profile: Profile) -> Result<Vec<u8>, String> {
-    let ikey = || ivc::key(&recursive::params(), recursive::STEP_LOG_ROWS as usize);
+    let ikey = |whir: &lens::WhirParams| ivc::key(whir, recursive::STEP_LOG_ROWS as usize);
     match profile {
-        Profile::Recursive => Ok(bundle(profile, &[ikey()?.layout_bytes()])),
-        Profile::Wrapped => Ok(bundle(profile, &[ikey()?.layout_bytes(), wrapped::final_key()?.layout_bytes()])),
+        Profile::Recursive => Ok(bundle(profile, &[ikey(&recursive::params())?.layout_bytes()])),
+        Profile::Wrapped => Ok(bundle(profile, &[ikey(&wrapped::chain().0)?.layout_bytes(), wrapped::final_key()?.layout_bytes()])),
         _ => Err("keys: only profiles 5 and 6 have cached keys".into()),
     }
 }
 
 /// Whether the keys a verifier of `profile` needs are in the process.
 pub fn cached(profile: Profile) -> bool {
-    let i = ivc::cached(&recursive::params(), recursive::STEP_LOG_ROWS as usize);
+    let i = |whir: &lens::WhirParams| ivc::cached(whir, recursive::STEP_LOG_ROWS as usize);
     match profile {
-        Profile::Recursive => i,
-        Profile::Wrapped => i && wrapped::final_key_cached(),
+        Profile::Recursive => i(&recursive::params()),
+        Profile::Wrapped => i(&wrapped::chain().0) && wrapped::final_key_cached(),
         _ => false,
     }
 }
