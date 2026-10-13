@@ -38,8 +38,8 @@ pub const RECURSIVE_DIGEST: [u8; 32] = [
 /// Digest of the profile-6 bundle (the IVC key at 16 grinding bits and the
 /// final key of `wrap::SHIPPED`).
 pub const WRAPPED_DIGEST: [u8; 32] = [
-    0xd3, 0x54, 0x47, 0x3f, 0xed, 0x0f, 0x75, 0x57, 0x81, 0x8e, 0x29, 0x83, 0x00, 0x54, 0x19, 0x01,
-    0x2a, 0xcc, 0x6b, 0x8c, 0x34, 0x7e, 0x40, 0x1f, 0x5a, 0x16, 0xc7, 0x99, 0x28, 0xd7, 0x73, 0x71,
+    0x54, 0x41, 0x32, 0x11, 0xe3, 0x66, 0xa7, 0x4d, 0xfc, 0x6b, 0x38, 0xcc, 0x7f, 0x29, 0xb3, 0x57,
+    0xf2, 0x53, 0xdd, 0xa9, 0x3c, 0x05, 0xd6, 0xa9, 0x7e, 0xa5, 0xd9, 0xc0, 0xdc, 0x48, 0x45, 0xfa,
 ];
 
 /// The pinned digest of a profile's bundle (profiles 5 and 6 only).
@@ -71,7 +71,7 @@ fn bundle(profile: Profile, layouts: &[Vec<u8>]) -> Vec<u8> {
 /// process has not (profile 6 without an installed final key derives the
 /// whole chain).
 pub fn export(profile: Profile) -> Result<Vec<u8>, String> {
-    let ikey = |whir: &lens::WhirParams| ivc::key(whir, recursive::STEP_LOG_ROWS as usize);
+    let ikey = |whir: &lens::WhirParams| recursive::pinned_key(whir, ivc::key(whir, recursive::STEP_LOG_ROWS as usize)?);
     match profile {
         Profile::Recursive => Ok(bundle(profile, &[ikey(&recursive::params())?.layout_bytes()])),
         Profile::Wrapped => Ok(bundle(profile, &[ikey(&wrapped::chain().0)?.layout_bytes(), wrapped::final_key()?.layout_bytes()])),

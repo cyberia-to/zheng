@@ -59,12 +59,39 @@ pub fn admitted(whir: &WhirParams, log_rows: u32) -> bool {
         .any(|&(rate, n)| n == log_rows && params_at(rate).header() == whir.header())
 }
 
-/// The circuit key of an admitted set, derived once per process.
+/// The roots of the IVC keys' committed words (`ivc::Key::kw_root`) of
+/// every IVC parameter set a verifier admits — profile 5's two sets and
+/// profile 6's IVC (16 grinding bits) — as the CPU derives them. The
+/// decider opens the key words against this root natively, and deriving
+/// it runs on the process's prover backend (Merkle levels, coset leaves,
+/// permutation batches): a key whose root is not pinned here is refused,
+/// so a faulty device kernel fails closed and never moves a verdict
+/// (`audit/proof-stack-review-2026-10.md` F1; checked by
+/// `tests/keys.rs::the_pinned_ivc_key_roots_are_the_derived_ones`).
+pub const KEY_ROOTS: [([u8; 8], [u64; 4]); 3] = [
+    ([1, 4, 4, 24, 128, 0, 1, 8], [17650164513439705841, 14752446190575139438, 15384716668885105833, 3520303482795737372]),
+    ([1, 6, 4, 24, 128, 0, 1, 8], [13679688449575918182, 7354949273361899781, 10270044639476201331, 9423175522658656771]),
+    ([1, 4, 4, 16, 128, 0, 1, 8], [8186772782216181231, 8570318494317168107, 13146343861140493927, 14066126686975898684]),
+];
+
+/// `k` (of WHIR parameters `whir`, steps of 2^15 rows) if its key-word
+/// root is the pinned one.
+pub fn pinned_key(whir: &WhirParams, k: std::sync::Arc<ivc::Key>) -> Result<std::sync::Arc<ivc::Key>, String> {
+    let want = KEY_ROOTS.iter().find(|(h, _)| *h == whir.header()).map(|(_, r)| *r);
+    match want {
+        Some(r) if k.params.n == STEP_LOG_ROWS as usize && k.kw_root.map(|x| x.as_u64()) == r => Ok(k),
+        Some(_) => Err("recursive envelope: the derived IVC key's words are not the pinned ones (prover backend?)".into()),
+        None => Err("recursive envelope: no pinned IVC key for these parameters".into()),
+    }
+}
+
+/// The circuit key of an admitted set, derived once per process; its
+/// key-word root must be pinned ([`KEY_ROOTS`]).
 pub fn key(whir: &WhirParams, log_rows: u32) -> Result<std::sync::Arc<ivc::Key>, String> {
     if !admitted(whir, log_rows) {
         return Err("recursive envelope: parameters not admitted".into());
     }
-    ivc::key(whir, log_rows as usize)
+    pinned_key(whir, ivc::key(whir, log_rows as usize)?)
 }
 
 /// Run `program` and prove it recursively under `whir` (an admitted set).

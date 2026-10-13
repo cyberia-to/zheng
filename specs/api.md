@@ -170,7 +170,7 @@ proof      varint n ≤ MAX_PROOF_BYTES (128 KiB), then n bytes of
 
 decoding refuses a wrong format byte, any chain other than the admitted one, a step size other than 2^15 (all before any key is built), a proof that does not fill its length exactly, and trailing bytes (`rs/tests/wrapped_envelope.rs`). the final proof binds the whole statement: the IVC statement digest enters the public values `X` every wrap level outputs.
 
-keys: the prover derives the chain once per process (`wrapped::chain_keys`; the inner levels commit their keys — minutes, ~30 GB) and checks the inner levels' key roots against `wrapped::INNER_ROOTS`. the verifier needs the IVC key and the final level's key only (`wrapped::final_key`): derived over the pinned roots without committing the inner keys, or installed from a key bundle.
+keys: the prover derives the chain once per process (`wrapped::chain_keys`; the inner levels commit their keys — minutes, ~30 GB) and checks the inner levels' key roots against `wrapped::INNER_ROOTS`. the verifier needs the IVC key and the final level's key only (`wrapped::final_key`): derived over the pinned roots without committing the inner keys, or installed from a key bundle. a derived IVC key of profile 5 or 6 is used only if its key-word root is pinned (`recursive::KEY_ROOTS`; `recursive::pinned_key`): a key derived under a faulty prover backend is refused.
 
 ### key bundles (`envelope::keys`)
 

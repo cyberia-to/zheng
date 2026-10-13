@@ -222,7 +222,7 @@ verifier of the level below. The relation: the circuit's AIR alone over
 
 | mode | words | wiring | key | verifier |
 |---|---|---|---|---|
-| inner | `W1` (phase 1), `W2` (memory phase, after `(α_V, β_V)`) — 4-ary trees | logUp memory | two words under one tree, opened in the batch | any interpreter (the circuit) |
+| inner | `W1` (phase 1), `W2` (memory phase, after `(α_V, β_V)`) — 4-ary trees | logUp memory | over the base field (`recursion::splitkey`: Fp3 columns split in limbs), base words under one tree, opened in the batch | any interpreter (the circuit) |
 | final | `W1` — binary tree | linear: every read slot's value equals its write slot's, batched with powers of `λ` into one weight `u_λ` (`⟨u_λ, W1⟩ = 0`) | evaluated by the verifier (`O(key entries)`) | native |
 
 ```text
@@ -231,8 +231,9 @@ transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root, OOD |
             ρ and their successors (final: only the columns the
             constraints read at the next row, from the recorded graph;
             absorbed as one message digest, `recursion::msg`);
-            inner: the key at ρ, γ_k, the shift reduction of W1, W2 to one
-            point, the key claim split over its two words, the batched
+            inner: the key's physical columns at ρ, γ_k (8 variables), the
+            shift reduction of W1, W2 to one point, the key words at
+            (ρ, γ_k[..6]) checked against the batched columns, the batched
             opening | final: column batching (local, successor), one
             direct opening with weights OOD, Σ_c eq(g_l, c)·W1(ρ, c),
             Σ_{c ∈ next} eq(g_n, c)·W1(ρ + 1, c), u_λ (claimed 0)
@@ -246,12 +247,13 @@ evaluates `u_λ` slot by slot: with `ℓ − fv ≤ n` every cell of one slot
 shares its row's `eq(α, ·)` factor, so the term is one product per slot
 and a Horner sum over the reads (`wrap::wiring`).
 
-The chain shipped (`wrap::SHIPPED` = `4i:16,8i:24,9f:26`): the IVC proof
+The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`): the IVC proof
 (rate 1/16, steps of `2^15` rows) → inner 1/16 grinding 16 bits (the IVC
-final verifier, 2^16 rows) → inner 1/256 grinding 24 (2^15 rows) → final
+final verifier, 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
 1/512 grinding 26 (2^14 rows). The final level's circuit size (≤ 2^14,
-so `ℓ = 20`) fixes the inner level's rate (1/256: a lower rate adds
-queries the final circuit verifies); the final rate and grinding fix the
+so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the
+final circuit verifies; the base-field key (a key leaf of 6 permutations
+instead of 11) makes 1/128 fit — 16,230 of 16,384 rows; the final rate and grinding fix the
 proof's bytes (`examples/wrap_plan`, `examples/wrap_chain` plan a chain
 without proving). **Size gate.** The outermost proof's size is bounded by construction,
 not measured: every message shape is fixed by the final key and a
@@ -342,4 +344,12 @@ the levels over the pinned roots (`derive_key_ivc_at`,
 `derive_key_wrap_at`) without committing, and the prover, which commits
 them anyway, refuses to run when its roots differ from the pins. Layout
 bundles a verifier persists are accepted only under pinned digests
-(`envelope::keys`), so a cached key is exactly a derived one.
+(`envelope::keys`), so a cached key is exactly a derived one. A derived
+IVC key commits its words on the process's prover backend (Merkle
+levels, coset leaves, permutation batches); the profile-5 decider opens
+them against that root natively, so every verifier-facing IVC key — the
+admitted profile-5 sets and profile 6's IVC — must carry the key-word
+root pinned in `envelope::recursive::KEY_ROOTS` (the CPU's derivation):
+a faulty device kernel makes the verifier refuse, never accept against
+another root. Verification itself never calls the backend
+(`rs/tests/proof_stack_backend.rs`).

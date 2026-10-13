@@ -6,7 +6,7 @@ use super::{Mode, Wiring, WrapKey, WrapParams, WrapProof, g_graph};
 use crate::recursion::circuit::air::CircuitAir;
 use crate::recursion::circuit::builder::Builder;
 use crate::recursion::circuit::trace;
-use crate::recursion::decide::{self, KeyWords};
+use crate::recursion::decide;
 use crate::recursion::finalv::{self, PUBLICS, Publics};
 use crate::recursion::ivc::{IvcProof, Key};
 use crate::recursion::ops::Ops;
@@ -98,10 +98,10 @@ pub(crate) fn dummy_proof(k: &WrapKey) -> WrapProof {
         zerocheck: vec![vec![z; super::DEGREE + 1]; n],
         local: vec![z; k.cols()],
         next: vec![z; k.next_cols.len()],
-        key: if inner { vec![z; crate::recursion::circuit::layout::pre::COUNT] } else { vec![] },
+        key: vec![z; k.key_phys.len()],
         shift: if inner { vec![z; 2 * n] } else { vec![] },
         vals: if inner { vec![z; words] } else { vec![] },
-        kv: if inner { vec![z; 2] } else { vec![] },
+        kv: vec![z; if inner { k.key_words() } else { 0 }],
         whir: whir::dummy(&k.cfg),
     }
 }
@@ -166,11 +166,12 @@ pub fn derive_key_wrap_at(params: WrapParams, key: &WrapKey, root: Digest) -> Re
 
 /// The opening's configuration of a level with `vars` variables per word
 /// and `fresh` OOD samples per trace word.
-pub(crate) fn level_config(params: &WrapParams, vars: usize, fresh: usize) -> Result<whir::Config, String> {
+pub(crate) fn level_config(params: &WrapParams, vars: usize, fresh: usize, key_words: usize) -> Result<whir::Config, String> {
     let committed = params.mode == Mode::Inner;
-    let (claims, groups): (usize, &[usize]) = if committed { (2 * (fresh + 1) + 2, &[1, 1, 2]) } else { (fresh + 3, &[1]) };
+    let groups: Vec<usize> = if committed { vec![1, 1, key_words] } else { vec![1] };
+    let claims = if committed { 2 * (fresh + 1) + key_words } else { fresh + 3 };
     let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
-    Ok(whir::Config::derive(&params.whir, vars, groups, claims)?.with_arity(arity))
+    Ok(whir::Config::derive(&params.whir, vars, &groups, claims)?.with_arity(arity))
 }
 
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
@@ -197,19 +198,21 @@ fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre,
     let vars = n + super::CBITS;
     let fresh = crate::accumulate::fresh_ood(&params.whir, vars)?;
     let committed = params.mode == Mode::Inner;
-    let cfg = level_config(&params, vars, fresh).map_err(|e| format!("{e} (circuit {rows} rows → 2^{n})"))?;
+    let sparse = crate::recursion::vkey::sparse(&pre);
+    // an inner level's key over the base field (`splitkey`)
+    let key_phys = if committed { crate::recursion::splitkey::columns(&crate::recursion::splitkey::ext_columns(&sparse)) } else { Vec::new() };
+    let cfg = level_config(&params, vars, fresh, crate::recursion::splitkey::words(key_phys.len())).map_err(|e| format!("{e} (circuit {rows} rows → 2^{n})"))?;
     let arity = cfg.arity;
     let wiring = (!committed).then(|| wiring(&pre));
-    let key_ext = crate::recursion::vkey::ext(&pre);
+    let key_ext = !committed && crate::recursion::vkey::ext(&pre);
     // the key words are committed (and kept: the prover opens them) unless
     // their root is given (pinned, or a shape-only plan)
-    let kw = (committed && key_root.is_none()).then(|| KeyWords::commit(cfg.layout(0), n, &pre, arity).0);
+    let kw = (committed && key_root.is_none()).then(|| crate::recursion::splitkey::commit(cfg.layout(0), n, &pre, &key_phys, arity));
     let key_root = match (committed, key_root) {
         (false, _) => None,
         (true, Some(r)) => Some(r),
         (true, None) => kw.as_ref().map(|k| k.root),
     };
-    let sparse = crate::recursion::vkey::sparse(&pre);
     let (g, constraints) = g_graph(&air, params.mode);
     let gc = g.compile();
     let key_cols = super::key_used(&g, if committed { super::COLS } else { crate::recursion::circuit::layout::V1 });
@@ -224,6 +227,7 @@ fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre,
         kw,
         wiring,
         key_ext,
+        key_phys,
         cfg,
         fresh,
         out_row,

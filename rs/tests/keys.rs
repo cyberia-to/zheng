@@ -71,6 +71,27 @@ fn a_tampered_bundle_is_refused() {
     assert!(keys::install(&bad).is_err());
 }
 
+/// The IVC key-word roots a verifier admits are the ones the CPU derives
+/// (`recursive::KEY_ROOTS`: profile 5's two sets, profile 6's IVC).
+#[test]
+fn the_pinned_ivc_key_roots_are_the_derived_ones() {
+    let mut w6 = recursive::params();
+    w6.log_inv_rate = 6;
+    let sets = [recursive::params(), w6, wrapped::chain().0];
+    assert_eq!(recursive::KEY_ROOTS.len(), sets.len());
+    for (w, (h, root)) in sets.iter().zip(recursive::KEY_ROOTS) {
+        assert_eq!(w.header(), h);
+        let k = ivc::key(w, recursive::STEP_LOG_ROWS as usize).unwrap();
+        assert_eq!(k.kw_root.map(|x| x.as_u64()), root, "{h:?}");
+        assert!(recursive::pinned_key(w, k).is_ok());
+    }
+    // a set with no pin is refused
+    let mut other = recursive::params();
+    other.log_inv_rate = 5;
+    let k = ivc::key(&recursive::params(), recursive::STEP_LOG_ROWS as usize).unwrap();
+    assert!(recursive::pinned_key(&other, k).is_err());
+}
+
 #[test]
 #[ignore = "derives the whole wrap chain: minutes, ~30 GB"]
 fn the_pinned_inner_roots_are_the_derived_ones() {

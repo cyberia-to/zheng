@@ -317,7 +317,7 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 }
 
 /// The shipped chain's levels (`audit/wrap-fastverify-2026-10.md`:
-/// `4i:16,8i:24,9f:26`, grinding 16 / 24 / 26 bits) reach 128 bits on
+/// `4i:16,7i:22,9f:26`, grinding 16 / 22 / 26 bits) reach 128 bits on
 /// every row; the weakest row of each level and its interactive value
 /// (every grinding removed: folds, queries, the combination) as printed
 /// in the audit.
@@ -325,14 +325,17 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated() {
     let base = crate::execution::succinct::params_for(20);
     let mut weakest = Vec::new();
-    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (8, 24, 15, Mode::Inner, 0), (9, 26, 14, Mode::Final, 1 << 18)] {
+    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (7, 22, 15, Mode::Inner, 0), (9, 26, 14, Mode::Final, 1 << 18)] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;
         let params = WrapParams { whir, n, mode };
         let fresh = crate::accumulate::fresh_ood(&whir, n + super::CBITS).unwrap();
-        let (groups, claims): (&[usize], usize) = if mode == Mode::Inner { (&[1, 1, 2], 2 * (fresh + 1) + 2) } else { (&[1], fresh + 3) };
-        let cfg = crate::recursion::whir::Config::derive(&whir, n + super::CBITS, groups, claims).unwrap();
+        // the levels' own opening configurations: an inner key is 132
+        // physical columns (`splitkey`: 108 logical + 2·12 limbs) in three
+        // base words (`tests/proof_stack_review.rs` checks the derived keys)
+        let key_words = if mode == Mode::Inner { crate::recursion::splitkey::words(132) } else { 0 };
+        let cfg = super::program::level_config(&params, n + super::CBITS, fresh, key_words).unwrap();
         let constraints = super::View(&CircuitAir::default(), mode).constraints();
         let rows = ledger(&params, &cfg, constraints, reads);
         for (nm, b) in &rows {
@@ -366,10 +369,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         weakest.push((bits, inter));
     }
     // the figures `specs/soundness.md` and the audit state: weakest
-    // 128.22 / 128.29 / 128.43, interactively 109.34 (1/16: the
-    // combination after its 19 bits) / 104.29 / 102.62 (final shift_2
-    // after its 26 query-grinding bits)
-    for (got, want) in weakest.iter().zip([(128.22, 109.34), (128.29, 104.29), (128.43, 102.62)]) {
+    // 128.22 / 128.08 / 128.43, interactively 108.92 (1/16: the
+    // combination after its 20 bits) / 102.35 (1/128: the combination
+    // after its 26 bits) / 102.62 (final: `fin` after its 26 bits) — five
+    // input words at each inner level (`audit/proof-stack-review-2026-10.md`
+    // D1: the test had priced two key words, 109.34 / 102.76)
+    for (got, want) in weakest.iter().zip([(128.22, 108.92), (128.08, 102.35), (128.43, 102.62)]) {
         assert!((got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01, "{weakest:?}");
     }
 }

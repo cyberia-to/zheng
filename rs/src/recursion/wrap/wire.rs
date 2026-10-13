@@ -13,7 +13,6 @@ use lens::PcsError;
 use lens::rspcs::wire::{Reader, Writer};
 
 use super::{DEGREE, FinalProof, WrapKey, WrapProof};
-use crate::recursion::circuit::layout::pre;
 use crate::recursion::state::ClaimV;
 use crate::recursion::whir;
 use crate::recursion::wire::{digest, exts, read_digest, read_exts};
@@ -47,10 +46,10 @@ pub fn read(r: &mut Reader<'_>, k: &WrapKey) -> R<WrapProof> {
     let zerocheck = (0..n).map(|_| read_exts(r, DEGREE + 1)).collect::<R<_>>()?;
     let local = read_exts(r, k.cols())?;
     let next = read_exts(r, k.next_cols.len())?;
-    let key = read_exts(r, if inner { pre::COUNT } else { 0 })?;
+    let key = read_exts(r, k.key_phys.len())?;
     let shift = read_exts(r, if inner { 2 * n } else { 0 })?;
     let vals = read_exts(r, if inner { words } else { 0 })?;
-    let kv = read_exts(r, if inner { 2 } else { 0 })?;
+    let kv = read_exts(r, if inner { k.key_words() } else { 0 })?;
     let whir = whir::wire::read(r, &k.cfg, &k.exts())?;
     Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals, kv, whir })
 }
@@ -63,7 +62,7 @@ pub fn max_bytes(k: &WrapKey) -> usize {
     let inner = k.inner();
     let words = k.trace_words();
     let ext = 24 * (words * k.fresh + n * (DEGREE + 1) + k.cols() + k.next_cols.len());
-    let inner_msgs = if inner { 24 * (pre::COUNT + 2 * n + words + 2) } else { 0 };
+    let inner_msgs = if inner { 24 * (k.key_phys.len() + 2 * n + words + k.key_words()) } else { 0 };
     32 * words + ext + inner_msgs + whir::wire::max_bytes(&k.cfg, &k.exts())
 }
 

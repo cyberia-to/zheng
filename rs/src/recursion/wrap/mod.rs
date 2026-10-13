@@ -16,8 +16,8 @@
 //! - [`Mode::Inner`] (a proof another wrap verifies): the circuit's AIR
 //!   over `2^n` rows with committed words `W1` (circuit phase 1), `W2`
 //!   (phase 2: the memory argument, after the memory challenges) and the
-//!   circuit's key as two fixed words; any interpreter verifies it, the
-//!   circuit included;
+//!   circuit's key as fixed base words (`splitkey`); any interpreter
+//!   verifies it, the circuit included;
 //! - [`Mode::Final`] (the outermost proof, verified natively): one
 //!   committed word `W1`; the memory argument is replaced by its linear
 //!   form — every read slot's value equals its write slot's, batched with
@@ -33,7 +33,7 @@
 //!             OOD | final: λ; τ, μ; zerocheck (degree 9); the committed
 //!             columns at ρ and its successor; inner: the key columns at
 //!             ρ, γ_k; the shift reduction to one point per word; inner:
-//!             the key claim split over its two words | final: the wiring
+//!             the key claim over its words | final: the wiring
 //!             sumcheck; one batched field-native WHIR opening
 //! ```
 //!
@@ -74,12 +74,13 @@ use crate::air::{Air, Public, Shape, Vals};
 
 /// The shipped chain of levels over the IVC proof, innermost first, as
 /// the benches spell it (`<log inv rate><i|f>[:<grinding bits>]`): inner
-/// 1/16 grinding 16 bits (2^16 rows), inner 1/256 grinding 24 (2^15),
+/// 1/16 grinding 16 bits (2^16 rows), inner 1/128 grinding 22 (2^15; its
+/// key over the base field, `splitkey`, so the final circuit fits 2^14),
 /// final 1/512 grinding 26 (2^14): the outermost proof is ≤ 64,213 B
 /// over every transcript ([`max_proof_bytes`] ≤ [`MAX_FINAL_BYTES`]), so a
 /// profile-6 envelope of a statement up to ≈ 1.3 KB fits 64 KiB —
 /// `audit/wrap-fastverify-2026-10.md`.
-pub const SHIPPED: &str = "4i:16,8i:24,9f:26";
+pub const SHIPPED: &str = "4i:16,7i:22,9f:26";
 
 /// The outermost proof's size bound: 64 KiB, by construction.
 pub const MAX_FINAL_BYTES: usize = 65_536;
@@ -131,6 +132,10 @@ pub struct WrapKey {
     /// The linear wiring (final mode).
     pub wiring: Option<Wiring>,
     pub key_ext: bool,
+    /// An inner level's key committed over the base field
+    /// (`recursion::splitkey`): its physical columns `(logical, limb)`;
+    /// empty for a final level.
+    pub key_phys: Vec<(u16, u8)>,
     pub cfg: whir::Config,
     /// OOD samples binding each trace word.
     pub fresh: usize,
@@ -171,18 +176,22 @@ impl WrapKey {
         if self.inner() { COLS } else { V1 }
     }
     pub fn inputs(&self) -> usize {
-        if self.inner() { 4 } else { 1 }
+        if self.inner() { 2 + self.key_words() } else { 1 }
     }
     /// Symbol fields of the opened words.
     /// Symbol fields of the opened trees (round 0).
     pub fn exts(&self) -> Vec<bool> {
-        if self.inner() { vec![false, false, self.key_ext] } else { vec![false] }
+        if self.inner() { vec![false, false, false] } else { vec![false] }
     }
     /// Trees of an inner level are 4-ary (half the permutations a path
     /// costs the circuit that verifies it); the final level's binary
     /// (fewest bytes).
     pub fn arity(&self) -> super::word::Arity {
         if self.inner() { super::word::Arity::Four } else { super::word::Arity::Two }
+    }
+    /// The key's committed words (inner mode).
+    pub fn key_words(&self) -> usize {
+        super::splitkey::words(self.key_phys.len())
     }
     pub fn vars(&self) -> usize {
         self.params.n + CBITS
@@ -203,7 +212,8 @@ pub struct WrapProof {
     pub key: Vec<Fp3>,
     pub shift: Vec<Fp3>,
     pub vals: Vec<Fp3>,
-    /// The key claim over its two words (inner mode; empty otherwise).
+    /// The key claim over its words, one value per word (inner mode;
+    /// empty otherwise).
     pub kv: Vec<Fp3>,
     pub whir: whir::Proof,
 }
@@ -398,8 +408,9 @@ pub fn ledger(params: &WrapParams, cfg: &whir::Config, constraints: usize, reads
             out.push(("shift column batching".into(), k - log2(CBITS as f64)));
             out.push(("shift β, ζ".into(), k - 1.0));
             out.push(("shift round (degree 2)".into(), k - 1.0));
-            out.push(("key column batching γ_k".into(), k - log2(7.0)));
-            out.push(("key split line".into(), k));
+            // the physical key columns batched over 8 variables (6 column,
+            // 2 word): one multilinear identity in γ_k (`splitkey`)
+            out.push(("key column batching γ_k (8 variables)".into(), k - log2(crate::recursion::splitkey::BITS as f64)));
         }
         Mode::Final => {
             out.push(("wiring λ".into(), k - log2(reads.max(2) as f64)));
