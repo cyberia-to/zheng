@@ -120,6 +120,108 @@ pub fn digests(
     d
 }
 
+/// [`digests`] with a device: the prover backend claims groups of cosets
+/// (NTTs, leaf sponges and the coset values all in device memory: only
+/// the digests come back) while CPU workers claim single cosets, both
+/// from one counter — the faster side takes more, and a backend that
+/// declines (`coset_leaves` → `None`) leaves its group to the CPU. The
+/// same digests as [`digests`]; `init`/`rate` are the leaf sponge's.
+#[allow(clippy::type_complexity)]
+pub fn digests_device(
+    members: &[Coeffs<'_>],
+    log_n: u32,
+    log_width: u32,
+    init: [u64; 16],
+    rate: usize,
+    hash: impl Fn(usize, usize, &dyn Fn(usize, usize) -> Fp3) -> Vec<[Goldilocks; 4]> + Sync,
+) -> Vec<[Goldilocks; 4]> {
+    let k = members[0].len();
+    let n = 1usize << log_n;
+    let b = n / k;
+    let w = 1usize << log_width;
+    let leaves = n / w;
+    let per = leaves / b;
+    assert!(per >= 1 && leaves % b == 0, "a leaf lies in one coset");
+    // the job's limb vectors (member-major)
+    let limb_vecs: Vec<Vec<u64>> = members
+        .iter()
+        .flat_map(|&m| match m {
+            Coeffs::Base(c) => vec![c.iter().map(|x| x.as_u64()).collect::<Vec<u64>>()],
+            Coeffs::Ext(e) => vec![
+                e.iter().map(|x| x.c0.as_u64()).collect(),
+                e.iter().map(|x| x.c1.as_u64()).collect(),
+                e.iter().map(|x| x.c2.as_u64()).collect(),
+            ],
+        })
+        .collect();
+    let lpm = if members[0].is_ext() { 3 } else { 1 };
+    let job = lens::rspcs::backend::CosetLeaves { limbs: limb_vecs.iter().map(|v| v.as_slice()).collect(), limbs_per_member: lpm, log_n, log_width, init, rate };
+    // cosets per device call: the coset values within DEVICE_VALUES bytes
+    let g = (DEVICE_VALUES / (limb_vecs.len() * k * 8)).clamp(1, b);
+    let be = lens::rspcs::backend::current();
+    let tw = precompute_twiddles_vec(k);
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16).min(b);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let mut d = vec![[Goldilocks::ZERO; 4]; leaves];
+    let out = Out(d.as_mut_ptr());
+    let cpu_coset = |s: usize, out: &Out| {
+        let vals: Vec<Vec<Vec<Goldilocks>>> = members.iter().map(|&m| coset(m, log_n, s, &tw)).collect();
+        let symbol = |a: usize, t: usize| {
+            let v = &vals[t / w];
+            let u = a + (t % w) * per;
+            if v.len() == 1 { Fp3::from_base(v[0][u]) } else { Fp3::new(v[0][u], v[1][u], v[2][u]) }
+        };
+        let ds = hash(per, w * members.len(), &symbol);
+        for (a, x) in ds.into_iter().enumerate() {
+            // SAFETY: `s + b·a < leaves`; coset `s` was claimed once.
+            unsafe { *out.0.add(s + b * a) = x };
+        }
+    };
+    std::thread::scope(|sc| {
+        // the device worker
+        sc.spawn(|| {
+            let out = &out;
+            loop {
+                let s0 = next.fetch_add(g, std::sync::atomic::Ordering::Relaxed);
+                if s0 >= b {
+                    break;
+                }
+                let s1 = (s0 + g).min(b);
+                match be.coset_leaves(&job, s0..s1) {
+                    Some(ds) => {
+                        for (j, x) in ds.into_iter().enumerate() {
+                            let (c, a) = (j / per, j % per);
+                            // SAFETY: cosets `s0..s1` were claimed by this worker only.
+                            unsafe { *out.0.add(s0 + c + b * a) = x.map(Goldilocks::new) };
+                        }
+                    }
+                    None => {
+                        for s in s0..s1 {
+                            cpu_coset(s, out);
+                        }
+                    }
+                }
+            }
+        });
+        for _ in 1..threads {
+            sc.spawn(|| {
+                let out = &out;
+                loop {
+                    let s = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if s >= b {
+                        break;
+                    }
+                    cpu_coset(s, out);
+                }
+            });
+        }
+    });
+    d
+}
+
+/// Bytes of coset values a device call holds.
+pub const DEVICE_VALUES: usize = 1 << 28;
+
 /// The `W` symbols of leaf `j` (`L` leaves over `2^log_n` points):
 /// `ĉ(x_0·ζ^t)` with `x_0 = ω^j`, `ζ = ω^L` of order `W`. Splitting
 /// `ĉ(X) = Σ_{r<W} X^r·g_r(X^W)`, symbol `t` is `Σ_r ζ^{tr}·x_0^r·g_r(x_0^W)`.
@@ -199,6 +301,13 @@ mod tests {
                 let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |leaves, width, sym| {
                     (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, width - 1).c1, Goldilocks::new(width as u64)]).collect()
                 });
+                let mut init = [0u64; 16];
+                init[9] = 2;
+                let hashed = |leaves: usize, len: usize, sym: &dyn Fn(usize, usize) -> Fp3| -> Vec<[Goldilocks; 4]> {
+                    (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, len - 1).c1, Goldilocks::new(len as u64)]).collect()
+                };
+                // the CPU backend declines coset_leaves: the CPU workers take all
+                assert_eq!(digests_device(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, init, 9, hashed), got);
                 for j in 0..leaves {
                     let w = 1usize << log_w;
                     let row: Vec<Fp3> = (0..w).map(|t| Fp3::from_base(cb[j + t * leaves])).chain((0..w).map(|t| ce[j + t * leaves])).collect();

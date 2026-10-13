@@ -65,9 +65,23 @@ pub fn permute(s: &mut [Goldilocks; WIDTH]) {
     *s = core::array::from_fn(|i| from_h(h[i]));
 }
 
-/// Many permutations at once (hemera's interleaved kernel).
+/// Batches at least this long go to the process's prover backend (lens
+/// `rspcs::backend`); shorter ones — verifier paths, single sponges — run
+/// hemera's interleaved kernel here.
+pub const BACKEND_MIN: usize = 1 << 12;
+
+/// Many permutations at once (hemera's interleaved kernel, or the prover
+/// backend for long batches — the same permutation either way).
 pub fn permute_many(states: &mut [[Goldilocks; WIDTH]]) {
     COUNT[1].fetch_add(states.len() as u64, core::sync::atomic::Ordering::Relaxed);
+    if states.len() >= BACKEND_MIN {
+        let mut raw: Vec<[u64; WIDTH]> = states.iter().map(|s| s.map(|x| x.as_u64())).collect();
+        lens::rspcs::backend::current().permute(&mut raw);
+        for (s, r) in states.iter_mut().zip(&raw) {
+            *s = r.map(Goldilocks::new);
+        }
+        return;
+    }
     let mut h: Vec<[HG; WIDTH]> = states
         .iter()
         .map(|s| core::array::from_fn(|i| to_h(s[i])))

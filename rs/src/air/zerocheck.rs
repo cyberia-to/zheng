@@ -208,6 +208,57 @@ fn round_mix<A: Air>(air: &A, w: usize, cols: &[Vec<Fp3>], eq: &[Fp3], ch: &[Fp3
     Some(h)
 }
 
+/// Rounds over at least this many rows run on the device.
+const DEVICE_MIN: usize = 1 << 10;
+
+/// The backend program of a recorded combination.
+fn program(g: &super::num::Graph) -> lens::rspcs::program::Program {
+    let c = g.compile();
+    let (ops, consts, inputs, outputs) = c.parts();
+    let consts = consts.iter().map(|&x| lens::rspcs::program::from_fp3(x)).collect();
+    lens::rspcs::program::Program::from_slots(ops, consts, inputs, outputs[0])
+}
+
+/// Every column's canonical limbs, column-major (in threads).
+fn pack_flat(cols: &[Vec<Fp3>]) -> Vec<[u64; 3]> {
+    use lens::rspcs::program::from_fp3;
+    let len = cols.first().map_or(0, Vec::len);
+    let mut flat = vec![[0u64; 3]; cols.len() * len];
+    let per = cols.len().div_ceil(threads()).max(1);
+    std::thread::scope(|s| {
+        for (chunk, cs) in flat.chunks_mut(len * per).zip(cols.chunks(per)) {
+            s.spawn(move || {
+                for (dst, c) in chunk.chunks_mut(len).zip(cs) {
+                    for (d, v) in dst.iter_mut().zip(c) {
+                        *d = from_fp3(*v);
+                    }
+                }
+            });
+        }
+    });
+    flat
+}
+
+/// The points a round evaluates and the `q` they fill.
+fn round_points(deg: usize, on_cube: bool, skip_one: bool) -> Vec<u64> {
+    let first = if on_cube { 2 } else { 0 };
+    (first..deg).filter(|&x| !(x == 1 && skip_one)).map(|x| x as u64).collect()
+}
+
+/// [`round`] on the prover backend: the same `q` at the same points.
+fn device_round(p: &lens::rspcs::program::Program, cols: &[Vec<Fp3>], eq: &[Fp3], deg: usize, on_cube: bool, skip_one: bool) -> Vec<Fp3> {
+    use lens::rspcs::program::{from_fp3, to_fp3};
+    let xs = round_points(deg, on_cube, skip_one);
+    let flat = pack_flat(cols);
+    let weights: Vec<[u64; 3]> = eq.chunks_exact(2).map(|e| from_fp3(e[0] + e[1])).collect();
+    let sums = lens::rspcs::backend::current().line_sums(p, &flat, &weights, &xs);
+    let mut q = vec![Fp3::ZERO; deg + 1];
+    for (&x, v) in xs.iter().zip(sums) {
+        q[x as usize] = to_fp3(v);
+    }
+    q
+}
+
 fn fold(v: &mut Vec<Fp3>, alpha: Fp3) {
     let half = v.len() / 2;
     for i in 0..half {
@@ -239,6 +290,18 @@ pub(crate) fn prove<A: Air>(
     // `deg − 1` — evaluated at `deg − 1` points (q(1) from the running
     // claim, the first round's q(0) = q(1) = 0), extrapolated to `deg`
     let mut claim = Fp3::ZERO;
+    // a device backend evaluates the rounds from the recorded constraint
+    // polynomial (the same values as `round`)
+    let backend = lens::rspcs::backend::current();
+    let device = (backend.name() != "cpu")
+        .then(|| air.combine_graph(cols.len(), ch, mu))
+        .flatten()
+        .map(|g| program(&g));
+    // the columns resident on the device across rounds (folded there)
+    let mut session = device.as_ref().and_then(|p| backend.line_session(p, &pack_flat(&cols), eq.len()));
+    if session.is_some() {
+        cols = Vec::new();
+    }
     for r in 0..n {
         let (l0, l1) = eq
             .chunks_exact(2)
@@ -248,7 +311,19 @@ pub(crate) fn prove<A: Air>(
                 (p[0] * gi, p[1] * gi)
             });
         let skip_one = r > 0 && l1 != Fp3::ZERO;
-        let mut q = round(air, w, &cols, &eq, ch, mu, deg, r == 0, skip_one);
+        let mut q = match (&mut session, &device) {
+            (Some(sess), _) => {
+                let xs = round_points(deg, r == 0, skip_one);
+                let weights: Vec<[u64; 3]> = eq.chunks_exact(2).map(|e| lens::rspcs::program::from_fp3(e[0] + e[1])).collect();
+                let mut q = vec![Fp3::ZERO; deg + 1];
+                for (&x, v) in xs.iter().zip(sess.sums(&weights, &xs)) {
+                    q[x as usize] = lens::rspcs::program::to_fp3(v);
+                }
+                q
+            }
+            (None, Some(p)) if eq.len() >= DEVICE_MIN => device_round(p, &cols, &eq, deg, r == 0, skip_one),
+            _ => round(air, w, &cols, &eq, ch, mu, deg, r == 0, skip_one),
+        };
         if skip_one {
             q[1] = (claim - l0 * q[0]) * l1.inv();
         }
@@ -266,13 +341,21 @@ pub(crate) fn prove<A: Air>(
         msgs.push(msg);
         let alpha = t.squeeze_fp3();
         claim = interpolate(&h, alpha);
-        for c in &mut cols {
-            fold(c, alpha);
+        match &mut session {
+            Some(sess) => sess.fold(lens::rspcs::program::from_fp3(alpha)),
+            None => {
+                for c in &mut cols {
+                    fold(c, alpha);
+                }
+            }
         }
         fold(&mut eq, alpha);
         point.push(alpha);
     }
-    let evals = cols.iter().map(|c| c[0]).collect();
+    let evals = match &mut session {
+        Some(sess) => sess.firsts().into_iter().map(lens::rspcs::program::to_fp3).collect(),
+        None => cols.iter().map(|c| c[0]).collect(),
+    };
     (msgs, point, evals)
 }
 
@@ -301,4 +384,77 @@ pub(crate) fn verify(
         point.push(alpha);
     }
     Some((point, claim))
+}
+
+#[cfg(test)]
+mod device_tests {
+    use super::*;
+    use crate::machine::air::{Constants, Machine};
+    use crate::recursion::relation::{COLS, PUBS, Relation, View};
+
+    fn e(k: u64) -> Fp3 {
+        Fp3::new(Goldilocks::new(k * 31 + 7), Goldilocks::new(k ^ 0x55), Goldilocks::new(k * k + 1))
+    }
+
+    /// The device round (the recorded combination as a backend program,
+    /// here on the CPU interpreter) gives `round`'s values on the step
+    /// relation at random rows, off and on the cube.
+    /// The CPU under another name with a resident session (the
+    /// reference): the whole zerocheck proof equals the AIR's.
+    struct Device;
+    impl lens::rspcs::backend::Backend for Device {
+        fn name(&self) -> &'static str {
+            "device-test"
+        }
+        fn line_session<'a>(&'a self, p: &'a lens::rspcs::program::Program, cols: &[[u64; 3]], len: usize) -> Option<Box<dyn lens::rspcs::backend::LineSession + 'a>> {
+            Some(Box::new(lens::rspcs::backend::CpuSession::new(p, cols, len)))
+        }
+    }
+
+    #[test]
+    fn a_resident_session_proves_as_the_air() {
+        use crate::recursion::sponge::ProverTranscript;
+        let n = 10;
+        let constants = Constants { fml0: 3, obj0: 4, p: 9, output: [Goldilocks::new(5); 4], cycles: 77, root: [Goldilocks::ZERO; 4] };
+        let rel = Relation::new(Machine::new(constants, &[], 1 << n, 0, 1 << n), [e(1), e(2)]);
+        let view = View(&rel);
+        let inputs = 2 * COLS + PUBS;
+        let cols: Vec<Vec<Fp3>> = (0..inputs as u64).map(|c| (0..1u64 << n).map(|r| e(c * 97 + r)).collect()).collect();
+        let eq: Vec<Fp3> = (0..1u64 << n).map(|r| e(r + 5000)).collect();
+        let ch = [e(11), e(12)];
+        let mu: Vec<Fp3> = (0..rel.constraints() as u64).map(|k| e(k + 9000)).collect();
+        let mut t1 = ProverTranscript::new(1);
+        let want = prove(&view, COLS, cols.clone(), eq.clone(), &ch, &mu, &mut t1);
+        let prev = lens::rspcs::backend::install(std::sync::Arc::new(Device));
+        let mut t2 = ProverTranscript::new(1);
+        let got = prove(&view, COLS, cols, eq, &ch, &mu, &mut t2);
+        lens::rspcs::backend::install(prev);
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn device_rounds_equal_the_air_rounds() {
+        let n = 10;
+        let constants = Constants { fml0: 3, obj0: 4, p: 9, output: [Goldilocks::new(5); 4], cycles: 77, root: [Goldilocks::ZERO; 4] };
+        let rel = Relation::new(Machine::new(constants, &[], 1 << n, 0, 1 << n), [e(1), e(2)]);
+        let view = View(&rel);
+        let inputs = 2 * COLS + PUBS;
+        let cols: Vec<Vec<Fp3>> = (0..inputs as u64).map(|c| (0..1u64 << n).map(|r| e(c * 97 + r)).collect()).collect();
+        let eq: Vec<Fp3> = (0..1u64 << n).map(|r| e(r + 5000)).collect();
+        let ch = [e(11), e(12)];
+        let mu: Vec<Fp3> = (0..rel.constraints() as u64).map(|k| e(k + 9000)).collect();
+        let g = view.combine_graph(inputs, &ch, &mu).expect("graph");
+        let p = program(&g);
+        let deg = view.shape().degree + 1;
+        for (cube, skip) in [(false, false), (false, true), (true, false)] {
+            let want = round(&view, COLS, &cols, &eq, &ch, &mu, deg, cube, skip);
+            let got = device_round(&p, &cols, &eq, deg, cube, skip);
+            for x in 0..deg {
+                if (cube && x < 2) || (skip && x == 1) {
+                    continue;
+                }
+                assert_eq!(got[x], want[x], "x {x} cube {cube} skip {skip}");
+            }
+        }
+    }
 }
