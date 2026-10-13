@@ -120,6 +120,81 @@ pub fn digests(
     d
 }
 
+/// [`digests`] for a device backend: cosets in groups of at least
+/// [`GROUP_LEAVES`] leaves, pipelined — the CPU encodes the next group's
+/// cosets (one NTT per coset, in threads) while the device hashes the
+/// current group's leaves in one `hash(leaves, symbols per leaf, symbol)`
+/// call. The same digests as [`digests`].
+pub fn digests_grouped(
+    members: &[Coeffs<'_>],
+    log_n: u32,
+    log_width: u32,
+    hash: impl Fn(usize, usize, &(dyn Fn(usize, usize) -> Fp3 + Sync)) -> Vec<[Goldilocks; 4]>,
+) -> Vec<[Goldilocks; 4]> {
+    let k = members[0].len();
+    let n = 1usize << log_n;
+    let b = n / k;
+    let w = 1usize << log_width;
+    let leaves = n / w;
+    let per = leaves / b;
+    assert!(per >= 1 && leaves % b == 0, "a leaf lies in one coset");
+    let g = GROUP_LEAVES.div_ceil(per).clamp(1, b);
+    let tw = precompute_twiddles_vec(k);
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    // vals[c][m] = coset s0 + c of member m
+    type Group = (usize, Vec<Vec<Vec<Vec<Goldilocks>>>>);
+    let (tx, rx) = std::sync::mpsc::sync_channel::<Group>(1);
+    let mut d = vec![[Goldilocks::ZERO; 4]; leaves];
+    std::thread::scope(|sc| {
+        let tw = &tw;
+        sc.spawn(move || {
+            for s0 in (0..b).step_by(g) {
+                let s1 = (s0 + g).min(b);
+                let next = std::sync::atomic::AtomicUsize::new(s0);
+                let mut vals: Vec<(usize, Vec<Vec<Vec<Goldilocks>>>)> = std::thread::scope(|inner| {
+                    let hs: Vec<_> = (0..threads.min(s1 - s0))
+                        .map(|_| {
+                            inner.spawn(|| {
+                                let mut out = Vec::new();
+                                loop {
+                                    let s = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    if s >= s1 {
+                                        break;
+                                    }
+                                    out.push((s, members.iter().map(|&m| coset(m, log_n, s, tw)).collect()));
+                                }
+                                out
+                            })
+                        })
+                        .collect();
+                    hs.into_iter().flat_map(|h| h.join().expect("coset worker")).collect()
+                });
+                vals.sort_unstable_by_key(|v| v.0);
+                if tx.send((s0, vals.into_iter().map(|v| v.1).collect())).is_err() {
+                    return;
+                }
+            }
+        });
+        for (s0, vals) in rx {
+            let symbol = |j: usize, t: usize| -> Fp3 {
+                let v = &vals[j / per][t / w];
+                let u = j % per + (t % w) * per;
+                if v.len() == 1 { Fp3::from_base(v[0][u]) } else { Fp3::new(v[0][u], v[1][u], v[2][u]) }
+            };
+            let ds = hash(vals.len() * per, members.len() * w, &symbol);
+            for (c, chunk) in ds.chunks_exact(per).enumerate() {
+                for (a, x) in chunk.iter().enumerate() {
+                    d[s0 + c + b * a] = *x;
+                }
+            }
+        }
+    });
+    d
+}
+
+/// Leaves per device batch of [`digests_grouped`].
+pub const GROUP_LEAVES: usize = 1 << 16;
+
 /// The `W` symbols of leaf `j` (`L` leaves over `2^log_n` points):
 /// `ĉ(x_0·ζ^t)` with `x_0 = ω^j`, `ζ = ω^L` of order `W`. Splitting
 /// `ĉ(X) = Σ_{r<W} X^r·g_r(X^W)`, symbol `t` is `Σ_r ζ^{tr}·x_0^r·g_r(x_0^W)`.
@@ -199,6 +274,10 @@ mod tests {
                 let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |leaves, width, sym| {
                     (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, width - 1).c1, Goldilocks::new(width as u64)]).collect()
                 });
+                let grouped = digests_grouped(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |leaves, width, sym| {
+                    (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, width - 1).c1, Goldilocks::new(width as u64)]).collect()
+                });
+                assert_eq!(grouped, got);
                 for j in 0..leaves {
                     let w = 1usize << log_w;
                     let row: Vec<Fp3> = (0..w).map(|t| Fp3::from_base(cb[j + t * leaves])).chain((0..w).map(|t| ce[j + t * leaves])).collect();
