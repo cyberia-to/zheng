@@ -58,6 +58,7 @@ composition row).
 | accumulation step (`accumulate::step`, `specs/accumulation.md`) | Johnson bound for RS and interleaved RS (WHIR Thm 4.3, Lemma 4.4); mutual correlated agreement of the powers generator (BCGM eprint 2025/2051 Lemma 9.3 / Thm 9.2; unique decoding WHIR Thm 4.8 with Cor 4.11) and its list-decoding consequence (the argument of WHIR Lemma 4.13 with BCGM Definition 3.14); OOD (WHIR Lemma 4.25); spot checks (WARP eprint 2025/753 Lemma 7.3); sumcheck | per round ≥ 128 with grinding: `γ` `|Λ|(J−1)/|K|`, sumcheck `2|Λ|/|K|`, `r` `ε_mca(m−1) + |Λ|(m−1)/|K|` − `comb_pow(m)`, OOD `(|Λ|²/2)(2^ℓ/|K|)^s`, positions `(1−δ)^t` − `query_pow` (`AccConfig::terms`) | proven (the protocol is WARP's claim-carrying structure for RS codes; the round-by-round argument composes the cited lemmas, `specs/accumulation.md` § soundness) | distance preserved per step (no depth bound) | `δ` (WHIR round-0 regime), `s`, `t`, grinding | `accumulate::tests`, `fold_tests` |
 | decider (`accumulate::decide`) | as the accumulation sumcheck rows (`m = 1`) and WHIR over an Fp3 word | `min(` WHIR `security_bits(whir, ℓ)` `, ` batching/sumcheck rows `)` ≥ 128 | proven (WHIR row; Fp3 commitments: lens `specs/whir.md` § Fp3 messages) | — | WHIR parameters | `accumulate::tests::decider_*` |
 | composition over `N` steps (machine segments, CCS folds) | Fiat–Shamir with hemera as a random oracle | interactive (no grinding): the sum over rounds (linear in `N`), dominated per step by the combination round `2^{-(128 − comb_pow(m))}` and the positions round `2^{-(128 − query_pow)}`; non-interactive (ROM, grinding priced in): every round `≤ 2^-128`, so `≤ Q·2^-128` plus hemera collisions for a prover with `Q` hemera queries, independent of `N` | RBR → FS proven (Canetti et al. 2019; WARP Appendix B for reductions); hemera-as-RO conjectured (hash row) | one transcript: statement, AIR rounds of every segment, every step, the decider | — | `tests/machine.rs` (segment swap rejected) |
+| program binding by digest (profiles 4–6, `machine::program_digest`) | hemera collision resistance (hash row) | a proof for one program verifies against another only if their canonical token encodings collide under hemera (domain `zheng-nox-program-v1`): `2^128` classical | conjectured (hash row) | the envelope carries the digest; the verifier recomputes it from the program it is given and checks equality before decoding the proof; `MachineStatement::bytes` v2 puts the same digest into the machine transcript and the IVC statement digest, and the init entries are derived from the given program | — | `tests/{machine,recursive_envelope,wrapped_envelope}.rs` (another program refused at decode and at verify; a swapped digest refused) |
 
 ## recursion (`rs/src/recursion/`, `recursion.md`; no envelope profile yet)
 
@@ -97,20 +98,20 @@ at 24 grinding bits).
 Every number below is printed and checked ≥ 128 by
 `recursion::wrap::tests::every_ledger_row_of_the_wrap_profiles_reaches_128_bits`
 (inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, final
-1/256 with 30 and 1/512 with 24), by
+1/256 with 30 and 1/512 with 24 and 26), by
 `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:24`, measured in
+(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:26`, measured in
 `audit/wrap-fastverify-2026-10.md`: inner 1/16 with 16 grinding bits
-(2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 24 (2^14) —
-weakest rows 128.22 / 128.29 / 128.40) and by `examples/wrap_bench` for
+(2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 26 (2^14) —
+weakest rows 128.22 / 128.29 / 128.43) and by `examples/wrap_bench` for
 the derived keys. The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
-challenges) the weakest rounds carry **109.34 / 104.29 / 104.70** bits
-(the 1/16 level's combination after its 19 bits; the 1/256 and the
-final level's `shift_1` after their 24-bit query grinding — the final
-level's weakest priced row, `fold_1`, carries 22 fold-grinding bits and
-106.40 interactively), so the
-non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
+challenges) the weakest rounds carry **109.34 / 104.29 / 102.62** bits
+(the 1/16 level's combination after its 19 bits; the 1/256 level's
+`shift_1` after its 24-bit query grinding; the final level's `shift_2`
+after its 26-bit query grinding — 26 bits buy one query fewer in the
+final round, so that the proof is ≤ 64,213 B over every transcript), so
+the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,
 `audit/wrap-2026-10.md`) carried 98.02 interactively at its final level.
 

@@ -56,7 +56,7 @@ mod review;
 #[cfg(test)]
 mod tests;
 
-pub use program::{Inner, derive_key_ivc, derive_key_wrap, derive_shape, derive_shape_ivc, public_digest, public_digest_native};
+pub use program::{Inner, derive_key_ivc, derive_key_ivc_at, derive_key_wrap, derive_key_wrap_at, derive_shape, derive_shape_ivc, public_digest, public_digest_native};
 pub use prove::prove;
 pub use verify::{check_shape, threads as verifier_threads, verify};
 
@@ -75,10 +75,11 @@ use crate::air::{Air, Public, Shape, Vals};
 /// The shipped chain of levels over the IVC proof, innermost first, as
 /// the benches spell it (`<log inv rate><i|f>[:<grinding bits>]`): inner
 /// 1/16 grinding 16 bits (2^16 rows), inner 1/256 grinding 24 (2^15),
-/// final 1/512 grinding 24 (2^14): the outermost proof is ≤ 65,177 B
-/// over every transcript ([`max_proof_bytes`] ≤ [`MAX_FINAL_BYTES`]) —
+/// final 1/512 grinding 26 (2^14): the outermost proof is ≤ 64,213 B
+/// over every transcript ([`max_proof_bytes`] ≤ [`MAX_FINAL_BYTES`]), so a
+/// profile-6 envelope of a statement up to ≈ 1.3 KB fits 64 KiB —
 /// `audit/wrap-fastverify-2026-10.md`.
-pub const SHIPPED: &str = "4i:16,8i:24,9f:24";
+pub const SHIPPED: &str = "4i:16,8i:24,9f:26";
 
 /// The outermost proof's size bound: 64 KiB, by construction.
 pub const MAX_FINAL_BYTES: usize = 65_536;

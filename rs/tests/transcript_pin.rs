@@ -3,8 +3,10 @@
 //! recursion profile made generic over `fs::FiatShamir`) yields exactly the
 //! proofs it yielded before that refactor (`feat/accumulation`, #51).
 //! With the opcode coverage (#52) merged, the machine relation itself
-//! changed: the pins are #52's prover output (`feat/machine-opcodes`
+//! changed: the pins were #52's prover output (`feat/machine-opcodes`
 //! 9d758ed, checked byte for byte), which the recursion refactor keeps.
+//! Re-pinned once more when the statement bound its program by digest
+//! (`MachineStatement::bytes` v2, the only input that changed).
 
 mod common;
 
@@ -33,5 +35,5 @@ fn machine_proofs_are_byte_identical_to_the_pre_recursion_prover() {
     assert_eq!(many, PIN_TREE);
 }
 
-const PIN_ADD: &str = "ab2994916b45413cec6c63efd4a2086eb2637545786643e3fce0a6268909d812";
-const PIN_TREE: &str = "46c1735da6ca518d195f43fc9b1076d3354758bdd0d5cb9a370e081f21815b86";
+const PIN_ADD: &str = "70dab40f5cebc514e05c79a969610528f382f7da7f97904227aa0e17e60d5760";
+const PIN_TREE: &str = "cfeee685d4858a53b3f3bed9a5c57211ae6cae37bb159ab5a07306a73a53c05f";
