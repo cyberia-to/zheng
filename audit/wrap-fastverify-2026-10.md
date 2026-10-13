@@ -154,3 +154,57 @@ the floor of this design on a quiet machine, above the 1 ms goal.
 - rec-16 not re-run (its IVC proof is 45 min); proof sizes and the final
   circuit are flat in the run length (`audit/wrap-2026-10.md`).
 - the deferred nox-public claim still travels (1,272 B).
+
+## 7. second round, 2026-10-13 (after the review merge, 5ec724e and later)
+
+Measured on a nearly quiet machine (1-minute load 4–8 at the start of
+each run; the chain's run rose to 28). Same fixture (add.tri), chain
+`wrap::SHIPPED` = `4i:16,8i:24,9f:24`, IVC at `ivc::SHIPPED_POW` = 16.
+
+| gate | #56 (`audit/wrap-2026-10.md`) | §2 of this audit (2026-10-10, loaded) | now (quiet) |
+|---|---|---|---|
+| final proof | 62,589 B | 63,865 B | **64,217 B** (this proof; the size varies with the queries' shared Merkle nodes: 63,257–64,217 B over four proofs; simulated sibling counts put the 1-in-200,000 tail ≈ 1 KB above the mean, ≤ 65,536 B) |
+| verify 16 threads, warm | 6.4–7.2 ms | 6.2–8.6 ms (load 37–60) | **2.46–2.55 ms** median of 41 (min 2.34) |
+| verify 16 threads, cold | — | 7.8–8.4 ms | **3.4–3.8 ms** |
+| verify 1 thread, warm | 10.1–10.9 ms | 5.3–5.7 ms (CPU) | **5.12–5.30 ms** |
+| verify 1 thread, cold | — | 6.3–7.0 ms | **6.0–6.3 ms** |
+| IVC prove, add.tri (one 2^15 step + decider) | 26.8 s | 44.3 s (load 78) | **15.0 s**: step 8.4 s (word a 0.8, zerocheck 3.6), decider 6.6 s; at 24 grinding bits on this code 29.2 s (step 13.4, decider 14.9) |
+| wrap 0 / 1 / 2 prove | 84.5 / 168.4 / 731.9 s | 11.8 / 42.5 / 28.7 s (load 24–41) | **11.8 / 50.6 / 34.5 s** (load 5 → 28 during the run) |
+| key derivation (once) | ≈ 360 s | 159 s | 42 s (4.8 + 36.3 + 0.9) |
+| peak memory, wrap chain | 32–38 GB RSS (45–61 GB footprint) | 19.5 GB RSS (14.1 GB) | **10.6 GB footprint** (11.5 GB max RSS; 6.9 / 9.4 GB in a loaded run) |
+| peak memory, IVC prove | — | 6.2 GB | 5.6 GB |
+| bit-flip scan of the final proof | 0 accepted | 0 accepted (twice) | **513,736 flips, 512,943 decoded, 0 accepted** (956 s, after the review's length-binding fix) |
+
+CPU per level (all threads, the run above): IVC 84 CPU-s (step 65,
+decider 19); wrap 0 84, wrap 1 556, wrap 2 380 CPU-s. The 1/256 level's
+commitments and its 24-bit grinding are the chain's largest cost.
+
+What changed since §2:
+
+- IVC grinding 16 bits per challenge (`ivc::SHIPPED_POW`; the step
+  circuit fits 29,628 of 2^15 rows; `examples/ivc_plan` plans step size,
+  rate and grinding without proving). Recursion ledger: every row ≥ 128,
+  interactive weakest 111.34 (104.01 at 24 bits) — `soundness.md`
+  § recursion.
+- zerocheck prover: each line walked by additions; the first round in
+  mixed base/Fp3 arithmetic (`air::mix`); the round's eq factor taken out
+  (`h = L·q`, `q` at 8 points, 7 in the first round). Messages unchanged.
+  The step's zerocheck went from 37 to 15.7 CPU-s.
+- memory: key words always streamed; streamed trees keep no leaf level;
+  streamed cosets as limb vectors written in place; `wrap_bench` holds
+  two keys at a time.
+- verifier: multi-openings expanded chain by chain in parallel;
+  direct-opening folds in parallel (native interpreters only); parallel
+  eq tables. With 4, 8 and 16 threads the warm verify is 2.80, 2.57 and
+  2.52 ms: ≈ 2 ms of it is one thread's work (the transcript's 107
+  single permutations ≈ 0.3 ms, decoding and the shared tree tops
+  ≈ 0.45 ms, the pool's passes and the remaining serial arithmetic).
+  Spinning pool workers were tried and made it slower (4.9 ms: they take
+  cores from the verifying thread).
+
+Still open: verify ≤ 1 ms (2.5 ms now, single-thread bound); the chain
+in seconds (97 s quiet; the 1/256 level is ≈ 55 % of it — lowering its
+rate needs ≈ 300 fewer rows in the final circuit, e.g. base-field key
+words: the key's 12 Fp3 gate-coefficient columns make the key group's
+leaf 11 permutations instead of 4); a 16 GB laptop is within reach
+(10.6 GB footprint).
