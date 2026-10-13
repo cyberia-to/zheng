@@ -323,6 +323,7 @@ fn chosen(reps: usize) {
 }
 
 fn main() {
+    common::backend();
     let args: Vec<String> = std::env::args().collect();
     let reps = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(3);
     match args.get(1).map(String::as_str) {

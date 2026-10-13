@@ -30,6 +30,8 @@ legacy = []
 serde = ["dep:serde", "nebu/serde", "lens/serde"]
 
 [dev-dependencies]
+# benches and tests pick a prover backend (ZHENG_BACKEND)
+cyber-lens-gpu = { version = "0.1.0", path = "../../lens/gpu", features = ["metal", "webgpu"] }
 serde_json = "1"
 postcard = { version = "1", features = ["alloc"] }
 

@@ -84,6 +84,13 @@ pub trait Air: Sync {
     fn eval_mix(&self, _v: &Vals<'_, mix::Mix>, _challenges: &[Fp3], _out: &mut [mix::Mix]) -> bool {
         false
     }
+    /// `Σ_k μ^k C_k` as a recorded graph over the zerocheck's `inputs`
+    /// column values (local, next, publics), challenges and `mu` folded
+    /// in as constants — for evaluation on a prover backend's device;
+    /// `None` when the AIR does not provide it.
+    fn combine_graph(&self, _inputs: usize, _challenges: &[Fp3], _mu: &[Fp3]) -> Option<num::Graph> {
+        None
+    }
 }
 
 /// A row-major trace of base-field cells.
