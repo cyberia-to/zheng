@@ -97,18 +97,18 @@ at 24 grinding bits).
 
 Every number below is printed and checked ≥ 128 by
 `recursion::wrap::tests::every_ledger_row_of_the_wrap_profiles_reaches_128_bits`
-(inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, final
-1/256 with 30 and 1/512 with 24 and 26), by
+(inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, inner
+1/128 with 22, final 1/256 with 30 and 1/512 with 24 and 26), by
 `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:26`, measured in
+(the shipped chain `wrap::SHIPPED` = `4i:16,7i:22,9f:26`, measured in
 `audit/wrap-fastverify-2026-10.md`: inner 1/16 with 16 grinding bits
-(2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 26 (2^14) —
-weakest rows 128.22 / 128.29 / 128.43) and by `examples/wrap_bench` for
+(2^16 rows), inner 1/128 with 22 (2^15), final 1/512 with 26 (2^14) —
+weakest rows 128.22 / 128.08 / 128.43) and by `examples/wrap_bench` for
 the derived keys. The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
-challenges) the weakest rounds carry **109.34 / 104.29 / 102.62** bits
-(the 1/16 level's combination after its 19 bits; the 1/256 level's
-`shift_1` after its 24-bit query grinding; the final level's `shift_2`
+challenges) the weakest rounds carry **109.34 / 102.76 / 102.62** bits
+(the 1/16 level's combination after its 19 bits; the 1/128 level's
+combination after its 26 bits — five words, the key's three among them; the final level's `shift_2`
 after its 26-bit query grinding — 26 bits buy one query fewer in the
 final round, so that the proof is ≤ 64,213 B over every transcript), so
 the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
@@ -121,7 +121,7 @@ grinding permutation. The previous chain (`6i,8i,8f:30`,
 | wrap zerocheck (`recursion::wrap`) | Schwartz–Zippel; sumcheck on the one codeword each fresh word is OOD-bound to | `μ` powers over 267 (inner) / 249 (final) constraints → 183.9; `τ` `n/|K|` → 188.2; per round `10/|K|` → 188.7 | proven | as the step zerocheck row; `live = 1` is a constraint | degree 8 | `recursion::wrap::tests` |
 | wrap fresh-word binding | OOD (WHIR Lemma 4.25) | `s = 1` → ≥ 150.7 | proven | every committed word answers its OOD samples right after its root | `s` | as above |
 | inner wrap memory (logUp over `(address, value)`) | as the circuit memory row | `α_V` `T/|K|`, `T = 17·2^n` → ≥ 172.9; `β_V` → ≥ 154.8 | proven | as the circuit memory row | `T` | `recursion::circuit::tests` |
-| inner wrap shift reduction and key claim | Schwartz–Zippel | rounds of degree 2 → 191.0; `β, ζ` → 191.0; column batching (6 variables) → 189.4; `γ_k` (7 variables) → 189.2 | proven | as the step's shift row; the key's two words under one tree | — | `recursion::wrap::tests` |
+| inner wrap shift reduction and key claim | Schwartz–Zippel | rounds of degree 2 → 191.0; `β, ζ` → 191.0; column batching (6 variables) → 189.4; `γ_k` (8 variables) → 189.0 | proven | as the step's shift row; the key over the base field (`recursion::splitkey`): the prover sends every physical key column at `ρ` (each Fp3 column as its three limbs), absorbed before `γ_k`; the verifier rebuilds the logical columns for `G` (`c = p₀ + T·p₁ + T²·p₂`, exact) and checks `Σ_p eq(γ_k, p)·P_p(ρ) = Σ_w eq(γ_hi, w)·v_w` — a false physical value makes the multilinear difference nonzero, caught but with probability `8/|K|` — and each `v_w` is opened from the key words (base words under one tree, their root the key's) | — | `recursion::wrap::tests`, `recursion::splitkey::tests` |
 | final wrap linear wiring | Schwartz–Zippel in `λ` | `#reads/|K|` → 174.0 at `2^18` reads | proven | every read slot's value minus its write slot's value (linear in the row's phase-1 cells, the key fixed) batched with powers of `λ` drawn after `W1` is bound; a nonzero difference vector makes `⟨u_λ, W1⟩` a nonzero polynomial of degree `< #reads` | — | `tests/wrap.rs` |
 | final wrap column batching (local, successor) | Schwartz–Zippel (multilinear in the column index) | `6/|K|` → 189.4 | proven | the claims on `W1` at `ρ` and its successor become weights of the direct opening; the successor claim covers the columns the constraints read (from the recorded graph); the others are not constrained and not read | — | `tests/wrap.rs` |
 | recursion circuit = the wrapped verifier | as the "recursion circuit = the step verifier" row, for the final verifier, the field-native WHIR verifier and the wrap verifier | — | tested, not proven: the circuit and the native interpreter run one program (`finalv`, `wrap::verify`); honest runs satisfy every row; tampered proofs are refused by both | `recursion::whir::tests`, `tests/wrap.rs` |
