@@ -280,9 +280,11 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
 fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
     let ext = members[0].is_ext();
     if on_device() {
-        // cosets in groups: the CPU encodes, the device hashes each group's
-        // leaves in one sponge call
-        return stream::digests_grouped(members, layout.log_domain, layout.log_width, |leaves, width, symbol| backend_leaves(leaves, width, ext, symbol));
+        // the device takes groups of cosets (values never leave it), the
+        // CPU takes single cosets, from one counter
+        let mut init = [0u64; WIDTH];
+        init[RATE] = tag::LEAF;
+        return stream::digests_device(members, layout.log_domain, layout.log_width, init, RATE, |leaves, width, sym| hash_leaves(leaves, width, ext, sym));
     }
     stream::digests(members, layout.log_domain, layout.log_width, |leaves, width, sym| hash_leaves(leaves, width, ext, sym))
 }
@@ -660,6 +662,9 @@ mod tests {
     impl lens::rspcs::backend::Backend for Device {
         fn name(&self) -> &'static str {
             "device-test"
+        }
+        fn coset_leaves(&self, job: &lens::rspcs::backend::CosetLeaves<'_>, cosets: core::ops::Range<usize>) -> Option<Vec<[u64; 4]>> {
+            Some(lens::rspcs::backend::coset_leaves_reference(job, cosets))
         }
     }
 
