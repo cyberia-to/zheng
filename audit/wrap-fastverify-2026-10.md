@@ -76,7 +76,7 @@ check reads those permutations instead of recomputing them).
 |---|---|---|---|---|
 | inner 1/16, grinding 16 (combination 19), `n = 16` | 53,042 → 2^16 | 58 / 33 / 23 / 18 | shift_2 128.22 | 109.34 |
 | inner 1/256, grinding 24 (combination 24), `n = 15` | 26,089 → 2^15 | 27 / 20 / 16 / 13 | shift_1 128.29 | 104.29 |
-| final 1/512, grinding 24, `n = 14`, `ℓ = 20` | 15,606 → 2^14 | 24 / 18 / 15 | fold_1 128.40 | 104.70 |
+| final 1/512, grinding 24, `n = 14`, `ℓ = 20` | 15,606 → 2^14 | 24 / 18 / 15 | fold_1 128.40 | 104.70 (shift_1; fold_1 106.40) |
 
 The final level's rate cannot rise further without grinding above 24
 bits: at 1/1024 the Johnson-regime fold terms (BCGM MCA error grows with

@@ -170,7 +170,9 @@ fn open_fold<O: Ops>(
         .collect()
 }
 
-/// [`open_fold`] for a native verifier (one opened word): every leaf is
+/// [`open_fold`] for a native verifier only (one opened word; the folds
+/// leave the interpreter through `value()`, so a circuit takes
+/// [`open_fold`]): every leaf is
 /// checked in transcript order (its Merkle chain deferred), then the
 /// folds — independent per query — run in the field over the verifier's
 /// threads.
@@ -390,7 +392,7 @@ fn core<O: Ops>(
         let bits = query_bits(o, t, &prev);
         let gamma = t.squeeze_ext(o);
         let pa = alphas[alphas.len() - prev.fold..].to_vec();
-        let folded = if cfg.direct() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) };
+        let folded = if cfg.direct() && o.native() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) };
         let mut g = gamma;
         for &(z, y) in &zs {
             sigma = o.mul_add(g, y, sigma);
@@ -418,7 +420,7 @@ fn core<O: Ops>(
     t.grind_check(o, prev.query_pow, pf.final_nonce);
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
-    let folded = if cfg.direct() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) };
+    let folded = if cfg.direct() && o.native() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) };
     for &(v, x) in &folded {
         let f = gm::horner(o, &fin, x);
         o.assert_eq(f, v, "whir: final queries");
