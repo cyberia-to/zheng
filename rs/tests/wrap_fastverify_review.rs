@@ -34,7 +34,7 @@ fn stored() -> Stored {
     let bytes = std::fs::read(format!("{dir}/add.tri.final-{chain}")).expect("stored final proof");
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = 4;
-    whir.pow_bits = 24;
+    whir.pow_bits = ivc::SHIPPED_POW;
     let run = machine::execute_exact(&common::parse(common::ADD), &[7, 5], 1 << 40, 15).expect("run");
     let h = FinalProof::from_bytes(&bytes, &key).expect("parse");
     let prep = ivc::prepare(&run.statement, &whir, h.log_rows, h.start, h.segments, h.chain).expect("prepare");

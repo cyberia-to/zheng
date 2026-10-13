@@ -40,6 +40,12 @@ impl Rng {
     }
 }
 
+fn c_other(a: &[Fp3]) -> Vec<Fp3> {
+    let mut b = a.to_vec();
+    b[a.len() / 2] += Fp3::ONE;
+    b
+}
+
 fn bits_of(j: usize, len: usize) -> Vec<Fp3> {
     (0..len).map(|k| Fp3::from_base(Goldilocks::new(((j >> k) & 1) as u64))).collect()
 }
@@ -60,8 +66,8 @@ fn a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients() 
     let root = w.root().map(Fp3::from_base);
     let leaves = 1usize << layout.log_leaves();
     // the streamed tree is the held tree
-    let streamed = stream::digests(&[Coeffs::Ext(&a)], layout.log_domain, layout.log_width, |rows| {
-        crate::recursion::word::hash_leaves(rows.len(), rows[0].len(), true, |j, t| rows[j][t])
+    let streamed = stream::digests(&[Coeffs::Ext(&a)], layout.log_domain, layout.log_width, |leaves, width, sym| {
+        crate::recursion::word::hash_leaves(leaves, width, true, sym)
     });
     for j in [0, 1, 7, leaves - 1] {
         let honest = w.open(j);
@@ -90,6 +96,25 @@ fn a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients() 
                 assert!(o.finish().is_err(), "a leaf of other coefficients, leaf {j}");
             }
         }
+    }
+    // a truly streamed word (no codeword, no leaf level: the opening's
+    // leaf-level sibling recomputed): the same root, the same refusals
+    crate::recursion::word::FORCE_STREAM.with(|f| f.set(true));
+    let ws = Word::commit_coeffs(layout, a.clone(), Arity::Two);
+    crate::recursion::word::FORCE_STREAM.with(|f| f.set(false));
+    assert_eq!(ws.root(), w.root());
+    for j in [0, 2, leaves - 1] {
+        let op = ws.open(j);
+        assert_eq!(op, w.open(j));
+        let bits = bits_of(j, op.path.len());
+        let mut o = Native::batched();
+        verify_leaf(&mut o, true, Arity::Two, &op, &bits, root, "root");
+        assert!(o.finish().is_ok());
+        let mut forged = op.clone();
+        forged.symbols = stream::leaf(Coeffs::Ext(&c_other(&a)), layout.log_domain, layout.log_width, j);
+        let mut o = Native::batched();
+        verify_leaf(&mut o, true, Arity::Two, &forged, &bits, root, "root");
+        assert!(o.finish().is_err());
     }
     // base words: the symbols of a base word lie in the base field
     let ab: Vec<Goldilocks> = (0..k).map(|_| r.g()).collect();
@@ -381,4 +406,28 @@ fn a_loaded_key_must_send_the_successor_columns_its_graph_reads() {
     k.next_cols.push(extra);
     k.next_cols.sort_unstable();
     assert!(super::WrapKey::from_vk_bytes(&k.vk_bytes()).is_err(), "column {extra} added");
+}
+
+/// (7) The recursion profile shipped since 5d7c959 (`ivc::SHIPPED_POW`,
+/// rate 1/16, steps of 2^15): every row ≥ 128 with grinding priced, the
+/// figures `specs/soundness.md` states, and the interactive weakest
+/// (every grinding removed: the accumulation's combination and spot
+/// checks, the decider's folds, shifts, final queries and combination)
+/// 111.34 — the accumulation's combination after its 17 bits.
+#[test]
+fn the_shipped_ivc_profile_rows_and_interactive_figure() {
+    let mut whir = crate::execution::succinct::params_for(20);
+    whir.log_inv_rate = 4;
+    whir.pow_bits = crate::recursion::ivc::SHIPPED_POW;
+    let p = crate::recursion::params::Params::new(&whir, 15).unwrap();
+    assert_eq!((p.cfg.queries, p.cfg.query_pow, p.cfg.comb_pow_for(crate::recursion::params::INPUTS)), (58, 16, 17));
+    let rows = crate::recursion::params::ledger(&p);
+    let get = |n: &str| rows.iter().find(|r| r.0 == n).map(|r| r.1).unwrap();
+    assert!(rows.iter().all(|r| r.1 >= 128.0), "{rows:?}");
+    for (n, want) in [("combine", 128.34), ("spot", 128.28), ("decider batch combine", 128.92), ("decider shift_2", 128.22), ("decider fin", 129.00)] {
+        assert!((get(n) - want).abs() < 0.01, "{n}: {}", get(n));
+    }
+    let (name, inter) = rows.iter().map(|r| (r.0.clone(), r.1 - f64::from(r.2))).fold((String::new(), f64::INFINITY), |a, r| if r.1 < a.1 { r } else { a });
+    assert_eq!(name, "combine");
+    assert!((inter - 111.34).abs() < 0.01, "{inter}");
 }
