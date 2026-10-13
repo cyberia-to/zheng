@@ -98,20 +98,20 @@ at 24 grinding bits).
 Every number below is printed and checked ≥ 128 by
 `recursion::wrap::tests::every_ledger_row_of_the_wrap_profiles_reaches_128_bits`
 (inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, final
-1/256 with 30 and 1/512 with 24), by
+1/256 with 30 and 1/512 with 24 and 26), by
 `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:24`, measured in
+(the shipped chain `wrap::SHIPPED` = `4i:16,8i:24,9f:26`, measured in
 `audit/wrap-fastverify-2026-10.md`: inner 1/16 with 16 grinding bits
-(2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 24 (2^14) —
-weakest rows 128.22 / 128.29 / 128.40) and by `examples/wrap_bench` for
+(2^16 rows), inner 1/256 with 24 (2^15), final 1/512 with 26 (2^14) —
+weakest rows 128.22 / 128.29 / 128.43) and by `examples/wrap_bench` for
 the derived keys. The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
-challenges) the weakest rounds carry **109.34 / 104.29 / 104.70** bits
-(the 1/16 level's combination after its 19 bits; the 1/256 and the
-final level's `shift_1` after their 24-bit query grinding — the final
-level's weakest priced row, `fold_1`, carries 22 fold-grinding bits and
-106.40 interactively), so the
-non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
+challenges) the weakest rounds carry **109.34 / 104.29 / 102.62** bits
+(the 1/16 level's combination after its 19 bits; the 1/256 level's
+`shift_1` after its 24-bit query grinding; the final level's `shift_2`
+after its 26-bit query grinding — 26 bits buy one query fewer in the
+final round, so that the proof is ≤ 64,213 B over every transcript), so
+the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,
 `audit/wrap-2026-10.md`) carried 98.02 interactively at its final level.
 

@@ -17,7 +17,7 @@
 //! Decoding admits only the chain of [`chain`] (`wrap::SHIPPED`: IVC at
 //! rate 1/16 with `ivc::SHIPPED_POW` = 16 grinding bits over steps of
 //! 2^15 rows; wrap levels 1/16 inner with 16 grinding bits, 1/256 inner
-//! with 24, 1/512 final with 24) and only that step size in the proof's
+//! with 24, 1/512 final with 26) and only that step size in the proof's
 //! header, so a verifier needs exactly one final key
 //! and one IVC key; a hostile header cannot make it derive another. The
 //! proof must fill its length exactly and the length must fill the
@@ -50,10 +50,11 @@ use crate::recursion::wrap::{self, FinalProof, Inner, Mode, WrapKey, WrapParams}
 
 /// Version of the profile-6 body (2: the program bound by its digest; 3:
 /// the chain `wrap::SHIPPED`, IVC at 16 grinding bits, the final level's
-/// message digests).
-pub const WRAPPED_FORMAT: u8 = 3;
+/// message digests; 4: the final level at 26 grinding bits — its proof
+/// ≤ 64,213 B over every transcript).
+pub const WRAPPED_FORMAT: u8 = 4;
 /// Upper bound on the final proof bytes: 64 KiB, by construction — the
-/// admitted final key's `wrap::max_proof_bytes` (65,177 B, over every
+/// admitted final key's `wrap::max_proof_bytes` (64,213 B, over every
 /// transcript) is ≤ this, checked when the key is built.
 pub const MAX_PROOF_BYTES: usize = wrap::MAX_FINAL_BYTES;
 /// Wrap levels of the admitted chain.
@@ -71,7 +72,7 @@ pub fn chain() -> (WhirParams, [WrapParams; LEVELS]) {
         whir.pow_bits = pow;
         WrapParams { whir, n: 0, mode }
     };
-    (ivc, [level(4, 16, Mode::Inner), level(8, 24, Mode::Inner), level(9, 24, Mode::Final)])
+    (ivc, [level(4, 16, Mode::Inner), level(8, 24, Mode::Inner), level(9, 26, Mode::Final)])
 }
 
 /// The chain as it travels: IVC header, level count, per level header and
