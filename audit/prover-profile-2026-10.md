@@ -276,13 +276,68 @@ of CPU (serial transcript, packing and WHIR work) and the machine gave it
 a fraction of a core — the step is CPU-thread-bound on the device path,
 not device-bound.
 
+## 4c. round 3 (2026-10-13): the main thread, resident columns, device trees
+
+On #58 at aff14b2.
+
+- **main thread** — profiled with macOS `sample` on the Metal IVC step,
+  attributing only the main thread's on-CPU samples (waits excluded,
+  `tools`-side script): the serial work was the Reed–Solomon encodings
+  (`encode_base_with`/`encode_ext`: the coset values interleaved and the
+  Fp3 limbs recombined on one thread, small messages with large blowup
+  encoded one coset after another) and the base-coefficient Horner of the
+  OOD samples. Now: interleaving and recombination in threads, an Fp3
+  message's limbs through one backend NTT call each, every encoding with
+  a codeword ≥ 2¹⁴ in threads, threaded `univariate_base`. Main-thread CPU
+  of the Metal IVC step (the `decide` lap's "this thread's CPU"): 4.9 s in
+  round 2 (load 150) → **1.48–1.78 s** (load 7–35).
+- **zerocheck columns resident** — `Backend::line_session`: the columns
+  are packed and uploaded once, folded on the device each round (ping-pong
+  buffers), the CPU copy dropped; tests: a resident session proves as the
+  AIR, Metal session = CPU session over every round.
+- **device Merkle levels** — `Backend::merkle_levels`: every level above
+  the leaves in one command buffer (binary and 4-ary nodes), replacing the
+  permutation batches and their copies; test: device trees = CPU trees.
+- **NTT** — the first 11 radix-2 stages fused in threadgroup memory (one
+  dispatch), then one dispatch per remaining stage. Metal NTT against the
+  CPU NTT inside the IVC step: 4.7–4.9 s vs 5.2–5.3 s (kept on).
+
+Same bytes: IVC, wrap 0/1/2 and final proof SHA-1 equal on cpu and metal
+(final `0e9b923e…`); hash.tri IVC `5c08a7e6…` on both.
+
+IVC step, hash.tri (`ivc_bench`, two rounds each, load 7–35):
+
+| | cpu | metal |
+|---|---|---|
+| prove | 7.40 / 7.42 s | **4.70 / 4.24 s** |
+| process | 8.6 s wall, 96–100 CPU-s | **5.0–6.0 s wall, 9.5 CPU-s** |
+| main thread CPU | 1.26 s | 1.48–1.78 s |
+
+Wrap chain, add.tri (15:38–15:43, load 16–48):
+
+| | cpu | metal |
+|---|---|---|
+| IVC prove | 12.1 s | **4.7 s** |
+| key derivation | 1.5 + 8.8 + 77.0 + 1.1 s | 0.6 + 2.7 + 13.1 + 0.9 s |
+| wrap 0 / 1 / 2 | 15.9 / 76.6 / 45.8 s | 5.0 / 21.5 / 12.3 s |
+| wrap chain | 138.3 s | **38.8 s** |
+| main thread CPU per level | 2.1 / 16.2 / 7.4 s | 1.4 / 1.1 / 0.8 s |
+| whole process | 239 s wall, 2,697 CPU-s | **61.5 s wall, 176 CPU-s** |
+| peak RSS | 12.0 GB | 12.7 GB |
+
+Tests on this round: zheng `cargo test --release` 343 passed, 0 failed, 9
+ignored; lens gpu differential (Metal + WebGPU required) 11 passed; lens
+rspcs 39 passed. WebGPU has no line session, coset leaves or device
+Merkle levels yet: on WebGPU those fall back to the per-round device path
+and the CPU.
+
 ## 5. what reaches seconds, what does not
 
 | profile | today (best backend, this machine, loaded) | seconds? |
 |---|---|---|
 | 1 (one relation ≤ 2¹⁵ rows) | 0.4 s library, 1.4 s CLI on Metal; 0.6 s WebGPU; 1.9–2.4 s CPU | **yes** — every backend |
-| 5 (IVC), per 2¹⁵-row step | 9.6 s Metal (load 150: the device path is bound by the main thread's serial work), 15.6–22.6 s CPU | close — single-digit seconds on Metal |
-| 6 (wrap chain) | **65 s** Metal (round 2), 176 s CPU in the same window | about a minute on Metal; not yet "well under" |
+| 5 (IVC), per 2¹⁵-row step | **4.2–4.7 s** Metal (9.5 CPU-s), 7.4 s CPU | **yes on Metal** — a few seconds |
+| 6 (wrap chain) | **38.8 s** Metal (+ 17 s of once-per-chain key derivation), 138 s CPU | under a minute on Metal; not yet seconds |
 
 What still costs time, from the profiles above:
 
