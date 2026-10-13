@@ -170,21 +170,93 @@ impl MachineStatement {
         })
     }
 
-    /// Canonical bytes bound into every transcript.
+    /// Canonical bytes bound into every transcript (the machine's, the
+    /// IVC statement digest and through it every wrap level's public
+    /// digest): the program by its digest ([`program_digest`]), then the
+    /// output tokens, inputs, cycles, budget and state.
     pub fn bytes(&self) -> Vec<u8> {
-        let mut b = b"zheng-nox-machine-statement-v1".to_vec();
-        for list in [&self.program, &self.output] {
-            b.extend_from_slice(&(list.len() as u64).to_le_bytes());
-            for t in list.iter() {
-                match t {
-                    NounToken::Atom(v) => {
-                        b.push(0);
-                        b.extend_from_slice(&v.to_le_bytes());
-                    }
-                    NounToken::Pair => b.push(1),
-                }
-            }
+        self.public().bytes()
+    }
+
+    /// The statement as it travels: the program by its digest.
+    pub fn public(&self) -> MachinePublic {
+        MachinePublic {
+            program: program_digest(&self.program),
+            input: self.input.clone(),
+            output: self.output.clone(),
+            cycles: self.cycles,
+            budget: self.budget,
+            state: self.state.clone(),
         }
+    }
+}
+
+/// Domain of a program's digest.
+const PROGRAM_DOMAIN: &[u8] = b"zheng-nox-program-v1";
+
+fn put_tokens(b: &mut Vec<u8>, list: &[NounToken]) {
+    b.extend_from_slice(&(list.len() as u64).to_le_bytes());
+    for t in list {
+        match t {
+            NounToken::Atom(v) => {
+                b.push(0);
+                b.extend_from_slice(&v.to_le_bytes());
+            }
+            NounToken::Pair => b.push(1),
+        }
+    }
+}
+
+/// The program's particle: the hemera digest of its canonical token
+/// encoding (`len`, then per token `0 ‖ atom u64 LE` or `1`) under the
+/// domain `zheng-nox-program-v1`.
+pub fn program_digest(program: &[NounToken]) -> [u8; 32] {
+    let mut b = Vec::with_capacity(16 + 9 * program.len());
+    put_tokens(&mut b, program);
+    let mut h = hemera::Hasher::new();
+    h.update(PROGRAM_DOMAIN);
+    h.update(&b);
+    *h.finalize().as_bytes()
+}
+
+/// A machine statement with the program bound by its digest — what the
+/// envelopes of profiles 4–6 carry. The verifier is given the program out
+/// of band; [`MachinePublic::with_program`] checks it against the digest
+/// before anything else.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MachinePublic {
+    pub program: [u8; 32],
+    pub input: Vec<u64>,
+    /// The output noun (prefix tokens).
+    pub output: Vec<NounToken>,
+    pub cycles: u64,
+    pub budget: u64,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub state: Option<MachineState>,
+}
+
+impl MachinePublic {
+    /// The full statement of `program`, if its digest is this statement's.
+    pub fn with_program(&self, program: &[NounToken]) -> Result<MachineStatement, String> {
+        if program_digest(program) != self.program {
+            return Err("machine: the program's digest is not the statement's".into());
+        }
+        Ok(MachineStatement {
+            program: program.to_vec(),
+            input: self.input.clone(),
+            output: self.output.clone(),
+            cycles: self.cycles,
+            budget: self.budget,
+            state: self.state.clone(),
+        })
+    }
+
+    /// Canonical bytes bound into every transcript (`MachineStatement::bytes`).
+    pub fn bytes(&self) -> Vec<u8> {
+        let mut b = b"zheng-nox-machine-statement-v2".to_vec();
+        b.extend_from_slice(&self.program);
+        put_tokens(&mut b, &self.output);
         b.extend_from_slice(&(self.input.len() as u64).to_le_bytes());
         for v in &self.input {
             b.extend_from_slice(&v.to_le_bytes());

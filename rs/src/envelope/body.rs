@@ -47,6 +47,12 @@ pub(super) fn encode(envelope: &Envelope, w: &mut Writer) {
             statement,
             proof,
         } => super::machine::encode(params, statement, proof, w),
+        Envelope::Recursive {
+            params,
+            statement,
+            proof,
+        } => super::recursive::encode(params, statement, proof, w),
+        Envelope::Wrapped { statement, proof } => super::wrapped::encode(statement, proof, w),
     }
 }
 
@@ -65,7 +71,7 @@ pub(super) fn state(statement: &StateStatement, w: &mut Writer) {
     }
 }
 
-pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
+pub(super) fn decode(profile: Profile, r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<Envelope, E> {
     match profile {
         Profile::Public => Ok(Envelope::Public {
             statement: read_execution(r)?,
@@ -97,7 +103,9 @@ pub(super) fn decode(profile: Profile, r: &mut Reader) -> Result<Envelope, E> {
             certificate: read_free(r)?,
         }),
         Profile::Succinct => super::succinct::decode(r),
-        Profile::Machine => super::machine::decode(r),
+        Profile::Machine => super::machine::decode(r, expect),
+        Profile::Recursive => super::recursive::decode(r, expect),
+        Profile::Wrapped => super::wrapped::decode(r, expect),
     }
 }
 

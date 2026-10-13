@@ -4,6 +4,7 @@
 //! magic    8 bytes  "ZHENGPF1"
 //! version  u16 LE   VERSION
 //! profile  u8       0 public · 1 succinct · 2 zk · 3 state-public · 4 machine
+//!                   · 5 recursive · 6 wrapped
 //! body              per profile, canonical (see `codec`)
 //! ```
 //!
@@ -21,6 +22,12 @@
 //!   root-in-subject flag, the reads, then the v3 certificate.
 //! - machine (4): WHIR parameters, the machine statement (program, inputs,
 //!   output noun, cycles, budget), then the machine proof (see `machine`).
+//! - recursive (5): format byte, WHIR parameters (an admitted set), the
+//!   machine statement as in profile 4, then the IVC proof, length-prefixed
+//!   (see `recursive`).
+//! - wrapped (6): format byte, the admitted chain (IVC WHIR header, wrap
+//!   levels' headers and modes), the machine statement as in profile 4,
+//!   then the final proof, length-prefixed (see `wrapped`).
 //!
 //! An execution statement is: program tokens (tag 0 + atom, tag 1 = pair),
 //! public inputs, public outputs, cycles, budget. A certificate is the free
@@ -29,8 +36,11 @@
 //! value or flag, any length beyond its bound, truncation and trailing bytes.
 
 mod body;
-mod codec;
+pub(crate) mod codec;
 mod machine;
+pub mod keys;
+pub mod recursive;
+pub mod wrapped;
 mod succinct;
 #[cfg(test)]
 mod tests;
@@ -64,6 +74,12 @@ pub enum Profile {
     /// A nox run of any length: the uniform step relation, accumulation,
     /// one decider.
     Machine = 4,
+    /// A nox run of any length proven by IVC: the last step, its
+    /// accumulation step and one decider — constant in the steps.
+    Recursive = 5,
+    /// A nox run of any length proven by IVC, its final verifier proved
+    /// by wrap levels: ≤ 64 KB, constant in the steps.
+    Wrapped = 6,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,6 +91,8 @@ pub enum EnvelopeError {
     TrailingBytes,
     NonCanonical,
     TooLarge,
+    /// A profile 4–6 statement names another program (`from_bytes_for`).
+    ProgramMismatch,
 }
 
 impl fmt::Display for EnvelopeError {
@@ -107,8 +125,17 @@ pub enum Envelope {
     },
     Machine {
         params: lens::WhirParams,
-        statement: crate::machine::MachineStatement,
+        statement: crate::machine::MachinePublic,
         proof: Box<crate::machine::MachineProof>,
+    },
+    Recursive {
+        params: lens::WhirParams,
+        statement: crate::machine::MachinePublic,
+        proof: Box<crate::recursion::ivc::IvcProof>,
+    },
+    Wrapped {
+        statement: crate::machine::MachinePublic,
+        proof: Box<crate::recursion::wrap::FinalProof>,
     },
 }
 
@@ -173,6 +200,8 @@ impl Envelope {
             Self::StatePublic { .. } => Profile::StatePublic,
             Self::Succinct { .. } => Profile::Succinct,
             Self::Machine { .. } => Profile::Machine,
+            Self::Recursive { .. } => Profile::Recursive,
+            Self::Wrapped { .. } => Profile::Wrapped,
         }
     }
 
@@ -186,6 +215,18 @@ impl Envelope {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, EnvelopeError> {
+        Self::decode(bytes, None)
+    }
+
+    /// Decode an envelope of `program`: a profile 4–6 statement naming
+    /// another program's digest is refused right after it is read — before
+    /// the proof is parsed or any key built. Other profiles carry their
+    /// program and decode as [`Envelope::from_bytes`].
+    pub fn from_bytes_for(bytes: &[u8], program: &[crate::execution::NounToken]) -> Result<Self, EnvelopeError> {
+        Self::decode(bytes, Some(&crate::machine::program_digest(program)))
+    }
+
+    fn decode(bytes: &[u8], expect: Option<&[u8; 32]>) -> Result<Self, EnvelopeError> {
         if bytes.len() > MAX_BYTES {
             return Err(EnvelopeError::TooLarge);
         }
@@ -203,17 +244,20 @@ impl Envelope {
             2 => Profile::Zk,
             3 => Profile::StatePublic,
             4 => Profile::Machine,
+            5 => Profile::Recursive,
+            6 => Profile::Wrapped,
             other => return Err(EnvelopeError::UnknownProfile(other)),
         };
-        let envelope = body::decode(profile, &mut r)?;
+        let envelope = body::decode(profile, &mut r, expect)?;
         r.finish()?;
         Ok(envelope)
     }
 
     /// Verify the proof against its own statement. The state profiles (3,
-    /// and 1 with a state statement) need `state`: zheng authenticates it
-    /// under the statement's root and every read against it; the other
-    /// profiles never consult it.
+    /// 1 with a state statement, 4–6 with a machine statement that reads
+    /// state) need `state`: zheng authenticates it under the statement's
+    /// root and every read against it; the other profiles never consult
+    /// it.
     pub fn verify(&self, state: Option<&StateEvidence>) -> Result<(), String> {
         match self {
             Self::Public {
@@ -252,11 +296,50 @@ impl Envelope {
                 state.ok_or("state envelope: no state evidence")?,
             ),
             Self::Succinct { statement, proof } => succinct::verify(statement, proof, state),
+            Self::Machine { .. } | Self::Recursive { .. } | Self::Wrapped { .. } => {
+                Err("profiles 4–6 bind the program by its digest: verify_program".into())
+            }
+        }
+    }
+
+    /// Verify against `program`, given out of band. Profiles 4–6: the
+    /// program's digest must be the statement's — checked first — and the
+    /// proof is then verified against the full statement (the program's
+    /// init entries, its digest in every transcript). Other profiles carry
+    /// their program: their statement's must be `program`, then
+    /// [`Envelope::verify`].
+    pub fn verify_program(&self, program: &[crate::execution::NounToken], state: Option<&StateEvidence>) -> Result<(), String> {
+        match self {
             Self::Machine {
                 params,
                 statement,
                 proof,
-            } => crate::machine::verify_with_state(statement, proof, params, state),
+            } => crate::machine::verify_with_state(&statement.with_program(program)?, proof, params, state),
+            Self::Recursive {
+                params,
+                statement,
+                proof,
+            } => recursive::verify(params, &statement.with_program(program)?, proof, state),
+            Self::Wrapped { statement, proof } => wrapped::verify(&statement.with_program(program)?, proof, state),
+            _ => {
+                if self.program().is_some_and(|p| p != program) {
+                    return Err("envelope: the statement's program is not the one given".into());
+                }
+                self.verify(state)
+            }
+        }
+    }
+
+    /// The program tokens a profile 0–3 statement carries (`None` for
+    /// profiles 4–6, which carry its digest).
+    pub fn program(&self) -> Option<&[crate::execution::NounToken]> {
+        match self {
+            Self::Public { statement, .. } => Some(&statement.program),
+            Self::Zk { statement, .. } => Some(&statement.execution.program),
+            Self::StatePublic { statement, .. } => Some(&statement.execution.program),
+            Self::Succinct { statement: SuccinctStatement::Execution(s), .. } => Some(&s.program),
+            Self::Succinct { statement: SuccinctStatement::State(s), .. } => Some(&s.execution.program),
+            _ => None,
         }
     }
 }

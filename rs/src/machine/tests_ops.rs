@@ -476,12 +476,12 @@ fn a_run_with_every_new_opcode_proves_and_verifies_against_its_state() {
     // the envelope carries the state and verifies with the evidence only
     let env = crate::envelope::Envelope::Machine {
         params: whir,
-        statement: st.clone(),
+        statement: st.public(),
         proof: Box::new(proof),
     };
     let bytes = env.to_bytes();
-    let back = crate::envelope::Envelope::from_bytes(&bytes).unwrap();
+    let back = crate::envelope::Envelope::from_bytes_for(&bytes, &st.program).unwrap();
     assert_eq!(back, env);
-    back.verify(Some(&ev)).unwrap();
-    assert!(back.verify(None).is_err());
+    back.verify_program(&st.program, Some(&ev)).unwrap();
+    assert!(back.verify_program(&st.program, None).is_err());
 }

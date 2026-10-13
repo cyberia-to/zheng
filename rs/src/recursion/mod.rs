@@ -35,5 +35,6 @@ pub mod step;
 pub mod prove;
 pub mod ivc;
 pub mod wire;
+pub mod vkey;
 #[cfg(test)]
 mod review;

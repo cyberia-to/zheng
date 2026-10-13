@@ -164,7 +164,7 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
         let fin = step::verify(&mut o, p, s, base_lift(x), &pf);
         o.finish().unwrap();
         let AccData::Word(word) = data else { panic!("last accumulator") };
-        let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, &k.kw, n).unwrap();
+        let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, k.words(), n).unwrap();
         IvcProof { log_rows: N, start: run.start as u64, segments: 2, chain, state: s.clone(), step: pf, decider }
     };
 
