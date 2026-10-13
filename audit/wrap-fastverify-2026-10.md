@@ -266,7 +266,7 @@ Measured (machine shared, load 15–56; add.tri unless named):
 | peak memory (joy prove, Metal / CPU) | 13.7 / 12.9 GB | 13.3 / 12.8 GB | 14.6 / 13.2 GB |
 
 Checks on the split-key branch: `cargo test --release -p zheng` all
-suites green (300 lib); ignored `tests/wrapped_envelope.rs` 4/4, its
+suites green (297 lib); ignored `tests/wrapped_envelope.rs` 4/4, its
 bit-flip sample 3,036 tried, 0 accepted; `tests/wrap_fastverify_review.rs
 --ignored` on stored proofs green; `wrap_flip`: **503,720 flips,
 502,921 decoded, 0 accepted** (567 s); joy e2e profile-6 test green.
