@@ -225,3 +225,58 @@ leaf 11 permutations instead of 4); a 16 GB laptop is within reach
   envelopes of hash.tri 64,003 B and tree-12 63,772 B; joy proves
   loop.tri wrapped in 75 s on Metal and 170 s on the CPU backend (keys
   derived in-process; load 12–50), peak 13.7 GB.
+
+## 9. the size gate at 26 bits; inner keys over the base field (2026-10-13)
+
+**Gate.** `wrap::max_proof_bytes(final key) ≤ 64 KiB`, hard, by key. At
+the coordinator's decision the final level grinds 26 bits (`9f:26`): the
+outermost proof is ≤ 64,213 B over every transcript, so a profile-6
+envelope is ≤ 64 KiB whenever its encoded statement takes ≤ 1,272 B
+(`specs/recursion.md` § size gate). Ledger: final weakest 128.43,
+interactively 102.62 (`shift_2` after 26 query-grinding bits).
+
+**Split key** (`feat/split-key`, stacked on #60). An inner level's key
+columns with Fp3 entries (the four gates' `qa`, `qb`, `qc`: 12 of 108)
+are committed as their three limbs, every column over the base field —
+132 physical columns in three base words under one tree; the prover
+sends the physical columns at `ρ`, the verifier rebuilds the logical
+ones for `G` and batches the physical ones over 8 variables
+(`recursion::splitkey`; ledger row `γ_k` 189.0). The key group's leaf
+costs the next circuit 6 permutations instead of 11, so the final
+circuit verifying a 1/128 second level fits 2^14 (16,230 of 16,384
+rows; 15,236 at 1/256). Shipped chain `4i:16,7i:22,9f:26`; level 1
+weakest 128.08, interactively 102.76 (its combination after 26 bits:
+five words now). `WRAPPED_FORMAT` 5; `INNER_ROOTS`, `WRAPPED_DIGEST`
+re-pinned.
+
+Measured (machine shared, load 15–56; add.tri unless named):
+
+| | `4i:16,8i:24,9f:24` (§8) | `4i:16,8i:24,9f:26` | `4i:16,7i:22,9f:26` (split key) |
+|---|---|---|---|
+| final proof bound | 65,177 B | 64,213 B | 64,213 B |
+| final proof (this run) | 64,217 B | — | 62,965 B |
+| envelope hash.tri / tree-12 | 64,003 / 63,772 B | 63,039 / 62,968 B | 63,103 / 63,448 B |
+| verify 16T / 1T warm | 2.46–2.55 / 5.12–5.30 ms (quiet) | — | 3.03 / 5.24 ms (load ≈ 50) |
+| prover chain keys (once per process), Metal / CPU | 30 / 61 s | 31 / 39 s | **11 / 16 s** |
+| hash.tri profile-6 prove, Metal / CPU | 48.8 / 137.6 s | 95.6 / 169.8 s | **56.0 / 100.1 s** |
+| tree-12 profile-6 prove, Metal / CPU | 80.2 / 139.6 s | 81.7 / 173.3 s | **60.2 / 124.4 s** |
+| `joy prove loop.tri --succinct --wrap`, Metal / CPU | 75.2 / 170.1 s | 96.3 / 220.3 s | **61.0 / 151.1 s** |
+| `joy verify` (keys cached) | 0.32 s | 0.30–0.39 s | 0.43 s |
+| wrap chain CPU (wrap_bench, all threads): IVC · L0 · L1 · L2 | — | — | 98 · 104 · 475 · 724 CPU-s |
+| peak memory (joy prove, Metal / CPU) | 13.7 / 12.9 GB | 13.3 / 12.8 GB | 14.6 / 13.2 GB |
+
+Checks on the split-key branch: `cargo test --release -p zheng` all
+suites green (300 lib); ignored `tests/wrapped_envelope.rs` 4/4, its
+bit-flip sample 3,036 tried, 0 accepted; `tests/wrap_fastverify_review.rs
+--ignored` on stored proofs green; `wrap_flip`: **503,720 flips,
+502,921 decoded, 0 accepted** (567 s); joy e2e profile-6 test green.
+
+**Cost found: the final level's fold grinding.** At a 26-bit budget
+lens's schedule picks, per round, the regime with the fewest queries,
+and for the final level's last round that regime needs 25-bit grinding
+before each of its four folding challenges (at 24 bits: 22). The final
+level's CPU rose from ≈ 380 to 724 CPU-s, ≈ 270 of them that grinding.
+The size gate needs the 26 bits on the *queries* only (one query fewer
+in the last round); a schedule with separate query and fold budgets
+(26 / 22) would keep the bound and drop that cost — a lens schedule
+option (`WhirConfig::derive` couples them today).
