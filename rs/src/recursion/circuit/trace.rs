@@ -64,15 +64,64 @@ fn put3(row: &mut [Goldilocks], at: usize, x: Fp3) {
     row[at + 2] = x.c2;
 }
 
+/// The key being laid out, or none (a prover whose key is fixed).
+struct KeyOut(Option<Pre>);
+
+impl KeyOut {
+    fn set(&mut self, col: usize, row: usize, v: Fp3) {
+        if let Some(p) = &mut self.0 {
+            p.set(col, row, v);
+        }
+    }
+    fn one(&mut self, col: usize, row: usize) {
+        if let Some(p) = &mut self.0 {
+            p.one(col, row);
+        }
+    }
+}
+
+/// The permutation rows of every block, chain by chain, in threads.
+fn perm_cells(b: &Builder, air: &CircuitAir) -> Vec<[[Goldilocks; 48]; 4]> {
+    let xs: Vec<&[Goldilocks; crate::recursion::perm::WIDTH]> = b.chains.iter().flat_map(|ch| ch.blocks.iter().map(|blk| &blk.x)).collect();
+    let mut out = vec![[[Goldilocks::ZERO; 48]; 4]; xs.len()];
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let chunk = xs.len().div_ceil(threads).max(1);
+    std::thread::scope(|sc| {
+        for (ci, part) in out.chunks_mut(chunk).enumerate() {
+            let xs = &xs;
+            sc.spawn(move || {
+                for (j, o) in part.iter_mut().enumerate() {
+                    *o = air.rows_of(xs[ci * chunk + j]);
+                }
+            });
+        }
+    });
+    out
+}
+
 /// Lay out a recorded run over `2^n` rows: phase-1 trace, key and the
 /// public-input row (the marked chain's last row).
 pub fn generate(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, Pre, usize), String> {
+    let (t, p, out) = lay_out(b, air, n, true)?;
+    Ok((t, p.expect("key laid out"), out))
+}
+
+/// [`generate`] without the key: the phase-1 trace and the output row
+/// (a step's prover, whose key is the parameters').
+pub fn generate_trace(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, usize), String> {
+    let (t, _, out) = lay_out(b, air, n, false)?;
+    Ok((t, out))
+}
+
+fn lay_out(b: &Builder, air: &CircuitAir, n: usize, key: bool) -> Result<(Trace, Option<Pre>, usize), String> {
     let rows = 1usize << n;
     if b.rows() > rows {
         return Err(format!("circuit: {} rows needed, 2^{n} available", b.rows()));
     }
     let mut t = Trace::new(V1, rows);
-    let mut p = Pre::new(rows);
+    let mut p = KeyOut(key.then(|| Pre::new(rows)));
+    let cells_all = perm_cells(b, air);
+    let mut bi = 0;
     let live = if b.live_value { Goldilocks::ONE } else { Goldilocks::ZERO };
     for r in 0..rows {
         t.row_mut(r)[LIVE] = live;
@@ -165,7 +214,8 @@ pub fn generate(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, Pre, 
     for (ci, ch) in b.chains.iter().enumerate() {
         for (k, blk) in ch.blocks.iter().enumerate() {
             let pre_row = r - 1;
-            let cells = air.rows_of(&blk.x);
+            let cells = &cells_all[bi];
+            bi += 1;
             for (ph, c) in cells.iter().enumerate() {
                 p.one(pre::PERM + ph, r + ph);
                 p.one(pre::MEM, r + ph);
@@ -249,32 +299,47 @@ pub fn generate(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace, Pre, 
             r += 4;
         }
     }
-    Ok((t, p, out_row))
+    Ok((t, p.0, out_row))
 }
 
-/// The phase-2 columns: slot inverses and the running memory sum.
+/// The phase-2 columns: slot inverses and the running memory sum. Rows
+/// in chunks across threads (each chunk inverts its fingerprints in one
+/// batch), then the running sum.
 pub fn phase2(t1: &Trace, p: &Pre, alpha: Fp3, beta: Fp3) -> Trace {
     let rows = t1.rows();
     let mut t2 = Trace::new(V2, rows);
-    let mut sum = Fp3::ZERO;
-    let mut fps = Vec::with_capacity(rows * SLOTS);
-    for r in 0..rows {
-        let pr = p.row(r);
-        if pr[pre::MEM] == Fp3::ZERO {
-            continue;
-        }
-        let l: Vec<Fp3> = t1.row(r).iter().map(|&x| Fp3::from_base(x)).collect();
-        let vals = slot_values(&l, &pr);
-        for (s, v) in vals.iter().enumerate() {
-            fps.push((r, s, alpha - (pr[pre::ADDR + s] + beta * *v)));
-        }
-    }
-    let invs = batch_inverse(&fps.iter().map(|f| f.2).collect::<Vec<_>>());
     let mut deltas = vec![Fp3::ZERO; rows];
-    for ((r, s, _), h) in fps.iter().zip(invs) {
-        put3(t2.row_mut(*r), 3 * s, h);
-        deltas[*r] += p.cols[pre::E + s][*r] * h;
-    }
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let chunk = rows.div_ceil(threads).max(1);
+    let width = t2.width;
+    std::thread::scope(|sc| {
+        for ((ci, cells), dl) in t2.cells.chunks_mut(chunk * width).enumerate().zip(deltas.chunks_mut(chunk)) {
+            sc.spawn(move || {
+                let r0 = ci * chunk;
+                let mut fps = Vec::with_capacity(dl.len() * SLOTS);
+                let mut pr = vec![Fp3::ZERO; pre::COUNT];
+                for r in r0..r0 + dl.len() {
+                    if p.cols[pre::MEM][r] == Fp3::ZERO {
+                        continue;
+                    }
+                    for (x, c) in pr.iter_mut().zip(&p.cols) {
+                        *x = c[r];
+                    }
+                    let l: Vec<Fp3> = t1.row(r).iter().map(|&x| Fp3::from_base(x)).collect();
+                    let vals = slot_values(&l, &pr);
+                    for (s, v) in vals.iter().enumerate() {
+                        fps.push((r, s, alpha - (pr[pre::ADDR + s] + beta * *v)));
+                    }
+                }
+                let invs = batch_inverse(&fps.iter().map(|f| f.2).collect::<Vec<_>>());
+                for ((r, s, _), h) in fps.iter().zip(invs) {
+                    put3(&mut cells[(r - r0) * width..(r - r0 + 1) * width], 3 * s, h);
+                    dl[r - r0] += p.cols[pre::E + s][*r] * h;
+                }
+            });
+        }
+    });
+    let mut sum = Fp3::ZERO;
     for (r, d) in deltas.iter().enumerate() {
         put3(t2.row_mut(r), SUM, sum);
         sum += *d;
@@ -283,6 +348,9 @@ pub fn phase2(t1: &Trace, p: &Pre, alpha: Fp3, beta: Fp3) -> Trace {
 }
 
 fn batch_inverse(xs: &[Fp3]) -> Vec<Fp3> {
+    if xs.is_empty() {
+        return Vec::new();
+    }
     let mut prefix = Vec::with_capacity(xs.len());
     let mut acc = Fp3::ONE;
     for &x in xs {

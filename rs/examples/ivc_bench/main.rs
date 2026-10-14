@@ -62,9 +62,11 @@ fn main() {
             println!("{name}: cycles {} · {} steps of 2^{n}", run.statement.cycles, run.segments());
             continue;
         }
+        common::prof_report("key");
         let t2 = Instant::now();
         let proof = ivc::prove_run(&run, &whir).expect("prove");
         let t_prove = t2.elapsed();
+        common::prof_report(&name);
         let bytes = proof.to_bytes(&key);
         if let Ok(dir) = std::env::var("ZHENG_PROOF_DIR") {
             std::fs::write(format!("{dir}/{name}.ivc"), &bytes).expect("write proof");

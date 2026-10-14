@@ -145,8 +145,10 @@ fn main() {
         let levels = lv.len();
         let mut prev_key: Option<wrap::WrapKey> = None;
         let mut last_key: Option<wrap::WrapKey> = None;
+        common::prof_report("IVC and keys");
         for i in 0..levels {
             let key_i = derive(i, prev_key.as_ref());
+            common::prof_report(&format!("wrap {i} key"));
             let k = &key_i;
             let t = Instant::now();
             // a stored proof of this level (the levels up to it named in the file)
@@ -163,6 +165,7 @@ fn main() {
                     let inner = if i == 0 { Inner::Ivc { key: &ikey, proof: &proof } } else { Inner::Wrap { key: prev_key.as_ref().expect("previous key"), proof: &wraps[i - 1] } };
                     let (wp, x) = wrap::prove(k, &inner, &prep.publics, &pn).expect("wrap prove");
                     let tp = ms(t);
+                    common::prof_report(&format!("wrap {i} prove"));
                     if let Some(f) = &wfile {
                         std::fs::write(f, wp.to_bytes(k)).expect("store wrap");
                     }

@@ -338,6 +338,13 @@ fn nox_row0(seg: &crate::air::Trace, n2: &crate::air::Trace) -> Vec<Goldilocks> 
     seg.row(0).iter().chain(n2.row(0)).copied().collect()
 }
 
+/// Bytes of pre-committed words a the prover keeps for their steps
+/// (`ZHENG_KEEP_WORDS_BYTES`, default 2 GiB: about five steps of 2^15
+/// rows); words beyond it are committed again at their step.
+fn keep_words_bytes() -> usize {
+    std::env::var("ZHENG_KEEP_WORDS_BYTES").ok().and_then(|v| v.parse().ok()).unwrap_or(2 << 30)
+}
+
 /// Prove a run whose segments are the key's step size.
 pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let lap = timer();
@@ -350,6 +357,10 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     // pre-commit every segment's nox phase 1
     let mut chain = [Goldilocks::ZERO; 4];
     let mut ood_a = Vec::with_capacity(segs);
+    // the first segments' words a stay for their steps (within
+    // KEEP_WORDS_BYTES); later ones are committed again at their step
+    let mut kept_a: Vec<Option<Word>> = Vec::with_capacity(segs);
+    let mut kept_bytes = 0usize;
     for i in 0..segs {
         let w = Word::commit_base(layout, &run.segment(i).column_major(WORD));
         let mut o = Native::new();
@@ -358,6 +369,8 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         let ys: Vec<Fp3> = z.iter().map(|&z| w.univariate(z)).collect();
         chain = digest_vals(&step::chain_next(&mut o, chain.map(Fp3::from_base), root, &ys));
         ood_a.push(ys);
+        kept_bytes += w.bytes();
+        kept_a.push((kept_bytes <= keep_words_bytes()).then_some(w));
     }
     lap("pre-commit");
     let sd = statement_digest(&run.statement, n, run.start as u64, segs as u64);
@@ -387,13 +400,17 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         let st: State = state::StateV::from_items(&p.dims, &out.items().iter().map(|&(v, _)| b.value(v)).collect::<Vec<_>>());
         let x = digest_vals(&h.map(|v| b.value(v)));
         lap(&format!("circuit {i}"));
-        let (v1, pre, out_row) = trace::generate(&b, &air, n)?;
-        if out_row != p.out_row || pre.cols != k.pre.cols {
+        // the layout is the key's (the step's self-check below refuses a
+        // trace whose constraints fail against the key's columns)
+        let (v1, out_row) = trace::generate_trace(&b, &air, n)?;
+        if out_row != p.out_row {
             return Err("recursion: the circuit's layout differs from its key".into());
         }
-        drop(pre);
         let seg = run.segment(i);
-        let word_a = Word::commit_base(layout, &seg.column_major(WORD));
+        let word_a = match kept_a[i].take() {
+            Some(w) => w,
+            None => Word::commit_base(layout, &seg.column_major(WORD)),
+        };
         let j = (i + 1) % segs;
         let b_out = nox_row0(&run.segment(j), &n2s[j]);
         let input = StepInput {

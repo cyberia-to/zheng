@@ -56,6 +56,19 @@ pub struct StepInput<'a> {
     pub sparse: &'a [Vec<(u32, Fp3)>],
 }
 
+/// `(lo..=hi).map(f)` in threads (index order).
+fn par_range(lo: u64, hi: u64, f: impl Fn(u64) -> Fp3 + Sync) -> Vec<Fp3> {
+    let xs: Vec<u64> = (lo..=hi).collect();
+    let mut out = vec![Fp3::ZERO; xs.len()];
+    std::thread::scope(|sc| {
+        for (o, &x) in out.iter_mut().zip(&xs) {
+            let f = &f;
+            sc.spawn(move || *o = f(x));
+        }
+    });
+    out
+}
+
 fn line(a: &[Fp3], b: &[Fp3], x: u64) -> Vec<Fp3> {
     let x = Fp3::from_base(Goldilocks::new(x));
     a.iter().zip(b).map(|(&u, &v)| u + x * (v - u)).collect()
@@ -161,7 +174,7 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     for v in [&local[..], &next[..], pub_nox, pub_v, pin, &ch_v[..], &seeds[..]] {
         point_g.extend_from_slice(v);
     }
-    let fold_g: Vec<Fp3> = (2..=p.g_deg as u64).map(|j| w.rel.g(&line(&st.g.point, &point_g, j))).collect();
+    let fold_g: Vec<Fp3> = par_range(2, p.g_deg as u64, |j| w.rel.g(&line(&st.g.point, &point_g, j)));
     for &v in &fold_g {
         t.absorb_ext(v);
     }
@@ -169,13 +182,13 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let step = st.step.c0.as_u64();
     let bits: Vec<Fp3> = (0..STEP_BITS).map(|k| Fp3::from_base(Goldilocks::new((step >> k) & 1))).collect();
     let point_n: Vec<Fp3> = rho.iter().chain(&bits).chain(&gamma_n).copied().collect();
-    let fold_pn: Vec<Fp3> = (2..=p.pn_deg as u64).map(|j| pbar_nox(w.global, &line(&st.pn.point, &point_n, j), n)).collect();
+    let fold_pn: Vec<Fp3> = par_range(2, p.pn_deg as u64, |j| pbar_nox(w.global, &line(&st.pn.point, &point_n, j), n));
     for &v in &fold_pn {
         t.absorb_ext(v);
     }
     let _ = t.squeeze_ext();
     let point_v: Vec<Fp3> = rho.iter().chain(&gamma_v).copied().collect();
-    let fold_pv: Vec<Fp3> = (2..=p.pv_deg as u64).map(|j| pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n)).collect();
+    let fold_pv: Vec<Fp3> = par_range(2, p.pv_deg as u64, |j| pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n));
     for &v in &fold_pv {
         t.absorb_ext(v);
     }
