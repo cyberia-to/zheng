@@ -9,7 +9,7 @@
 //! Fixtures: `add.tri`, `hash.tri`, `chain-<n>` (n chained hemera digest
 //! hashes), `merkle-<n>` (an n-level Merkle path check), `synthetic-<k>`
 //! (a 2^k-row relation in the compiler's shape). Parameters: the shipped
-//! `succinct::params_for` unless `FAST_RATE` / `FAST_K` / `FAST_POW` /
+//! `succinct::device_params` unless `FAST_RATE` / `FAST_K` / `FAST_POW` /
 //! `FAST_FIN` override them. `FAST_REPS` (default 3) repetitions; the
 //! median is reported. `ZHENG_TIMING=1` prints the prover's phases.
 //!
@@ -37,7 +37,7 @@ fn env(name: &str) -> Option<u8> {
 }
 
 fn params(vars: usize) -> WhirParams {
-    let base = succinct::params_for(vars);
+    let base = succinct::device_params(vars);
     WhirParams {
         log_inv_rate: env("FAST_RATE").unwrap_or(base.log_inv_rate),
         folding_factor: env("FAST_K").unwrap_or(base.folding_factor),
