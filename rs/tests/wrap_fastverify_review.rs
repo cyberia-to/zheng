@@ -33,7 +33,7 @@ fn stored() -> Stored {
     assert_eq!(key.vk_bytes(), vk, "verifying key round trip");
     let bytes = std::fs::read(format!("{dir}/add.tri.final-{chain}")).expect("stored final proof");
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = 4;
+    whir.log_inv_rate = ivc::SHIPPED_RATE;
     whir.pow_bits = ivc::SHIPPED_POW;
     let run = machine::execute_exact(&common::parse(common::ADD), &[7, 5], 1 << 40, 15).expect("run");
     let h = FinalProof::from_bytes(&bytes, &key).expect("parse");
