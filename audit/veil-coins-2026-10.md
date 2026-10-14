@@ -276,4 +276,59 @@ Where the size actually is, with estimates (not implemented):
 
 ## independent review
 
-pending (coordinator)
+Reviewer: the coordinating agent of the fast-path-2 work (did not write
+`coins.rs`), 2026-10-14, reading `rs/src/execution/veil/coins.rs`,
+`pad.rs`, `libra.rs`, `hiding/prove.rs`, `protocol.rs` at 793c412 and
+re-running the suites after merging into zheng `feat/fast-path-2`.
+
+Checked, holds:
+
+1. **Distinct inputs.** A block's permutation input is `(K, label, b, 0⁹,
+   TAG)`; labels 1–8 are per consumer, `b` is the block index of that
+   consumer's stream, so no two coins anywhere in a proof come from the
+   same permutation input. Consumers read prefixes of their own stream
+   (`bases(label, n)`), never overlapping ranges of a shared one.
+2. **Uniformity without rejection.** Every element is one output lane of a
+   permutation of `F_p^16`, already a canonical field element; with the
+   permutation ideal and the key secret, eight lanes of a fresh output are
+   uniform on `F_p^8`. The bound (§3) is the standard truncated-
+   permutation / keyed-sponge PRF bound with 512 hidden bits and a 256-bit
+   key; at realistic `N` it is far below the zk distance the ledger already
+   carries (`ε_v ≈ 2^-58`), so it does not move the zk claim.
+3. **HVZK.** The simulator and the protocol are untouched; the reduction
+   (run the honest prover with coins from the oracle) is tight, so the
+   distance grows by exactly `Adv_PRF`. The claim stays "statistical in the
+   ideal-permutation model against `N`-query distinguishers", which is how
+   the ledger row now reads; it is not information-theoretic against
+   unbounded distinguishers (neither was the XOF it replaces).
+4. **Seed hygiene.** OS entropy through `getrandom` into `Zeroizing`;
+   `derive_key` (hemera's constant-time path) to the key; key zeroized on
+   drop; no seed or key in errors or logs. `Coins::seeded` is test/
+   differential only, and `veil::prove` reaches `Coins::os()` only.
+5. **Constant time of the coins.** `permute_ct`, fixed lane writes,
+   canonicalisation without a value branch; indices depend only on public
+   lengths. The old rejection loop's secret-dependent branch is gone.
+6. **Determinism / parallelism.** `fill` splits by element offsets and each
+   block is a pure function of `(K, label, b)`; the tests cover chunkings,
+   thread counts 2/3/5/16 and `ZHENG_THREADS` 1…16 on a pinned proof digest.
+7. **Verifier and format unchanged.** Only prover randomness changed;
+   proofs from before and after verify under the same verifier, and the
+   veil bit-flip scan accepted 0 of 507,584 flips.
+
+Findings (none blocking):
+
+- *Not constant time downstream* (pre-existing, stated in §5 and the module
+  doc): RS encoding and the lens Merkle tree over secret-derived columns
+  use the fast kernels (CPU batch kernel with a ≈2^-32 predicted branch;
+  Metal). Making the leaves constant time is a lens change; recorded as
+  open.
+- *Golden digest test* pins exact proof bytes for a fixed seed; it must be
+  re-pinned whenever the transcript, the masked relation or the coin
+  construction changes. Acceptable as a regression tripwire.
+- *Proof size*: agree with §7 — parameter changes buy ≤ 5 %; the real
+  levers are a list-decoding analysis of the zk linear test or a hiding
+  WHIR, both new soundness work. Independently of coins, the node jet
+  (zheng `execution::node`, same branch) shrinks the relation of a Merkle
+  statement 16× at depth 32, which is what moves veil size and time for
+  membership proofs (`audit/fast-path-2-2026-10.md`).
+
