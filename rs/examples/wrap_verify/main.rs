@@ -71,7 +71,7 @@ fn main() {
     let name: String = std::env::args().nth(1).unwrap_or_else(|| "add.tri".into());
     let (prog, input) = fixture(&name).unwrap_or_else(|| panic!("fixture {name}"));
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = 4;
+    whir.log_inv_rate = ivc::SHIPPED_RATE;
     whir.pow_bits = ivc::SHIPPED_POW;
     let n = 15u32;
     let dir: String = std::env::var("ZHENG_IVC_DIR").expect("ZHENG_IVC_DIR");

@@ -23,14 +23,17 @@ checked by the next step's circuit and only the last step's travel.
 
 ## objects
 
-- **parameters** (`Params`): WHIR parameters of every committed word, the
-  step size `2^n` rows (`n = 15`), `ℓ = n + 6` variables per word, the
+- **parameters** (`Params`): WHIR parameters of every committed word
+  (profile 6: rate 1/8, 16 grinding bits — `ivc::SHIPPED_RATE`,
+  `SHIPPED_POW`), the step size `2^n` rows (`n = 15`), `ℓ = n + 6` variables per word, the
   accumulation configuration for four input words (`AccConfig::derive`
   with `m = 4`).
 - **words**: Reed–Solomon codewords in WHIR's round-0 layout (lens
   `LeafLayout`) under a field-native hemera Merkle tree: a leaf is the
-  duplex sponge (tag `LEAF`) over its symbols, a node is
-  `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`. Same code, domain and distance as a
+  duplex sponge (tag `LEAF`) over its symbols, every IVC tree 4-ary
+  (`params::ARITY`: a node is the truncated permutation of its four
+  children; over an odd power of two leaves the top node binary,
+  `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`). Same code, domain and distance as a
   lens commitment; only the hashing differs. The last accumulator is a
   word like the others; the decider opens it field-natively (below).
   A codeword above `2^25` symbols is streamed (`recursion::stream`): every
@@ -183,8 +186,10 @@ out       the deferred nox-public claim (statement data: evaluated by
 
 ## field-native WHIR (`recursion::whir`)
 
-lens's WHIR schedule (`WhirConfig`) on the duplex transcript and
-field-native words, its verifier over `Ops`. `m` words, each with its own
+lens's WHIR schedule (`WhirConfig`: folds, rates, queries) on the duplex
+transcript and field-native words, each round's Johnson regime, OOD count
+and fold/query grinding re-chosen for the least grinding work at lens's
+queries (`whir::schedule`), its verifier over `Ops`. `m` words, each with its own
 claims, are batched: `γ`; an `ℓ`-round sumcheck to one point `ρ'`; every
 word's value there; grinding; `r`; WHIR on `f_0 = Σ r^i f_i` (a round-0
 query opens its leaf in every word, combines, folds). Words committed
@@ -248,8 +253,8 @@ shares its row's `eq(α, ·)` factor, so the term is one product per slot
 and a Horner sum over the reads (`wrap::wiring`).
 
 The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`): the IVC proof
-(rate 1/16, steps of `2^15` rows) → inner 1/16 grinding 16 bits (the IVC
-final verifier, 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
+(rate 1/8, `ivc::SHIPPED_RATE`, steps of `2^15` rows, 4-ary trees) →
+inner 1/16 grinding 16 bits (the IVC final verifier, 48,453 of 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
 1/512 grinding 26 (2^14 rows). The final level's circuit size (≤ 2^14,
 so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the
 final circuit verifies; the base-field key (a key leaf of 6 permutations
