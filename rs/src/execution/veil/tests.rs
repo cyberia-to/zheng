@@ -187,3 +187,14 @@ fn unsatisfying_witnesses_are_refused_by_the_prover() {
             .is_err()
     );
 }
+
+/// A seeded proof is the same bytes whatever `ZHENG_THREADS` is: the
+/// coins fill per block and the rows encode per row. Run under
+/// `ZHENG_THREADS=1`, `3` and unset; the digest changes only with the
+/// transcript or the coin construction (then update it).
+#[test]
+fn seeded_proofs_do_not_depend_on_the_thread_count() {
+    let (_, proof) = seeded(&square_secret(), &[], &[12], 5);
+    let digest = hemera::hash(proof.as_bytes());
+    assert_eq!(digest.to_hex(), "1b312058d0d41b4735045f8c62bc09a5f8de639b08f268b0c2e102fa33b7bad3", "threads {}", crate::par::threads());
+}

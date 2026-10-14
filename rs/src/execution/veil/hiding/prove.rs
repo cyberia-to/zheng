@@ -39,6 +39,7 @@ pub(crate) fn commit(
     let lap = crate::laps::timer("veil commit");
     let config = Config::derive(params, entries.len())?;
     let (k, big_k) = (config.k, config.big_k());
+    lap(&format!("shape k={k} rows={} log_n={} queries={}", config.rows, config.log_n, config.queries));
     // data rows with their padding ν_i, in threads (row i's ν_i is
     // ROW_PAD elements i·k .. (i + 1)·k)
     let mut coeffs: Vec<Vec<Goldilocks>> = vec![Vec::new(); config.total_rows()];
@@ -58,8 +59,20 @@ pub(crate) fn commit(
     coeffs[config.rows + 1] = m_b;
     coeffs[config.rows + 2] = coins.bases(label::MASK_P, big_k);
     lap("row padding + masks");
-    let encoded: Vec<Vec<Goldilocks>> =
-        coeffs.iter().map(|p| encode_base_with(p, config.log_n, true)).collect();
+    // one row per thread, each encoded on the CPU: measured ahead of one
+    // device dispatch per row on Metal and of the threaded per-row NTT on
+    // the CPU backend (audit/veil-coins-2026-10.md); a single thread keeps
+    // the backend's per-row path
+    let encoded: Vec<Vec<Goldilocks>> = if par::threads() > 1 {
+        par::ranges(coeffs.len(), 1, |r| {
+            r.map(|i| encode_base_with(&coeffs[i], config.log_n, false)).collect::<Vec<_>>()
+        })
+        .into_iter()
+        .flatten()
+        .collect()
+    } else {
+        coeffs.iter().map(|p| encode_base_with(p, config.log_n, true)).collect()
+    };
     lap("encode");
     let n = config.n();
     let flat = coins.bases(label::SALT, n * SALT);
