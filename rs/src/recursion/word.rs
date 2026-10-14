@@ -7,15 +7,14 @@
 //! accumulation analysis is unchanged and the recursion circuit can open a
 //! word with permutations alone.
 
-use lens::rspcs::field::{mobius_base, mobius_ext, univariate_base, univariate_ext};
-use lens::rspcs::rs::{encode_base, encode_ext};
+use lens::rspcs::field::{univariate_base, univariate_ext};
 use lens::rspcs::whir::LeafLayout;
 use nebu::{Fp3, Goldilocks};
 
 use super::ops::Ops;
 use super::perm::{self, RATE, WIDTH, tag};
 use super::sponge::Sponge;
-use super::stream::{self, Coeffs, STREAM_LOG};
+use super::stream::{self, Coeffs, Kept, STREAM_LOG};
 
 pub type Digest = [Goldilocks; 4];
 
@@ -100,12 +99,14 @@ fn drop_leaf_level(levels: &mut [Vec<Digest>], layout: LeafLayout) {
     }
 }
 
+/// `code`: a held word's codeword, coset-major ([`Kept`]); `None` for a
+/// streamed word.
 enum Data {
-    Base { evals: Vec<Goldilocks>, coeffs: Vec<Goldilocks>, code: Vec<Goldilocks> },
-    Ext { evals: Vec<Fp3>, coeffs: Vec<Fp3>, code: Vec<Fp3> },
+    Base { evals: Vec<Goldilocks>, coeffs: Vec<Goldilocks>, code: Option<Kept> },
+    Ext { evals: Vec<Fp3>, coeffs: Vec<Fp3>, code: Option<Kept> },
     /// A word committed from its coefficients alone (a WHIR round's
     /// folded function): no evaluation table.
-    Coeffs { coeffs: Vec<Fp3>, code: Vec<Fp3> },
+    Coeffs { coeffs: Vec<Fp3>, code: Option<Kept> },
 }
 
 /// A committed word: message, codeword and tree.
@@ -285,17 +286,31 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
     out
 }
 
-/// Leaf digests of members streamed coset by coset ([`stream`]).
-fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
+/// Leaf digests of members committed coset by coset ([`stream`]): the
+/// device takes groups of cosets, the CPU single cosets, from one
+/// counter; with `keep` the codeword comes back too (a held word: one
+/// pass, the device's coset values copied out).
+fn coset_commit(members: &[Coeffs<'_>], layout: LeafLayout, keep: bool) -> (Vec<Digest>, Option<Kept>) {
     let ext = members[0].is_ext();
-    if on_device() {
-        // the device takes groups of cosets (values never leave it), the
-        // CPU takes single cosets, from one counter
+    let device = on_device().then(|| {
         let mut init = [0u64; WIDTH];
         init[RATE] = tag::LEAF;
-        return stream::digests_device(members, layout.log_domain, layout.log_width, init, RATE, |leaves, width, sym| hash_leaves(leaves, width, ext, sym));
+        (init, RATE)
+    });
+    stream::commit(members, layout.log_domain, layout.log_width, device, |leaves, width, sym| hash_leaves(leaves, width, ext, sym), keep)
+}
+
+/// Leaf digests of members streamed coset by coset ([`stream`]).
+fn stream_digests(members: &[Coeffs<'_>], layout: LeafLayout) -> Vec<Digest> {
+    coset_commit(members, layout, false).0
+}
+
+/// A held member's codeword alone (no leaves hashed).
+fn held_code(c: Coeffs<'_>, layout: LeafLayout) -> Option<Kept> {
+    if streamed(layout) {
+        return None;
     }
-    stream::digests(members, layout.log_domain, layout.log_width, |leaves, width, sym| hash_leaves(leaves, width, ext, sym))
+    stream::commit(&[c], layout.log_domain, layout.log_width, None, |leaves, _, _| vec![[Goldilocks::ZERO; 4]; leaves], true).1
 }
 
 fn parents4(level: &[Digest]) -> Vec<Digest> {
@@ -335,6 +350,63 @@ thread_local! {
     pub(crate) static FORCE_STREAM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
+/// lens's Möbius transform (`mobius_base`/`mobius_ext`: evaluations to
+/// monomial coefficients, `hi −= lo` at every step) in threads: the steps
+/// within a chunk run chunk by chunk, the larger ones split across
+/// threads. Exact, so the same coefficients.
+fn mobius_par<T: Copy + Send + Sync + core::ops::SubAssign>(a: &mut [T]) {
+    let n = a.len();
+    assert!(n.is_power_of_two());
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16).next_power_of_two();
+    if n < 1 << 16 || threads == 1 {
+        let mut step = 1;
+        while step < n {
+            for block in a.chunks_exact_mut(2 * step) {
+                let (lo, hi) = block.split_at_mut(step);
+                for (h, l) in hi.iter_mut().zip(lo.iter()) {
+                    *h -= *l;
+                }
+            }
+            step *= 2;
+        }
+        return;
+    }
+    let chunk = n / threads;
+    std::thread::scope(|sc| {
+        for c in a.chunks_mut(chunk) {
+            sc.spawn(move || {
+                let mut step = 1;
+                while step < c.len() {
+                    for block in c.chunks_exact_mut(2 * step) {
+                        let (lo, hi) = block.split_at_mut(step);
+                        for (h, l) in hi.iter_mut().zip(lo.iter()) {
+                            *h -= *l;
+                        }
+                    }
+                    step *= 2;
+                }
+            });
+        }
+    });
+    let mut step = chunk;
+    while step < n {
+        let piece = (step / (threads / (n / (2 * step))).max(1)).max(1);
+        std::thread::scope(|sc| {
+            for block in a.chunks_exact_mut(2 * step) {
+                let (lo, hi) = block.split_at_mut(step);
+                for (hp, lp) in hi.chunks_mut(piece).zip(lo.chunks(piece)) {
+                    sc.spawn(move || {
+                        for (h, l) in hp.iter_mut().zip(lp) {
+                            *h -= *l;
+                        }
+                    });
+                }
+            }
+        });
+        step *= 2;
+    }
+}
+
 /// Whether a codeword over `layout` is streamed (never held).
 fn streamed(layout: LeafLayout) -> bool {
     #[cfg(test)]
@@ -349,28 +421,26 @@ fn streamed(layout: LeafLayout) -> bool {
 impl Word {
     pub fn member_base_streamed(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
         let mut coeffs = evals.to_vec();
-        mobius_base(&mut coeffs);
-        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code: Vec::new() }, levels: Vec::new(), arity: Arity::Two }
+        mobius_par(&mut coeffs);
+        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code: None }, levels: Vec::new(), arity: Arity::Two }
     }
     pub fn member_ext_streamed(layout: LeafLayout, evals: &[Fp3]) -> Self {
         let mut coeffs = evals.to_vec();
-        mobius_ext(&mut coeffs);
-        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code: Vec::new() }, levels: Vec::new(), arity: Arity::Two }
+        mobius_par(&mut coeffs);
+        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code: None }, levels: Vec::new(), arity: Arity::Two }
     }
 }
 
-fn encode_b(coeffs: &[Goldilocks], layout: LeafLayout) -> Vec<Goldilocks> {
-    if streamed(layout) { Vec::new() } else { encode_base(coeffs, layout.log_domain) }
-}
-
-fn encode_e(coeffs: &[Fp3], layout: LeafLayout) -> Vec<Fp3> {
-    if streamed(layout) { Vec::new() } else { encode_ext(coeffs, layout.log_domain) }
-}
-
 impl Word {
+    /// Commit a word whose data has no codeword yet: leaves (and a held
+    /// word's codeword) in one pass, then the tree.
     fn build_a(num_vars: usize, layout: LeafLayout, data: Data, arity: Arity) -> Self {
         let mut w = Self { num_vars, layout, data, levels: Vec::new(), arity };
-        w.levels = tree(Group::digests(&[&w]), arity);
+        let (digests, kept) = coset_commit(&[w.coeff_ref()], layout, !streamed(layout));
+        match &mut w.data {
+            Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => *code = kept,
+        }
+        w.levels = tree(digests, arity);
         drop_leaf_level(&mut w.levels, layout);
         w
     }
@@ -388,8 +458,8 @@ impl Word {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
-        mobius_base(&mut coeffs);
-        let code = encode_b(&coeffs, layout);
+        mobius_par(&mut coeffs);
+        let code = held_code(Coeffs::Base(&coeffs), layout);
         Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
     }
 
@@ -398,18 +468,18 @@ impl Word {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
-        mobius_ext(&mut coeffs);
-        let code = encode_e(&coeffs, layout);
+        mobius_par(&mut coeffs);
+        let code = held_code(Coeffs::Ext(&coeffs), layout);
         Self { num_vars, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
     }
 
     /// [`Self::commit_base`] under a tree of `arity`.
     pub fn commit_base_a(layout: LeafLayout, evals: &[Goldilocks], arity: Arity) -> Self {
-        let mut w = Self::member_base(layout, evals);
-        w.levels = tree(Group::digests(&[&w]), arity);
-        drop_leaf_level(&mut w.levels, layout);
-        w.arity = arity;
-        w
+        let num_vars = evals.len().trailing_zeros() as usize;
+        assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
+        let mut coeffs = evals.to_vec();
+        mobius_par(&mut coeffs);
+        Self::build_a(num_vars, layout, Data::Base { evals: evals.to_vec(), coeffs, code: None }, arity)
     }
 
     pub fn commit_base(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
@@ -418,18 +488,23 @@ impl Word {
 
     /// Commit an Fp3 table.
     pub fn commit_ext(layout: LeafLayout, evals: &[Fp3]) -> Self {
-        let mut w = Self::member_ext(layout, evals);
-        w.levels = tree(Group::digests(&[&w]), Arity::Two);
-        drop_leaf_level(&mut w.levels, layout);
-        w
+        Self::commit_ext_a(layout, evals, Arity::Two)
+    }
+
+    /// [`Self::commit_ext`] under a tree of `arity`.
+    pub fn commit_ext_a(layout: LeafLayout, evals: &[Fp3], arity: Arity) -> Self {
+        let num_vars = evals.len().trailing_zeros() as usize;
+        assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
+        let mut coeffs = evals.to_vec();
+        mobius_par(&mut coeffs);
+        Self::build_a(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code: None }, arity)
     }
 
     /// Commit an Fp3 polynomial given by its `2^ℓ` monomial coefficients.
     pub fn commit_coeffs(layout: LeafLayout, coeffs: Vec<Fp3>, arity: Arity) -> Self {
         let num_vars = coeffs.len().trailing_zeros() as usize;
         assert!(coeffs.len().is_power_of_two() && layout.log_domain as usize > num_vars);
-        let code = encode_e(&coeffs, layout);
-        Self::build_a(num_vars, layout, Data::Coeffs { coeffs, code }, arity)
+        Self::build_a(num_vars, layout, Data::Coeffs { coeffs, code: None }, arity)
     }
 
     /// The monomial coefficients, lifted to Fp3.
@@ -443,14 +518,33 @@ impl Word {
     pub fn root(&self) -> Digest {
         self.levels.last().expect("root")[0]
     }
+    /// Bytes the word holds (tables, codeword, tree).
+    pub fn bytes(&self) -> usize {
+        let code = |c: &Option<Kept>| c.as_ref().map_or(0, |k| 8 * k.planes.len());
+        let data = match &self.data {
+            Data::Base { evals, coeffs, code: c } => 8 * (evals.len() + coeffs.len()) + code(c),
+            Data::Ext { evals, coeffs, code: c } => 24 * (evals.len() + coeffs.len()) + code(c),
+            Data::Coeffs { coeffs, code: c } => 24 * coeffs.len() + code(c),
+        };
+        data + 32 * self.levels.iter().map(Vec::len).sum::<usize>()
+    }
     pub fn is_ext(&self) -> bool {
         !matches!(self.data, Data::Base { .. })
     }
     /// Whether the codeword is held (else streamed: recomputed per leaf).
     fn held(&self) -> bool {
         match &self.data {
-            Data::Base { code, .. } => !code.is_empty(),
-            Data::Ext { code, .. } | Data::Coeffs { code, .. } => !code.is_empty(),
+            Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => code.is_some(),
+        }
+    }
+    /// The table as committed: base or Fp3 entries (`None`: a word
+    /// committed from coefficients).
+    pub fn evals(&self) -> Option<crate::accumulate::sumcheck::Table<'_>> {
+        use crate::accumulate::sumcheck::Table;
+        match &self.data {
+            Data::Base { evals, .. } => Some(Table::Base(evals)),
+            Data::Ext { evals, .. } => Some(Table::Ext(evals)),
+            Data::Coeffs { .. } => None,
         }
     }
     /// The table, lifted to Fp3 (a word committed from coefficients has
@@ -484,9 +578,10 @@ impl Word {
     }
     /// Codeword symbol `s`.
     pub fn symbol(&self, s: usize) -> Fp3 {
+        let g = Goldilocks::new;
         match &self.data {
-            Data::Base { code, .. } if !code.is_empty() => Fp3::from_base(code[s]),
-            Data::Ext { code, .. } | Data::Coeffs { code, .. } if !code.is_empty() => code[s],
+            Data::Base { code: Some(k), .. } => Fp3::from_base(g(k.limb(0, s))),
+            Data::Ext { code: Some(k), .. } | Data::Coeffs { code: Some(k), .. } => Fp3::new(g(k.limb(0, s)), g(k.limb(1, s)), g(k.limb(2, s))),
             _ => stream::symbol(self.coeff_ref(), self.layout.log_domain, s),
         }
     }
@@ -675,6 +770,10 @@ mod tests {
         fn coset_leaves(&self, job: &lens::rspcs::backend::CosetLeaves<'_>, cosets: core::ops::Range<usize>) -> Option<Vec<[u64; 4]>> {
             Some(lens::rspcs::backend::coset_leaves_reference(job, cosets))
         }
+        fn coset_leaves_kept(&self, job: &lens::rspcs::backend::CosetLeaves<'_>, cosets: core::ops::Range<usize>, values: &mut [u64]) -> Option<Vec<[u64; 4]>> {
+            values.copy_from_slice(&lens::rspcs::backend::coset_values_reference(job, cosets.clone()));
+            Some(lens::rspcs::backend::coset_leaves_reference(job, cosets))
+        }
         fn merkle_levels(&self, leaves: &[[u64; 4]], arities: &[usize], tag: u64) -> Option<Vec<Vec<[u64; 4]>>> {
             Some(lens::rspcs::backend::merkle_levels_reference(leaves, arities, tag))
         }
@@ -704,6 +803,56 @@ mod tests {
             assert_eq!(held, streamed);
         }
         lens::rspcs::backend::install(prev);
+    }
+
+    /// A held word committed through the device (leaves and the kept
+    /// codeword in one pass) has the CPU's root, symbols and openings.
+    #[test]
+    fn held_words_through_the_device_equal_the_cpu_s() {
+        let n = 8;
+        let lay = LeafLayout { log_domain: n as u32 + 6, log_width: 2 };
+        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 13 + 1)).collect();
+        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i + 2), Goldilocks::new(i * i), Goldilocks::new(5))).collect();
+        let build = || {
+            vec![
+                Word::commit_base_a(lay, &base, Arity::Two),
+                Word::commit_base_a(lay, &base, Arity::Four),
+                Word::commit_ext(lay, &ext),
+                Word::commit_coeffs(lay, ext.clone(), Arity::Four),
+            ]
+        };
+        let cpu = build();
+        let prev = lens::rspcs::backend::install(std::sync::Arc::new(Device));
+        let dev = build();
+        lens::rspcs::backend::install(prev);
+        let leaves = 1usize << lay.log_leaves();
+        for (a, b) in cpu.iter().zip(&dev) {
+            assert!(a.held() && b.held());
+            assert_eq!(a.root(), b.root());
+            for s in [0, 1, 77, (1usize << lay.log_domain) - 1] {
+                assert_eq!(a.symbol(s), b.symbol(s));
+                assert_eq!(a.symbol(s), stream::symbol(a.coeff_ref(), lay.log_domain, s));
+            }
+            for j in [0, 5, leaves - 1] {
+                assert_eq!(a.open(j), b.open(j));
+            }
+        }
+    }
+
+    #[test]
+    fn the_threaded_mobius_transform_is_lens_s() {
+        use lens::rspcs::field::{mobius_base, mobius_ext};
+        for log in [3usize, 16, 17, 20] {
+            let b: Vec<Goldilocks> = (0..1u64 << log).map(|i| Goldilocks::new(i.wrapping_mul(0x9e37_79b9) ^ 77)).collect();
+            let e: Vec<Fp3> = b.iter().map(|&x| Fp3::new(x, x + Goldilocks::ONE, x * x)).collect();
+            let (mut b1, mut b2, mut e1, mut e2) = (b.clone(), b, e.clone(), e);
+            mobius_base(&mut b1);
+            mobius_par(&mut b2);
+            mobius_ext(&mut e1);
+            mobius_par(&mut e2);
+            assert_eq!(b1, b2, "{log}");
+            assert_eq!(e1, e2, "{log}");
+        }
     }
 
     #[test]

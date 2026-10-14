@@ -69,7 +69,7 @@ pub fn dummy_proof(p: &Params) -> StepProof {
     let g = Goldilocks::ZERO;
     let width = 1usize << p.cfg.layout.log_width;
     let depth = p.cfg.layout.log_leaves() as usize;
-    let leaf = LeafOpening { symbols: vec![z; width], path: vec![[g; 4]; depth], leaf: None };
+    let leaf = LeafOpening { symbols: vec![z; width], path: vec![[g; 4]; p.arity.path_len(depth)], leaf: None };
     StepProof {
         roots: [[g; 4]; 3],
         ood: core::array::from_fn(|_| vec![z; p.fresh]),

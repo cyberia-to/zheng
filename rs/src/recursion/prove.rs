@@ -56,6 +56,19 @@ pub struct StepInput<'a> {
     pub sparse: &'a [Vec<(u32, Fp3)>],
 }
 
+/// `(lo..=hi).map(f)` in threads (index order).
+fn par_range(lo: u64, hi: u64, f: impl Fn(u64) -> Fp3 + Sync) -> Vec<Fp3> {
+    let xs: Vec<u64> = (lo..=hi).collect();
+    let mut out = vec![Fp3::ZERO; xs.len()];
+    std::thread::scope(|sc| {
+        for (o, &x) in out.iter_mut().zip(&xs) {
+            let f = &f;
+            sc.spawn(move || *o = f(x));
+        }
+    });
+    out
+}
+
 fn line(a: &[Fp3], b: &[Fp3], x: u64) -> Vec<Fp3> {
     let x = Fp3::from_base(Goldilocks::new(x));
     a.iter().zip(b).map(|(&u, &v)| u + x * (v - u)).collect()
@@ -82,9 +95,15 @@ pub fn pbar_v(key: &[Vec<(u32, Fp3)>], point: &[Fp3], n: usize) -> Fp3 {
 }
 
 fn pack(t: &Trace, cols: usize, rows: usize) -> Vec<Vec<Fp3>> {
-    (0..cols)
-        .map(|c| (0..rows).map(|r| if c < t.width { Fp3::from_base(t.row(r)[c]) } else { Fp3::ZERO }).collect())
-        .collect()
+    let mut out = vec![Vec::new(); cols];
+    std::thread::scope(|sc| {
+        for (c, o) in out.iter_mut().enumerate() {
+            sc.spawn(move || {
+                *o = (0..rows).map(|r| if c < t.width { Fp3::from_base(t.row(r)[c]) } else { Fp3::ZERO }).collect();
+            });
+        }
+    });
+    out
 }
 
 fn mle_ext(vals: &[Fp3], point: &[Fp3]) -> Fp3 {
@@ -110,12 +129,12 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
         row[..W2].copy_from_slice(w.n2.row(r));
         row[W2..W2 + V1].copy_from_slice(w.v1.row(r));
     }
-    let word_b = Word::commit_base(layout, &wb.column_major(WORD));
+    let word_b = Word::commit_base_a(layout, &wb.column_major(WORD), p.arity);
     let (zb, ood_b) = bind(&mut t, &word_b, p.fresh);
     lap("word b");
     let ch_v = [t.squeeze_ext(), t.squeeze_ext()];
     let v2 = trace::phase2(w.v1, w.key, ch_v[0], ch_v[1]);
-    let word_c = Word::commit_base(layout, &v2.column_major(WORD));
+    let word_c = Word::commit_base_a(layout, &v2.column_major(WORD), p.arity);
     let (zc_pts, ood_c) = bind(&mut t, &word_c, p.fresh);
     lap("word c");
     let b_in: Vec<Goldilocks> = w.n1.row(0).iter().chain(w.n2.row(0)).copied().collect();
@@ -131,10 +150,18 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     cols.extend(pack(&v2, WORD, rows));
     let zero = Goldilocks::ZERO;
     let bout: Vec<Goldilocks> = (0..3).flat_map(|k| word_row(k, w.b_out, &b_v, zero)).collect();
-    let succ: Vec<Vec<Fp3>> = (0..COLS)
-        .map(|c| (0..rows).map(|r| if r + 1 < rows { cols[c][r + 1] } else { Fp3::from_base(bout[c]) }).collect())
-        .collect();
-    let local_cols = cols.clone();
+    let mut succ: Vec<Vec<Fp3>> = vec![Vec::new(); COLS];
+    std::thread::scope(|sc| {
+        for (c, o) in succ.iter_mut().enumerate() {
+            let (col, last) = (&cols[c], Fp3::from_base(bout[c]));
+            sc.spawn(move || {
+                let mut v = Vec::with_capacity(rows);
+                v.extend_from_slice(&col[1..]);
+                v.push(last);
+                *o = v;
+            });
+        }
+    });
     cols.extend(succ);
     for pc in &w.rel.machine.publics {
         cols.push(pc.table(n));
@@ -161,7 +188,7 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     for v in [&local[..], &next[..], pub_nox, pub_v, pin, &ch_v[..], &seeds[..]] {
         point_g.extend_from_slice(v);
     }
-    let fold_g: Vec<Fp3> = (2..=p.g_deg as u64).map(|j| w.rel.g(&line(&st.g.point, &point_g, j))).collect();
+    let fold_g: Vec<Fp3> = par_range(2, p.g_deg as u64, |j| w.rel.g(&line(&st.g.point, &point_g, j)));
     for &v in &fold_g {
         t.absorb_ext(v);
     }
@@ -169,13 +196,13 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let step = st.step.c0.as_u64();
     let bits: Vec<Fp3> = (0..STEP_BITS).map(|k| Fp3::from_base(Goldilocks::new((step >> k) & 1))).collect();
     let point_n: Vec<Fp3> = rho.iter().chain(&bits).chain(&gamma_n).copied().collect();
-    let fold_pn: Vec<Fp3> = (2..=p.pn_deg as u64).map(|j| pbar_nox(w.global, &line(&st.pn.point, &point_n, j), n)).collect();
+    let fold_pn: Vec<Fp3> = par_range(2, p.pn_deg as u64, |j| pbar_nox(w.global, &line(&st.pn.point, &point_n, j), n));
     for &v in &fold_pn {
         t.absorb_ext(v);
     }
     let _ = t.squeeze_ext();
     let point_v: Vec<Fp3> = rho.iter().chain(&gamma_v).copied().collect();
-    let fold_pv: Vec<Fp3> = (2..=p.pv_deg as u64).map(|j| pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n)).collect();
+    let fold_pv: Vec<Fp3> = par_range(2, p.pv_deg as u64, |j| pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n));
     for &v in &fold_pv {
         t.absorb_ext(v);
     }
@@ -185,12 +212,27 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let gs: Vec<Vec<Fp3>> = (0..3).map(|_| t.squeeze_exts(CBITS)).collect();
     let beta = t.squeeze_ext();
     let zeta = t.squeeze_ext();
+    // p_k(r) = Σ_c eq(g_k, c)·word_k[c][r]: rows in threads (base columns
+    // in mixed arithmetic)
     let mut ps: Vec<Vec<Fp3>> = (0..3)
         .map(|k| {
             let e = eq_table(&gs[k]);
-            (0..rows)
-                .map(|r| (0..WORD).fold(Fp3::ZERO, |a, c| a + e[c] * local_cols[WORD * k + c][r]))
-                .collect()
+            let tr = [w.n1, &wb, &v2][k];
+            let mut out = vec![Fp3::ZERO; rows];
+            let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+            let chunk = rows.div_ceil(threads).max(1);
+            std::thread::scope(|sc| {
+                for (ci, part) in out.chunks_mut(chunk).enumerate() {
+                    let e = &e;
+                    sc.spawn(move || {
+                        for (j, o) in part.iter_mut().enumerate() {
+                            let r = ci * chunk + j;
+                            *o = tr.row(r).iter().zip(e).fold(Fp3::ZERO, |a, (&v, &ec)| a + lens::rspcs::field::mul_base(ec, v));
+                        }
+                    });
+                }
+            });
+            out
         })
         .collect();
     let eqr = eq_table(&rho);
@@ -228,7 +270,18 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     }
     lap("shift");
     // accumulation
-    let tables = [acc_in.table(p.vars), w.word_a.table(), word_b.table(), word_c.table()];
+    let zeros = match acc_in {
+        AccData::Zero(_) => acc_in.table(p.vars),
+        AccData::Word(_) => Vec::new(),
+    };
+    fn ev(w: &Word) -> sumcheck::Table<'_> {
+        w.evals().expect("a committed table")
+    }
+    let acc_t = match acc_in {
+        AccData::Zero(_) => sumcheck::Table::Ext(&zeros),
+        AccData::Word(wd) => ev(wd),
+    };
+    let tables = [acc_t, ev(w.word_a), ev(&word_b), ev(&word_c)];
     let proof_partial = StepProof {
         roots: [w.word_a.root(), word_b.root(), word_c.root()],
         ood: [w.ood_a.to_vec(), ood_b, ood_c],
@@ -301,7 +354,7 @@ impl Opener for AccData {
 fn prove_acc(
     p: &Params,
     t: &mut ProverTranscript,
-    tables: &[Vec<Fp3>; 4],
+    tables: &[sumcheck::Table<'_>; 4],
     claims: &[Vec<(Vec<Fp3>, Fp3)>; 4],
     words: &[&dyn Opener; 4],
 ) -> Result<(AccProof, AccData, AccV<Fp3>), String> {
@@ -322,7 +375,7 @@ fn prove_acc(
                 .collect(),
         })
         .collect();
-    let (msgs, rho, evals) = sumcheck::prove(t, tables.to_vec(), &weights, p.vars);
+    let (msgs, rho, evals) = sumcheck::prove_tables(t, tables, &weights, p.vars);
     lap("sumcheck");
     for &e in &evals {
         t.absorb_ext(e);
@@ -331,14 +384,34 @@ fn prove_acc(
     lap("grind");
     let r = t.squeeze_ext();
     let coef = [Fp3::ONE, r, r * r, r * r * r];
+    // g = Σ r^i·f_i, in threads (the base words in mixed arithmetic)
     let mut gt = vec![Fp3::ZERO; 1 << p.vars];
-    for (tb, &c) in tables.iter().zip(&coef) {
-        for (gi, &f) in gt.iter_mut().zip(tb) {
-            *gi += c * f;
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let chunk = gt.len().div_ceil(threads);
+    std::thread::scope(|sc| {
+        for (ci, part) in gt.chunks_mut(chunk).enumerate() {
+            let coef = &coef;
+            sc.spawn(move || {
+                let at = ci * chunk;
+                for (tb, &c) in tables.iter().zip(coef) {
+                    match tb {
+                        sumcheck::Table::Ext(e) => {
+                            for (gi, &f) in part.iter_mut().zip(&e[at..]) {
+                                *gi += c * f;
+                            }
+                        }
+                        sumcheck::Table::Base(b) => {
+                            for (gi, &f) in part.iter_mut().zip(&b[at..]) {
+                                *gi += lens::rspcs::field::mul_base(c, f);
+                            }
+                        }
+                    }
+                }
+            });
         }
-    }
+    });
     let v0 = evals.iter().zip(&coef).fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
-    let wd = Word::commit_ext(cfg.layout, &gt);
+    let wd = Word::commit_ext_a(cfg.layout, &gt, p.arity);
     let (root, data) = (wd.root(), AccData::Word(wd));
     lap("commit");
     t.absorb_all(&root);

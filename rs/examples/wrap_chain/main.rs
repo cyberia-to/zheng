@@ -16,7 +16,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 
 fn main() {
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = env("ZHENG_RATE", 4);
+    whir.log_inv_rate = env("ZHENG_RATE", ivc::SHIPPED_RATE);
     whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: usize = env("ZHENG_STEP", 15);
     let ikey = ivc::key(&whir, n).expect("ivc key");

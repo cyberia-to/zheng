@@ -142,7 +142,7 @@ fn acc_proof(w: &mut Writer, a: &AccProof, p: &Params) {
                 bases(w, &op.symbols.iter().map(|s| s.c0).collect::<Vec<_>>());
             }
         }
-        let sib = multi_siblings(&ops, depth, Arity::Two);
+        let sib = multi_siblings(&ops, depth, p.arity);
         w.u32(sib.len());
         for d in &sib {
             digest(w, d);
@@ -182,7 +182,7 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
             .collect::<R<_>>()?;
         let ns = r.count(32)?;
         let sib: Vec<Digest> = (0..ns).map(|_| read_digest(r)).collect::<R<_>>()?;
-        per_word.push(expand(&distinct, syms, &sib, depth, word == 0, Arity::Two)?);
+        per_word.push(expand(&distinct, syms, &sib, depth, word == 0, p.arity)?);
     }
     let openings = leaves
         .iter()

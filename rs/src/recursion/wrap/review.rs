@@ -368,13 +368,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         eprintln!("1/{} {mode:?} (pow {pow}, combination {}): weakest {name} {bits:.2}; interactive weakest {inter:.2}", 1u32 << rate, cfg.comb_pow);
         weakest.push((bits, inter));
     }
-    // the figures `specs/soundness.md` and the audit state: weakest
-    // 128.22 / 128.08 / 128.43, interactively 108.92 (1/16: the
-    // combination after its 20 bits) / 102.35 (1/128: the combination
-    // after its 26 bits) / 102.62 (final: `fin` after its 26 bits) — five
-    // input words at each inner level (`audit/proof-stack-review-2026-10.md`
-    // D1: the test had priced two key words, 109.34 / 102.76)
-    for (got, want) in weakest.iter().zip([(128.22, 108.92), (128.08, 102.35), (128.43, 102.62)]) {
+    // the figures `specs/soundness.md` and the audit state, under the
+    // rebalanced schedule (`whir::schedule`; `audit/ivc-speed-2026-10.md`):
+    // weakest 128.09 / 128.24 / 128.40, interactively 110.23 / 104.24 /
+    // 101.89 (final: `fin` after its 27 bits) — five input words at each
+    // inner level (`audit/proof-stack-review-2026-10.md` D1)
+    for (got, want) in weakest.iter().zip([(128.09, 110.23), (128.24, 104.24), (128.40, 101.89)]) {
         assert!((got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01, "{weakest:?}");
     }
 }

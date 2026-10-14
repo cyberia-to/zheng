@@ -20,13 +20,15 @@
 //! ```
 //!
 //! A query on `f_0` opens its leaf in every input word (one path each) and
-//! folds `Σ_i r^i·leaf_i`. The round schedule (folds, rates, OOD counts,
-//! queries, grinding) is lens's `WhirConfig` for `(whir, ℓ)`; the batch
+//! folds `Σ_i r^i·leaf_i`. The round schedule (folds, rates, queries) is
+//! lens's `WhirConfig` for `(whir, ℓ)`, each round's regime, OOD count and
+//! grinding rebalanced for the least grinding work ([`schedule`]); the batch
 //! adds the claim-batching, sumcheck and combination rounds of an
 //! accumulation step (`accumulate::config`). Soundness:
 //! `specs/soundness.md` § field-native WHIR.
 
 mod prove;
+pub mod schedule;
 mod verify;
 pub mod wire;
 
@@ -70,8 +72,11 @@ pub struct Config {
 impl Config {
     /// `groups`: input words per round-0 tree.
     pub fn derive(whir: &WhirParams, num_vars: usize, groups: &[usize], claims: usize) -> Result<Self, String> {
-        let wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("whir: {e}"))?;
+        let mut wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("whir: {e}"))?;
         let inputs: usize = groups.iter().sum();
+        // lens's queries, each round's regime and grinding rebalanced for
+        // the least grinding work (`schedule`)
+        schedule::rebalance(&mut wc, inputs, MIN_BITS);
         if inputs == 0 || groups.contains(&0) || claims < inputs {
             return Err("whir: every input word carries a claim".into());
         }

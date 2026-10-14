@@ -16,7 +16,7 @@ use super::gm;
 use super::ops::{Arith, Ops};
 use super::sponge::Sponge;
 use super::state::AccV;
-use super::word::{Digest, LeafOpening, verify_leaf};
+use super::word::{Arity, Digest, LeafOpening, verify_leaf};
 use crate::accumulate::AccConfig;
 
 /// A claim on a word's message.
@@ -70,7 +70,7 @@ fn free4<O: Ops>(o: &mut O, t: &mut Sponge<O>, d: Digest) -> [O::V; 4] {
 }
 
 /// Verify one step over the inputs; returns the new accumulator.
-pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, t: &mut Sponge<O>, inputs: &[InstV<O::V>], pf: &AccProof) -> AccV<O::V> {
+pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, arity: Arity, t: &mut Sponge<O>, inputs: &[InstV<O::V>], pf: &AccProof) -> AccV<O::V> {
     let m = inputs.len();
     let vars = cfg.num_vars;
     assert!(pf.sumcheck.len() == 2 * vars && pf.evals.len() == m && pf.ood.len() == cfg.ood, "acc: proof shape");
@@ -132,7 +132,7 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, t: &mut Sponge<O>, inputs: &[I
     for (bits, ops) in idx.iter().zip(&pf.openings) {
         let mut y: Option<O::V> = None;
         for ((inst, op), &c) in inputs.iter().zip(ops).zip(&coef) {
-            let syms = verify_leaf(o, inst.ext, super::word::Arity::Two, op, &bits[..log_leaves], inst.root, "acc: opening");
+            let syms = verify_leaf(o, inst.ext, arity, op, &bits[..log_leaves], inst.root, "acc: opening");
             let u = gm::mux(o, &syms, &bits[log_leaves..]);
             y = Some(match y {
                 None => o.mul(c, u),

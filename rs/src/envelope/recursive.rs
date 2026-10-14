@@ -28,8 +28,9 @@ use crate::execution::state_evidence::StateEvidence;
 use crate::machine::{self, MachinePublic, MachineStatement};
 use crate::recursion::ivc::{self, IvcProof};
 
-/// Version of the profile-5 body (2: the program bound by its digest).
-pub const RECURSIVE_FORMAT: u8 = 2;
+/// Version of the profile-5 body (2: the program bound by its digest; 3:
+/// every IVC tree 4-ary).
+pub const RECURSIVE_FORMAT: u8 = 3;
 /// The step size of every admitted parameter set (log2 rows).
 pub const STEP_LOG_ROWS: u32 = 15;
 /// Upper bound on the IVC proof bytes (measured 233–285 KB).
@@ -61,7 +62,7 @@ pub fn admitted(whir: &WhirParams, log_rows: u32) -> bool {
 
 /// The roots of the IVC keys' committed words (`ivc::Key::kw_root`) of
 /// every IVC parameter set a verifier admits — profile 5's two sets and
-/// profile 6's IVC (16 grinding bits) — as the CPU derives them. The
+/// profile 6's IVC (rate 1/8, 16 grinding bits) — as the CPU derives them. The
 /// decider opens the key words against this root natively, and deriving
 /// it runs on the process's prover backend (Merkle levels, coset leaves,
 /// permutation batches): a key whose root is not pinned here is refused,
@@ -69,9 +70,9 @@ pub fn admitted(whir: &WhirParams, log_rows: u32) -> bool {
 /// (`audit/proof-stack-review-2026-10.md` F1; checked by
 /// `tests/keys.rs::the_pinned_ivc_key_roots_are_the_derived_ones`).
 pub const KEY_ROOTS: [([u8; 8], [u64; 4]); 3] = [
-    ([1, 4, 4, 24, 128, 0, 1, 8], [17650164513439705841, 14752446190575139438, 15384716668885105833, 3520303482795737372]),
-    ([1, 6, 4, 24, 128, 0, 1, 8], [13679688449575918182, 7354949273361899781, 10270044639476201331, 9423175522658656771]),
-    ([1, 4, 4, 16, 128, 0, 1, 8], [8186772782216181231, 8570318494317168107, 13146343861140493927, 14066126686975898684]),
+    ([1, 4, 4, 24, 128, 0, 1, 8], [4491905516725670020, 3328524470941199224, 7822895334886079753, 284418518571696544]),
+    ([1, 6, 4, 24, 128, 0, 1, 8], [12054528635242799571, 12665011618142561561, 5178125058008943233, 14871959739192700421]),
+    ([1, 3, 4, 16, 128, 0, 1, 8], [14487870178850513477, 16787388207891397930, 14712683618482113395, 17511682741490682146]),
 ];
 
 /// `k` (of WHIR parameters `whir`, steps of 2^15 rows) if its key-word

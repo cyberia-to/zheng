@@ -47,7 +47,15 @@ pub fn add_eq_terms(out: &mut [Fp3], terms: &[(Vec<Fp3>, Fp3)]) {
         return;
     }
     let k = vars.min(12);
+    // a point whose low coordinates are base (a spot check's ω^s powers)
+    // has a base low table: its blocks add in mixed arithmetic
+    let is_base = |p: &[Fp3]| p.iter().all(|x| x.c1 == nebu::Goldilocks::ZERO && x.c2 == nebu::Goldilocks::ZERO);
     let lo: Vec<Vec<Fp3>> = terms.iter().map(|(p, _)| eq_table(&p[..k])).collect();
+    let lo_base: Vec<Option<Vec<nebu::Goldilocks>>> = terms
+        .iter()
+        .zip(&lo)
+        .map(|((p, _), t)| is_base(&p[..k]).then(|| t.iter().map(|x| x.c0).collect()))
+        .collect();
     let hi: Vec<Vec<Fp3>> = terms
         .iter()
         .map(|(p, c)| {
@@ -64,14 +72,23 @@ pub fn add_eq_terms(out: &mut [Fp3], terms: &[(Vec<Fp3>, Fp3)]) {
     let per = blocks.div_ceil(threads).max(1);
     std::thread::scope(|s| {
         for (ci, chunk) in out.chunks_mut(per * block).enumerate() {
-            let (lo, hi) = (&lo, &hi);
+            let (lo, hi, lo_base) = (&lo, &hi, &lo_base);
             s.spawn(move || {
                 for (bi, b) in chunk.chunks_mut(block).enumerate() {
                     let h = ci * per + bi;
-                    for (l, hv) in lo.iter().zip(hi) {
+                    for ((l, lb), hv) in lo.iter().zip(lo_base).zip(hi) {
                         let sc = hv[h];
-                        for (o, &e) in b.iter_mut().zip(l) {
-                            *o += sc * e;
+                        match lb {
+                            Some(lb) => {
+                                for (o, &e) in b.iter_mut().zip(lb) {
+                                    *o += lens::rspcs::field::mul_base(sc, e);
+                                }
+                            }
+                            None => {
+                                for (o, &e) in b.iter_mut().zip(l) {
+                                    *o += sc * e;
+                                }
+                            }
                         }
                     }
                 }
@@ -89,7 +106,8 @@ mod eq_terms_tests {
     fn split_eq_terms_equal_the_full_tables() {
         for vars in [3usize, 12, 13, 17] {
             let pt = |s: u64| (0..vars as u64).map(|i| Fp3::new(Goldilocks::new(s * 31 + i), Goldilocks::new(i * i + s), Goldilocks::new(7))).collect::<Vec<_>>();
-            let terms = vec![(pt(1), Fp3::from_base(Goldilocks::new(5))), (pt(2), Fp3::new(Goldilocks::new(2), Goldilocks::new(9), Goldilocks::ZERO))];
+            let base_pt: Vec<Fp3> = (0..vars as u64).map(|i| Fp3::from_base(Goldilocks::new(i * 7 + 2))).collect();
+            let terms = vec![(pt(1), Fp3::from_base(Goldilocks::new(5))), (pt(2), Fp3::new(Goldilocks::new(2), Goldilocks::new(9), Goldilocks::ZERO)), (base_pt, Fp3::new(Goldilocks::new(4), Goldilocks::new(1), Goldilocks::new(8)))];
             let mut want = vec![Fp3::ZERO; 1 << vars];
             for (p, c) in &terms {
                 for (o, e) in want.iter_mut().zip(eq_table(p)) {
@@ -101,6 +119,122 @@ mod eq_terms_tests {
             assert_eq!(got, want, "{vars}");
         }
     }
+}
+
+/// A word's table as the prover holds it: base-field entries (a fresh
+/// trace word) or Fp3.
+#[derive(Clone, Copy)]
+pub enum Table<'a> {
+    Base(&'a [nebu::Goldilocks]),
+    Ext(&'a [Fp3]),
+}
+
+impl Table<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Table::Base(t) => t.len(),
+            Table::Ext(t) => t.len(),
+        }
+    }
+}
+
+/// [`prove`] over borrowed tables, base-field ones summed and folded in
+/// mixed arithmetic in the first round (the same messages: `f(2) = 2f(1)
+/// − f(0)` and the fold are exact in either field). The weight tables
+/// are built, and every first round summed and folded, in one pass of
+/// threads per word.
+pub fn prove_tables(t: &mut impl FiatShamir, f: &[Table<'_>], weights: &[Weight], vars: usize) -> (Vec<Fp3>, Vec<Fp3>, Vec<Fp3>) {
+    use lens::rspcs::field::mul_base;
+    assert!(vars >= 1 && f.iter().all(|x| x.len() == 1 << vars));
+    let mut w: Vec<Vec<Fp3>> = weights.iter().map(|w| w.table(vars)).collect();
+    let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
+    for (fi, wi) in f.iter().zip(&w) {
+        let (a, b) = match fi {
+            Table::Ext(e) => round_sums(e, wi),
+            Table::Base(bt) => par_sums(bt.len() / 2, |i| {
+                let (f0, f1) = (bt[2 * i], bt[2 * i + 1]);
+                let (w0, w1) = (wi[2 * i], wi[2 * i + 1]);
+                (mul_base(w0, f0), mul_base(w1 + w1 - w0, f1 + f1 - f0))
+            }),
+        };
+        h0 += a;
+        h2 += b;
+    }
+    t.absorb_fp3(h0);
+    t.absorb_fp3(h2);
+    let mut msgs = vec![h0, h2];
+    let alpha = t.squeeze_fp3();
+    let mut point = vec![alpha];
+    let mut fo: Vec<Vec<Fp3>> = f
+        .iter()
+        .map(|fi| match fi {
+            Table::Ext(e) => par_fold(e.len() / 2, |i| e[2 * i] + alpha * (e[2 * i + 1] - e[2 * i])),
+            Table::Base(bt) => par_fold(bt.len() / 2, |i| mul_base(alpha, bt[2 * i + 1] - bt[2 * i]) + Fp3::from_base(bt[2 * i])),
+        })
+        .collect();
+    for wi in &mut w {
+        fold(wi, alpha);
+    }
+    for _ in 1..vars {
+        let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
+        for (fi, wi) in fo.iter().zip(&w) {
+            let (a, b) = round_sums(fi, wi);
+            h0 += a;
+            h2 += b;
+        }
+        t.absorb_fp3(h0);
+        t.absorb_fp3(h2);
+        msgs.push(h0);
+        msgs.push(h2);
+        let alpha = t.squeeze_fp3();
+        for fi in &mut fo {
+            fold(fi, alpha);
+        }
+        for wi in &mut w {
+            fold(wi, alpha);
+        }
+        point.push(alpha);
+    }
+    let evals = fo.iter().map(|fi| fi[0]).collect();
+    (msgs, point, evals)
+}
+
+/// `Σ_i term(i)` over `pairs` indices, componentwise, in threads.
+fn par_sums(pairs: usize, term: impl Fn(usize) -> (Fp3, Fp3) + Sync) -> (Fp3, Fp3) {
+    let t = threads(pairs);
+    let size = pairs.div_ceil(t).max(1);
+    std::thread::scope(|s| {
+        let term = &term;
+        let hs: Vec<_> = (0..pairs)
+            .step_by(size)
+            .map(|lo| {
+                s.spawn(move || {
+                    (lo..(lo + size).min(pairs)).fold((Fp3::ZERO, Fp3::ZERO), |a, i| {
+                        let (x, y) = term(i);
+                        (a.0 + x, a.1 + y)
+                    })
+                })
+            })
+            .collect();
+        hs.into_iter().map(|h| h.join().expect("round")).fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
+    })
+}
+
+/// `(0..half).map(at)` in threads.
+fn par_fold(half: usize, at: impl Fn(usize) -> Fp3 + Sync) -> Vec<Fp3> {
+    let mut out = vec![Fp3::ZERO; half];
+    let size = half.div_ceil(threads(half)).max(1);
+    std::thread::scope(|s| {
+        for (k, chunk) in out.chunks_mut(size).enumerate() {
+            let at = &at;
+            s.spawn(move || {
+                for (i, o) in chunk.iter_mut().enumerate() {
+                    *o = at(k * size + i);
+                }
+            });
+        }
+    });
+    out
 }
 
 /// Run the prover over tables `f_i` and their weights; returns the round
@@ -269,5 +403,15 @@ mod tests {
         let mut tb = Transcript::new(b"t");
         let (_, bad) = verify(&mut tb, sigma + Fp3::ONE, &msgs, vars).unwrap();
         assert_ne!(bad, expect);
+        // borrowed and base-field tables: the same messages, point, values
+        let base: Vec<Goldilocks> = (0..32u64).map(|b| Goldilocks::new(b * b + 3)).collect();
+        let lifted: Vec<Fp3> = base.iter().map(|&x| Fp3::from_base(x)).collect();
+        let mut f2 = f.clone();
+        f2[1] = lifted;
+        let mut ta = Transcript::new(b"u");
+        let want = prove(&mut ta, f2.clone(), &weights, vars);
+        let tables = [Table::Ext(&f2[0]), Table::Base(&base), Table::Ext(&f2[2])];
+        let mut tc = Transcript::new(b"u");
+        assert_eq!(prove_tables(&mut tc, &tables, &weights, vars), want);
     }
 }

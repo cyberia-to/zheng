@@ -1,6 +1,6 @@
 //! Measure recursive (IVC) proofs of nox runs: proof bytes, prove and
 //! verify time, under the recursion profile's WHIR parameters
-//! (`ZHENG_RATE=<log inv rate>`, default 4; `ZHENG_POW=<bits>`, default 24;
+//! (`ZHENG_RATE=<log inv rate>`, default `ivc::SHIPPED_RATE`; `ZHENG_POW=<bits>`, default `ivc::SHIPPED_POW`;
 //! `ZHENG_STEP=<log rows>`, default 15).
 //!
 //! `cargo run --release -p zheng --example ivc_bench -- [fixture…]`
@@ -36,7 +36,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 fn main() {
     common::backend();
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = env("ZHENG_RATE", 4);
+    whir.log_inv_rate = env("ZHENG_RATE", ivc::SHIPPED_RATE);
     whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: u32 = env("ZHENG_STEP", 15);
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -62,9 +62,11 @@ fn main() {
             println!("{name}: cycles {} · {} steps of 2^{n}", run.statement.cycles, run.segments());
             continue;
         }
+        common::prof_report("key");
         let t2 = Instant::now();
         let proof = ivc::prove_run(&run, &whir).expect("prove");
         let t_prove = t2.elapsed();
+        common::prof_report(&name);
         let bytes = proof.to_bytes(&key);
         if let Ok(dir) = std::env::var("ZHENG_PROOF_DIR") {
             std::fs::write(format!("{dir}/{name}.ivc"), &bytes).expect("write proof");

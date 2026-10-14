@@ -408,26 +408,28 @@ fn a_loaded_key_must_send_the_successor_columns_its_graph_reads() {
     assert!(super::WrapKey::from_vk_bytes(&k.vk_bytes()).is_err(), "column {extra} added");
 }
 
-/// (7) The recursion profile shipped since 5d7c959 (`ivc::SHIPPED_POW`,
-/// rate 1/16, steps of 2^15): every row ≥ 128 with grinding priced, the
-/// figures `specs/soundness.md` states, and the interactive weakest
-/// (every grinding removed: the accumulation's combination and spot
-/// checks, the decider's folds, shifts, final queries and combination)
-/// 111.34 — the accumulation's combination after its 17 bits.
+/// (7) The recursion profile shipped under the wrap chain
+/// (`ivc::SHIPPED_RATE` 1/8, `ivc::SHIPPED_POW` 16, steps of 2^15, 4-ary
+/// trees, the decider's schedule rebalanced): every row ≥ 128 with
+/// grinding priced, the figures `specs/soundness.md` states, and the
+/// interactive weakest (every grinding removed: the accumulation's
+/// combination and spot checks, the decider's folds, shifts, final
+/// queries and combination) 111.04 — the decider's second shift after its
+/// 17 query bits.
 #[test]
 fn the_shipped_ivc_profile_rows_and_interactive_figure() {
     let mut whir = crate::execution::succinct::params_for(20);
-    whir.log_inv_rate = 4;
+    whir.log_inv_rate = crate::recursion::ivc::SHIPPED_RATE;
     whir.pow_bits = crate::recursion::ivc::SHIPPED_POW;
     let p = crate::recursion::params::Params::new(&whir, 15).unwrap();
-    assert_eq!((p.cfg.queries, p.cfg.query_pow, p.cfg.comb_pow_for(crate::recursion::params::INPUTS)), (58, 16, 17));
+    assert_eq!((p.cfg.queries, p.cfg.query_pow, p.cfg.comb_pow_for(crate::recursion::params::INPUTS)), (77, 16, 17));
     let rows = crate::recursion::params::ledger(&p);
     let get = |n: &str| rows.iter().find(|r| r.0 == n).map(|r| r.1).unwrap();
     assert!(rows.iter().all(|r| r.1 >= 128.0), "{rows:?}");
-    for (n, want) in [("combine", 128.34), ("spot", 128.28), ("decider batch combine", 128.92), ("decider shift_2", 128.22), ("decider fin", 129.00)] {
+    for (n, want) in [("combine", 128.19), ("spot", 128.08), ("decider batch combine", 128.80), ("decider shift_2", 128.04), ("decider fin", 128.11)] {
         assert!((get(n) - want).abs() < 0.01, "{n}: {}", get(n));
     }
     let (name, inter) = rows.iter().map(|r| (r.0.clone(), r.1 - f64::from(r.2))).fold((String::new(), f64::INFINITY), |a, r| if r.1 < a.1 { r } else { a });
-    assert_eq!(name, "combine");
-    assert!((inter - 111.34).abs() < 0.01, "{inter}");
+    assert_eq!(name, "decider shift_2");
+    assert!((inter - 111.04).abs() < 0.01, "{inter}");
 }

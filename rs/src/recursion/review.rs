@@ -113,7 +113,7 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     let mut prefix = Vec::new();
     let mut ood_a = Vec::new();
     for seg in &segs {
-        let wa = Word::commit_base(layout, &seg.column_major(WORD));
+        let wa = Word::commit_base_a(layout, &seg.column_major(WORD), p.arity);
         let mut o = Native::new();
         let root = base_lift(wa.root());
         let z = step::pre_points(&mut o, root, p.fresh);
@@ -144,7 +144,7 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     let d: Digest = h.map(|v| b.value(v).c0);
     let honest_prev: State = state::StateV::from_items(&p.dims, &init_v.items().iter().map(|&(v, _)| b.value(v)).collect::<Vec<_>>());
     let (v1, _, _) = trace::generate(&b, &CircuitAir::default(), n).unwrap();
-    let word_a = Word::commit_base(layout, &segs[1].column_major(WORD));
+    let word_a = Word::commit_base_a(layout, &segs[1].column_major(WORD), p.arity);
     let b_out = row0(&run.segment(0), &n2_0);
     let input = StepInput {
         rel: &rel,
@@ -159,7 +159,7 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
         sparse: &k.sparse,
     };
     let forge = |s: &State, x: Digest| -> IvcProof {
-        let (pf, data, _) = prove::prove(p, &input, s, x, &AccData::Zero(ZeroWord::new(&layout))).unwrap();
+        let (pf, data, _) = prove::prove(p, &input, s, x, &AccData::Zero(ZeroWord::new(&layout, p.arity))).unwrap();
         let mut o = Native::batched();
         let fin = step::verify(&mut o, p, s, base_lift(x), &pf);
         o.finish().unwrap();

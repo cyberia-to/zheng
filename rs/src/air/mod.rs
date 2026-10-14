@@ -120,11 +120,24 @@ impl Trace {
     pub(crate) fn column_major(&self, padded: usize) -> Vec<Goldilocks> {
         let rows = self.rows();
         let mut out = vec![Goldilocks::ZERO; rows * padded];
-        for r in 0..rows {
-            for (c, &v) in self.row(r).iter().enumerate() {
-                out[c * rows + r] = v;
+        // one column (or a run of them) per thread: writes contiguous
+        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+        let per = self.width.div_ceil(threads).max(1);
+        std::thread::scope(|s| {
+            for (ci, chunk) in out.chunks_mut(rows * per).take(self.width.div_ceil(per)).enumerate() {
+                s.spawn(move || {
+                    for (k, col) in chunk.chunks_mut(rows).enumerate() {
+                        let c = ci * per + k;
+                        if c >= self.width {
+                            break;
+                        }
+                        for (r, o) in col.iter_mut().enumerate() {
+                            *o = self.cells[r * self.width + c];
+                        }
+                    }
+                });
             }
-        }
+        });
         out
     }
 }

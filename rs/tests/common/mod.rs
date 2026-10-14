@@ -281,3 +281,12 @@ pub fn backend() -> &'static str {
     eprintln!("backend: {name} ({device})");
     name
 }
+
+/// With a `prof-*` backend: the device operations' wall times since the
+/// last call, labelled.
+#[allow(dead_code)]
+pub fn prof_report(label: &str) {
+    if std::env::var("ZHENG_BACKEND").is_ok_and(|b| b.starts_with("prof-")) {
+        eprint!("device ops, {label}:\n{}", cyber_lens_gpu::profile::report());
+    }
+}

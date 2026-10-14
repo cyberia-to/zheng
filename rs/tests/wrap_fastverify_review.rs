@@ -33,7 +33,7 @@ fn stored() -> Stored {
     assert_eq!(key.vk_bytes(), vk, "verifying key round trip");
     let bytes = std::fs::read(format!("{dir}/add.tri.final-{chain}")).expect("stored final proof");
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = 4;
+    whir.log_inv_rate = ivc::SHIPPED_RATE;
     whir.pow_bits = ivc::SHIPPED_POW;
     let run = machine::execute_exact(&common::parse(common::ADD), &[7, 5], 1 << 40, 15).expect("run");
     let h = FinalProof::from_bytes(&bytes, &key).expect("parse");
@@ -107,7 +107,7 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
         eprintln!("shipped final key (reads {}): {nm:<40} {b:.2}", w.reads);
     }
     let weakest = rows.iter().map(|r| r.1).fold(f64::INFINITY, f64::min);
-    assert!(weakest >= 128.0 && (weakest - 128.43).abs() < 0.01, "{weakest}");
+    assert!(weakest >= 128.0 && (weakest - 128.40).abs() < 0.01, "{weakest}");
     assert_eq!((k.params.whir.log_inv_rate, k.params.whir.pow_bits, k.params.n), (9, 26, 14));
     // columns
     let used = k.g.used_inputs();
