@@ -242,6 +242,14 @@ Fp3 values are three fixed 8-byte canonical limbs. Shapes — `t`, round
 counts and widths, the proof's internal lengths — are checked by the
 verifier against the relation it compiled and the configuration lens derives.
 
+Held keys: `succinct::ProvingKey` (a program and input count) and
+`succinct::RelationKey` (a relation the caller built, by its pinned
+positions) hold the layout and relabelled relation; proofs are byte-equal
+to the unkeyed path. `envelope::succinct_proof_bytes` /
+`succinct_proof_from_bytes` carry the proof part alone (PCS id, header,
+messages, opening; every byte consumed), for callers that bind their own
+statement.
+
 ## Zk profile (envelope profile 2, scheme veil)
 
 Statements are `PrivateStatement`s: the program, the public inputs, the
@@ -251,6 +259,13 @@ prover. `veil::prove(program, public, secret, budget)`; `veil::verify` /
 `verify_with`; the relation-level `prove_relation` / `verify_relation`
 mirror `zk::prove` / `zk::verify` (MITH) for callers that derive their own
 relation (joy's private state queries).
+`veil::ProvingKey` (`prove_with_key`, `prove_bound_with_key`) holds what a
+prover derives once per program and input count — relation, verifying
+key, masked relation, layout, relabelled masked relation; a keyed proof is
+one `prove_bound` makes (equal bytes under equal coins). `veil::revealed`
+/ `revealed_relation` return the values a proof reveals, by category, for
+zero-knowledge tests; feature `test-hooks` adds seeded proving
+(`veil::testing`), never a production path.
 
 Masked relation (`veil::pad`). The verifier appends masking rows to the
 compiled CCS: for the gate `y0·y1 − y2` the types T0 (`y0 = s`), T1
