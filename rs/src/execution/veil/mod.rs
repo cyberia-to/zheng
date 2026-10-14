@@ -20,9 +20,19 @@
 //! honest-verifier zero knowledge when leaves are salted). Knowledge
 //! soundness is the succinct profile's argument with the masks folded in;
 //! the ledger counts every term. The prover is not constant time.
+//!
+//! Coins (`coins`): every uniform value the prover draws — masking-row
+//! fill, both Libra masks, row padding, the three masking rows of the
+//! commitment, the column salts — is one labelled stream of a counter-mode
+//! PRF on hemera's constant-time permutation, keyed by `derive_key` of 32
+//! bytes of OS entropy. The zero-knowledge distance above is stated for
+//! uniform coins; with the PRF it grows by the PRF's distinguishing
+//! advantage (`audit/veil-coins-2026-10.md`).
 
 mod coins;
 pub(crate) mod hiding;
+mod inspect;
+mod key;
 mod libra;
 mod pad;
 mod protocol;
@@ -34,6 +44,10 @@ pub(super) mod tests;
 mod zk_tests;
 
 pub use hiding::HidingParams;
+#[cfg(feature = "test-hooks")]
+pub use inspect::testing;
+pub use inspect::{Revealed, revealed, revealed_relation};
+pub use key::{ProvingKey, prove_bound_with_key, prove_with_key};
 pub use protocol::MIN_SECURITY_BITS;
 pub use wire::{MAGIC, MAX_BYTES};
 
@@ -134,7 +148,7 @@ pub fn prove_relation(
     statement: &[u8],
     public: &[(usize, Goldilocks)],
 ) -> Result<VeilProof, String> {
-    prove_relation_with(&HidingParams::default(), instance, witness, statement, public, &mut Coins::os()?)
+    prove_relation_with(&HidingParams::default(), instance, witness, statement, public, &Coins::os()?)
 }
 
 pub(crate) fn prove_relation_with(
@@ -143,7 +157,7 @@ pub(crate) fn prove_relation_with(
     witness: &CCSWitness,
     statement: &[u8],
     public: &[(usize, Goldilocks)],
-    coins: &mut Coins,
+    coins: &Coins,
 ) -> Result<VeilProof, String> {
     if !instance.is_satisfied_by(witness) {
         return Err("veil: witness does not satisfy the relation".into());

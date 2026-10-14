@@ -97,3 +97,23 @@ fn every_bit_flip_of_a_folding_5_proof_is_rejected() {
         assert_eq!(accepted, 0);
     }
 }
+
+/// A hemera Merkle path through the node jet (`execution::node`), depth 4,
+/// shipped parameters: the program carries the node formula, so flips land
+/// in the formula's tokens, the path, the proof. ~4 min on 16 cores; run
+/// with `--ignored` (recorded in `audit/fast-path-2-2026-10.md`).
+#[test]
+#[ignore]
+fn every_bit_flip_of_a_node_merkle_proof_is_rejected() {
+    let levels = 4;
+    let root = zheng::execution::node::digest_noun(common::node_merkle_root(levels, 5));
+    let program = common::node_merkle_program(levels, Some(&root));
+    let (statement, proof) = succinct::prove_default(&program, &[5], 1 << 40).unwrap();
+    let e = Envelope::Succinct {
+        statement: SuccinctStatement::Execution(statement),
+        proof,
+    };
+    let (flips, accepted) = scan(&e);
+    println!("node-merkle-4: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+    assert_eq!(accepted, 0);
+}

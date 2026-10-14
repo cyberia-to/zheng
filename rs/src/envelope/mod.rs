@@ -53,7 +53,10 @@ use crate::execution::veil::{self, VeilProof};
 use crate::execution::{Certificate, ExecutionStatement, verify_certificate};
 use core::fmt;
 
-pub use succinct::{AnySuccinct, SuccinctStatement, proof_bytes as succinct_proof_bytes};
+pub use succinct::{
+    AnySuccinct, MAX_PROOF_BYTES as MAX_SUCCINCT_PROOF_BYTES, SuccinctStatement, proof_bytes as succinct_proof_bytes,
+    proof_from_bytes as succinct_proof_from_bytes,
+};
 
 pub const MAGIC: &[u8; 8] = b"ZHENGPF1";
 pub const VERSION: u16 = 1;

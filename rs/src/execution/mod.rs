@@ -8,6 +8,7 @@ pub mod private;
 pub mod private_state;
 pub mod proof;
 pub mod public;
+pub mod node;
 pub mod relation;
 pub mod state;
 /// What authenticates state reads, verified against the statement's root.

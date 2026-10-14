@@ -174,6 +174,34 @@ pub fn proof_bytes(any: &AnySuccinct) -> Vec<u8> {
     w.bytes
 }
 
+/// Decode [`proof_bytes`]: the proof part of a profile-1 body (PCS id,
+/// parameter header, commitment, Spartan messages, opening), every byte
+/// consumed. Admission only — the parameters' bound and the proof are
+/// checked when it is verified against a relation
+/// (`execution::succinct::verify_relation`).
+pub fn proof_from_bytes(bytes: &[u8]) -> Result<AnySuccinct, E> {
+    if bytes.len() > MAX_PROOF_BYTES {
+        return Err(E::TooLarge);
+    }
+    let mut r = Reader::new(bytes);
+    let proof = match r.byte()? {
+        1 => {
+            let params = header::<Whir>(&mut r)?;
+            AnySuccinct::Whir(Box::new(read_proof::<Whir>(params, &mut r)?))
+        }
+        2 => {
+            let params = header::<TensorRs>(&mut r)?;
+            AnySuccinct::Tensor(Box::new(read_proof::<TensorRs>(params, &mut r)?))
+        }
+        _ => return Err(E::NonCanonical),
+    };
+    r.finish()?;
+    Ok(proof)
+}
+
+/// Bytes [`proof_from_bytes`] admits.
+pub const MAX_PROOF_BYTES: usize = 32 << 20;
+
 fn pcs_header(any: &AnySuccinct, w: &mut Writer) {
     w.raw(&[any.pcs_id()]);
     match any {

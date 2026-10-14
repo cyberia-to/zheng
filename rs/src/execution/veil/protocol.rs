@@ -20,7 +20,7 @@
 use lens::Transcript as LensTranscript;
 use nebu::{Fp3, Goldilocks};
 
-use super::coins::Coins;
+use super::coins::{Coins, label};
 use super::hiding::{self, Config, Functional, HidingParams};
 use super::libra::{self, Mask};
 use super::pad::{self, Extension};
@@ -174,14 +174,33 @@ pub(crate) fn prove(
     z: &[Goldilocks],
     pins: &[(usize, Goldilocks)],
     statement: &[u8],
-    coins: &mut Coins,
+    coins: &Coins,
 ) -> Result<Parsed, String> {
     if z.len() != base.num_cols || pins.iter().any(|&(i, v)| z[i] != v) {
         return Err("veil: witness disagrees with the statement".into());
     }
+    let lap = crate::laps::timer("veil");
     let s = Setup::new(base, pins)?;
-    let z = s.ext.witness(z, s.instance.num_cols, coins);
     let relabelled = s.layout.instance(&s.instance);
+    lap("setup");
+    prove_prepared(params, &s, &relabelled, z, statement, coins)
+}
+
+/// [`prove`] on a held [`Setup`] and its relabelled instance (a proving
+/// key): `z` must be a witness of the base relation whose pinned
+/// coordinates are this statement's — the prover side never reads the
+/// pinned values from `s.layout.public`, only the column map.
+pub(crate) fn prove_prepared(
+    params: &HidingParams,
+    s: &Setup,
+    relabelled: &CCSInstance,
+    z: &[Goldilocks],
+    statement: &[u8],
+    coins: &Coins,
+) -> Result<Parsed, String> {
+    let lap = crate::laps::timer("veil");
+    let z = s.ext.witness(z, s.instance.num_cols, coins);
+    lap("pad witness");
     let mut zp = vec![Goldilocks::ZERO; relabelled.num_cols];
     for (col, slot) in s.layout.map.iter().enumerate() {
         if let Some(x) = slot {
@@ -189,15 +208,17 @@ pub(crate) fn prove(
         }
     }
     let half = s.half();
-    let g1 = Mask::sample(s.log_m, s.degree, coins);
-    let g2 = Mask::sample(s.layout.vars, 2, coins);
+    let g1 = Mask::sample(s.log_m, s.degree, coins, label::LIBRA_G1);
+    let g2 = Mask::sample(s.layout.vars, 2, coins, label::LIBRA_G2);
     let mut entries = zp[..half].to_vec();
     entries.extend(g1.limbs());
     entries.extend(g2.limbs());
+    lap("masks");
     let (root, committed) = hiding::commit(params, &entries, coins)?;
+    lap("commit");
 
     let mut t = Transcript::new();
-    prologue(&mut t, statement, params, &s);
+    prologue(&mut t, statement, params, s);
     t.absorb_commitment(&root);
     // outer
     let tau: Vec<Fp3> = (0..s.log_m).map(|_| Fp3::squeeze(&mut t)).collect();
@@ -251,9 +272,10 @@ pub(crate) fn prove(
         r.push(x);
         inner_polys.push(poly);
     }
+    lap("sumchecks");
     let lambda = Fp3::squeeze(&mut t);
     // the final claims, assembled exactly as the verifier will
-    let a0 = free_weight(&s, &rho_x, gamma, &r);
+    let a0 = free_weight(s, &rho_x, gamma, &r);
     let (w_eval, a_eval) = {
         let (a, f) = inner.final_claim();
         (f, a)
@@ -263,6 +285,7 @@ pub(crate) fn prove(
     let f = s.functional(a0, &r, lambda, &rho_x, rho2);
     let mut lt = pcs_transcript(&mut t);
     let opening = hiding::open(&committed, &f, value, &mut lt);
+    lap("open");
     Ok(Parsed {
         root,
         g1: g1_sum,

@@ -82,7 +82,12 @@ pub fn hash_inputs(n: usize) -> ExecutionNoun {
 pub fn hash_batch(groups: usize, per: usize) -> ExecutionNoun {
     cons8(
         (0..groups)
-            .map(|g| op(15, cons8((0..per).map(|k| input_axis(g * per + k)).collect())))
+            .map(|g| {
+                op(
+                    15,
+                    cons8((0..per).map(|k| input_axis(g * per + k)).collect()),
+                )
+            })
             .collect(),
     )
 }
@@ -96,7 +101,11 @@ pub fn hash_chain(n: usize) -> ExecutionNoun {
     assert!(n >= 1);
     let first = op(
         15,
-        cons8(std::iter::once(axis(2)).chain((0..7).map(|_| quote(0))).collect()),
+        cons8(
+            std::iter::once(axis(2))
+                .chain((0..7).map(|_| quote(0)))
+                .collect(),
+        ),
     );
     let step = || {
         op(
@@ -203,7 +212,14 @@ pub fn native(program: &ExecutionNoun, input: &[u64], budget: u64) -> (Vec<u64>,
     let mut r = Box::new(nox::Reduction::<8192>::new());
     let s = arena(&mut r, &subject);
     let f = arena(&mut r, program);
-    match nox::reduce(&mut r, s, f, budget, &nox::call::NullCalls, &mut nox::trace::NoTrace) {
+    match nox::reduce(
+        &mut r,
+        s,
+        f,
+        budget,
+        &nox::call::NullCalls,
+        &mut nox::trace::NoTrace,
+    ) {
         nox::Outcome::Ok(out, remaining) => {
             let mut atoms = Vec::new();
             leaves(&r, out, &mut atoms);
@@ -269,10 +285,90 @@ pub fn merkle_program(levels: usize, root: Option<&ExecutionNoun>) -> ExecutionN
     }
 }
 
+/// A `levels`-level hemera Merkle path (`hemera::merkle`: `hash_node`,
+/// the root flag on the last level) on input `[x 0]`, each level one call
+/// of the node jet (`zheng::execution::node`). The leaf is `hash(x)`
+/// (pattern 15); the siblings and directions of [`merkle_program`] are
+/// quoted in the program (direction 0: the sibling is the left child).
+/// The output is `eq(computed root, root)`, 0 when the path verifies; with
+/// `root = None` the computed root itself.
+///
+/// The subject while folding is `[cur [path [NODE [LEVEL ROOT]]]]`: the
+/// node formula and both level formulas ride in it once, and every level
+/// is the 9-token step `[2 [[0 1] [0 30|31]]]`, so a depth-32 path stays
+/// under the 4,096-node program cap.
+pub fn node_merkle_program(levels: usize, root: Option<&ExecutionNoun>) -> ExecutionNoun {
+    assert!(levels >= 1);
+    use zheng::execution::node;
+    let mut path = m_at(0);
+    for i in (0..levels).rev() {
+        let sib = digest_noun([1000 + i as u64, 7 * i as u64, 3, i as u64 * i as u64]);
+        path = m_pr(m_pr(sib, m_at((i % 2) as u64)), path);
+    }
+    // subject: cur 2, path 6, sibling 24, direction 25, rest 13, [NODE …] 7, NODE 14
+    let level = |flags: u64| {
+        let children = m_pr(
+            m_at(4),
+            m_pr(
+                m_axis(25),
+                m_pr(
+                    m_op(3, m_axis(24), m_axis(2)),
+                    m_op(3, m_axis(2), m_axis(24)),
+                ),
+            ),
+        );
+        let next = m_op(2, m_op(3, children, m_quote(m_at(flags))), m_axis(14));
+        m_op(3, next, m_op(3, m_axis(13), m_axis(7)))
+    };
+    let lib = m_pr(
+        node::formula().clone(),
+        m_pr(level(node::FLAGS_NODE), level(node::FLAGS_ROOT)),
+    );
+    let start = m_op(3, m_pr(m_at(15), m_axis(2)), m_quote(m_pr(path, lib)));
+    let step = |axis: u64| m_op(2, m_axis(1), m_axis(axis));
+    let mut steps = step(31);
+    if levels > 1 {
+        steps = m_op(2, repeat(&step(30), levels - 1), m_quote(steps));
+    }
+    let folded = m_op(2, start, m_quote(steps));
+    let computed = m_op(2, folded, m_quote(m_axis(2)));
+    match root {
+        None => computed,
+        Some(r) => m_op(9, computed, m_quote(r.clone())),
+    }
+}
+
+/// The root [`node_merkle_program`] computes, natively through hemera.
+pub fn node_merkle_root(levels: usize, x: u64) -> [u64; 4] {
+    use zheng::execution::node;
+    let leaf = nox::data::hash::hash_atom(F::new(x));
+    let rate: [hemera::field::Goldilocks; 8] = core::array::from_fn(|i| {
+        hemera::field::Goldilocks::new(if i < 4 { leaf[i].as_u64() } else { 0 })
+    });
+    let state = hemera::StepSponge::absorb(&rate).last().unwrap();
+    let mut cur: [u64; 4] = core::array::from_fn(|i| state[i].as_canonical_u64());
+    for i in 0..levels {
+        let sib = [1000 + i as u64, 7 * i as u64, 3, i as u64 * i as u64];
+        let flags = if i + 1 == levels {
+            node::FLAGS_ROOT
+        } else {
+            node::FLAGS_NODE
+        };
+        cur = if i % 2 == 0 {
+            node::native(sib, cur, flags)
+        } else {
+            node::native(cur, sib, flags)
+        };
+    }
+    cur
+}
+
 /// A balanced tree of `2^k` additions on input `[x 0]`: `f_0 = x + 1`,
 /// `f_k = f_{k−1} + f_{k−1}` — nox depth `k + 1`, about `3·2^k` cycles.
 pub fn tree_program(k: usize) -> ExecutionNoun {
-    (0..k).fold(m_op(5, m_axis(2), m_quote(m_at(1))), |f, _| m_op(5, f.clone(), f))
+    (0..k).fold(m_op(5, m_axis(2), m_quote(m_at(1))), |f, _| {
+        m_op(5, f.clone(), f)
+    })
 }
 
 /// Doubling recursion over a subject that carries its own formula:
@@ -283,7 +379,11 @@ pub fn rec_program() -> ExecutionNoun {
     // inside F the subject is [n F]
     let n = m_axis(2);
     let me = m_axis(3);
-    let call = m_op(2, m_op(3, m_op(6, n.clone(), m_quote(m_at(1))), me.clone()), me);
+    let call = m_op(
+        2,
+        m_op(3, m_op(6, n.clone(), m_quote(m_at(1))), me.clone()),
+        me,
+    );
     let body = m_op(5, call.clone(), call);
     let test = m_op(9, n, m_quote(m_at(0)));
     let f = m_pr(m_at(4), m_pr(test, m_pr(m_quote(m_at(1)), body)));
@@ -309,6 +409,9 @@ pub fn backend() -> &'static str {
 #[allow(dead_code)]
 pub fn prof_report(label: &str) {
     if std::env::var("ZHENG_BACKEND").is_ok_and(|b| b.starts_with("prof-")) {
-        eprint!("device ops, {label}:\n{}", cyber_lens_gpu::profile::report());
+        eprint!(
+            "device ops, {label}:\n{}",
+            cyber_lens_gpu::profile::report()
+        );
     }
 }

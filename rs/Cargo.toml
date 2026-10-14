@@ -28,6 +28,9 @@ legacy = []
 # Serialize/Deserialize; Goldilocks rides nebu's canonical-u64 form,
 # Commitment/Opening ride lens's existing serde feature.
 serde = ["dep:serde", "nebu/serde", "lens/serde"]
+# veil::testing: seeded zk proving for reproducible downstream zk tests
+# (a fixed seed fixes every mask). Tests only, never a production path.
+test-hooks = []
 
 [dev-dependencies]
 # benches and tests pick a prover backend (ZHENG_BACKEND)

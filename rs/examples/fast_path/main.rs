@@ -8,7 +8,9 @@
 //!
 //! Fixtures: `add.tri`, `hash.tri`, `chain-<n>` (n chained hemera digest
 //! hashes), `merkle-<n>` (an n-level Merkle path check), `synthetic-<k>`
-//! (a 2^k-row relation in the compiler's shape). Parameters: the shipped
+//! (a 2^k-row relation in the compiler's shape), `node-merkle-<n>` (an
+//! n-level hemera Merkle path through the node jet, `execution::node`).
+//! Parameters: the shipped
 //! `succinct::device_params` unless `FAST_RATE` / `FAST_K` / `FAST_POW` /
 //! `FAST_FIN` override them. `FAST_REPS` (default 3) repetitions; the
 //! median is reported. `ZHENG_TIMING=1` prints the prover's phases.
@@ -65,6 +67,12 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
             let root = machine::execute(&common::merkle_program(levels, None), &[5], BUDGET).ok()?;
             let r = machine::statement::parse(&root.statement.output).ok()?;
             (common::merkle_program(levels, Some(&r)), vec![5])
+        }
+        m if m.starts_with("node-merkle-") => {
+            // the same path through the hemera node jet (one permutation a level)
+            let levels: usize = m[12..].parse().ok()?;
+            let root = zheng::execution::node::digest_noun(common::node_merkle_root(levels, 5));
+            (common::node_merkle_program(levels, Some(&root)), vec![5])
         }
         t if t.starts_with("tree-") => (common::tree_program(t[5..].parse().ok()?), vec![3]),
         _ => return None,
@@ -171,6 +179,11 @@ fn main() {
             let wrap = |a: N, b: N| N::Pair(Box::new(a), Box::new(b));
             let subject = wrap(N::Atom(3), wrap(secret_op, wrap(N::Atom(0), N::Atom(1))));
             let prog = wrap(N::Atom(2), wrap(subject, wrap(N::Atom(1), inner_prog)));
+            if let Ok(dir) = std::env::var("FAST_DUMP") {
+                // the program and its secret input, for `joy prove --secret`
+                std::fs::write(format!("{dir}/{name}.nox"), text(&prog)).expect("dump");
+                std::fs::write(format!("{dir}/{name}.secret"), input[0].to_string()).expect("dump");
+            }
             let mut prove = vec![];
             let mut last = None;
             for _ in 0..reps {
@@ -185,6 +198,24 @@ fn main() {
                 prove.push(ms(t));
             }
             let Some((statement, proof)) = last else { continue };
+            if std::env::var_os("FAST_KEY").is_some() {
+                // warm: the veil proving key held across proofs
+                let t = Instant::now();
+                let key = zheng::execution::veil::ProvingKey::new(&prog, 0).expect("veil key");
+                let key_ms = ms(t);
+                let warm: Vec<f64> = (0..reps)
+                    .map(|_| {
+                        let t = Instant::now();
+                        let (s, p) = zheng::execution::veil::prove_with_key(&key, &prog, &[], &input[..1], BUDGET)
+                            .expect("prove");
+                        let took = ms(t);
+                        assert_eq!(s, statement);
+                        zheng::execution::veil::verify(&s, &p).expect("keyed proof verifies");
+                        took
+                    })
+                    .collect();
+                eprintln!("  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms (median of {reps})", median(warm));
+            }
             let verify: Vec<f64> = (0..reps)
                 .map(|_| {
                     let t = Instant::now();
