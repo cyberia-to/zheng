@@ -26,7 +26,7 @@
 //! Security (`audit/veil-coins-2026-10.md`): with `π` an ideal permutation
 //! on `F_p^16`, a distinguisher making `q` block queries and `N` offline
 //! permutation queries tells the streams from independent uniform field
-//! elements with advantage at most `q²/p^16 + N/p^4 + N·q/p^8`
+//! elements with advantage at most `N/p^4 + N·q/p^8 + (q + N)²/p^16`
 //! (`≈ N·2^-256`), on top of `derive_key`'s own pseudorandomness.
 
 use hemera::field::Goldilocks as Lane;
@@ -227,8 +227,8 @@ mod tests {
         }
         // the input layout, spelled out once with the plain permutation
         let mut st = [Lane::ZERO; 16];
-        for i in 0..4 {
-            st[i] = Lane::new(c.key[i]);
+        for (s, &k) in st.iter_mut().zip(c.key.iter()) {
+            *s = Lane::new(k);
         }
         st[4] = Lane::new(label::MASK_A.0);
         st[5] = Lane::new(2);

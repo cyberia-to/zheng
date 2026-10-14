@@ -288,8 +288,8 @@ never revealed). Streams: 1 masking-row fill (fill order), 2 `g1`, 3 `g2`
 coefficient `c` at `i·k + c`), 5 `m_a`, 6 `m_b`, 7 `m_P`, 8 salts (limb `s`
 of column `j` at `4j + s`). Every element is an output lane (no rejection),
 so any vector fills in parallel and equals the sequential fill. The
-zero-knowledge bound adds the PRF's advantage, `≤ q²/p^16 + N/p^4 +
-N·q/p^8` for an ideal permutation (`q` blocks, `N` offline queries).
+zero-knowledge bound adds the PRF's advantage, `≤ N/p^4 + N·q/p^8
++ (q + N)²/p^16` for an ideal permutation (`q` blocks, `N` offline queries).
 
 Policy (`veil::protocol::admit`): parameters in range (rate `2^-3 … 2^-8`,
 grinding ≤ 30, target 128 … 256) and the proven bound
