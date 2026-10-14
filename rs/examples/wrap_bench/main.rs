@@ -64,7 +64,7 @@ fn ms(t: Instant) -> f64 {
 fn main() {
     common::backend();
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = env("ZHENG_RATE", 4);
+    whir.log_inv_rate = env("ZHENG_RATE", ivc::SHIPPED_RATE);
     whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: u32 = env("ZHENG_STEP", 15);
     let args: Vec<String> = std::env::args().skip(1).collect();

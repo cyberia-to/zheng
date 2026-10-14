@@ -7,7 +7,7 @@ use lens::WhirParams;
 use super::circuit::layout as cl;
 use super::relation::{self, G_POINT, SEEDS};
 use super::state::{Dims, ZeroWord};
-use super::word::Digest;
+use super::word::{Arity, Digest};
 use crate::accumulate::{self, AccConfig};
 use crate::machine::air::{Constants, Machine};
 use crate::machine::layout::{W1, W2};
@@ -22,6 +22,10 @@ pub const PN_COLS: usize = 5;
 pub const CBITS: usize = 6;
 /// Circuit columns in the boundary row.
 pub const BV: usize = cl::V1 + cl::V2;
+/// The fan-in of every IVC tree (words a, b, c, the accumulator, the key
+/// words and the decider's rounds): a 4-ary path costs the circuit half
+/// the permutations of a binary one and the prover a third of the nodes.
+pub const ARITY: Arity = Arity::Four;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Params {
@@ -41,6 +45,8 @@ pub struct Params {
     pub zero_root: Digest,
     /// The circuit row carrying the step's public input.
     pub out_row: usize,
+    /// The fan-in of every tree ([`ARITY`]).
+    pub arity: Arity,
 }
 
 impl Params {
@@ -64,7 +70,7 @@ impl Params {
             pn: n + STEP_BITS + PN_COLS,
             pv: n + cl::pre::LOG,
         };
-        let zero = ZeroWord::new(&cfg.layout);
+        let zero = ZeroWord::new(&cfg.layout, ARITY);
         Ok(Self {
             whir: *whir,
             n,
@@ -78,6 +84,7 @@ impl Params {
             pv_deg: dims.pv,
             zero_root: zero.root,
             out_row: 0,
+            arity: ARITY,
         })
     }
 
@@ -111,7 +118,7 @@ pub fn ledger(p: &Params) -> Vec<(String, f64, u32)> {
             (n, b, g)
         })
         .collect();
-    if let Ok(dcfg) = super::whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2) {
+    if let Ok(dcfg) = super::whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2).map(|c| c.with_arity(p.arity)) {
         let wc = &dcfg.wc;
         for (n, b) in dcfg.terms() {
             let g = if let Some(i) = n.strip_prefix("shift_") {
@@ -159,7 +166,7 @@ mod tests {
     /// proves ≥ 128 bits (`specs/soundness.md` § recursion).
     #[test]
     fn every_ledger_row_of_the_recursion_profile_reaches_128_bits() {
-        for (rate, pow) in [(4u8, 24u8), (6, 24), (4, super::super::ivc::SHIPPED_POW)] {
+        for (rate, pow) in [(4u8, 24u8), (6, 24), (4, super::super::ivc::SHIPPED_POW), (super::super::ivc::SHIPPED_RATE, super::super::ivc::SHIPPED_POW)] {
             rows_at(rate, pow);
         }
     }

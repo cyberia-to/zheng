@@ -97,6 +97,12 @@ fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
 /// `specs/soundness.md` § recursion).
 pub const SHIPPED_POW: u8 = 16;
 
+/// The recursion profile's shipped rate under the wrap chain (profile 6):
+/// 1/8 (`examples/ivc_plan`: with 4-ary trees the step circuit fits 24,259
+/// of 32,768 rows at 16 grinding bits; every committed word is half the
+/// 1/16 codeword; `audit/ivc-speed-2026-10.md`).
+pub const SHIPPED_RATE: u8 = 3;
+
 /// A step size and parameter set planned without committing the key: the
 /// step circuit's rows (it must fit the step's `2^n` with the nox
 /// segment beside it), its census (gates, decompositions, permutation
@@ -137,7 +143,7 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
     if out2 != out {
         return Err("recursion: the circuit layout moved".into());
     }
-    let (kw, _) = KeyWords::commit(p.cfg.layout, p.n, &pre, super::word::Arity::Two);
+    let (kw, _) = KeyWords::commit(p.cfg.layout, p.n, &pre, p.arity);
     let k = Arc::new(Key::assemble(p, pre, kw.root, Some(kw))?);
     cache.lock().expect("key cache").insert((whir.header(), n), k.clone());
     Ok(k)
@@ -157,7 +163,7 @@ impl Key {
     fn assemble(params: Params, pre: Pre, kw_root: Digest, kw: Option<KeyWords>) -> Result<Self, String> {
         let sparse = super::vkey::sparse(&pre);
         let key_ext = super::vkey::ext(&pre);
-        let dcfg = whir::Config::derive(&params.whir, params.vars, &[1, 2], params.cfg.acc_claims() + 2)?;
+        let dcfg = whir::Config::derive(&params.whir, params.vars, &[1, 2], params.cfg.acc_claims() + 2)?.with_arity(params.arity);
         let g = g_graph(&params);
         let cell = OnceLock::new();
         if let Some(kw) = kw {
@@ -170,7 +176,7 @@ impl Key {
     /// the key's).
     pub fn words(&self) -> &KeyWords {
         self.kw.get_or_init(|| {
-            let (kw, _) = KeyWords::commit(self.params.cfg.layout, self.params.n, &self.pre, super::word::Arity::Two);
+            let (kw, _) = KeyWords::commit(self.params.cfg.layout, self.params.n, &self.pre, self.params.arity);
             assert_eq!(kw.root, self.kw_root, "recursion: the key's words do not match its root");
             kw
         })
@@ -217,7 +223,7 @@ impl Key {
 }
 
 /// Tag of an IVC key layout.
-const LAYOUT_TAG: &[u8; 8] = b"ZHKIVC01";
+const LAYOUT_TAG: &[u8; 8] = b"ZHKIVC02";
 
 /// `G` recorded once: inputs are the deferred point, the run's challenges
 /// and the statement constants (its structure is the statement's for no
@@ -362,7 +368,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let mut kept_a: Vec<Option<Word>> = Vec::with_capacity(segs);
     let mut kept_bytes = 0usize;
     for i in 0..segs {
-        let w = Word::commit_base(layout, &run.segment(i).column_major(WORD));
+        let w = Word::commit_base_a(layout, &run.segment(i).column_major(WORD), p.arity);
         let mut o = Native::new();
         let root = w.root().map(Fp3::from_base);
         let z = step::pre_points(&mut o, root, p.fresh);
@@ -385,7 +391,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         carry = out;
         n2s.push(w2);
     }
-    let mut acc = AccData::Zero(ZeroWord::new(&layout));
+    let mut acc = AccData::Zero(ZeroWord::new(&layout, p.arity));
     let mut prev: Option<(State, StepProof)> = None;
     let mut last_state = None;
     for i in 0..segs {
@@ -409,7 +415,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         let seg = run.segment(i);
         let word_a = match kept_a[i].take() {
             Some(w) => w,
-            None => Word::commit_base(layout, &seg.column_major(WORD)),
+            None => Word::commit_base_a(layout, &seg.column_major(WORD), p.arity),
         };
         let j = (i + 1) % segs;
         let b_out = nox_row0(&run.segment(j), &n2s[j]);

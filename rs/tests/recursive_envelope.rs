@@ -123,7 +123,7 @@ fn a_wrong_profile_or_format_byte_is_rejected() {
         bad[10] = profile;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
     }
-    for format in [0u8, 1, 3, 0xff] {
+    for format in [0u8, 1, 2, 4, 0xff] {
         let mut bad = bytes.clone();
         bad[HEADER_BYTES] = format;
         assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical));

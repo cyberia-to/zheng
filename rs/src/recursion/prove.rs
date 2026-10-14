@@ -123,12 +123,12 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
         row[..W2].copy_from_slice(w.n2.row(r));
         row[W2..W2 + V1].copy_from_slice(w.v1.row(r));
     }
-    let word_b = Word::commit_base(layout, &wb.column_major(WORD));
+    let word_b = Word::commit_base_a(layout, &wb.column_major(WORD), p.arity);
     let (zb, ood_b) = bind(&mut t, &word_b, p.fresh);
     lap("word b");
     let ch_v = [t.squeeze_ext(), t.squeeze_ext()];
     let v2 = trace::phase2(w.v1, w.key, ch_v[0], ch_v[1]);
-    let word_c = Word::commit_base(layout, &v2.column_major(WORD));
+    let word_c = Word::commit_base_a(layout, &v2.column_major(WORD), p.arity);
     let (zc_pts, ood_c) = bind(&mut t, &word_c, p.fresh);
     lap("word c");
     let b_in: Vec<Goldilocks> = w.n1.row(0).iter().chain(w.n2.row(0)).copied().collect();
@@ -351,7 +351,7 @@ fn prove_acc(
         }
     }
     let v0 = evals.iter().zip(&coef).fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
-    let wd = Word::commit_ext(cfg.layout, &gt);
+    let wd = Word::commit_ext_a(cfg.layout, &gt, p.arity);
     let (root, data) = (wd.root(), AccData::Word(wd));
     lap("commit");
     t.absorb_all(&root);

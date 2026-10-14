@@ -431,11 +431,16 @@ impl Word {
 
     /// Commit an Fp3 table.
     pub fn commit_ext(layout: LeafLayout, evals: &[Fp3]) -> Self {
+        Self::commit_ext_a(layout, evals, Arity::Two)
+    }
+
+    /// [`Self::commit_ext`] under a tree of `arity`.
+    pub fn commit_ext_a(layout: LeafLayout, evals: &[Fp3], arity: Arity) -> Self {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
         mobius_ext(&mut coeffs);
-        Self::build_a(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code: None }, Arity::Two)
+        Self::build_a(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code: None }, arity)
     }
 
     /// Commit an Fp3 polynomial given by its `2^ℓ` monomial coefficients.

@@ -242,7 +242,7 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
         claims.push(bnd[w].clone());
         words.push(InstV { root, ext: false, claims });
     }
-    let acc = acc::verify(o, &p.cfg, &mut t, &words, &pf.acc);
+    let acc = acc::verify(o, &p.cfg, p.arity, &mut t, &words, &pf.acc);
     let step = o.affine(Fp3::ONE, st.step, Fp3::ONE);
     StateV { ctx: st.ctx, step, chain, b_first, b_last: b_out, acc, g, pn, pv }
 }
@@ -291,7 +291,7 @@ pub fn check_shape(p: &Params, pf: &StepProof) -> Result<(), String> {
             q.len() == 4
                 && q.iter().enumerate().all(|(i, l)| {
                     l.symbols.len() == 1 << p.cfg.layout.log_width
-                        && l.path.len() == p.cfg.layout.log_leaves() as usize
+                        && l.path.len() == p.arity.path_len(p.cfg.layout.log_leaves() as usize)
                         && (i == 0 || l.symbols.iter().all(|s| s.c1 == Goldilocks::ZERO && s.c2 == Goldilocks::ZERO))
                 })
         });

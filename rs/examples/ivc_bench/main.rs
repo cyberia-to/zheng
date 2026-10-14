@@ -1,6 +1,6 @@
 //! Measure recursive (IVC) proofs of nox runs: proof bytes, prove and
 //! verify time, under the recursion profile's WHIR parameters
-//! (`ZHENG_RATE=<log inv rate>`, default 4; `ZHENG_POW=<bits>`, default 24;
+//! (`ZHENG_RATE=<log inv rate>`, default `ivc::SHIPPED_RATE`; `ZHENG_POW=<bits>`, default `ivc::SHIPPED_POW`;
 //! `ZHENG_STEP=<log rows>`, default 15).
 //!
 //! `cargo run --release -p zheng --example ivc_bench -- [fixture…]`
@@ -36,7 +36,7 @@ fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
 fn main() {
     common::backend();
     let mut whir = zheng::execution::succinct::params_for(20);
-    whir.log_inv_rate = env("ZHENG_RATE", 4);
+    whir.log_inv_rate = env("ZHENG_RATE", ivc::SHIPPED_RATE);
     whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: u32 = env("ZHENG_STEP", 15);
     let args: Vec<String> = std::env::args().skip(1).collect();

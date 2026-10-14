@@ -183,14 +183,22 @@ pub struct ZeroWord {
 }
 
 impl ZeroWord {
-    pub fn new(layout: &LeafLayout) -> Self {
+    /// Under a tree of `arity`: every node of a level hashes equal
+    /// children, so a path's siblings are that level's one digest.
+    pub fn new(layout: &LeafLayout, arity: super::word::Arity) -> Self {
         let width = 1usize << layout.log_width;
         let symbols = vec![Fp3::ZERO; width];
         let mut d = leaf_digest(true, &symbols);
         let mut path = Vec::new();
-        for _ in 0..layout.log_leaves() {
-            path.push(d);
-            d = perm::head(&perm::node_state(d, d));
+        for a in arity.levels(layout.log_leaves() as usize) {
+            path.extend(core::iter::repeat_n(d, a - 1));
+            d = if a == 4 {
+                let mut s = perm::node4_input([d; 4]);
+                perm::permute(&mut s);
+                perm::head(&s)
+            } else {
+                perm::head(&perm::node_state(d, d))
+            };
         }
         Self { root: d, opening: LeafOpening { symbols, path, leaf: None } }
     }
