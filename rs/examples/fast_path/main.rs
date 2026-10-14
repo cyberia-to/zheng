@@ -179,6 +179,11 @@ fn main() {
             let wrap = |a: N, b: N| N::Pair(Box::new(a), Box::new(b));
             let subject = wrap(N::Atom(3), wrap(secret_op, wrap(N::Atom(0), N::Atom(1))));
             let prog = wrap(N::Atom(2), wrap(subject, wrap(N::Atom(1), inner_prog)));
+            if let Ok(dir) = std::env::var("FAST_DUMP") {
+                // the program and its secret input, for `joy prove --secret`
+                std::fs::write(format!("{dir}/{name}.nox"), text(&prog)).expect("dump");
+                std::fs::write(format!("{dir}/{name}.secret"), input[0].to_string()).expect("dump");
+            }
             let mut prove = vec![];
             let mut last = None;
             for _ in 0..reps {
