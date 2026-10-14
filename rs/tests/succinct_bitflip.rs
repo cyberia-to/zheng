@@ -65,3 +65,35 @@ fn every_bit_flip_of_a_tensor_hash_proof_is_rejected() {
     println!("TensorRs hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
     assert_eq!(accepted, 0);
 }
+
+/// The shipped one-relation parameters (`device_params`, 16 grinding bits
+/// at this size) through `prove_default`.
+#[test]
+fn every_bit_flip_of_a_shipped_device_proof_is_rejected() {
+    let (statement, proof) = succinct::prove_default(&parse(HASH), &[7], 1_000_000).unwrap();
+    let e = Envelope::Succinct {
+        statement: SuccinctStatement::Execution(statement),
+        proof,
+    };
+    let (flips, accepted) = scan(&e);
+    println!("device_params hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+    assert_eq!(accepted, 0);
+}
+
+/// The 2^17 / 2^18 classes' shape (folding 5; 16 and 22 grinding bits) at
+/// hash.tri's size; ~1 min each on 16 cores.
+#[test]
+#[ignore]
+fn every_bit_flip_of_a_folding_5_proof_is_rejected() {
+    for pow_bits in [16, 22] {
+        let p = WhirParams { log_inv_rate: 6, folding_factor: 5, pow_bits, ..WhirParams::default() };
+        let (statement, proof) = succinct::prove::<Whir>(&p, &parse(HASH), &[7], 1_000_000).unwrap();
+        let e = Envelope::Succinct {
+            statement: SuccinctStatement::Execution(statement),
+            proof: proof.into(),
+        };
+        let (flips, accepted) = scan(&e);
+        println!("WHIR 1/64 k=5 pow={pow_bits} hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+        assert_eq!(accepted, 0);
+    }
+}

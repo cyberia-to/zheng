@@ -6,12 +6,12 @@ impl Builder {
         f: &ExecutionNoun,
         depth: usize,
     ) -> Result<(Value, Value, u64), RelationError> {
-        if self.ops.len() > 32768 || self.rows.len() > 32768 {
+        if self.ops.len() > MAX_RELATION || self.rows.len() > MAX_RELATION {
             return Err(RelationError::Limit);
         }
         let result = self.eval_inner(obj, f, depth)?;
         check_value(&result.0, 0, &mut 0)?;
-        if self.ops.len() > 32768 || self.rows.len() > 32768 {
+        if self.ops.len() > MAX_RELATION || self.rows.len() > MAX_RELATION {
             return Err(RelationError::Limit);
         }
         Ok(result)

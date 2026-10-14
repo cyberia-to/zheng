@@ -43,6 +43,11 @@ pub trait ChallengeField:
     fn encode(self, out: &mut Vec<u8>);
     /// Draw one challenge from the transcript.
     fn squeeze(transcript: &mut Transcript) -> Self;
+    /// `self · b` for a base-field `b` (one base product per limb).
+    #[inline]
+    fn mul_base(self, b: Goldilocks) -> Self {
+        self * Self::from_base(b)
+    }
 }
 
 impl ChallengeField for Goldilocks {
@@ -82,6 +87,10 @@ impl ChallengeField for Fp3 {
     }
     fn squeeze(transcript: &mut Transcript) -> Self {
         transcript.squeeze_fp3()
+    }
+    #[inline]
+    fn mul_base(self, b: Goldilocks) -> Self {
+        Fp3::new(self.c0 * b, self.c1 * b, self.c2 * b)
     }
 }
 

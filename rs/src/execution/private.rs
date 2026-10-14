@@ -70,7 +70,19 @@ pub fn prepare_execution(
         .collect();
     execution.cycles = witness.z[relation.cost_index].as_u64();
     let statement = PrivateStatement { execution };
-    let prepared = statement.prepare()?;
+    // the relation compiles deterministically from the program and the
+    // input count: the one just compiled is the one the verifier derives
+    // (`PrivateStatement::prepare`), so it is reused, not compiled twice;
+    // the completed statement's bounds (cost within budget, output count)
+    // are checked as `prepare` checks them
+    statement.execution.validate_bounds()?;
+    let public_coordinates = statement
+        .execution
+        .bindings(&relation)?
+        .into_iter()
+        .map(|(i, v)| (i, v.as_u64()))
+        .collect();
+    let prepared = PreparedExecution { relation, public_coordinates };
     Ok((
         statement,
         prepared,
