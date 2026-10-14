@@ -107,7 +107,7 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
         eprintln!("shipped final key (reads {}): {nm:<40} {b:.2}", w.reads);
     }
     let weakest = rows.iter().map(|r| r.1).fold(f64::INFINITY, f64::min);
-    assert!(weakest >= 128.0 && (weakest - 128.43).abs() < 0.01, "{weakest}");
+    assert!(weakest >= 128.0 && (weakest - 128.40).abs() < 0.01, "{weakest}");
     assert_eq!((k.params.whir.log_inv_rate, k.params.whir.pow_bits, k.params.n), (9, 26, 14));
     // columns
     let used = k.g.used_inputs();

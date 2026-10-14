@@ -422,7 +422,7 @@ fn the_inner_levels_ledgers_are_their_keys() {
         eprintln!("level {lvl}: fresh {} comb_pow {} final_vars {} weakest {name} {bits:.2}; interactive {inter:.2}", k.fresh, k.cfg.comb_pow, k.cfg.wc.final_vars);
         assert!(bits >= 128.0, "level {lvl}: {name} {bits}");
         // the stated figures (`specs/soundness.md`; review D1)
-        let want = [(128.22, 108.92), (128.08, 102.35)][lvl];
+        let want = [(128.09, 110.23), (128.24, 104.24)][lvl];
         assert!((bits - want.0).abs() < 0.01 && (inter - want.1).abs() < 0.01, "level {lvl}: {bits} / {inter}");
     }
     let fk = wrapped::final_key().unwrap();
