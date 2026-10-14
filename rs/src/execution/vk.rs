@@ -181,26 +181,17 @@ const LEAF_BYTES: usize = 1024;
 /// batches. Leaves are padded to a power of two with empty chunks; the
 /// encoding starts with its own dimensions, so the padding is unambiguous.
 fn tree_digest(bytes: &[u8]) -> [u8; 32] {
-    use hemera::Hash;
-    use hemera::tree::{hash_leaf_batch, hash_node_batch};
+    // lens's tree is this tree: leaf `i` = `hash_leaf(chunk_i, i, count = 1)`,
+    // nodes `hash_node` with the root flag at the top; built in CPU threads
+    // (verifiers derive keys too, and never use a device)
     let chunks = bytes.len().div_ceil(LEAF_BYTES).max(1);
     let count = chunks.next_power_of_two();
-    let leaves: Vec<(&[u8], u64)> = (0..count)
-        .map(|i| {
-            let start = (i * LEAF_BYTES).min(bytes.len());
-            let end = ((i + 1) * LEAF_BYTES).min(bytes.len());
-            (&bytes[start..end], i as u64)
-        })
-        .collect();
-    let mut level = vec![Hash::from_bytes([0; 32]); count];
-    hash_leaf_batch(&leaves, count == 1, &mut level);
-    while level.len() > 1 {
-        let pairs: Vec<(Hash, Hash)> = level.chunks_exact(2).map(|p| (p[0], p[1])).collect();
-        let mut next = vec![Hash::from_bytes([0; 32]); pairs.len()];
-        hash_node_batch(&pairs, pairs.len() == 1, &mut next);
-        level = next;
-    }
-    *level[0].as_bytes()
+    let tree = lens::rspcs::merkle::Tree::build_on_cpu(count, |i| {
+        let start = (i * LEAF_BYTES).min(bytes.len());
+        let end = ((i + 1) * LEAF_BYTES).min(bytes.len());
+        bytes[start..end].to_vec()
+    });
+    *tree.root().as_bytes()
 }
 
 #[cfg(test)]

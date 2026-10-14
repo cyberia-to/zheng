@@ -173,6 +173,10 @@ struct Builder {
     lookups: Vec<LookupCoordinates>,
     state: Option<PublicStateTables>,
 }
+/// Operations and rows one compiled relation may hold. The verifier
+/// recompiles the relation from the program, so this bounds its work too
+/// (a 2^20-row relation compiles in about a second on one core).
+pub const MAX_RELATION: usize = 1 << 20;
 const MAX_CALLS: usize = 4096;
 const MAX_DEPTH: usize = 128;
 impl Builder {

@@ -32,19 +32,28 @@ fn mds() -> &'static [[F; 16]; 16] {
 impl Builder {
     fn hash_mds(&mut self, state: &State, internal: bool) -> Result<State, RelationError> {
         let mut out = zero_state();
+        if internal {
+            // (1 + diag) matrix: every row is Σ_col state[col] plus
+            // diag[row]·state[row]. The sum is normalised once; each row
+            // adds its diagonal term to it — the same canonical form as
+            // normalising the row's 16 scaled lanes (field sums are exact).
+            let mut sum = vec![];
+            for lane in state.iter() {
+                sum.extend(self.linear(lane)?);
+            }
+            let sum = normalize(sum);
+            for row in 0..16 {
+                let diag = F::new(hemera::field::MATRIX_DIAG_16[row].as_canonical_u64());
+                let mut terms = sum.clone();
+                terms.extend(self.linear(&state[row])?.into_iter().map(|(i, c)| (i, c * diag)));
+                out[row] = Value::Linear(normalize(terms));
+            }
+            return Ok(out);
+        }
         for row in 0..16 {
             let mut terms = vec![];
             for column in 0..16 {
-                let coefficient = if internal {
-                    F::ONE
-                        + if row == column {
-                            F::new(hemera::field::MATRIX_DIAG_16[row].as_canonical_u64())
-                        } else {
-                            F::ZERO
-                        }
-                } else {
-                    mds()[row][column]
-                };
+                let coefficient = mds()[row][column];
                 terms.extend(
                     self.linear(&state[column])?
                         .into_iter()
@@ -105,7 +114,7 @@ impl Builder {
     }
 
     fn hash_permute(&mut self, input: State) -> Result<State, RelationError> {
-        if self.ops.len() > 32768 || self.rows.len() + self.sbox.len() > 32768 {
+        if self.ops.len() > MAX_RELATION || self.rows.len() + self.sbox.len() > MAX_RELATION {
             return Err(RelationError::Limit);
         }
         // A permutation of constants is a constant: run it natively.
@@ -147,7 +156,7 @@ impl Builder {
         value: &Value,
         depth: usize,
     ) -> Result<[Value; 4], RelationError> {
-        if depth > MAX_DEPTH || self.ops.len() > 32768 || self.rows.len() > 32768 {
+        if depth > MAX_DEPTH || self.ops.len() > MAX_RELATION || self.rows.len() > MAX_RELATION {
             return Err(RelationError::Limit);
         }
         if let Some(noun) = Self::static_value(value, depth) {

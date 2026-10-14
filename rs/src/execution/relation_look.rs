@@ -100,7 +100,7 @@ impl Builder {
             let unequal = self.nonzero(&delta)?;
             let namespace_equal = self.add(&one, &unequal, true)?;
             for (index, &field) in fields.iter().enumerate() {
-                if self.ops.len() > 32768 || self.rows.len() > 32768 {
+                if self.ops.len() > MAX_RELATION || self.rows.len() > MAX_RELATION {
                     return Err(RelationError::Limit);
                 }
                 let delta = self.add(key, &Value::Constant(F::new(index as u64)), true)?;
