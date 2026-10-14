@@ -279,6 +279,18 @@ column. The tensor block (`w`) costs `O(log k)` per column through
 Shape: `k` is the power of two minimising the estimated size subject to
 `k > t` (the padding and `m_b` cover every opened column).
 
+Prover coins (`veil::coins`): a key `K = derive_key("zheng-veil-coins-v2",
+seed)` from a 32-byte OS-entropy seed (four Goldilocks lanes); element `i`
+of stream `label` is lane `i mod 8` of `permute_ct(K ‖ label ‖ ⌊i/8⌋ ‖ 0^9
+‖ tag)` (hemera's constant-time permutation, lanes 0–7 out, lanes 8–15
+never revealed). Streams: 1 masking-row fill (fill order), 2 `g1`, 3 `g2`
+(coefficients round-major, three limbs each), 4 row padding (`ν_i`
+coefficient `c` at `i·k + c`), 5 `m_a`, 6 `m_b`, 7 `m_P`, 8 salts (limb `s`
+of column `j` at `4j + s`). Every element is an output lane (no rejection),
+so any vector fills in parallel and equals the sequential fill. The
+zero-knowledge bound adds the PRF's advantage, `≤ q²/p^16 + N/p^4 +
+N·q/p^8` for an ideal permutation (`q` blocks, `N` offline queries).
+
 Policy (`veil::protocol::admit`): parameters in range (rate `2^-3 … 2^-8`,
 grinding ≤ 30, target 128 … 256) and the proven bound
 `hiding::Config::security_bits ≥ 128`. Default: rate 1/32, 16 grinding bits.
