@@ -24,7 +24,7 @@
 
 use nebu::{Fp3, Goldilocks};
 
-use super::coins::Coins;
+use super::coins::{Coins, Label};
 use crate::types::SumcheckPoly;
 
 /// One mask: `R` univariate polynomials of degree `d`.
@@ -54,11 +54,11 @@ impl Mask {
         rounds * (degree + 1) * 3
     }
 
-    pub fn sample(rounds: usize, degree: usize, coins: &mut Coins) -> Self {
+    /// Uniform coefficients from stream `label`, round-major.
+    pub fn sample(rounds: usize, degree: usize, coins: &Coins, label: Label) -> Self {
+        let all = coins.exts(label, rounds * (degree + 1));
         Self {
-            coeffs: (0..rounds)
-                .map(|_| (0..=degree).map(|_| coins.ext()).collect())
-                .collect(),
+            coeffs: all.chunks(degree + 1).map(<[Fp3]>::to_vec).collect(),
         }
     }
 
@@ -148,9 +148,10 @@ mod tests {
     /// sumcheck, and the committed weights evaluate g.
     #[test]
     fn rounds_sums_and_weights_agree_with_brute_force() {
-        let mut coins = Coins::seeded([3; 32]);
+        let coins = Coins::seeded([3; 32]);
+        let mut rng = coins.stream(crate::execution::veil::coins::label::TEST);
         for (rounds, degree) in [(1, 2), (3, 2), (4, 8)] {
-            let g = Mask::sample(rounds, degree, &mut coins);
+            let g = Mask::sample(rounds, degree, &coins, Label(1 << 33 | rounds as u64));
             let brute = (0..1usize << rounds).fold(Fp3::ZERO, |acc, x| {
                 let p: Vec<Fp3> = (0..rounds)
                     .map(|i| Fp3::from_base(Goldilocks::new(((x >> (rounds - 1 - i)) & 1) as u64)))
@@ -163,12 +164,12 @@ mod tests {
             for j in 0..rounds {
                 let s = g.round_poly(&prefix);
                 assert_eq!(eval(&s, Fp3::ZERO) + eval(&s, Fp3::ONE), claim, "round {j}");
-                let r = coins.ext();
+                let r = rng.ext();
                 claim = eval(&s, r);
                 prefix.push(r);
             }
             assert_eq!(claim, g.eval_at(&prefix));
-            let scale = coins.ext();
+            let scale = rng.ext();
             let w = weights(&prefix, degree, scale);
             let dot = w
                 .iter()

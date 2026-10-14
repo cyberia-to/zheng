@@ -27,7 +27,7 @@ fn parsed(x: u64, seed: u64) -> Parsed {
         &w,
         &bytes,
         &public,
-        &mut Coins::seeded(seed_bytes),
+        &Coins::seeded(seed_bytes),
     )
     .unwrap();
     verify_relation(&prepared.relation.instance, &proof, &bytes, &public).unwrap();

@@ -37,7 +37,7 @@
 
 use nebu::Goldilocks;
 
-use super::coins::Coins;
+use super::coins::{Coins, label};
 use crate::types::{CCSInstance, SparseMatrix};
 
 /// Rows per masking type.
@@ -185,12 +185,15 @@ pub(crate) fn extend(base: &CCSInstance) -> Result<(CCSInstance, Extension), Str
 
 impl Extension {
     /// Extend a witness of the base relation with uniform masking values.
-    pub fn witness(&self, base: &[Goldilocks], num_cols: usize, coins: &mut Coins) -> Vec<Goldilocks> {
+    /// The free values are the `PAD_FILL` stream in fill order.
+    pub fn witness(&self, base: &[Goldilocks], num_cols: usize, coins: &Coins) -> Vec<Goldilocks> {
         let mut z = base.to_vec();
         z.resize(num_cols, Goldilocks::ZERO);
+        let free = self.fill.iter().filter(|f| f.1.is_none()).count();
+        let mut values = coins.bases(label::PAD_FILL, free).into_iter();
         for &(c, power_of) in &self.fill {
             z[c] = match power_of {
-                None => coins.base(),
+                None => values.next().expect("one value per free slot"),
                 Some(s) => z[s].pow7(),
             };
         }
@@ -220,14 +223,13 @@ mod tests {
             let (ext, fill) = extend(base).unwrap();
             assert!(ext.num_rows.is_power_of_two() && ext.num_cols.is_power_of_two());
             let z: Vec<_> = z.into_iter().map(Goldilocks::new).collect();
-            let mut coins = Coins::seeded([9; 32]);
-            for _ in 0..4 {
-                let w = fill.witness(&z, ext.num_cols, &mut coins);
+            for seed in 0..4u8 {
+                let w = fill.witness(&z, ext.num_cols, &Coins::seeded([seed; 32]));
                 assert!(ext.is_satisfied_by(&crate::types::CCSWitness { z: w }));
             }
             // a wrong mask value breaks a row only where it must
             if gate == Gate::ProductSbox {
-                let mut w = fill.witness(&z, ext.num_cols, &mut coins);
+                let mut w = fill.witness(&z, ext.num_cols, &Coins::seeded([9; 32]));
                 let (t, _) = fill.fill.iter().find(|f| f.1.is_some()).unwrap();
                 w[*t] += Goldilocks::ONE;
                 assert!(!ext.is_satisfied_by(&crate::types::CCSWitness { z: w }));
