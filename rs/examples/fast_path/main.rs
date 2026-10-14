@@ -8,7 +8,9 @@
 //!
 //! Fixtures: `add.tri`, `hash.tri`, `chain-<n>` (n chained hemera digest
 //! hashes), `merkle-<n>` (an n-level Merkle path check), `synthetic-<k>`
-//! (a 2^k-row relation in the compiler's shape). Parameters: the shipped
+//! (a 2^k-row relation in the compiler's shape), `node-merkle-<n>` (an
+//! n-level hemera Merkle path through the node jet, `execution::node`).
+//! Parameters: the shipped
 //! `succinct::device_params` unless `FAST_RATE` / `FAST_K` / `FAST_POW` /
 //! `FAST_FIN` override them. `FAST_REPS` (default 3) repetitions; the
 //! median is reported. `ZHENG_TIMING=1` prints the prover's phases.
@@ -65,6 +67,12 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
             let root = machine::execute(&common::merkle_program(levels, None), &[5], BUDGET).ok()?;
             let r = machine::statement::parse(&root.statement.output).ok()?;
             (common::merkle_program(levels, Some(&r)), vec![5])
+        }
+        m if m.starts_with("node-merkle-") => {
+            // the same path through the hemera node jet (one permutation a level)
+            let levels: usize = m[12..].parse().ok()?;
+            let root = zheng::execution::node::digest_noun(common::node_merkle_root(levels, 5));
+            (common::node_merkle_program(levels, Some(&root)), vec![5])
         }
         t if t.starts_with("tree-") => (common::tree_program(t[5..].parse().ok()?), vec![3]),
         _ => return None,
