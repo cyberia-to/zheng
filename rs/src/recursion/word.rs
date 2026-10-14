@@ -7,7 +7,7 @@
 //! accumulation analysis is unchanged and the recursion circuit can open a
 //! word with permutations alone.
 
-use lens::rspcs::field::{mobius_base, mobius_ext, univariate_base, univariate_ext};
+use lens::rspcs::field::{univariate_base, univariate_ext};
 use lens::rspcs::whir::LeafLayout;
 use nebu::{Fp3, Goldilocks};
 
@@ -350,6 +350,63 @@ thread_local! {
     pub(crate) static FORCE_STREAM: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
+/// lens's Möbius transform (`mobius_base`/`mobius_ext`: evaluations to
+/// monomial coefficients, `hi −= lo` at every step) in threads: the steps
+/// within a chunk run chunk by chunk, the larger ones split across
+/// threads. Exact, so the same coefficients.
+fn mobius_par<T: Copy + Send + Sync + core::ops::SubAssign>(a: &mut [T]) {
+    let n = a.len();
+    assert!(n.is_power_of_two());
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16).next_power_of_two();
+    if n < 1 << 16 || threads == 1 {
+        let mut step = 1;
+        while step < n {
+            for block in a.chunks_exact_mut(2 * step) {
+                let (lo, hi) = block.split_at_mut(step);
+                for (h, l) in hi.iter_mut().zip(lo.iter()) {
+                    *h -= *l;
+                }
+            }
+            step *= 2;
+        }
+        return;
+    }
+    let chunk = n / threads;
+    std::thread::scope(|sc| {
+        for c in a.chunks_mut(chunk) {
+            sc.spawn(move || {
+                let mut step = 1;
+                while step < c.len() {
+                    for block in c.chunks_exact_mut(2 * step) {
+                        let (lo, hi) = block.split_at_mut(step);
+                        for (h, l) in hi.iter_mut().zip(lo.iter()) {
+                            *h -= *l;
+                        }
+                    }
+                    step *= 2;
+                }
+            });
+        }
+    });
+    let mut step = chunk;
+    while step < n {
+        let piece = (step / (threads / (n / (2 * step))).max(1)).max(1);
+        std::thread::scope(|sc| {
+            for block in a.chunks_exact_mut(2 * step) {
+                let (lo, hi) = block.split_at_mut(step);
+                for (hp, lp) in hi.chunks_mut(piece).zip(lo.chunks(piece)) {
+                    sc.spawn(move || {
+                        for (h, l) in hp.iter_mut().zip(lp) {
+                            *h -= *l;
+                        }
+                    });
+                }
+            }
+        });
+        step *= 2;
+    }
+}
+
 /// Whether a codeword over `layout` is streamed (never held).
 fn streamed(layout: LeafLayout) -> bool {
     #[cfg(test)]
@@ -364,12 +421,12 @@ fn streamed(layout: LeafLayout) -> bool {
 impl Word {
     pub fn member_base_streamed(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
         let mut coeffs = evals.to_vec();
-        mobius_base(&mut coeffs);
+        mobius_par(&mut coeffs);
         Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code: None }, levels: Vec::new(), arity: Arity::Two }
     }
     pub fn member_ext_streamed(layout: LeafLayout, evals: &[Fp3]) -> Self {
         let mut coeffs = evals.to_vec();
-        mobius_ext(&mut coeffs);
+        mobius_par(&mut coeffs);
         Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code: None }, levels: Vec::new(), arity: Arity::Two }
     }
 }
@@ -401,7 +458,7 @@ impl Word {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
-        mobius_base(&mut coeffs);
+        mobius_par(&mut coeffs);
         let code = held_code(Coeffs::Base(&coeffs), layout);
         Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
     }
@@ -411,7 +468,7 @@ impl Word {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
-        mobius_ext(&mut coeffs);
+        mobius_par(&mut coeffs);
         let code = held_code(Coeffs::Ext(&coeffs), layout);
         Self { num_vars, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
     }
@@ -421,7 +478,7 @@ impl Word {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
-        mobius_base(&mut coeffs);
+        mobius_par(&mut coeffs);
         Self::build_a(num_vars, layout, Data::Base { evals: evals.to_vec(), coeffs, code: None }, arity)
     }
 
@@ -439,7 +496,7 @@ impl Word {
         let num_vars = evals.len().trailing_zeros() as usize;
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
-        mobius_ext(&mut coeffs);
+        mobius_par(&mut coeffs);
         Self::build_a(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code: None }, arity)
     }
 
@@ -478,6 +535,16 @@ impl Word {
     fn held(&self) -> bool {
         match &self.data {
             Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => code.is_some(),
+        }
+    }
+    /// The table as committed: base or Fp3 entries (`None`: a word
+    /// committed from coefficients).
+    pub fn evals(&self) -> Option<crate::accumulate::sumcheck::Table<'_>> {
+        use crate::accumulate::sumcheck::Table;
+        match &self.data {
+            Data::Base { evals, .. } => Some(Table::Base(evals)),
+            Data::Ext { evals, .. } => Some(Table::Ext(evals)),
+            Data::Coeffs { .. } => None,
         }
     }
     /// The table, lifted to Fp3 (a word committed from coefficients has
@@ -769,6 +836,22 @@ mod tests {
             for j in [0, 5, leaves - 1] {
                 assert_eq!(a.open(j), b.open(j));
             }
+        }
+    }
+
+    #[test]
+    fn the_threaded_mobius_transform_is_lens_s() {
+        use lens::rspcs::field::{mobius_base, mobius_ext};
+        for log in [3usize, 16, 17, 20] {
+            let b: Vec<Goldilocks> = (0..1u64 << log).map(|i| Goldilocks::new(i.wrapping_mul(0x9e37_79b9) ^ 77)).collect();
+            let e: Vec<Fp3> = b.iter().map(|&x| Fp3::new(x, x + Goldilocks::ONE, x * x)).collect();
+            let (mut b1, mut b2, mut e1, mut e2) = (b.clone(), b, e.clone(), e);
+            mobius_base(&mut b1);
+            mobius_par(&mut b2);
+            mobius_ext(&mut e1);
+            mobius_par(&mut e2);
+            assert_eq!(b1, b2, "{log}");
+            assert_eq!(e1, e2, "{log}");
         }
     }
 

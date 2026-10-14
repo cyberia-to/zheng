@@ -241,7 +241,18 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     }
     lap("shift");
     // accumulation
-    let tables = [acc_in.table(p.vars), w.word_a.table(), word_b.table(), word_c.table()];
+    let zeros = match acc_in {
+        AccData::Zero(_) => acc_in.table(p.vars),
+        AccData::Word(_) => Vec::new(),
+    };
+    fn ev(w: &Word) -> sumcheck::Table<'_> {
+        w.evals().expect("a committed table")
+    }
+    let acc_t = match acc_in {
+        AccData::Zero(_) => sumcheck::Table::Ext(&zeros),
+        AccData::Word(wd) => ev(wd),
+    };
+    let tables = [acc_t, ev(w.word_a), ev(&word_b), ev(&word_c)];
     let proof_partial = StepProof {
         roots: [w.word_a.root(), word_b.root(), word_c.root()],
         ood: [w.ood_a.to_vec(), ood_b, ood_c],
@@ -314,7 +325,7 @@ impl Opener for AccData {
 fn prove_acc(
     p: &Params,
     t: &mut ProverTranscript,
-    tables: &[Vec<Fp3>; 4],
+    tables: &[sumcheck::Table<'_>; 4],
     claims: &[Vec<(Vec<Fp3>, Fp3)>; 4],
     words: &[&dyn Opener; 4],
 ) -> Result<(AccProof, AccData, AccV<Fp3>), String> {
@@ -335,7 +346,7 @@ fn prove_acc(
                 .collect(),
         })
         .collect();
-    let (msgs, rho, evals) = sumcheck::prove(t, tables.to_vec(), &weights, p.vars);
+    let (msgs, rho, evals) = sumcheck::prove_tables(t, tables, &weights, p.vars);
     lap("sumcheck");
     for &e in &evals {
         t.absorb_ext(e);
@@ -344,12 +355,32 @@ fn prove_acc(
     lap("grind");
     let r = t.squeeze_ext();
     let coef = [Fp3::ONE, r, r * r, r * r * r];
+    // g = Σ r^i·f_i, in threads (the base words in mixed arithmetic)
     let mut gt = vec![Fp3::ZERO; 1 << p.vars];
-    for (tb, &c) in tables.iter().zip(&coef) {
-        for (gi, &f) in gt.iter_mut().zip(tb) {
-            *gi += c * f;
+    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let chunk = gt.len().div_ceil(threads);
+    std::thread::scope(|sc| {
+        for (ci, part) in gt.chunks_mut(chunk).enumerate() {
+            let coef = &coef;
+            sc.spawn(move || {
+                let at = ci * chunk;
+                for (tb, &c) in tables.iter().zip(coef) {
+                    match tb {
+                        sumcheck::Table::Ext(e) => {
+                            for (gi, &f) in part.iter_mut().zip(&e[at..]) {
+                                *gi += c * f;
+                            }
+                        }
+                        sumcheck::Table::Base(b) => {
+                            for (gi, &f) in part.iter_mut().zip(&b[at..]) {
+                                *gi += lens::rspcs::field::mul_base(c, f);
+                            }
+                        }
+                    }
+                }
+            });
         }
-    }
+    });
     let v0 = evals.iter().zip(&coef).fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
     let wd = Word::commit_ext_a(cfg.layout, &gt, p.arity);
     let (root, data) = (wd.root(), AccData::Word(wd));
