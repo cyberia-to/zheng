@@ -126,7 +126,7 @@ threads.
 
 ### ledger, recomputed independently
 
-`.stands/IVC/tools/ledger.py` (Python, from the WHIR/BCGM formulas and
+`audit/ivc-speed/ledger.py` (Python, from the WHIR/BCGM formulas and
 the printed round specs only, no zheng code) reproduces the Rust rows:
 
 | level | rounds: regime · queries · query/fold grinding | comb. | weakest (priced) | interactive weakest |
