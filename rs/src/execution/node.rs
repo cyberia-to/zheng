@@ -338,6 +338,9 @@ pub fn digest_noun(d: [u64; 4]) -> N {
     pr(pr(at(d[0]), at(d[1])), pr(at(d[2]), at(d[3])))
 }
 
+#[path = "node_jet.rs"]
+pub mod jet;
+
 #[cfg(test)]
 #[path = "node_tests.rs"]
 mod tests;

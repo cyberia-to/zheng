@@ -4,6 +4,11 @@ use nebu::Goldilocks as F;
 /// Native nox: reduce `formula` on `subject` with pure Layer-1 dispatch
 /// (no jets); the output noun and the cycles spent.
 pub(crate) fn nox_run(subject: &N, formula: &N) -> Result<(N, u64), String> {
+    nox_run_jets(subject, formula, false)
+}
+
+/// [`nox_run`], with the node jet registered when `jets`.
+pub(crate) fn nox_run_jets(subject: &N, formula: &N, jets: bool) -> Result<(N, u64), String> {
     const BUDGET: u64 = 1 << 40;
     fn into<const S: usize>(r: &mut nox::Reduction<S>, n: &N) -> nox::Order {
         match n {
@@ -133,4 +138,84 @@ fn the_formula_nests_shallowly_enough_for_a_program() {
     // the statement admits 128; a program holds the formula a few levels down
     assert!(d <= 48, "{d}");
     println!("node formula depth {d}");
+}
+
+#[test]
+fn the_nox_jet_equals_the_formula_and_declines_off_shape() {
+    let mut seed = 11;
+    for flags in [FLAGS_NODE, FLAGS_ROOT, 0, nebu::field::P - 1] {
+        let s = subject(limbs(&mut seed), limbs(&mut seed), flags);
+        assert_eq!(nox_run_jets(&s, formula(), true), nox_run(&s, formula()));
+    }
+    // under a program: compose the node twice, jetted and pure agree
+    let once = compose(ax(1), q(formula().clone()));
+    let twice = compose(cons(cons(once.clone(), once), ax(3)), q(formula().clone()));
+    let s = subject([1, 2, 3, 4], [5, 6, 7, 8], FLAGS_NODE);
+    assert_eq!(nox_run_jets(&s, &twice, true), nox_run(&s, &twice));
+    // off shape: the jet declines and pure dispatch fails the same way
+    for bad in [
+        pr(pr(at(1), digest_noun([1, 2, 3, 4])), at(2)),
+        pr(
+            pr(digest_noun([1, 2, 3, 4]), digest_noun([5, 6, 7, 8])),
+            pr(at(2), at(2)),
+        ),
+        pr(
+            pr(
+                digest_noun([1, 2, 3, 4]),
+                pr(digest_noun([5, 6, 7, 8]), at(0)),
+            ),
+            at(2),
+        ),
+    ] {
+        let pure = nox_run(&bad, formula());
+        assert!(pure.is_err());
+        assert_eq!(nox_run_jets(&bad, formula(), true), pure);
+    }
+}
+
+#[test]
+fn the_nox_jet_fires() {
+    // a 4,096-slot arena holds the jetted node; the pure formula needs
+    // tens of thousands of nouns and runs out
+    fn run(jets: bool) -> Option<u64> {
+        let f = formula().clone();
+        std::thread::Builder::new()
+            .stack_size(1 << 26)
+            .spawn(move || {
+                let mut r = Box::new(nox::Reduction::<{ 1 << 12 }>::new());
+                fn into<const S: usize>(r: &mut nox::Reduction<S>, n: &N) -> nox::Order {
+                    match n {
+                        N::Atom(v) => r.atom(F::new(*v)).expect("arena"),
+                        N::Pair(a, b) => {
+                            let (a, b) = (into(r, a), into(r, b));
+                            r.pair(a, b).expect("arena")
+                        }
+                    }
+                }
+                let s = into(&mut r, &subject([1, 2, 3, 4], [5, 6, 7, 8], FLAGS_ROOT));
+                let f = into(&mut r, &f);
+                let mut registry = nox::JetRegistry::empty();
+                if jets {
+                    jet::register(&mut registry);
+                }
+                let calls = nox::call::NullCalls;
+                match nox::reduce_with_registry(
+                    &mut r,
+                    s,
+                    f,
+                    1 << 40,
+                    &calls,
+                    &mut nox::trace::NoTrace,
+                    &registry,
+                ) {
+                    nox::Outcome::Ok(_, left) => Some((1 << 40) - left),
+                    _ => None,
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap()
+    }
+    assert_eq!(run(true), Some(COST));
+    assert_eq!(run(false), None);
 }
