@@ -35,32 +35,8 @@ fn parsed(x: u64, seed: u64) -> Parsed {
     Parsed::from_bytes(proof.as_bytes(), setup.shape()).unwrap()
 }
 
-fn limbs(xs: &[nebu::Fp3]) -> Vec<u64> {
-    xs.iter().flat_map(|x| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()]).collect()
-}
-
-/// Revealed values by category.
 fn revealed(p: &Parsed) -> Vec<(&'static str, Vec<u64>)> {
-    let o = &p.opening;
-    let rows = o.columns.len() / (o.salts.len() / hiding::SALT);
-    let data_rows = rows - hiding::MASK_ROWS;
-    let data: Vec<u64> = o
-        .columns
-        .chunks_exact(rows)
-        .flat_map(|c| c[..data_rows].iter().map(|v| v.as_u64()))
-        .collect();
-    let masks: Vec<u64> =
-        o.columns.chunks_exact(rows).flat_map(|c| c[data_rows..].iter().map(|v| v.as_u64())).collect();
-    vec![
-        ("matrix evaluations", limbs(&p.evals)),
-        ("outer rounds", limbs(&p.outer.rounds.concat())),
-        ("inner rounds", limbs(&p.inner.rounds.concat())),
-        ("mask sums", limbs(&[p.g1, p.g2])),
-        ("proximity polynomial", limbs(&o.row_test)),
-        ("linear polynomial", limbs(&o.linear)),
-        ("opened data columns", data),
-        ("opened masking columns", masks),
-    ]
+    super::inspect::categories(p)
 }
 
 fn histogram(values: &[u64]) -> [f64; 16] {

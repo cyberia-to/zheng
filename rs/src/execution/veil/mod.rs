@@ -31,6 +31,8 @@
 
 mod coins;
 pub(crate) mod hiding;
+mod inspect;
+mod key;
 mod libra;
 mod pad;
 mod protocol;
@@ -42,6 +44,10 @@ pub(super) mod tests;
 mod zk_tests;
 
 pub use hiding::HidingParams;
+#[cfg(feature = "test-hooks")]
+pub use inspect::testing;
+pub use inspect::{Revealed, revealed, revealed_relation};
+pub use key::{ProvingKey, prove_bound_with_key, prove_with_key};
 pub use protocol::MIN_SECURITY_BITS;
 pub use wire::{MAGIC, MAX_BYTES};
 

@@ -181,10 +181,26 @@ pub(crate) fn prove(
     }
     let lap = crate::laps::timer("veil");
     let s = Setup::new(base, pins)?;
+    let relabelled = s.layout.instance(&s.instance);
     lap("setup");
+    prove_prepared(params, &s, &relabelled, z, statement, coins)
+}
+
+/// [`prove`] on a held [`Setup`] and its relabelled instance (a proving
+/// key): `z` must be a witness of the base relation whose pinned
+/// coordinates are this statement's — the prover side never reads the
+/// pinned values from `s.layout.public`, only the column map.
+pub(crate) fn prove_prepared(
+    params: &HidingParams,
+    s: &Setup,
+    relabelled: &CCSInstance,
+    z: &[Goldilocks],
+    statement: &[u8],
+    coins: &Coins,
+) -> Result<Parsed, String> {
+    let lap = crate::laps::timer("veil");
     let z = s.ext.witness(z, s.instance.num_cols, coins);
     lap("pad witness");
-    let relabelled = s.layout.instance(&s.instance);
     let mut zp = vec![Goldilocks::ZERO; relabelled.num_cols];
     for (col, slot) in s.layout.map.iter().enumerate() {
         if let Some(x) = slot {
@@ -202,7 +218,7 @@ pub(crate) fn prove(
     lap("commit");
 
     let mut t = Transcript::new();
-    prologue(&mut t, statement, params, &s);
+    prologue(&mut t, statement, params, s);
     t.absorb_commitment(&root);
     // outer
     let tau: Vec<Fp3> = (0..s.log_m).map(|_| Fp3::squeeze(&mut t)).collect();
@@ -259,7 +275,7 @@ pub(crate) fn prove(
     lap("sumchecks");
     let lambda = Fp3::squeeze(&mut t);
     // the final claims, assembled exactly as the verifier will
-    let a0 = free_weight(&s, &rho_x, gamma, &r);
+    let a0 = free_weight(s, &rho_x, gamma, &r);
     let (w_eval, a_eval) = {
         let (a, f) = inner.final_claim();
         (f, a)

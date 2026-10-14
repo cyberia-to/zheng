@@ -32,7 +32,7 @@ for f in "$@"; do
       bytes=$(echo "$out" | sed -nE 's/.*reductions, ([0-9]+) bytes.*/\1/p')
       line="$line | ${ms}ms ${real}s ${rss}MB"
     done
-    v=$( { /usr/bin/time -p "$J" verify "$O/jt-$f-$b.zheng"; } 2>&1 | awk '/^real/{print $2}')
+    v=$( { /usr/bin/time -p "$J" verify "$O/jt-$f-$b.zheng" --budget "$BUDGET"; } 2>&1 | awk '/^real/{print $2}')
     echo "$line | ${bytes}B | verify ${v}s | sha $(shasum "$O/jt-$f-$b.zheng" | cut -c1-8)"
   done
 done

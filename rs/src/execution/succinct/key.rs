@@ -106,6 +106,63 @@ pub fn prove_with_key(
     Ok((statement, proof.into()))
 }
 
+/// A proving key for a relation the caller built itself (not compiled from
+/// a program): the column layout and the relabelled relation, which depend
+/// on the pinned positions only. [`prove_relation_with_key`] makes the
+/// proof [`super::prove_relation`] makes (same bytes).
+pub struct RelationKey {
+    layout: Layout,
+    relabelled: CCSInstance,
+    pinned: Vec<usize>,
+    num_cols: usize,
+}
+
+impl RelationKey {
+    /// `pinned`: the pinned columns in increasing order, column 0 (the
+    /// constant one) first.
+    pub fn new(instance: &CCSInstance, pinned: &[usize]) -> Result<Self, String> {
+        let pins: Vec<(usize, Goldilocks)> = pinned
+            .iter()
+            .map(|&i| (i, if i == 0 { Goldilocks::ONE } else { Goldilocks::ZERO }))
+            .collect();
+        let layout = Layout::new(instance, &pins)?;
+        let relabelled = layout.instance(instance);
+        Ok(Self { layout, relabelled, pinned: pinned.to_vec(), num_cols: instance.num_cols })
+    }
+
+    /// Committed variables of the relation.
+    pub fn vars(&self) -> usize {
+        self.layout.vars
+    }
+}
+
+/// [`super::prove_relation`] with a held [`RelationKey`]: `pins` must name
+/// the key's columns, `(0, 1)` first, with this statement's values, and
+/// `z` must agree with them.
+pub fn prove_relation_with_key<P: super::SuccinctPcs>(
+    params: &P::Params,
+    key: &RelationKey,
+    z: &[Goldilocks],
+    pins: &[(usize, Goldilocks)],
+    statement: &[u8],
+) -> Result<SuccinctProof<P>, String> {
+    if pins.len() != key.pinned.len()
+        || pins.iter().zip(&key.pinned).any(|(&(i, _), &j)| i != j)
+        || pins.first() != Some(&(0, Goldilocks::ONE))
+    {
+        return Err("succinct: pinned coordinates differ from the key's".into());
+    }
+    if z.len() != key.num_cols || pins.iter().any(|&(i, v)| z[i] != v) {
+        return Err("succinct: witness disagrees with the statement".into());
+    }
+    let layout = Layout {
+        vars: key.layout.vars,
+        map: key.layout.map.clone(),
+        public: pins.iter().enumerate().map(|(slot, &(_, v))| (slot, v)).collect(),
+    };
+    protocol::prove_laid_out(params, &layout, &key.relabelled, z, statement)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +220,28 @@ mod tests {
             e2.verify(None).unwrap();
         }
         assert!(prove_with_key(&key, &program, &[7, 8], 1_000_000, super::super::device_params).is_err());
+        // a caller-built relation: the held relation key proves the same
+        // bytes as prove_relation, verifies, decodes from its bytes
+        let (statement, relation, witness, public) =
+            crate::execution::statement::prepare(&program, &[9], 1_000_000).unwrap();
+        let pins = with_constant(public);
+        let indices: Vec<usize> = pins.iter().map(|&(i, _)| i).collect();
+        let rk = RelationKey::new(&relation.instance, &indices).unwrap();
+        let params = super::super::device_params(rk.vars());
+        let bytes = statement.transcript_bytes();
+        let a = super::super::prove_relation::<Whir>(&params, &relation.instance, &witness.z, &pins, &bytes).unwrap();
+        let b = prove_relation_with_key::<Whir>(&params, &rk, &witness.z, &pins, &bytes).unwrap();
+        let (ea, eb) = (crate::envelope::succinct_proof_bytes(&a.into()), crate::envelope::succinct_proof_bytes(&b.into()));
+        assert_eq!(ea, eb);
+        let decoded = crate::envelope::succinct_proof_from_bytes(&eb).unwrap();
+        let crate::envelope::AnySuccinct::Whir(d) = decoded else { panic!("whir") };
+        super::super::verify_relation(&relation.instance, &pins, &bytes, &d).unwrap();
+        let mut bad = eb.clone();
+        bad.push(0);
+        assert!(crate::envelope::succinct_proof_from_bytes(&bad).is_err());
+        let mut wrong = pins.clone();
+        wrong.pop();
+        assert!(prove_relation_with_key::<Whir>(&params, &rk, &witness.z, &wrong, &bytes).is_err());
         let other = parse("[0 2]");
         assert!(prove_with_key(&key, &other, &[7], 1_000_000, super::super::device_params).is_err());
     }

@@ -32,13 +32,19 @@ pub(crate) fn nox_run_jets(subject: &N, formula: &N, jets: bool) -> Result<(N, u
             let mut r = Box::new(nox::Reduction::<{ 1 << 20 }>::new());
             let s = into(&mut r, &subject);
             let f = into(&mut r, &formula);
-            match nox::reduce(
+            let mut registry = nox::JetRegistry::empty();
+            if jets {
+                jet::register(&mut registry);
+            }
+            let calls = nox::call::NullCalls;
+            match nox::reduce_with_registry(
                 &mut r,
                 s,
                 f,
                 BUDGET,
-                &nox::call::NullCalls,
+                &calls,
                 &mut nox::trace::NoTrace,
+                &registry,
             ) {
                 nox::Outcome::Ok(o, left) => Ok((out(&r, o), BUDGET - left)),
                 other => Err(format!("{other:?}")),
