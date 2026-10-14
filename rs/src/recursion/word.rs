@@ -628,6 +628,45 @@ impl Group {
         }
         Self { words, layout, levels, arity }
     }
+    /// [`Self::new`], the tree read from the key cache when it holds one
+    /// for these members (`keycache`), else committed and stored there.
+    pub fn new_cached(words: Vec<Word>, arity: Arity) -> Self {
+        match super::keycache::dir() {
+            Some(d) => Self::new_cached_in(&d, words, arity),
+            None => Self::new(words, arity),
+        }
+    }
+    /// [`Self::new_cached`] with the cache in `dir`.
+    pub fn new_cached_in(dir: &std::path::Path, words: Vec<Word>, arity: Arity) -> Self {
+        use std::hash::Hash;
+        let id = super::keycache::id(|h| {
+            let mut h = h;
+            let l = words[0].layout;
+            (l.log_domain, l.log_width, arity == Arity::Four, words.len()).hash(&mut h);
+            for w in &words {
+                match &w.data {
+                    Data::Base { coeffs, .. } => coeffs.iter().for_each(|x| x.as_u64().hash(&mut h)),
+                    Data::Ext { coeffs, .. } | Data::Coeffs { coeffs, .. } => coeffs.iter().for_each(|x| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()].hash(&mut h)),
+                }
+            }
+        });
+        let layout = words[0].layout;
+        if let Some(levels) = super::keycache::load(dir, id) {
+            let leaves = 1usize << layout.log_leaves();
+            let want: Vec<usize> = core::iter::once(if words[0].held() { leaves } else { 0 })
+                .chain(arity.levels(layout.log_leaves() as usize).iter().scan(leaves, |n, a| {
+                    *n /= a;
+                    Some(*n)
+                }))
+                .collect();
+            if levels.iter().map(Vec::len).collect::<Vec<_>>() == want {
+                return Self { words, layout, levels, arity };
+            }
+        }
+        let g = Self::new(words, arity);
+        super::keycache::store(dir, id, &g.levels);
+        g
+    }
     /// Leaf digests of members of one layout and one symbol field.
     fn digests(words: &[&Word]) -> Vec<Digest> {
         let layout = words[0].layout;
@@ -837,6 +876,39 @@ mod tests {
                 assert_eq!(a.open(j), b.open(j));
             }
         }
+    }
+
+    /// A key tree stored in the cache loads as the committed one; a
+    /// damaged or foreign file is ignored and the tree committed again.
+    #[test]
+    fn a_cached_key_tree_is_the_committed_one() {
+        let dir = std::env::temp_dir().join(format!("zheng-keycache-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let lay = LeafLayout { log_domain: 14, log_width: 2 };
+        let members = |s: u64| -> Vec<Word> { (0..3u64).map(|w| Word::member_base_streamed(lay, &(0..1u64 << 10).map(|i| Goldilocks::new(i * 31 + w + s)).collect::<Vec<_>>())).collect() };
+        for arity in [Arity::Two, Arity::Four] {
+            let fresh = Group::new(members(1), arity);
+            let stored = Group::new_cached_in(&dir, members(1), arity);
+            let loaded = Group::new_cached_in(&dir, members(1), arity);
+            assert_eq!(stored.levels, fresh.levels);
+            assert_eq!(loaded.levels, fresh.levels);
+            assert_eq!(loaded.root(), fresh.root());
+            for j in [0usize, 9, 255] {
+                assert_eq!(loaded.open(j), fresh.open(j));
+            }
+            // other members: another tree, never the cached one
+            assert_ne!(Group::new_cached_in(&dir, members(2), arity).root(), fresh.root());
+        }
+        // damage every file: the next build recommits (and rewrites)
+        for e in std::fs::read_dir(&dir).unwrap() {
+            let p = e.unwrap().path();
+            let mut b = std::fs::read(&p).unwrap();
+            b.truncate(b.len() - 8);
+            std::fs::write(&p, b).unwrap();
+        }
+        let fresh = Group::new(members(1), Arity::Four);
+        assert_eq!(Group::new_cached_in(&dir, members(1), Arity::Four).levels, fresh.levels);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

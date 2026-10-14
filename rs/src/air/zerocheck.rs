@@ -277,7 +277,28 @@ fn fold(v: &mut Vec<Fp3>, alpha: Fp3) {
 pub(crate) fn prove<A: Air>(
     air: &A,
     w: usize,
+    cols: Vec<Vec<Fp3>>,
+    eq: Vec<Fp3>,
+    ch: &[Fp3],
+    mu: &[Fp3],
+    t: &mut impl FiatShamir,
+) -> (Vec<Vec<Fp3>>, Vec<Fp3>, Vec<Fp3>) {
+    prove_packed(air, w, cols, None, eq, ch, mu, t)
+}
+
+/// The columns' canonical limbs, column-major, as a device session takes
+/// them (a caller may pack them early, beside other work).
+pub(crate) fn packed(cols: &[Vec<Fp3>]) -> Vec<[u64; 3]> {
+    pack_flat(cols)
+}
+
+/// [`prove`] with the columns already [`packed`] for a device session.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub(crate) fn prove_packed<A: Air>(
+    air: &A,
+    w: usize,
     mut cols: Vec<Vec<Fp3>>,
+    flat: Option<Vec<[u64; 3]>>,
     mut eq: Vec<Fp3>,
     ch: &[Fp3],
     mu: &[Fp3],
@@ -300,7 +321,7 @@ pub(crate) fn prove<A: Air>(
         .flatten()
         .map(|g| program(&g));
     // the columns resident on the device across rounds (folded there)
-    let mut session = device.as_ref().and_then(|p| backend.line_session(p, &pack_flat(&cols), eq.len()));
+    let mut session = device.as_ref().and_then(|p| backend.line_session(p, &flat.unwrap_or_else(|| pack_flat(&cols)), eq.len()));
     if session.is_some() {
         cols = Vec::new();
     }

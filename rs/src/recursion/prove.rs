@@ -16,7 +16,7 @@ use super::step::{StepProof, word_row};
 use super::word::{Digest, LeafOpening, Word};
 use crate::accumulate::sumcheck::{self, Weight};
 use crate::air::public::next_table;
-use crate::air::{Public, Trace, shift_prove, zerocheck_prove};
+use crate::air::{Public, Trace, shift_prove, zerocheck_packed, zerocheck_prove_packed};
 use crate::machine::layout::{W1, W2};
 
 /// The word an accumulator stands for.
@@ -134,44 +134,55 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     lap("word b");
     let ch_v = [t.squeeze_ext(), t.squeeze_ext()];
     let v2 = trace::phase2(w.v1, w.key, ch_v[0], ch_v[1]);
-    let word_c = Word::commit_base_a(layout, &v2.column_major(WORD), p.arity);
-    let (zc_pts, ood_c) = bind(&mut t, &word_c, p.fresh);
-    lap("word c");
     let b_in: Vec<Goldilocks> = w.n1.row(0).iter().chain(w.n2.row(0)).copied().collect();
     let b_v: Vec<Goldilocks> = w.v1.row(0).iter().chain(v2.row(0)).copied().collect();
+    // the zerocheck's columns (local, successor, public, key, public
+    // input) are fixed before word c's root: assembled on other threads
+    // while word c commits on the device
+    let assemble = || {
+        let mut cols = pack(w.n1, WORD, rows);
+        cols.extend(pack(&wb, WORD, rows));
+        cols.extend(pack(&v2, WORD, rows));
+        let bout: Vec<Goldilocks> = (0..3).flat_map(|k| word_row(k, w.b_out, &b_v, Goldilocks::ZERO)).collect();
+        let mut succ: Vec<Vec<Fp3>> = vec![Vec::new(); COLS];
+        std::thread::scope(|sc| {
+            for (c, o) in succ.iter_mut().enumerate() {
+                let (col, last) = (&cols[c], Fp3::from_base(bout[c]));
+                sc.spawn(move || {
+                    let mut v = Vec::with_capacity(rows);
+                    v.extend_from_slice(&col[1..]);
+                    v.push(last);
+                    *o = v;
+                });
+            }
+        });
+        cols.extend(succ);
+        for pc in &w.rel.machine.publics {
+            cols.push(pc.table(n));
+        }
+        cols.extend(w.key.cols.iter().cloned());
+        for &xj in &x {
+            cols.push(Public::Sparse(vec![(p.out_row, Fp3::from_base(xj))]).table(n));
+        }
+        // a device session takes them packed: pack here too
+        let on_device = lens::rspcs::backend::current().name() != "cpu";
+        let flat = on_device.then(|| zerocheck_packed(&cols));
+        (cols, flat)
+    };
+    let (word_c, (cols, flat)) = std::thread::scope(|sc| {
+        let h = sc.spawn(assemble);
+        let wc = Word::commit_base_a(layout, &v2.column_major(WORD), p.arity);
+        (wc, h.join().expect("column assembly"))
+    });
+    let (zc_pts, ood_c) = bind(&mut t, &word_c, p.fresh);
+    lap("word c");
     t.absorb_all(&b_in);
     t.absorb_all(w.b_out);
     t.absorb_all(&b_v);
     let tau = t.squeeze_exts(n);
     let seeds = t.squeeze_exts(p.seeds());
-    // zerocheck over local, successor and public columns
-    let mut cols = pack(w.n1, WORD, rows);
-    cols.extend(pack(&wb, WORD, rows));
-    cols.extend(pack(&v2, WORD, rows));
-    let zero = Goldilocks::ZERO;
-    let bout: Vec<Goldilocks> = (0..3).flat_map(|k| word_row(k, w.b_out, &b_v, zero)).collect();
-    let mut succ: Vec<Vec<Fp3>> = vec![Vec::new(); COLS];
-    std::thread::scope(|sc| {
-        for (c, o) in succ.iter_mut().enumerate() {
-            let (col, last) = (&cols[c], Fp3::from_base(bout[c]));
-            sc.spawn(move || {
-                let mut v = Vec::with_capacity(rows);
-                v.extend_from_slice(&col[1..]);
-                v.push(last);
-                *o = v;
-            });
-        }
-    });
-    cols.extend(succ);
-    for pc in &w.rel.machine.publics {
-        cols.push(pc.table(n));
-    }
-    cols.extend(w.key.cols.iter().cloned());
-    for &xj in &x {
-        cols.push(Public::Sparse(vec![(p.out_row, Fp3::from_base(xj))]).table(n));
-    }
     let mu = w.rel.mu(&seeds);
-    let (zc, rho, evals) = zerocheck_prove(&View(w.rel), COLS, cols, eq_table(&tau), &ch_v, &mu, &mut t);
+    let (zc, rho, evals) = zerocheck_prove_packed(&View(w.rel), COLS, cols, flat, eq_table(&tau), &ch_v, &mu, &mut t);
     lap("zerocheck");
     let local = evals[..COLS].to_vec();
     let next = evals[COLS..2 * COLS].to_vec();
@@ -263,7 +274,7 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     for k in 0..3 {
         let mut cs: Vec<(Vec<Fp3>, Fp3)> = fresh_ood[k].iter().map(|&(z, y)| (upt(z), y)).collect();
         cs.push((rho2.iter().chain(&gs[k]).copied().collect(), vals[k]));
-        let row: Vec<Fp3> = word_row(k, &b_in_l, &b_v_l, zero).into_iter().map(Fp3::from_base).collect();
+        let row: Vec<Fp3> = word_row(k, &b_in_l, &b_v_l, Goldilocks::ZERO).into_iter().map(Fp3::from_base).collect();
         let pt: Vec<Fp3> = core::iter::repeat_n(Fp3::ZERO, n).chain(gb[k].iter().copied()).collect();
         cs.push((pt, mle_ext(&row, &gb[k])));
         claims[k + 1] = cs;
