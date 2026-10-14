@@ -210,6 +210,8 @@ fn round_mix<A: Air>(air: &A, w: usize, cols: &[Vec<Fp3>], eq: &[Fp3], ch: &[Fp3
 
 /// Rounds over at least this many rows run on the device.
 const DEVICE_MIN: usize = 1 << 10;
+/// A device session's rounds over at most this many pairs run on the CPU.
+const CPU_TAIL: usize = 1 << 8;
 
 /// The backend program of a recorded combination.
 fn program(g: &super::num::Graph) -> lens::rspcs::program::Program {
@@ -303,6 +305,15 @@ pub(crate) fn prove<A: Air>(
         cols = Vec::new();
     }
     for r in 0..n {
+        // the last rounds' few pairs: the columns come back to the CPU
+        // (a device round there costs its interpreter's latency)
+        if eq.len() / 2 <= CPU_TAIL
+            && let Some(mut sess) = session.take()
+        {
+            let len = eq.len();
+            let flat = sess.columns();
+            cols = flat.chunks_exact(len).map(|c| c.iter().map(|&v| lens::rspcs::program::to_fp3(v)).collect()).collect();
+        }
         let (l0, l1) = eq
             .chunks_exact(2)
             .find(|p| p[0] + p[1] != Fp3::ZERO)
@@ -321,7 +332,7 @@ pub(crate) fn prove<A: Air>(
                 }
                 q
             }
-            (None, Some(p)) if eq.len() >= DEVICE_MIN => device_round(p, &cols, &eq, deg, r == 0, skip_one),
+            (None, Some(p)) if eq.len() >= DEVICE_MIN && eq.len() / 2 > CPU_TAIL => device_round(p, &cols, &eq, deg, r == 0, skip_one),
             _ => round(air, w, &cols, &eq, ch, mu, deg, r == 0, skip_one),
         };
         if skip_one {

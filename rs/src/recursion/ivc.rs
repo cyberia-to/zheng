@@ -412,6 +412,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         if out_row != p.out_row {
             return Err("recursion: the circuit's layout differs from its key".into());
         }
+        lap(&format!("trace {i}"));
         let seg = run.segment(i);
         let word_a = match kept_a[i].take() {
             Some(w) => w,
@@ -436,6 +437,7 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         let mut o = Native::batched();
         let next = step::verify(&mut o, p, &st, x.map(Fp3::from_base), &pf);
         o.finish().map_err(|e| format!("step {i}: {e}"))?;
+        lap(&format!("self-check {i}"));
         acc = data;
         last_state = Some(next);
         prev = Some((st, pf));

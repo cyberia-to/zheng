@@ -95,9 +95,15 @@ pub fn pbar_v(key: &[Vec<(u32, Fp3)>], point: &[Fp3], n: usize) -> Fp3 {
 }
 
 fn pack(t: &Trace, cols: usize, rows: usize) -> Vec<Vec<Fp3>> {
-    (0..cols)
-        .map(|c| (0..rows).map(|r| if c < t.width { Fp3::from_base(t.row(r)[c]) } else { Fp3::ZERO }).collect())
-        .collect()
+    let mut out = vec![Vec::new(); cols];
+    std::thread::scope(|sc| {
+        for (c, o) in out.iter_mut().enumerate() {
+            sc.spawn(move || {
+                *o = (0..rows).map(|r| if c < t.width { Fp3::from_base(t.row(r)[c]) } else { Fp3::ZERO }).collect();
+            });
+        }
+    });
+    out
 }
 
 fn mle_ext(vals: &[Fp3], point: &[Fp3]) -> Fp3 {
@@ -144,10 +150,18 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     cols.extend(pack(&v2, WORD, rows));
     let zero = Goldilocks::ZERO;
     let bout: Vec<Goldilocks> = (0..3).flat_map(|k| word_row(k, w.b_out, &b_v, zero)).collect();
-    let succ: Vec<Vec<Fp3>> = (0..COLS)
-        .map(|c| (0..rows).map(|r| if r + 1 < rows { cols[c][r + 1] } else { Fp3::from_base(bout[c]) }).collect())
-        .collect();
-    let local_cols = cols.clone();
+    let mut succ: Vec<Vec<Fp3>> = vec![Vec::new(); COLS];
+    std::thread::scope(|sc| {
+        for (c, o) in succ.iter_mut().enumerate() {
+            let (col, last) = (&cols[c], Fp3::from_base(bout[c]));
+            sc.spawn(move || {
+                let mut v = Vec::with_capacity(rows);
+                v.extend_from_slice(&col[1..]);
+                v.push(last);
+                *o = v;
+            });
+        }
+    });
     cols.extend(succ);
     for pc in &w.rel.machine.publics {
         cols.push(pc.table(n));
@@ -198,12 +212,27 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let gs: Vec<Vec<Fp3>> = (0..3).map(|_| t.squeeze_exts(CBITS)).collect();
     let beta = t.squeeze_ext();
     let zeta = t.squeeze_ext();
+    // p_k(r) = Σ_c eq(g_k, c)·word_k[c][r]: rows in threads (base columns
+    // in mixed arithmetic)
     let mut ps: Vec<Vec<Fp3>> = (0..3)
         .map(|k| {
             let e = eq_table(&gs[k]);
-            (0..rows)
-                .map(|r| (0..WORD).fold(Fp3::ZERO, |a, c| a + e[c] * local_cols[WORD * k + c][r]))
-                .collect()
+            let tr = [w.n1, &wb, &v2][k];
+            let mut out = vec![Fp3::ZERO; rows];
+            let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+            let chunk = rows.div_ceil(threads).max(1);
+            std::thread::scope(|sc| {
+                for (ci, part) in out.chunks_mut(chunk).enumerate() {
+                    let e = &e;
+                    sc.spawn(move || {
+                        for (j, o) in part.iter_mut().enumerate() {
+                            let r = ci * chunk + j;
+                            *o = tr.row(r).iter().zip(e).fold(Fp3::ZERO, |a, (&v, &ec)| a + lens::rspcs::field::mul_base(ec, v));
+                        }
+                    });
+                }
+            });
+            out
         })
         .collect();
     let eqr = eq_table(&rho);
