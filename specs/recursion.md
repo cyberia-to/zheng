@@ -340,7 +340,12 @@ inner wrap levels), the root of the key words. `Key::layout_bytes` /
 varints, values < p); `from_layout` rebuilds the rest — sparse columns,
 configs, the constraint graph `G`, the final mode's wiring — in
 milliseconds. A rebuilt IVC key commits its words only when a prover asks
-(`Key::words`, checked against the root).
+(`Key::words`, checked against the root). A prover may keep committed key
+trees on disk (`ZHENG_KEY_CACHE=<dir>`, `recursion::keycache`): a tree is
+stored under a digest of its members' coefficients, layout and fan-in and
+read back instead of recommitted (an inner level's root is still checked
+against `INNER_ROOTS`, an IVC key's against `KEY_ROOTS`; a damaged file
+is ignored). Verifiers never read it.
 
 Deriving the final wrap key needs the inner levels' key roots, and
 committing those keys dominates (minutes, ~30 GB at 1/64 and 1/256). The

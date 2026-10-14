@@ -64,7 +64,7 @@ impl KeyWords {
                 Word::member_base_streamed(layout, &t.iter().map(|v| v.c0).collect::<Vec<_>>())
             }
         });
-        let group = Group::new(words.into(), arity);
+        let group = Group::new_cached(words.into(), arity);
         let root = group.root();
         (Self { group, root }, ext)
     }

@@ -19,6 +19,7 @@ pub mod msg;
 pub mod splitkey;
 pub mod pool;
 pub mod word;
+pub mod keycache;
 pub mod stream;
 pub mod circuit;
 pub mod gm;

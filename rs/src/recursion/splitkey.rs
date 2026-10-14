@@ -80,7 +80,7 @@ pub fn commit(layout: LeafLayout, n: usize, pre: &Pre, phys: &[(u16, u8)], arity
             Word::member_base_streamed(layout, &t)
         })
         .collect();
-    let group = Group::new(words, arity);
+    let group = Group::new_cached(words, arity);
     let root = group.root();
     KeyWords { group, root }
 }

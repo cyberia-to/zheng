@@ -38,6 +38,7 @@ pub use prove::{AirProof, SegmentProof, SegmentWords, commit_bound, prove, verif
 pub use public::Public;
 pub(crate) use shift::prove as shift_prove;
 pub(crate) use zerocheck::prove as zerocheck_prove;
+pub(crate) use zerocheck::{packed as zerocheck_packed, prove_packed as zerocheck_prove_packed};
 #[cfg(test)]
 pub(crate) use zerocheck::interpolate as zerocheck_interpolate;
 
