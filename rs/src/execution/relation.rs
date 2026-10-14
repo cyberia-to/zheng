@@ -478,6 +478,9 @@ mod bits;
 #[path = "hash.rs"]
 mod hash;
 
+#[path = "relation_node.rs"]
+mod node_gadget;
+
 #[path = "relation_eval.rs"]
 mod eval;
 

@@ -26,6 +26,12 @@ impl Builder {
         if self.calls > MAX_CALLS || depth > MAX_DEPTH {
             return Err(RelationError::Limit);
         }
+        if super::super::node::is_node(f) {
+            // the hemera node jet: one permutation, the formula's nox cost
+            let out = self.node(obj)?;
+            let cost = super::super::node::COST;
+            return Ok((out, Value::Constant(F::new(cost)), cost));
+        }
         let (tag, body) = pair(f)?;
         let tag = match tag {
             ExecutionNoun::Atom(t) => *t,

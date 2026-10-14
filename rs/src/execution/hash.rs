@@ -113,7 +113,7 @@ impl Builder {
         Ok(inverse)
     }
 
-    fn hash_permute(&mut self, input: State) -> Result<State, RelationError> {
+    pub(super) fn hash_permute(&mut self, input: State) -> Result<State, RelationError> {
         if self.ops.len() > MAX_RELATION || self.rows.len() + self.sbox.len() > MAX_RELATION {
             return Err(RelationError::Limit);
         }
