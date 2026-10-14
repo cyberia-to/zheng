@@ -134,7 +134,7 @@ pub fn prove_relation(
     statement: &[u8],
     public: &[(usize, Goldilocks)],
 ) -> Result<VeilProof, String> {
-    prove_relation_with(&HidingParams::default(), instance, witness, statement, public, &mut Coins::os()?)
+    prove_relation_with(&HidingParams::default(), instance, witness, statement, public, &Coins::os()?)
 }
 
 pub(crate) fn prove_relation_with(
@@ -143,7 +143,7 @@ pub(crate) fn prove_relation_with(
     witness: &CCSWitness,
     statement: &[u8],
     public: &[(usize, Goldilocks)],
-    coins: &mut Coins,
+    coins: &Coins,
 ) -> Result<VeilProof, String> {
     if !instance.is_satisfied_by(witness) {
         return Err("veil: witness does not satisfy the relation".into());

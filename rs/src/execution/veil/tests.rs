@@ -42,7 +42,7 @@ fn seeded(program: &N, input: &[u64], secret: &[u64], seed: u8) -> (PrivateState
         &w,
         &bytes,
         &public,
-        &mut Coins::seeded([seed; 32]),
+        &Coins::seeded([seed; 32]),
     )
     .unwrap();
     (statement, proof)

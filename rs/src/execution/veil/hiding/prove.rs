@@ -6,7 +6,8 @@ use lens::{Commitment, Transcript};
 use nebu::{Fp3, Goldilocks};
 
 use super::{Config, Functional, HidingParams, HidingProof, SALT};
-use crate::execution::veil::coins::Coins;
+use crate::execution::veil::coins::{Coins, label};
+use crate::par;
 use crate::multilinear::eq_evals;
 
 /// Prover state between commit and open.
@@ -33,35 +34,43 @@ pub(crate) fn column_bytes(column: &[Goldilocks], salt: &[Goldilocks]) -> Vec<u8
 pub(crate) fn commit(
     params: &HidingParams,
     entries: &[Goldilocks],
-    coins: &mut Coins,
+    coins: &Coins,
 ) -> Result<(Commitment, Committed), String> {
+    let lap = crate::laps::timer("veil commit");
     let config = Config::derive(params, entries.len())?;
     let (k, big_k) = (config.k, config.big_k());
-    let mut coeffs = Vec::with_capacity(config.total_rows());
-    for row in 0..config.rows {
-        let mut p = vec![Goldilocks::ZERO; big_k];
-        let start = (row * k).min(entries.len());
-        let end = ((row + 1) * k).min(entries.len());
-        p[..end - start].copy_from_slice(&entries[start..end]);
-        for c in &mut p[k..] {
-            *c = coins.base();
+    // data rows with their padding ν_i, in threads (row i's ν_i is
+    // ROW_PAD elements i·k .. (i + 1)·k)
+    let mut coeffs: Vec<Vec<Goldilocks>> = vec![Vec::new(); config.total_rows()];
+    par::chunks_mut(&mut coeffs[..config.rows], (1 << 12) / k + 1, |first, rows| {
+        for (i, p) in rows.iter_mut().enumerate() {
+            let row = first + i;
+            *p = vec![Goldilocks::ZERO; big_k];
+            let start = (row * k).min(entries.len());
+            let end = ((row + 1) * k).min(entries.len());
+            p[..end - start].copy_from_slice(&entries[start..end]);
+            coins.fill_at(label::ROW_PAD, row * k, &mut p[k..]);
         }
-        coeffs.push(p);
-    }
-    let m_a = coins.bases(big_k);
-    let mut m_b = coins.bases(k - 1);
+    });
+    let mut m_b = coins.bases(label::MASK_B, k - 1);
     m_b.resize(big_k, Goldilocks::ZERO);
-    let m_p = coins.bases(big_k);
-    coeffs.extend([m_a, m_b, m_p]);
+    coeffs[config.rows] = coins.bases(label::MASK_A, big_k);
+    coeffs[config.rows + 1] = m_b;
+    coeffs[config.rows + 2] = coins.bases(label::MASK_P, big_k);
+    lap("row padding + masks");
     let encoded: Vec<Vec<Goldilocks>> =
         coeffs.iter().map(|p| encode_base_with(p, config.log_n, true)).collect();
+    lap("encode");
     let n = config.n();
+    let flat = coins.bases(label::SALT, n * SALT);
     let salts: Vec<[Goldilocks; SALT]> =
-        (0..n).map(|_| core::array::from_fn(|_| coins.base())).collect();
+        flat.chunks_exact(SALT).map(|s| core::array::from_fn(|i| s[i])).collect();
+    lap("salts");
     let tree = Tree::build(n, |j| {
         let column: Vec<Goldilocks> = encoded.iter().map(|row| row[j]).collect();
         column_bytes(&column, &salts[j])
     });
+    lap("tree");
     let root = Commitment(tree.root());
     Ok((
         root,

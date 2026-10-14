@@ -1,12 +1,13 @@
 //! The hiding commitment opens any functional it was asked for and nothing
 //! a cheating prover substitutes.
 use super::*;
-use crate::execution::veil::coins::Coins;
+use crate::execution::veil::coins::{Coins, label};
 use lens::Transcript;
 use nebu::Goldilocks;
 
 fn setup(n: usize, seed: u8) -> (Vec<Goldilocks>, Functional, Fp3) {
-    let mut coins = Coins::seeded([seed; 32]);
+    let seeded = Coins::seeded([seed; 32]);
+    let mut coins = seeded.stream(label::TEST);
     let entries = coins.bases(n);
     let tensor = (n / 2).next_power_of_two().min(n).trailing_zeros() as usize;
     let point: Vec<Fp3> = (0..tensor).map(|_| coins.ext()).collect();
@@ -26,7 +27,7 @@ fn setup(n: usize, seed: u8) -> (Vec<Goldilocks>, Functional, Fp3) {
 fn run(n: usize, tamper: &dyn Fn(&mut HidingProof, &mut Fp3)) -> Result<(), String> {
     let params = HidingParams::default();
     let (entries, f, mut value) = setup(n, n as u8);
-    let (root, committed) = commit(&params, &entries, &mut Coins::seeded([1; 32])).unwrap();
+    let (root, committed) = commit(&params, &entries, &Coins::seeded([1; 32])).unwrap();
     let mut proof = open(&committed, &f, value, &mut Transcript::new(b"t"));
     tamper(&mut proof, &mut value);
     verify(&params, &root, n, &f, value, &proof, &mut Transcript::new(b"t"))
