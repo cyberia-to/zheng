@@ -116,6 +116,21 @@ fn the_formula_is_the_node_and_its_cost_is_constant() {
 #[test]
 fn the_formula_fits_a_program() {
     let tokens = crate::execution::ExecutionStatement::encode_program(formula()).unwrap();
-    // 2,291 nodes: room for a depth-32 path and its program under 4,096
-    assert!(tokens.len() <= 2_300, "{} nodes", tokens.len());
+    println!("node formula {} nodes", tokens.len());
+    // 2,235 nodes: room for a depth-32 path and its program under 4,096
+    assert!(tokens.len() <= 2_240, "{} nodes", tokens.len());
+}
+
+#[test]
+fn the_formula_nests_shallowly_enough_for_a_program() {
+    fn depth(n: &N) -> usize {
+        match n {
+            N::Atom(_) => 0,
+            N::Pair(a, b) => 1 + depth(a).max(depth(b)),
+        }
+    }
+    let d = depth(formula());
+    // the statement admits 128; a program holds the formula a few levels down
+    assert!(d <= 48, "{d}");
+    println!("node formula depth {d}");
 }

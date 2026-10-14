@@ -29,7 +29,7 @@ use std::sync::OnceLock;
 
 /// nox cycles of one node: the formula's reduction cost on any subject of
 /// the node's shape (asserted against native nox in the tests).
-pub const COST: u64 = 28_762;
+pub const COST: u64 = 39_818;
 
 /// Capacity flags of an interior node and of the root (`hemera::tree`).
 pub const FLAGS_NODE: u64 = 2;
@@ -182,23 +182,33 @@ fn int() -> N {
     compose(cons(cons(ax(2), total.pop().expect("sum")), ax(3)), q(out))
 }
 
-/// Square-and-multiply on `[[acc [x bits]] LIB]`, bits MSB first, ended by 2.
+/// Square-and-multiply on `[[acc [x runs]] LIB]`, the exponent MSB first
+/// as runs `[count bit]` of equal bits, ended by the run `[0 2]`.
 fn invloop() -> N {
-    let factor = branch(ax(22), q(at(1)), ax(10));
-    let acc = mul(mul(ax(4), ax(4)), factor);
-    let next = compose(
-        cons(cons(acc, cons(ax(10), ax(23))), ax(3)),
-        ax(lib(INVLOOP)),
+    let again =
+        |acc: N, runs: N| compose(cons(cons(acc, cons(ax(10), runs)), ax(3)), ax(lib(INVLOOP)));
+    let factor = branch(ax(45), q(at(1)), ax(10));
+    let step = again(
+        mul(mul(ax(4), ax(4)), factor),
+        cons(cons(op(6, ax(44), q(at(1))), ax(45)), ax(23)),
     );
-    branch(eq(ax(22), q(at(2))), ax(4), next)
+    let next_run = again(ax(4), ax(23));
+    branch(
+        eq(ax(45), q(at(2))),
+        ax(4),
+        branch(eq(ax(44), q(at(0))), next_run, step),
+    )
 }
 
-/// `x^(p−2)` on `[x LIB]` (0 ↦ 0).
+/// `x^(p−2)` on `[x LIB]` (0 ↦ 0): `p − 2 = 0xFFFFFFFE_FFFFFFFF`, 31
+/// ones, a zero, 32 ones.
 fn inv() -> N {
-    let e = nebu::field::P - 2;
-    let bits = (0..64).fold(pr(at(2), at(0)), |list, b| pr(at((e >> b) & 1), list));
+    let runs = [(31, 1), (1, 0), (32, 1), (0, 2)]
+        .into_iter()
+        .rev()
+        .fold(at(0), |rest, (n, b)| pr(pr(at(n), at(b)), rest));
     compose(
-        cons(cons(q(at(1)), cons(ax(2), q(bits))), ax(3)),
+        cons(cons(q(at(1)), cons(ax(2), q(runs))), ax(3)),
         ax(lib(INVLOOP)),
     )
 }

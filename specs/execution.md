@@ -71,6 +71,25 @@ verification against the original statement.
 | 9–10 | structural digest equality and canonical 64-bit less-than, nox zero=true |
 | 11–14 | canonical 32-bit XOR/AND/NOT/variable left shift |
 | 15 | full structural Hemera hashing and final permutation |
+| jet | the hemera node formula (`execution::node`): one permutation |
+
+The node jet. `execution::node::formula()` is a pure Layer-1 nox formula
+on the subject `[[L R] flags]` (`L`, `R` digest nouns `[[a b] [c d]]`,
+`flags` an atom) whose reduction is `permute(L ‖ R ‖ 0 ‖ flags ‖ 0⁶)[0..4]`
+as a digest noun: hemera's `tree::hash_node` (`flags` 2 interior, 3 root),
+the step of `hemera::merkle` paths. Its partial-round inverse is
+`x^(p−2)` by square-and-multiply over the exponent's runs of equal bits
+(31 ones, a zero, 32 ones), so every branch in it tests a constant of
+the formula and its cost is `node::COST` = 39,818 cycles for every input.
+When the compiler evaluates a formula equal to it, token for token, it
+emits one permutation gadget over the eight limbs and the flags (no bit
+decomposition) and charges `node::COST`; on any other subject shape it
+fails closed, as nox's reduction does. Any other formula, including a
+near-copy, is compiled pattern by pattern. Pattern 15 on `[L R]` and the
+node are different functions (structural versus raw-limb hashing); a
+program chooses its tree. The formula is 2,235 program nodes and nests
+39 deep; nox's reduction of it stays inside nox's depth limit when
+entered at any depth the compiler admits (tested at 640).
 
 The native private backend supports atom call witnesses (16), with checked continuation.
 State backends authenticate lookups (17), including private query selection over
@@ -88,7 +107,7 @@ when static child reservations do not fit. Public cycles can reveal branch-cost
 information even when the execution witness is private.
 
 Limits: 64 public inputs, 4096 program/symbolic noun nodes, 128 depth, 4096 symbolic
-calls, 32768 gates/rows (checked before constructing sparse matrices), 4096 output
+calls, 2^20 gates/rows (`MAX_RELATION`, checked before constructing sparse matrices), 4096 output
 atoms. Hash round construction checks limits at permutation boundaries. The
 generic direct wrapper also caps matrix dimensions and total sparse entries.
 The native private backend separately caps circuit work and fixed-width proof
