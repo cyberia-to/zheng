@@ -51,6 +51,14 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
     Some(match name {
         "add.tri" => (common::parse(common::ADD), vec![7, 5]),
         "hash.tri" => (common::parse(common::HASH), vec![7]),
+        h if h.starts_with("hash-") => {
+            let n: usize = h[5..].parse().ok()?;
+            (common::hash_inputs(n), (0..n as u64).map(|i| 1000 + 7 * i).collect())
+        }
+        b if b.starts_with("batch-") => {
+            let g: usize = b[6..].parse().ok()?;
+            (common::hash_batch(g, 8), (0..8 * g as u64).map(|i| 3 + 11 * i).collect())
+        }
         c if c.starts_with("chain-") => (common::hash_chain(c[6..].parse().ok()?), vec![7]),
         m if m.starts_with("merkle-") => {
             let levels: usize = m[7..].parse().ok()?;
@@ -61,6 +69,13 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
         t if t.starts_with("tree-") => (common::tree_program(t[5..].parse().ok()?), vec![3]),
         _ => return None,
     })
+}
+
+fn text(n: &N) -> String {
+    match n {
+        N::Atom(a) => a.to_string(),
+        N::Pair(a, b) => format!("[{} {}]", text(a), text(b)),
+    }
 }
 
 fn median(mut v: Vec<f64>) -> f64 {
@@ -138,10 +153,63 @@ fn main() {
             );
             continue;
         }
+        if let Some(inner) = name.strip_prefix("veil-") {
+            // zk (envelope profile 2): the same statement with its input
+            // secret — [2 [[3 [secret [0 1]]] [1 inner]]] runs `inner` on
+            // [secret 0]
+            let Some((inner_prog, input)) = program(inner) else {
+                eprintln!("unknown fixture {name}");
+                continue;
+            };
+            let secret_op = N::Pair(
+                Box::new(N::Atom(16)),
+                Box::new(N::Pair(
+                    Box::new(N::Pair(Box::new(N::Atom(1)), Box::new(N::Atom(0)))),
+                    Box::new(N::Pair(Box::new(N::Atom(1)), Box::new(N::Atom(0)))),
+                )),
+            );
+            let wrap = |a: N, b: N| N::Pair(Box::new(a), Box::new(b));
+            let subject = wrap(N::Atom(3), wrap(secret_op, wrap(N::Atom(0), N::Atom(1))));
+            let prog = wrap(N::Atom(2), wrap(subject, wrap(N::Atom(1), inner_prog)));
+            let mut prove = vec![];
+            let mut last = None;
+            for _ in 0..reps {
+                let t = Instant::now();
+                match zheng::execution::veil::prove(&prog, &[], &input[..1], BUDGET) {
+                    Ok(r) => last = Some(r),
+                    Err(e) => {
+                        println!("| {name} | {backend} | veil | — | — | {e} | | | | | |");
+                        break;
+                    }
+                }
+                prove.push(ms(t));
+            }
+            let Some((statement, proof)) = last else { continue };
+            let verify: Vec<f64> = (0..reps)
+                .map(|_| {
+                    let t = Instant::now();
+                    zheng::execution::veil::verify(&statement, &proof).expect("verify");
+                    ms(t)
+                })
+                .collect();
+            println!(
+                "| {name} | {backend} | veil (profile 2) | — | — | {:.1} | {:.2} | {} (proof) | — | — | — |",
+                median(prove),
+                median(verify),
+                proof.as_bytes().len()
+            );
+            continue;
+        }
         let Some((prog, input)) = program(name) else {
             eprintln!("unknown fixture {name}");
             continue;
         };
+        if let Ok(dir) = std::env::var("FAST_DUMP") {
+            // the program as a raw .nox formula and its inputs, for `joy prove`
+            std::fs::write(format!("{dir}/{name}.nox"), text(&prog)).expect("dump");
+            let csv: Vec<String> = input.iter().map(u64::to_string).collect();
+            std::fs::write(format!("{dir}/{name}.inputs"), csv.join(",")).expect("dump");
+        }
         let chosen = std::cell::Cell::new((0usize, succinct::params_for(0)));
         let choose = |vars: usize| {
             let p = params(vars);
@@ -162,6 +230,31 @@ fn main() {
             prove.push(ms(t));
         }
         let Some((statement, proof)) = last else { continue };
+        let cold_bytes = Envelope::Succinct {
+            statement: SuccinctStatement::Execution(statement.clone()),
+            proof: proof.clone(),
+        }
+        .to_bytes();
+        if std::env::var_os("FAST_KEY").is_some() {
+            // warm: the proving key derived once, then held across proofs
+            let t = Instant::now();
+            let key = succinct::ProvingKey::new(&prog, input.len()).expect("proving key");
+            let key_ms = ms(t);
+            let warm: Vec<f64> = (0..reps)
+                .map(|_| {
+                    let t = Instant::now();
+                    let (s, p) = succinct::prove_with_key(&key, &prog, &input, BUDGET, params).expect("prove");
+                    let took = ms(t);
+                    assert_eq!(
+                        Envelope::Succinct { statement: SuccinctStatement::Execution(s), proof: p }.to_bytes(),
+                        cold_bytes,
+                        "held-key proof differs"
+                    );
+                    took
+                })
+                .collect();
+            eprintln!("  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms (median of {reps})", median(warm));
+        }
         let (vars, p) = chosen.get();
         let (inst, _) = succinct::relation_and_pins(&statement).unwrap();
         let rows = inst.num_rows;

@@ -65,6 +65,28 @@ fn compose(x: ExecutionNoun, y: ExecutionNoun) -> ExecutionNoun {
     op(2, pair(x, op(1, y)))
 }
 
+/// Axis of input `k` in the subject `[i0 [i1 … [i_{n−1} 0]]]`.
+fn input_axis(k: usize) -> ExecutionNoun {
+    axis((1u64 << (k + 2)) - 2)
+}
+
+/// One hemera hash of `n` public inputs, `hash([i0 … i_{n−1}])` — the shape
+/// of a device-side commitment (a mining ticket hashes beacon, cluster,
+/// nonce, miner and commitment; a tip hashes height and two digests).
+pub fn hash_inputs(n: usize) -> ExecutionNoun {
+    op(15, cons8((0..n).map(input_axis).collect()))
+}
+
+/// `groups` independent hashes of `per` inputs each, consed: a settlement
+/// batch of `groups` tickets. Inputs `groups · per` (≤ 64).
+pub fn hash_batch(groups: usize, per: usize) -> ExecutionNoun {
+    cons8(
+        (0..groups)
+            .map(|g| op(15, cons8((0..per).map(|k| input_axis(g * per + k)).collect())))
+            .collect(),
+    )
+}
+
 /// `n` chained hemera hashes: `d_1 = H(a, 0⁷)`, `d_{i+1} = H(d_i, 0⁴)`, over
 /// the subject `[a 0]`; a digest is the noun `[[d0 d1] [d2 d3]]` (axes 4–7). Composition is balanced so the formula depth stays
 /// `O(log n)` within the statement's depth limit. Each hash of a digest

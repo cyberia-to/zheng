@@ -135,16 +135,20 @@ impl Layout {
             .map(|m| SparseMatrix {
                 rows: m.rows,
                 cols,
-                entries: m
-                    .entries
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .filter(|&&(_, v)| v != Goldilocks::ZERO)
-                            .filter_map(|&(c, v)| self.map.get(c).copied().flatten().map(|c| (c, v)))
-                            .collect()
-                    })
-                    .collect(),
+                entries: crate::par::ranges(m.entries.len(), 1 << 12, |range| {
+                    m.entries[range]
+                        .iter()
+                        .map(|row| {
+                            row.iter()
+                                .filter(|&&(_, v)| v != Goldilocks::ZERO)
+                                .filter_map(|&(c, v)| self.map.get(c).copied().flatten().map(|c| (c, v)))
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .into_iter()
+                .flatten()
+                .collect(),
             })
             .collect();
         CCSInstance {
@@ -256,10 +260,24 @@ pub fn prove<P: SuccinctPcs>(
     if z.len() != instance.num_cols || pins.iter().any(|&(i, v)| z[i] != v) {
         return Err("succinct: witness disagrees with the statement".into());
     }
-    let lap = crate::laps::timer("succinct");
     let layout = Layout::new(instance, pins)?;
     admit::<P>(params, layout.vars)?;
     let relabelled = layout.instance(instance);
+    prove_laid_out(params, &layout, &relabelled, z, statement)
+}
+
+/// [`prove`] over a layout and relabelled relation the caller derived (and
+/// may hold across proofs: they depend on the pinned positions, never on
+/// the pinned values). `layout.public` must hold this statement's values.
+pub(crate) fn prove_laid_out<P: SuccinctPcs>(
+    params: &P::Params,
+    layout: &Layout,
+    relabelled: &CCSInstance,
+    z: &[Goldilocks],
+    statement: &[u8],
+) -> Result<SuccinctProof<P>, String> {
+    let lap = crate::laps::timer("succinct");
+    admit::<P>(params, layout.vars)?;
     let mut zp = vec![Goldilocks::ZERO; relabelled.num_cols];
     for (col, slot) in layout.map.iter().enumerate() {
         if let Some(s) = slot {
@@ -270,8 +288,8 @@ pub fn prove<P: SuccinctPcs>(
     lap("layout");
     let (root, data) = P::commit(params, &zp[..half]);
     lap("commit");
-    let mut t = prologue::<P>(statement, params, layout.vars, instance.num_rows, &root);
-    let (iop_proof, point) = iop::prove::<Fp3>(&relabelled, &zp, &mut t);
+    let mut t = prologue::<P>(statement, params, layout.vars, relabelled.num_rows, &root);
+    let (iop_proof, point) = iop::prove::<Fp3>(relabelled, &zp, &mut t);
     lap("spartan");
     let (outer, inner) = reduce::compress_proof(&iop_proof);
     let mut lt = opening_transcript(&mut t);
