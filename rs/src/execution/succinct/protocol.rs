@@ -256,6 +256,7 @@ pub fn prove<P: SuccinctPcs>(
     if z.len() != instance.num_cols || pins.iter().any(|&(i, v)| z[i] != v) {
         return Err("succinct: witness disagrees with the statement".into());
     }
+    let lap = crate::laps::timer("succinct");
     let layout = Layout::new(instance, pins)?;
     admit::<P>(params, layout.vars)?;
     let relabelled = layout.instance(instance);
@@ -266,12 +267,16 @@ pub fn prove<P: SuccinctPcs>(
         }
     }
     let half = 1usize << layout.vars;
+    lap("layout");
     let (root, data) = P::commit(params, &zp[..half]);
+    lap("commit");
     let mut t = prologue::<P>(statement, params, layout.vars, instance.num_rows, &root);
     let (iop_proof, point) = iop::prove::<Fp3>(&relabelled, &zp, &mut t);
+    lap("spartan");
     let (outer, inner) = reduce::compress_proof(&iop_proof);
     let mut lt = opening_transcript(&mut t);
     let (witness_eval, opening) = P::open(params, &data, &pcs_point(&point[1..]), &mut lt);
+    lap("open");
     Ok(SuccinctProof {
         params: *params,
         root,

@@ -16,7 +16,7 @@ pub(crate) mod protocol;
 mod fold_tests;
 
 pub use protocol::{SuccinctProof, prove as prove_relation, verify as verify_relation};
-pub use choice::{SMALL_MAX_VARS, params_for, prove_default};
+pub use choice::{SMALL_MAX_VARS, params_for, prove_default, prove_with};
 pub use pcs::{MIN_SECURITY_BITS, SuccinctPcs, admit};
 /// The schemes and their parameters, so callers need not depend on lens.
 pub use lens::rspcs::whir::Decoding;

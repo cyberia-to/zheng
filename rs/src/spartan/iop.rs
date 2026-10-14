@@ -51,7 +51,7 @@ pub(crate) fn combined_weights<F: ChallengeField>(
             let weight = gamma_pow * eq_rox.get(r).copied().unwrap_or(F::ZERO);
             for &(col, coeff) in row {
                 if col < size {
-                    w[col] = w[col] + weight * F::from_base(coeff);
+                    w[col] = w[col] + weight.mul_base(coeff);
                 }
             }
         }
@@ -70,29 +70,30 @@ pub fn prove<F: ChallengeField>(
 ) -> (IopProof<F>, Vec<F>) {
     let m = instance.num_rows;
     let log_m = m.trailing_zeros() as usize;
-    let row_mv: Vec<Vec<F>> = instance
+    let row_mv: Vec<Vec<Goldilocks>> = instance
         .matrices
         .iter()
         .map(|matrix| {
-            (0..m)
-                .map(|r| {
-                    let dot = matrix.entries.get(r).map_or(Goldilocks::ZERO, |row| {
+            let mut out = vec![Goldilocks::ZERO; m];
+            crate::par::chunks_mut(&mut out, 1 << 12, |off, c| {
+                for (k, v) in c.iter_mut().enumerate() {
+                    *v = matrix.entries.get(off + k).map_or(Goldilocks::ZERO, |row| {
                         row.iter().fold(Goldilocks::ZERO, |acc, &(col, coeff)| {
                             acc + coeff * z.get(col).copied().unwrap_or(Goldilocks::ZERO)
                         })
                     });
-                    F::from_base(dot)
-                })
-                .collect()
+                }
+            });
+            out
         })
         .collect();
 
     let tau: Vec<F> = (0..log_m).map(|_| F::squeeze(transcript)).collect();
-    let mut outer = OuterSumcheckProver::new(
+    let mut outer = OuterSumcheckProver::new_base(
         eq_evals(&tau),
         row_mv,
         instance.multisets.clone(),
-        lift(&instance.coeffs),
+        instance.coeffs.clone(),
     );
     let mut rho_x: Vec<F> = Vec::with_capacity(log_m);
     let outer_sumcheck_polys = outer.prove_all(|poly| {

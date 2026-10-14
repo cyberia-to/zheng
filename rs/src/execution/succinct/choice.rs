@@ -32,13 +32,29 @@ pub fn prove_default(
     input: &[u64],
     budget: u64,
 ) -> Result<(ExecutionStatement, AnySuccinct), String> {
+    prove_with(program, input, budget, params_for)
+}
+
+/// Prove a public execution with the parameters `choose` picks for the
+/// committed size (in variables) the relation turns out to have. The
+/// verifier reads the parameters from the proof and admits them only at
+/// ≥ 128 proven bits, so any admitted choice verifies.
+pub fn prove_with(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    choose: impl Fn(usize) -> WhirParams,
+) -> Result<(ExecutionStatement, AnySuccinct), String> {
+    let lap = crate::laps::timer("prove_default");
     let (statement, relation, witness, public) =
         crate::execution::statement::prepare(program, input, budget)?;
+    lap("relation + witness");
     let pins = super::with_constant(public);
     let vk = crate::execution::VerifyingKey::new(statement.program_key(), relation);
+    lap("verifying key");
     let vars = protocol::Layout::new(&vk.relation().instance, &pins)?.vars;
     let proof: SuccinctProof<Whir> = protocol::prove(
-        &params_for(vars),
+        &choose(vars),
         &vk.relation().instance,
         &witness.z,
         &pins,

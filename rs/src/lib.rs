@@ -43,6 +43,8 @@ pub mod sumcheck;
 pub mod transcript;
 pub mod types;
 pub mod wire;
+pub(crate) mod laps;
+pub(crate) mod par;
 
 #[cfg(feature = "legacy")]
 pub mod ccs;
