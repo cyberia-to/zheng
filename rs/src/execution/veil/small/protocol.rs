@@ -10,8 +10,10 @@
 //!    (`protocol::spartan_*`): the final claim's value `V = λ·g1(ρ_x) +
 //!    A(0,r')·w̃(r') + ρ2·g2(r')`, where `w̃` is the free half with every
 //!    mask slot read as zero;
-//! 3. `z_ψ ← T`; `T ← u_ψ = Ψ(c)`, `Ψ = eq(pow(z_ψ), ·)` on the block;
-//!    `μ ← T`;
+//! 3. `ξ ← T` (`R` Fp3 coins, one per block slot); `T ← u_ψ = Ψ(c)`,
+//!    `Ψ = Σ_y ξ_y·[· = y]` over the block; `μ ← T`. (A block weight at
+//!    one geometric point does not mask: the round-0 sumcheck telescopes
+//!    onto it — `docs/explanation/zk-small.md`, attempt 1.)
 //! 4. one zero-knowledge WHIR opening of `Λ = F' + μ·Ψ` at value
 //!    `V + μ·u_ψ`, on a lens transcript seeded by a squeeze of `T`, where
 //!    `F' = A(0,r')·eq(r', ·)` off the mask region plus the Libra weights
@@ -96,29 +98,17 @@ fn eq_at(q: &[Fp3], b: usize) -> Fp3 {
     q.iter().enumerate().fold(Fp3::ONE, |a, (l, &x)| if (b >> l) & 1 == 1 { a * x } else { a * (Fp3::ONE - x) })
 }
 
-/// `(z, z², z⁴, …)` over `n` coordinates.
-fn pow_point(z: Fp3, n: usize) -> Vec<Fp3> {
-    let mut out = Vec::with_capacity(n);
-    let mut c = z;
-    for _ in 0..n {
-        out.push(c);
-        c = c * c;
-    }
-    out
-}
-
-/// The claim functional `Λ = F' + μ·Ψ` and the `(point, coef)` of `Ψ`.
-fn weight(s: &Setup, slots: &Slots, end: &SpartanEnd, psi: &(Vec<Fp3>, Fp3), mu: Fp3) -> Weight {
+/// The claim functional `Λ = F' + μ·Ψ`, `Ψ` the block weights `ξ`.
+fn weight(s: &Setup, slots: &Slots, end: &SpartanEnd, xi: &[Fp3], mu: Fp3) -> Weight {
     let n = slots.n;
     // r' in lens order, the top n − ℓ coordinates zero
     let mut q = pcs_point(&end.r);
     q.resize(n, Fp3::ZERO);
     let a0 = end.a0;
-    let mut eq = vec![(q.clone(), a0), block_term(&q, slots.rho, -a0)];
-    eq.push((psi.0.clone(), mu * psi.1));
+    let eq = vec![(q.clone(), a0), block_term(&q, slots.rho, -a0)];
     let w1 = libra::weights(&end.rho_x, s.degree, end.lambda);
     let w2 = libra::weights(&end.r, 2, end.rho2);
-    let explicit = w1
+    let mut explicit: Vec<(usize, Fp3)> = w1
         .into_iter()
         .chain(w2)
         .enumerate()
@@ -127,12 +117,19 @@ fn weight(s: &Setup, slots: &Slots, end: &SpartanEnd, psi: &(Vec<Fp3>, Fp3), mu:
             (b, w - a0 * eq_at(&q, b))
         })
         .collect();
+    let start = slots.block_start();
+    explicit.extend(xi.iter().enumerate().map(|(k, &x)| (start + k, mu * x)));
     Weight { eq, explicit }
 }
 
-/// `Ψ` at `z`: the block restriction of `eq(pow(z), ·)` as one eq term.
-fn psi_term(z: Fp3, slots: &Slots) -> (Vec<Fp3>, Fp3) {
-    block_term(&pow_point(z, slots.n), slots.rho, Fp3::ONE)
+/// The block weights `ξ` of `Ψ`, one Fp3 coin per block slot.
+fn block_weights(t: &mut Transcript, slots: &Slots) -> Vec<Fp3> {
+    (0..slots.block()).map(|_| Fp3::squeeze(t)).collect()
+}
+
+/// `Ψ(c) = Σ_k ξ_k·c[block + k]`.
+fn psi_value(xi: &[Fp3], block: &[Goldilocks]) -> Fp3 {
+    xi.iter().zip(block).fold(Fp3::ZERO, |a, (&x, &v)| a + x * Fp3::from_base(v))
 }
 
 /// Prove; `zp` is the relabelled masked-relation witness.
@@ -168,13 +165,11 @@ pub(crate) fn prove(
     prologue(&mut t, statement, params, s, slots, &root);
     let (msgs, end) = spartan_prove(s, relabelled, zp, &g1, &g2, &mut t);
     lap("sumchecks");
-    let z = Fp3::squeeze(&mut t);
-    let psi = psi_term(z, slots);
-    let block = &c[slots.block_start()..];
-    let u_psi = psi.1 * lens::rspcs::field::ml_eval_base(block, &psi.0[..slots.rho]);
+    let xi = block_weights(&mut t, slots);
+    let u_psi = psi_value(&xi, &c[slots.block_start()..]);
     t.absorb_eval(u_psi);
     let mu = Fp3::squeeze(&mut t);
-    let w = weight(s, slots, &end, &psi, mu);
+    let w = weight(s, slots, &end, &xi, mu);
     let mut lt = pcs_transcript(&mut t);
     let (vals, opening) = zk::open_zk(params, &data, &w, &mut lt).map_err(|e| format!("veil-W: open: {e:?}"))?;
     debug_assert_eq!(vals.v, end.value + mu * u_psi, "the claim's value");
@@ -189,11 +184,10 @@ pub(crate) fn verify(s: &Setup, statement: &[u8], p: &Parts) -> Result<(), Strin
     let mut t = Transcript::new();
     prologue(&mut t, statement, &p.params, s, &slots, &p.root);
     let end = spartan_verify(s, &p.spartan.msgs(), &mut t)?;
-    let z = Fp3::squeeze(&mut t);
-    let psi = psi_term(z, &slots);
+    let xi = block_weights(&mut t, &slots);
     t.absorb_eval(p.u_psi);
     let mu = Fp3::squeeze(&mut t);
-    let w = weight(s, &slots, &end, &psi, mu);
+    let w = weight(s, &slots, &end, &xi, mu);
     // the claim's value is the verifier's own, never the prover's
     let vals = ZkValues { v: end.value + mu * p.u_psi, ..p.vals };
     let mut lt = pcs_transcript(&mut t);
