@@ -57,7 +57,13 @@ fn census(levels: usize) {
     let pv: Vec<_> = pins.iter().map(|&p| sp.absorb_free(&mut b, p)).collect();
     let _ = sp.squeeze(&mut b);
     let g0 = b.gates.len();
-    rec::verify::verify(&mut b, &key, &pv, &pf);
+    let mut last = (b.gates.len(), 0usize, 0usize);
+    rec::verify::verify_marked(&mut b, &key, &pv, &pf, &mut |b: &mut Builder, what: &str| {
+        let blocks: usize = b.chains.iter().map(|c| c.blocks.len()).sum();
+        let (g, bl) = (b.gates.len(), blocks);
+        println!("  {what}: gates {} perm blocks {} bits {}", g - last.0, bl - last.1, b.bits.len() - last.2);
+        last = (g, bl, b.bits.len());
+    });
     b.finish().expect("circuit accepts");
     let blocks: usize = b.chains.iter().map(|c| c.blocks.len()).sum();
     println!("circuit: gates {} bits {} perm blocks {} rows {}", b.gates.len() - g0, b.bits.len(), blocks, b.rows());

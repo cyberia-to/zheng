@@ -198,6 +198,13 @@ fn libra_weights<O: Ops>(o: &mut O, point: &[O::V], degree: usize, scale: O::V) 
 /// values the caller has bound). Panics on a shape the caller should have
 /// refused (`wire::check_shape`).
 pub fn verify<O: Ops>(o: &mut O, key: &RecKey, pins: &[O::V], pf: &RecProof) {
+    verify_marked(o, key, pins, pf, &mut |_, _| {});
+}
+
+/// [`verify`], calling `mark` at the end of each phase (`"sumchecks"`,
+/// `"pinned"`, `"free weight"`, `"opening"`) — a circuit census reads its
+/// gate counts there.
+pub fn verify_marked<O: Ops>(o: &mut O, key: &RecKey, pins: &[O::V], pf: &RecProof, mark: &mut dyn FnMut(&mut O, &str)) {
     let s = &key.pk.setup;
     assert_eq!(pins.len(), key.pins(), "veil-r: pins");
     let mut t = Sponge::new(o, tag::VEIL);
@@ -225,17 +232,22 @@ pub fn verify<O: Ops>(o: &mut O, key: &RecKey, pins: &[O::V], pf: &RecProof) {
     let gamma = t.squeeze_ext(o);
     let gp = gm::powers(o, gamma, evals.len());
     let batched = gm::combine(o, &gp, &evals);
+    mark(o, "outer sumcheck");
     let req = row_eq(o, &rho_x);
     let p = pinned_part(o, key, &req, &gp, pins);
+    mark(o, "pinned");
     let g2 = t.absorb_free_ext(o, pf.g2);
     let rho2 = t.squeeze_ext(o);
     let claim2 = o.sub(batched, p);
     let start = o.mul_add(rho2, g2, claim2);
     let (c2, r) = rounds(o, &mut t, start, &pf.inner);
     let lambda = t.squeeze_ext(o);
+    mark(o, "inner sumcheck");
     let a0 = free_weight(o, key, &req, &gp, &r);
+    mark(o, "free weight");
     let value = o.mul_add(lambda, g1_at, c2);
     opening(o, key, &mut t, root, pf, OpenArgs { a0, r: &r, lambda, rho_x: &rho_x, rho2, value });
+    mark(o, "opening");
 }
 
 struct OpenArgs<'a, V> {
