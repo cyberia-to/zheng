@@ -43,7 +43,7 @@ pub(crate) fn check_shape(key: &RecKey, p: &RecProof) -> Result<(), String> {
     if ok { Ok(()) } else { Err("veil-r: proof shape".into()) }
 }
 
-pub(crate) fn write(key: &RecKey, p: &RecProof) -> Vec<u8> {
+pub(crate) fn write(p: &RecProof) -> Vec<u8> {
     let mut w = Writer::default();
     w.buf.extend_from_slice(MAGIC);
     digest(&mut w, &p.root);
@@ -60,7 +60,6 @@ pub(crate) fn write(key: &RecKey, p: &RecProof) -> Vec<u8> {
         bases(&mut w, &o.symbols.iter().map(|s| s.c0).collect::<Vec<_>>());
         o.path.iter().for_each(|d| digest(&mut w, d));
     }
-    let _ = key;
     w.buf
 }
 

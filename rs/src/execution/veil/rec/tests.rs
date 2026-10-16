@@ -9,9 +9,9 @@ fn a_field_native_proof_verifies_and_round_trips() {
     let key = RecKey::new(&program, 0).unwrap();
     let (st, pf) = prove_seeded(&key, &program, &[], &[7], 1000, [5; 32]).unwrap();
     verify(&key, &st, &pf).unwrap();
-    let bytes = pf.to_bytes(&key);
+    let bytes = pf.to_bytes();
     let back = RecProof::from_bytes(&bytes, &key).unwrap();
-    assert_eq!(back.to_bytes(&key), bytes);
+    assert_eq!(back.to_bytes(), bytes);
     verify(&key, &st, &back).unwrap();
     let r = key.report();
     eprintln!("{r:?} bytes {}", bytes.len());

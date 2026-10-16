@@ -349,8 +349,9 @@ pub fn verify(key: &RecKey, statement: &PrivateStatement, proof: &RecProof) -> R
 }
 
 impl RecProof {
-    pub fn to_bytes(&self, key: &RecKey) -> Vec<u8> {
-        wire::write(key, self)
+    /// The proof's bytes (every count is the key's; the bytes carry none).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        wire::write(self)
     }
     pub fn from_bytes(bytes: &[u8], key: &RecKey) -> Result<Self, String> {
         wire::read(bytes, key)

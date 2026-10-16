@@ -97,11 +97,14 @@ fn a_tampered_transaction_proof_is_refused_natively_and_by_the_circuit() {
 
 #[test]
 fn a_lone_child_cannot_stand_for_a_pair() {
-    // h = 0 with a right digest other than the left's fails the circuit
-    let f = fixture();
-    let d = wrap::dummy_proof(&f.keys.levels[0]);
-    let mut b = Builder::new(true);
-    let (_, l, r) = program::node_digest(&mut b, &[Goldilocks::ONE; 4], &[Goldilocks::new(2); 4], false);
-    let _ = (l, r, d);
-    assert!(b.finish().is_err());
+    // h = 0 with a right digest other than the left's fails the circuit;
+    // h = 0 with equal digests and h = 1 with any pass
+    let run = |l: u64, r: u64, h: bool| {
+        let mut b = Builder::new(true);
+        program::node_digest(&mut b, &[Goldilocks::new(l); 4], &[Goldilocks::new(r); 4], h);
+        b.finish().is_ok()
+    };
+    assert!(!run(1, 2, false));
+    assert!(run(1, 1, false));
+    assert!(run(1, 2, true));
 }

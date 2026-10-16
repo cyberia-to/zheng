@@ -47,7 +47,7 @@ fn census(levels: usize) {
     println!("key {:.1} ms: {:?}", ms(t), key.report());
     let t = Instant::now();
     let (st, pf) = rec::prove(&key, &prog, &[], &[5], BUDGET).expect("prove");
-    println!("prove {:.1} ms, {} B", ms(t), pf.to_bytes(&key).len());
+    println!("prove {:.1} ms, {} B", ms(t), pf.to_bytes().len());
     let t = Instant::now();
     rec::verify(&key, &st, &pf).expect("verify");
     println!("verify (native, over Ops) {:.1} ms", ms(t));
@@ -115,7 +115,7 @@ fn block(n: usize, depth: usize) {
         txs.push(veil.statement_pins(&s).unwrap());
         proofs.push(p);
     }
-    let tx_bytes = proofs[0].to_bytes(&veil).len();
+    let tx_bytes = proofs[0].to_bytes().len();
     println!("{backend}: {n} tx proofs {:.1} s (median {:.1} ms, {tx_bytes} B each)", t.elapsed().as_secs_f64(), median(tx_ms));
     let st = BlockStatement { txs, fields: [1, 2, 3, 4].map(nebu::Goldilocks::new) };
     let t = Instant::now();

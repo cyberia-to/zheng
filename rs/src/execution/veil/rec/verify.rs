@@ -22,7 +22,6 @@
 use nebu::{Fp3, Goldilocks};
 
 use super::{ARITY, RecKey, RecProof, SparseRow, header};
-use crate::execution::veil::hiding::SALT;
 use crate::execution::veil::libra::limb_basis;
 use crate::recursion::gm;
 use crate::recursion::ops::{Arith, Gate, Ops};
@@ -265,7 +264,7 @@ struct OpenArgs<'a, V> {
 fn opening<O: Ops>(o: &mut O, key: &RecKey, t: &mut Sponge<O>, root: [O::V; 4], pf: &RecProof, a: OpenArgs<'_, O::V>) {
     let s = &key.pk.setup;
     let cfg = key.cfg;
-    let (k, big_k, rows, tr) = (cfg.k, cfg.big_k(), cfg.rows, cfg.total_rows());
+    let (k, rows, tr) = (cfg.k, cfg.rows, cfg.total_rows());
     // the functional: tensor block over the free half, explicit weights
     // on the masks from entry 2^ℓ on
     let lo = a.r.len().min(k.trailing_zeros() as usize);
@@ -352,5 +351,4 @@ fn opening<O: Ops>(o: &mut O, key: &RecKey, t: &mut Sponge<O>, root: [O::V; 4], 
         let q = gm::horner(o, &linear, x);
         o.assert_eq(q, lin, "veil-r: linear column");
     }
-    let _ = (big_k, SALT);
 }
