@@ -113,7 +113,31 @@ impl AggKeys {
         if last.params.mode != Mode::Final || wrap::wire::max_bytes(&last) > wrap::MAX_FINAL_BYTES {
             return Err(format!("agg: the final key's proofs exceed {} B", wrap::MAX_FINAL_BYTES));
         }
-        Ok(Self { veil, depth, levels, top, last })
+        let keys = Self { veil, depth, levels, top, last };
+        if let Some((name, row, bits)) = keys.weakest().into_iter().find(|w| w.2 < 128.0) {
+            return Err(format!("agg: {name}: {row} at {bits:.2} bits, below 128"));
+        }
+        Ok(keys)
+    }
+
+    /// Every level's weakest ledger row (`wrap::ledger`, grinding priced):
+    /// `(level, row, bits)`, the leaves first, then the nodes, the top and
+    /// the final level.
+    pub fn weakest(&self) -> Vec<(String, String, f64)> {
+        let named = self
+            .levels
+            .iter()
+            .enumerate()
+            .map(|(j, k)| (if j == 0 { "leaf".to_string() } else { format!("node {j}") }, k))
+            .chain([("top".to_string(), &self.top), ("final".to_string(), &self.last)]);
+        named
+            .map(|(name, k)| {
+                let reads = k.wiring.as_ref().map_or(0, |w| w.reads);
+                let rows = wrap::ledger(&k.params, &k.cfg, k.constraints, reads);
+                let (row, bits) = rows.into_iter().fold((String::new(), f64::INFINITY), |a, (nm, b)| if b < a.1 { (nm, b) } else { a });
+                (name, row, bits)
+            })
+            .collect()
     }
 
     /// The most bytes a block proof takes, over every transcript.
