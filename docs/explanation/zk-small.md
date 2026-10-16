@@ -3,7 +3,7 @@ tags: zheng, zk, whir, veil, research
 crystal-type: process
 crystal-domain: crypto
 alias: small zero knowledge, G1, hiding WHIR
-status: in progress
+status: prototype measured, under review
 date: 2026-10-16
 ---
 # small zero knowledge — gate G1
@@ -66,11 +66,21 @@ stand, 2026-10-16:
 | 2^16 (synthetic) | 49,805 |
 | 2^17 (synthetic, k = 5) | 57,901 |
 
-a `SPEND` of two depth-40 node-jet paths, its record hashes as node calls,
-the balance and two small predicates is estimated at 30–45 k free wires,
-i.e. 2^16 committed variables. so a zero-knowledge `SPEND` proof ≤ 64 KB
-needs the hiding to cost ≤ ~14 KB over the non-hiding proof at 2^16, or ≤
-~6 KB if the masks push the witness to 2^17. any construction that adds
+the `SPEND` shape, measured (fixture `tests/common/spend.rs`: two inputs
+with four record digests and a key each, commitment = three node calls,
+owner check, nullifier, a secret depth-`d` path per input with secret
+siblings and directions; two outputs of three node calls; balance with a
+public fee; four `lt` range checks; two `data·token = pred` predicates):
+depth 34 compiles under the shipped caps, 20,060 read columns at depth 40
+(17,684 at 34) in a 2^15-column relation; the non-hiding proof of the same
+relation and witness is 43,869 B (depth 40) / 44,221 B (depth 34). depth 40
+exceeds the relation compiler's evaluation cap (`MAX_CALLS` = 4,096
+formula evaluations); its figures below come from a local build with the
+cap at 8,192, never committed — the cap is a finding for the `SPEND`
+specification, not for G1.
+
+before any hiding was built, the budget was therefore ≈ 20 KB over the
+non-hiding proof at 2^15. any construction that adds
 oracles with their own Merkle paths (2026/391 as implemented in Plonky3,
 +120 KB at 100 bits) is out before it starts; the masks must ride in the
 oracles WHIR already opens.
@@ -147,4 +157,111 @@ relation.
 
 ## attempts
 
-(filled in as they are measured)
+### attempt 0 — the literature as implemented elsewhere (rejected, measured by others)
+
+Plonky3's HVZK-WHIR (PR #1767, after 2026/391): 3.28× the non-zk proof at
+2^16, 3.04× at 2^18, at 100 bits; every mask a separate oracle with its own
+Merkle paths at every query (≈ 120 KB fixed). Rejected before building:
+any design that opens a second oracle at the round-0 queries pays ≈ q₀ ×
+(path depth × 32 B) ≈ 38 × 17 × 32 ≈ 20 KB for the paths alone.
+
+### attempt 1 — round-0 masking, one geometric `Ψ` point (failed: leaks one Fp3)
+
+The design of § the design with `Ψ = eq(pow(z_ψ), ·)` on the block. The
+exact linear-algebra test (lens `whir::zk::lemma`, whole tables, `k₀ = 4`,
+`q₀ = 8`, `R = 256`) finds the block system one Fp3 short: rank `128 + 27`
+of the needed `128 + 30`, and the off-block change is not matched.
+Reason: the round-0 sumcheck's block contributions are tensors at two
+points (`z_ψ^{16}`, `z_ood^{16}`) and telescope onto `T(P)` and `T(α)` at
+each; `u_ψ`, `u` and the OOD answer lie in their span, so one combination
+of revealed values cancels the block and is a function of the witness.
+Kept as the regression test `a_geometric_block_weight_leaks`.
+
+### attempt 2 — round-0 masking, uniform block weights `ξ` (veil-W, built)
+
+`Ψ = Σ_y ξ_y·[· = y]` over the block, `ξ` from the transcript (one Fp3
+coin per block slot). The same test solves for every seed (rank `128 +
+30`, the one automatic relation being `σ_{k₀}`, fixed by `f_1`); at the
+device shapes the block-restricted rank is exactly the lemma's (2^14:
+622/638 by query count, 2^16: 638, 2^17 k = 5: 1,252; `lemma_prod`). The
+prover runs the rank check on its actual coins (2–4 ms at 2^15) and
+recommits on failure, so the zero-knowledge claim needs no bound on that
+event.
+
+With veil's layout the masking columns of the masked relation sat at
+2^15, so every free half doubled; `Layout::compact` (drop every unread
+column, not only the trailing ones) put the depth-34 SPEND back to 2^15:
+51,536 → 47,056 B.
+
+### attempt (b) — Libra masks + non-hiding WHIR + one small hiding commitment to the mask (rejected, estimated)
+
+A non-hiding WHIR opening of the witness reveals `q₀·2^{k₀}` codeword
+values of it (608 at 2^15) plus the folded words — the leak is the
+witness's codeword, which no separately committed mask can cancel without
+entering the same oracle. As stated it is not zero knowledge; made zero
+knowledge, it is attempt 2. Its cost as stated would be the non-hiding
+proof (43.9 KB) plus veil's hiding opening of the Libra masks alone
+(unique-decoding Ligero, ≈ 123 columns: ≈ 40–60 KB at hundreds of entries,
+`audit/zk-profile-2026-10.md` §3: 61.7 KB at 2,417 entries) ≈ 85–105 KB.
+
+### attempt (c) — zk wrapper around a non-zk proof (rejected, estimated)
+
+Proving "I know a non-zk succinct proof of `SPEND`" in a small masked
+relation needs the WHIR verifier as a circuit. zheng's field-native
+recursion circuit verifying one step takes 21,278–27,444 rows of 64-column
+words (`audit/recursion-2026-10.md`), i.e. a ≈ 2^20-cell committed word;
+the recursion audit's own estimate for one wrap opening at that size is
+≈ 60–90 KB non-hiding, and the byte-transcript, binary-Merkle succinct
+proof is costlier in circuit than the field-native one. Worse than
+attempt 2 by ≥ 15 KB and by tens of seconds of proving.
+
+### attempt (d) — other 2024–2026 constructions
+
+- 2026/391 (Chiesa, Fenzi, Weissenberg): the asymptotically right answer
+  (`1 + o(1)` oracle length); as compiled by Plonky3, attempt 0.
+- 2024/1037 (Haböck, Al Kindi): the batching idea attempt 2 carries to
+  WHIR's round 0.
+- 2025/1354 ("Shred-to-Shine", FRI-based multilinear commitments): same
+  shape as 2026/391 for this purpose (masks of the folded words as extra
+  oracles).
+- VEIL (2026/683): not readable from this machine (browser challenge), as
+  in October; not evaluated.
+
+## results
+
+`SPEND` fixture, Apple M4 Max, 2026-10-16, **load average 62–66 throughout
+(another stand's block aggregator on ten cores)**: medians of 5, times are
+upper bounds of a quiet machine. veil and veil-W prove times include the
+relation compile and the witness; the non-hiding column's do not. Verify
+recompiles the relation from the statement (no cached key).
+
+| statement | non-hiding (profile 1) | veil (Ligero) | veil-W |
+|---|---|---|---|
+| SPEND depth 40 (cap 8,192, local) | 43,869 B | — | **46,480–46,704 B** (dedup of queried leaves varies the size), prove 695 ms Metal / 782 ms CPU, verify 165–211 ms |
+| SPEND depth 34 (shipped caps) | 44,221 B | 165,933 B | 46,288–46,800 B, prove 628 / 809 ms, verify 158–168 ms |
+| node-merkle-32 (secret leaf) | 46,719 B (envelope) | 163,909 B | 42,144 B, prove 365 / 878 ms |
+| hash.tri (secret preimage) | 16,791 B (envelope) | 63,205 B | 25,860 B, prove 125 / 87 ms |
+
+Proven bits (lens `zk_terms` + veil's IOP): 128.08 with grinding, 112.08
+without (WHIR rows); the combination row needs 13 grinding bits at 2^15.
+Byte map of a depth-34 proof (46,736 B): round-0 openings 20,368 B (coset
+values 4,864, `Ĝ` 912, salts 1,216, siblings 13,376), round-1 and final
+openings 18,848 B, final polynomial 3,072 B, Spartan 3,768 B, the rest
+680 B. The zero-knowledge cost over the non-hiding proof at the same size
+is ≈ 2.2 KB (`Ĝ`, salts, `u_ψ`, `u`, the mask sums).
+
+## open
+
+- the relation compiler's evaluation cap admits two secret paths of depth
+  ≤ 34; depth 40 needs the cap at ≥ ~5,000 evaluations or a secret-sibling
+  level jet;
+- measured on hemera 0.3 (8 + 16 rounds); hemera 0.4 (profile #15, 6 + 6
+  full, 48 partial, `x⁷` every round) changes prover times and the node
+  gadget's width, so the SPEND relation's read columns — 20,060 of 32,768
+  at depth 40 — grow; bytes stay as long as the relation stays ≤ 2^15 with
+  the masks (else 2^16: +≈ 3–5 KB, still ≤ 64 KB at the 2^16 floor of
+  49.8 KB);
+- no envelope profile: veil-W proofs travel as `ZHVEILW1` bytes beside a
+  `PrivateStatement`;
+- no held proving key yet (veil has one);
+- the prover is not constant time (as veil).
