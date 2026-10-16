@@ -14,9 +14,12 @@
 mod layout;
 mod protocol;
 mod wire;
+pub mod inspect;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod zk_tests;
 
 pub use wire::{MAGIC, MAX_BYTES};
 

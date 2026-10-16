@@ -79,6 +79,20 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
     })
 }
 
+/// `[2 [[3 [secret [0 1]]] [1 inner]]]`: run `inner` on `[secret 0]`.
+fn with_secret(inner: N) -> N {
+    let secret_op = N::Pair(
+        Box::new(N::Atom(16)),
+        Box::new(N::Pair(
+            Box::new(N::Pair(Box::new(N::Atom(1)), Box::new(N::Atom(0)))),
+            Box::new(N::Pair(Box::new(N::Atom(1)), Box::new(N::Atom(0)))),
+        )),
+    );
+    let wrap = |a: N, b: N| N::Pair(Box::new(a), Box::new(b));
+    let subject = wrap(N::Atom(3), wrap(secret_op, wrap(N::Atom(0), N::Atom(1))));
+    wrap(N::Atom(2), wrap(subject, wrap(N::Atom(1), inner)))
+}
+
 fn text(n: &N) -> String {
     match n {
         N::Atom(a) => a.to_string(),
@@ -158,6 +172,49 @@ fn main() {
                 s.instance.num_rows.trailing_zeros(),
                 median(prove),
                 median(verify)
+            );
+            continue;
+        }
+        if let Some(inner) = name.strip_prefix("veilw-") {
+            // zk with the WHIR opening (veil-W, research): the same wrapping
+            let Some((inner_prog, input)) = program(inner) else {
+                eprintln!("unknown fixture {name}");
+                continue;
+            };
+            let prog = with_secret(inner_prog);
+            let mut prove = vec![];
+            let mut last = None;
+            for _ in 0..reps {
+                let t = Instant::now();
+                match zheng::execution::veil::small::prove(&prog, &[], &input[..1], BUDGET) {
+                    Ok(r) => last = Some(r),
+                    Err(e) => {
+                        println!("| {name} | {backend} | veil-W | — | — | {e} | | | | | |");
+                        break;
+                    }
+                }
+                prove.push(ms(t));
+            }
+            let Some((statement, proof)) = last else { continue };
+            let verify: Vec<f64> = (0..reps)
+                .map(|_| {
+                    let t = Instant::now();
+                    zheng::execution::veil::small::verify(&statement, &proof).expect("verify");
+                    ms(t)
+                })
+                .collect();
+            let (inst, public) = {
+                let p = statement.prepare().expect("prepare");
+                let pins: Vec<_> = p.public_coordinates.iter().map(|&(i, v)| (i, nebu::Goldilocks::new(v))).collect();
+                (p.relation.instance, pins)
+            };
+            let (n, block, used) = zheng::execution::veil::small::shape(&inst, &public).expect("shape");
+            println!(
+                "| {name} | {backend} | veil-W n={n} R={block} used={used} | {n} | 2^{} | {:.1} | {:.2} | {} (proof) | — | — | — |",
+                inst.num_rows.trailing_zeros(),
+                median(prove),
+                median(verify),
+                proof.as_bytes().len()
             );
             continue;
         }
