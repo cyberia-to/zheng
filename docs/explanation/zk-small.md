@@ -266,5 +266,4 @@ is ≈ 2.2 KB (`Ĝ`, salts, `u_ψ`, `u`, the mask sums).
   49.8 KB);
 - no envelope profile: veil-W proofs travel as `ZHVEILW1` bytes beside a
   `PrivateStatement`;
-- no held proving key yet (veil has one);
 - the prover is not constant time (as veil).

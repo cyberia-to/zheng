@@ -211,8 +211,7 @@ they stay as measured while the relation with its masks fits 2^15.
 
 ## 9. not done / open
 
-- no envelope profile (`ZHVEILW1` bytes beside a `PrivateStatement`); no
-  held proving key;
+- no envelope profile (`ZHVEILW1` bytes beside a `PrivateStatement`);
 - the relation compiler cap for depth 40 (§5);
 - no external (human) review of the masking lemma; no proven bound on the
   rank check's failure probability (completeness only — zero knowledge

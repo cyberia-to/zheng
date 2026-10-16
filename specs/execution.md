@@ -344,9 +344,11 @@ zero knowledge in the ROM after Fiat–Shamir.
 
 Gate G1 of soft3 `proposals/privacy-frozen.md`; attempts and measurements
 in `docs/explanation/zk-small.md`, audit `audit/zk-small-2026-10.md`.
-`veil::small::{prove, verify, prove_relation, verify_relation}` over the
-same `PrivateStatement`s as veil; `veil::small::inspect` returns the
-revealed values by category. Not reachable from the envelope: a proof is
+`veil::small::{prove, verify, verify_with, prove_relation, verify_relation}`
+over the same `PrivateStatement`s as veil; `veil::small::ProvingKey`
+(`prove_with_key`) holds the compiled relation, verifying key, compact
+masked relation, parameters and slots, as veil's key; `veil::small::inspect`
+returns the revealed values by category. Not reachable from the envelope: a proof is
 `ZHVEILW1` bytes beside a statement.
 
 Masked relation: veil's (`veil::pad`), the same masking rows. Layout
