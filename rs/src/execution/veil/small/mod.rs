@@ -104,7 +104,7 @@ pub(crate) fn choose(s: &Setup) -> Result<(WhirParams, Slots), String> {
 
 /// The committed size and the masking block of a relation (inspection).
 pub fn shape(instance: &CCSInstance, public: &[(usize, Goldilocks)]) -> Result<(usize, usize, usize), String> {
-    let s = Setup::new(instance, &with_constant(public))?;
+    let s = Setup::compact(instance, &with_constant(public))?;
     let (_, slots) = choose(&s)?;
     Ok((slots.n, slots.block(), slots.used))
 }
@@ -123,7 +123,7 @@ pub(crate) fn prove_relation_with(
     if witness.z.len() != instance.num_cols || pins.iter().any(|&(i, v)| witness.z[i] != v) {
         return Err("veil-W: witness disagrees with the statement".into());
     }
-    let s = Setup::new(instance, &pins)?;
+    let s = Setup::compact(instance, &pins)?;
     let (params, slots) = choose(&s)?;
     admit(&params, &s)?;
     let relabelled = s.layout.instance(&s.instance);
@@ -156,7 +156,7 @@ pub fn verify_relation(
     statement: &[u8],
     public: &[(usize, Goldilocks)],
 ) -> Result<(), String> {
-    let s = Setup::new(instance, &with_constant(public))?;
+    let s = Setup::compact(instance, &with_constant(public))?;
     let parts = Parts::from_bytes(&proof.bytes, s.shape())?;
     protocol::verify(&s, statement, &parts)
 }

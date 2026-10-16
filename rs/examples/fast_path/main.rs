@@ -215,6 +215,12 @@ fn main() {
             assert_eq!(out.last(), Some(&0), "every spend check holds");
             eprintln!("  {name}: {} outputs, {} cycles, check {}", out.len(), st.execution.cycles, out.last().unwrap());
             let inst = prepared.relation.instance;
+            let referenced: std::collections::BTreeSet<usize> = inst
+                .matrices
+                .iter()
+                .flat_map(|m| m.entries.iter().flatten().filter(|e| e.1 != nebu::Goldilocks::ZERO).map(|e| e.0))
+                .collect();
+            eprintln!("  {name}: {} columns, {} referenced, {} rows", inst.num_cols, referenced.len(), inst.num_rows);
             let mut pins: Vec<_> =
                 prepared.public_coordinates.iter().map(|&(i, v)| (i, nebu::Goldilocks::new(v))).collect();
             pins.insert(0, (0, nebu::Goldilocks::ONE));

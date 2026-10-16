@@ -68,7 +68,7 @@ fn layouts_meet_the_lemma_bound_and_keep_masks_off_the_wires() {
     for (prog, x) in [(square_secret(), 12u64), (hash_secret(), 7)] {
         let (_, prepared, _) = crate::execution::private::prepare_execution(&prog, &[], &[x], 1 << 20).unwrap();
         let public: Vec<_> = prepared.public_coordinates.iter().map(|&(i, v)| (i, Goldilocks::new(v))).collect();
-        let s = Setup::new(&prepared.relation.instance, &with_constant(&public)).unwrap();
+        let s = Setup::compact(&prepared.relation.instance, &with_constant(&public)).unwrap();
         let (params, slots) = choose(&s).unwrap();
         assert!(slots.per_coset() >= slots.q0 + 3 * (1 + slots.s0), "{slots:?}");
         assert!(slots.used <= slots.lib && slots.lib + slots.lib_len <= slots.block_start());

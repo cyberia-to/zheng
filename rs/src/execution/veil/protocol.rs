@@ -49,8 +49,21 @@ pub(crate) struct Setup {
 
 impl Setup {
     pub fn new(base: &CCSInstance, pins: &[(usize, Goldilocks)]) -> Result<Self, String> {
+        Self::with_layout(base, pins, Layout::new)
+    }
+
+    /// veil-W's setup: the same masked relation, the compact layout.
+    pub fn compact(base: &CCSInstance, pins: &[(usize, Goldilocks)]) -> Result<Self, String> {
+        Self::with_layout(base, pins, Layout::compact)
+    }
+
+    fn with_layout(
+        base: &CCSInstance,
+        pins: &[(usize, Goldilocks)],
+        layout: fn(&CCSInstance, &[(usize, Goldilocks)]) -> Result<Layout, String>,
+    ) -> Result<Self, String> {
         let (instance, ext) = pad::extend(base)?;
-        let layout = Layout::new(&instance, pins)?;
+        let layout = layout(&instance, pins)?;
         if !instance.num_rows.is_power_of_two() {
             return Err("veil: row count".into());
         }

@@ -25,7 +25,7 @@ fn digests(hs: &[hemera::Hash]) -> Vec<u64> {
 
 /// The values of `proof` for a relation and public coordinates.
 pub fn revealed_relation(instance: &CCSInstance, public: &[(usize, Goldilocks)], proof: &SmallProof) -> Result<Revealed, String> {
-    let s = Setup::new(instance, &with_constant(public))?;
+    let s = Setup::compact(instance, &with_constant(public))?;
     let p = Parts::from_bytes(proof.as_bytes(), s.shape())?;
     Ok(categories(&p))
 }
