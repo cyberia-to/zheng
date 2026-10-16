@@ -11,6 +11,7 @@
 //! `r` (the masking lemma, `docs/explanation/zk-small.md` § the design;
 //! ledger row `specs/soundness.md` § zk rows).
 
+mod key;
 mod layout;
 mod protocol;
 mod wire;
@@ -21,6 +22,7 @@ mod tests;
 #[cfg(test)]
 mod zk_tests;
 
+pub use key::{ProvingKey, prove_with_key};
 pub use wire::{MAGIC, MAX_BYTES};
 
 use lens::WhirParams;
@@ -200,7 +202,13 @@ pub(crate) fn prove_with_coins(
 
 /// Verify an execution proof.
 pub fn verify(statement: &PrivateStatement, proof: &SmallProof) -> Result<(), String> {
-    let vk = statement.execution.keyed(None)?;
+    verify_with(statement, proof, None)
+}
+
+/// [`verify`] with an optional cached verifying key (rejected unless derived
+/// for this statement's program key).
+pub fn verify_with(statement: &PrivateStatement, proof: &SmallProof, vk: Option<&VerifyingKey>) -> Result<(), String> {
+    let vk = statement.execution.keyed(vk)?;
     let public = statement.execution.bindings(vk.relation())?;
     let bytes = crate::execution::succinct::keyed_statement(&vk, &statement.transcript_bytes());
     verify_relation(&vk.relation().instance, proof, &bytes, &public)

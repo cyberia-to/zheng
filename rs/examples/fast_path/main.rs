@@ -273,6 +273,30 @@ fn main() {
                 prove.push(ms(t));
             }
             let Some((statement, proof)) = last else { continue };
+            if std::env::var_os("FAST_KEY").is_some() {
+                // warm: the veil-W proving key held across proofs, verify with its key
+                let t = Instant::now();
+                let key = zheng::execution::veil::small::ProvingKey::new(&prog, public.len()).expect("key");
+                let key_ms = ms(t);
+                let warm: Vec<f64> = (0..reps)
+                    .map(|_| {
+                        let t = Instant::now();
+                        let (s, p) = zheng::execution::veil::small::prove_with_key(&key, &prog, &public, &secrets, BUDGET).expect("prove");
+                        let took = ms(t);
+                        assert_eq!(s, statement);
+                        zheng::execution::veil::small::verify(&s, &p).expect("keyed proof verifies");
+                        took
+                    })
+                    .collect();
+                let vkeyed: Vec<f64> = (0..reps)
+                    .map(|_| {
+                        let t = Instant::now();
+                        zheng::execution::veil::small::verify_with(&statement, &proof, Some(key.verifying_key())).expect("verify");
+                        ms(t)
+                    })
+                    .collect();
+                eprintln!("  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms; verify with key {:.2} ms (medians of {reps})", median(warm), median(vkeyed));
+            }
             let verify: Vec<f64> = (0..reps)
                 .map(|_| {
                     let t = Instant::now();
