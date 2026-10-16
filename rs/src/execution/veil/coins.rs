@@ -69,6 +69,12 @@ pub(crate) mod label {
     pub const MASK_P: Label = Label(7);
     /// Column salts: element `4j + s` is limb `s` of column `j`'s salt.
     pub const SALT: Label = Label(8);
+    /// veil-W (`small`): the masking block `r` of the committed vector.
+    pub const W_BLOCK: Label = Label(9);
+    /// veil-W: the round-0 mask table `G` (Fp3).
+    pub const W_G: Label = Label(10);
+    /// veil-W: the round-0 leaf salts, leaf-major.
+    pub const W_SALT: Label = Label(11);
     /// Tests only: labels from here up.
     #[cfg(test)]
     pub const TEST: Label = Label(1 << 32);
@@ -288,6 +294,9 @@ mod tests {
             label::MASK_B,
             label::MASK_P,
             label::SALT,
+            label::W_BLOCK,
+            label::W_G,
+            label::W_SALT,
         ];
         let mut seen = std::collections::HashSet::new();
         for l in all {

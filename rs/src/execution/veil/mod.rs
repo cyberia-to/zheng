@@ -36,6 +36,7 @@ mod key;
 mod libra;
 mod pad;
 mod protocol;
+pub mod small;
 mod wire;
 
 #[cfg(test)]

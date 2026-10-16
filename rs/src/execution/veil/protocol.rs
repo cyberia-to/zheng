@@ -98,7 +98,7 @@ impl Setup {
     }
 }
 
-fn prologue(t: &mut Transcript, statement: &[u8], params: &HidingParams, s: &Setup) {
+pub(crate) fn prologue(t: &mut Transcript, statement: &[u8], params: &HidingParams, s: &Setup) {
     t.absorb(DOMAIN);
     t.absorb(&(statement.len() as u64).to_le_bytes());
     t.absorb(statement);
@@ -108,7 +108,7 @@ fn prologue(t: &mut Transcript, statement: &[u8], params: &HidingParams, s: &Set
     }
 }
 
-fn pcs_transcript(t: &mut Transcript) -> LensTranscript {
+pub(crate) fn pcs_transcript(t: &mut Transcript) -> LensTranscript {
     let seed = t.squeeze_hash();
     let mut lt = LensTranscript::new(PCS_DOMAIN);
     lt.absorb(&seed);
@@ -116,20 +116,20 @@ fn pcs_transcript(t: &mut Transcript) -> LensTranscript {
 }
 
 /// `eq(τ, ρ_x)`: τ_j pairs with ρ_x[log m − 1 − j] (see `reduce`).
-fn eq_tau_rho(tau: &[Fp3], rho_x: &[Fp3]) -> Fp3 {
+pub(crate) fn eq_tau_rho(tau: &[Fp3], rho_x: &[Fp3]) -> Fp3 {
     tau.iter()
         .zip(rho_x.iter().rev())
         .fold(Fp3::ONE, |acc, (&t, &r)| acc * (t * r + (Fp3::ONE - t) * (Fp3::ONE - r)))
 }
 
-fn gate(instance: &CCSInstance, v: &[Fp3]) -> Fp3 {
+pub(crate) fn gate(instance: &CCSInstance, v: &[Fp3]) -> Fp3 {
     instance.multisets.iter().zip(&instance.coeffs).fold(Fp3::ZERO, |acc, (set, &c)| {
         acc + Fp3::from_base(c) * set.iter().fold(Fp3::ONE, |p, &i| p * v[i])
     })
 }
 
 /// `P = Σ_i γ^i Σ_row eq(ρ_x, row) Σ_{pinned c} M_i[row][c]·p(c)`.
-fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
+pub(crate) fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
     let rho_rev: Vec<Fp3> = rho_x.iter().rev().copied().collect();
     let eq_row = eq_evals(&rho_rev);
     let half = s.half();
@@ -155,7 +155,7 @@ fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
 }
 
 /// `A(0, r) = Σ_i γ^i M̃'_i(ρ_x, (0, r))`.
-fn free_weight(s: &Setup, rho_x: &[Fp3], gamma: Fp3, r: &[Fp3]) -> Fp3 {
+pub(crate) fn free_weight(s: &Setup, rho_x: &[Fp3], gamma: Fp3, r: &[Fp3]) -> Fp3 {
     let point: Vec<Fp3> = core::iter::once(Fp3::ZERO).chain(r.iter().copied()).collect();
     let red = Reduction {
         point,
@@ -220,8 +220,58 @@ pub(crate) fn prove_prepared(
     let mut t = Transcript::new();
     prologue(&mut t, statement, params, s);
     t.absorb_commitment(&root);
+    let (msgs, end) = spartan_prove(s, relabelled, &zp, &g1, &g2, &mut t);
+    lap("sumchecks");
+    let SpartanEnd { rho_x, r, lambda, rho2, a0, value, .. } = end;
+    let f = s.functional(a0, &r, lambda, &rho_x, rho2);
+    let mut lt = pcs_transcript(&mut t);
+    let opening = hiding::open(&committed, &f, value, &mut lt);
+    lap("open");
+    Ok(Parsed {
+        root,
+        g1: msgs.g1,
+        outer: msgs.outer,
+        evals: msgs.evals,
+        g2: msgs.g2,
+        inner: msgs.inner,
+        opening,
+    })
+}
+
+/// The masked Spartan messages of a zk proof.
+pub(crate) struct SpartanMsgs {
+    pub g1: Fp3,
+    pub outer: CompressedRounds<Fp3>,
+    pub evals: Vec<Fp3>,
+    pub g2: Fp3,
+    pub inner: CompressedRounds<Fp3>,
+}
+
+/// Where the masked Spartan IOP ends: its challenges, `A(0, r')` and the
+/// value `λ·g1(ρ_x) + A(0,r')·w̃(r') + ρ2·g2(r')` of the final claim.
+pub(crate) struct SpartanEnd {
+    pub rho_x: Vec<Fp3>,
+    pub r: Vec<Fp3>,
+    pub lambda: Fp3,
+    pub rho2: Fp3,
+    pub a0: Fp3,
+    pub value: Fp3,
+}
+
+/// Steps 2–4 of the transcript on the prover's side: outer and inner
+/// sumchecks masked by `g1`, `g2`, then `λ`. `zp` is the relabelled
+/// witness (free half first).
+pub(crate) fn spartan_prove(
+    s: &Setup,
+    relabelled: &CCSInstance,
+    zp: &[Goldilocks],
+    g1: &Mask,
+    g2: &Mask,
+    t: &mut Transcript,
+) -> (SpartanMsgs, SpartanEnd) {
+    let half = s.half();
     // outer
-    let tau: Vec<Fp3> = (0..s.log_m).map(|_| Fp3::squeeze(&mut t)).collect();
+    let tau: Vec<Fp3> = (0..s.log_m).map(|_| Fp3::squeeze(t)).collect();
     let row_mv: Vec<Vec<Fp3>> = relabelled
         .matrices
         .iter()
@@ -239,13 +289,13 @@ pub(crate) fn prove_prepared(
         OuterSumcheckProver::new(eq_evals(&tau), row_mv, relabelled.multisets.clone(), coeffs);
     let g1_sum = g1.sum();
     t.absorb_eval(g1_sum);
-    let rho1 = Fp3::squeeze(&mut t);
+    let rho1 = Fp3::squeeze(t);
     let mut rho_x = Vec::with_capacity(s.log_m);
     let mut outer_polys = Vec::with_capacity(s.log_m);
     for j in 0..s.log_m {
         let poly = libra::masked(outer.round_poly(), rho1, &g1.round_poly(&rho_x));
         t.absorb_sumcheck_poly(j, &poly);
-        let r = Fp3::squeeze(&mut t);
+        let r = Fp3::squeeze(t);
         outer.fold(r);
         rho_x.push(r);
         outer_polys.push(poly);
@@ -255,49 +305,68 @@ pub(crate) fn prove_prepared(
         t.absorb_eval(e);
     }
     // inner, over the free half
-    let gamma = Fp3::squeeze(&mut t);
-    let a_full = combined_weights(&relabelled, &rho_x, gamma, 2 * half);
+    let gamma = Fp3::squeeze(t);
+    let a_full = combined_weights(relabelled, &rho_x, gamma, 2 * half);
     let w: Vec<Fp3> = zp[..half].iter().map(|&v| Fp3::from_base(v)).collect();
     let mut inner = SumcheckProver::new(a_full[..half].to_vec(), w);
     let g2_sum = g2.sum();
     t.absorb_eval(g2_sum);
-    let rho2 = Fp3::squeeze(&mut t);
+    let rho2 = Fp3::squeeze(t);
     let mut r = Vec::with_capacity(s.layout.vars);
     let mut inner_polys = Vec::with_capacity(s.layout.vars);
     for j in 0..s.layout.vars {
         let poly = libra::masked(inner.round_poly(), rho2, &g2.round_poly(&r));
         t.absorb_sumcheck_poly(j, &poly);
-        let x = Fp3::squeeze(&mut t);
+        let x = Fp3::squeeze(t);
         inner.fold(x);
         r.push(x);
         inner_polys.push(poly);
     }
-    lap("sumchecks");
-    let lambda = Fp3::squeeze(&mut t);
-    // the final claims, assembled exactly as the verifier will
+    let lambda = Fp3::squeeze(t);
+    // the final claim, assembled exactly as the verifier will
     let a0 = free_weight(s, &rho_x, gamma, &r);
-    let (w_eval, a_eval) = {
-        let (a, f) = inner.final_claim();
-        (f, a)
-    };
+    let (a_eval, w_eval) = inner.final_claim();
     debug_assert_eq!(a_eval, a0);
     let value = lambda * g1.eval_at(&rho_x) + a0 * w_eval + rho2 * g2.eval_at(&r);
-    let f = s.functional(a0, &r, lambda, &rho_x, rho2);
-    let mut lt = pcs_transcript(&mut t);
-    let opening = hiding::open(&committed, &f, value, &mut lt);
-    lap("open");
-    Ok(Parsed {
-        root,
+    let msgs = SpartanMsgs {
         g1: g1_sum,
         outer: reduce::compress(&outer_polys),
         evals,
         g2: g2_sum,
         inner: reduce::compress(&inner_polys),
-        opening,
-    })
+    };
+    (msgs, SpartanEnd { rho_x, r, lambda, rho2, a0, value })
 }
 
-fn rounds(
+/// Steps 2–4 on the verifier's side; returns where the IOP ends with the
+/// value the final claim must have.
+pub(crate) fn spartan_verify(s: &Setup, msgs: &SpartanMsgs, t: &mut Transcript) -> Result<SpartanEnd, String> {
+    let tau: Vec<Fp3> = (0..s.log_m).map(|_| Fp3::squeeze(t)).collect();
+    t.absorb_eval(msgs.g1);
+    let rho1 = Fp3::squeeze(t);
+    if rho1 == Fp3::ZERO {
+        return Err("veil: degenerate challenge".into());
+    }
+    let (c1, rho_x) = rounds(rho1 * msgs.g1, s.degree, &msgs.outer, t)?;
+    for &e in &msgs.evals {
+        t.absorb_eval(e);
+    }
+    let g1_at = (c1 - eq_tau_rho(&tau, &rho_x) * gate(&s.instance, &msgs.evals)) * rho1.inv();
+    let gamma = Fp3::squeeze(t);
+    let (batched, _) = msgs
+        .evals
+        .iter()
+        .fold((Fp3::ZERO, Fp3::ONE), |(acc, g), &e| (acc + g * e, g * gamma));
+    let claim2 = batched - pinned_part(s, &rho_x, gamma);
+    t.absorb_eval(msgs.g2);
+    let rho2 = Fp3::squeeze(t);
+    let (c2, r) = rounds(claim2 + rho2 * msgs.g2, 2, &msgs.inner, t)?;
+    let lambda = Fp3::squeeze(t);
+    let a0 = free_weight(s, &rho_x, gamma, &r);
+    Ok(SpartanEnd { rho_x, r, lambda, rho2, a0, value: lambda * g1_at + c2 })
+}
+
+pub(crate) fn rounds(
     claim: Fp3,
     degree: usize,
     rounds: &CompressedRounds<Fp3>,
@@ -323,31 +392,17 @@ pub(crate) fn verify(
     let mut t = Transcript::new();
     prologue(&mut t, statement, params, s);
     t.absorb_commitment(&proof.root);
-    let tau: Vec<Fp3> = (0..s.log_m).map(|_| Fp3::squeeze(&mut t)).collect();
-    t.absorb_eval(proof.g1);
-    let rho1 = Fp3::squeeze(&mut t);
-    if rho1 == Fp3::ZERO {
-        return Err("veil: degenerate challenge".into());
-    }
-    let (c1, rho_x) = rounds(rho1 * proof.g1, s.degree, &proof.outer, &mut t)?;
-    for &e in &proof.evals {
-        t.absorb_eval(e);
-    }
-    let g1_at = (c1 - eq_tau_rho(&tau, &rho_x) * gate(&s.instance, &proof.evals)) * rho1.inv();
-    let gamma = Fp3::squeeze(&mut t);
-    let (batched, _) = proof
-        .evals
-        .iter()
-        .fold((Fp3::ZERO, Fp3::ONE), |(acc, g), &e| (acc + g * e, g * gamma));
-    let claim2 = batched - pinned_part(s, &rho_x, gamma);
-    t.absorb_eval(proof.g2);
-    let rho2 = Fp3::squeeze(&mut t);
-    let (c2, r) = rounds(claim2 + rho2 * proof.g2, 2, &proof.inner, &mut t)?;
-    let lambda = Fp3::squeeze(&mut t);
-    let a0 = free_weight(s, &rho_x, gamma, &r);
+    let msgs = SpartanMsgs {
+        g1: proof.g1,
+        outer: proof.outer.clone(),
+        evals: proof.evals.clone(),
+        g2: proof.g2,
+        inner: proof.inner.clone(),
+    };
+    let SpartanEnd { rho_x, r, lambda, rho2, a0, value } = spartan_verify(s, &msgs, &mut t)?;
     let f = s.functional(a0, &r, lambda, &rho_x, rho2);
     let mut lt = pcs_transcript(&mut t);
-    hiding::verify(params, &proof.root, s.entries(), &f, lambda * g1_at + c2, &proof.opening, &mut lt)
+    hiding::verify(params, &proof.root, s.entries(), &f, value, &proof.opening, &mut lt)
 }
 
 /// Bits a zk proof must carry.
