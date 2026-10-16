@@ -61,6 +61,10 @@ impl Slots {
 fn block_vars(params: &WhirParams, n: usize) -> Result<(usize, usize, usize, usize), String> {
     let cfg = WhirConfig::derive(params, n).map_err(|e| format!("veil-W: schedule: {e:?}"))?;
     let r0 = cfg.rounds[0];
+    if r0.opens_all() {
+        // every round-0 leaf opened: no block can mask them
+        return Ok((usize::MAX, r0.fold, r0.queries, r0.ood));
+    }
     let need = (r0.queries + 3 * (1 + r0.ood)) << r0.fold;
     Ok((need.next_power_of_two().trailing_zeros() as usize, r0.fold, r0.queries, r0.ood))
 }
@@ -80,6 +84,7 @@ impl Slots {
         for n in s.layout.vars.max(1)..=MAX_VARS {
             let (rho, k0, q0, s0) = block_vars(params, n)?;
             if rho >= n || rho < k0 {
+                // includes the shapes whose round 0 opens every leaf (ρ = usize::MAX)
                 continue;
             }
             let top = (1usize << n) - (1usize << rho);

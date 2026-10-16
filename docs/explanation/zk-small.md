@@ -113,42 +113,45 @@ WHIR's sumcheck-folded round 0.
    claim is one functional `F'` of `c` that gives zero weight to the
    `r` block (the inner sumcheck runs on `c` with the mask slots zero, and
    `F'` subtracts their `eq(r', ·)` weight);
-4. the verifier draws a point `z_ψ`; the prover sends `u_ψ = Ψ(c)`, the
-   univariate evaluation of the `r` block at `z_ψ` (in WHIR's weight form,
-   `eq(pow(z_ψ), ·)` restricted to the block); the verifier draws `μ`; the
+4. the verifier draws `ξ_0 … ξ_{R−1}` (one Fp3 coin per block slot); the
+   prover sends `u_ψ = Ψ(c) = Σ_k ξ_k·r_k`; the verifier draws `μ`; the
    claim functional is `Λ = F' + μ·Ψ`;
-5. the prover sends `u_G = Λ(g)`; the verifier draws `β`; WHIR runs on the
-   virtual word `h = c + β·g` with the claim `Λ(h) = (λ·g1_at + c2) + μ·u_ψ
-   + β·u_G`. a round-0 query opens `c`'s coset, `G(y)` and the salt, and the
-   verifier forms `h`'s coset itself.
+5. the prover sends `u = Λ(g)`; grinding; the verifier draws `β`; WHIR runs
+   on the virtual word `h = c + β·g` with the claim `Λ(h) = (λ·g1_at + c2)
+   + μ·u_ψ + β·u`. a round-0 query opens `c`'s coset, `Ĝ(y)` and the salt,
+   and the verifier forms `h`'s coset itself;
+6. the prover checks the masking lemma's rank condition on its actual
+   round-0 coins (lens `whir::zk::check`) and recommits with a fresh block,
+   `G` and salts if it fails.
 
 **why it hides** (honest verifier, the interactive protocol; salted
-round-0 leaves in the ROM; the full argument and its ledger row in
-`specs/soundness.md` § zk rows and `audit/zk-small-2026-10.md`). fix the
-coins. for two witnesses, veil's Spartan argument already gives a
-measure-preserving change of `(g1, g2, pad fill)` that makes the Spartan
-transcript identical. it remains to change `(r, G)` so that every PCS
-message is identical too:
+round-0 leaves in the ROM; the ledger row is `specs/soundness.md` § zk,
+veil-W). The simulator holds no witness: it runs veil's Spartan simulator,
+which yields the final claim's value `V`, then commits any `c_sim` with
+`F'(c_sim) = V` off the block, a uniform block, `G` and salts, and runs the
+honest opening. That opening is distributed as the real one because the
+real opening depends on `c` off the block only through `F'(c)`: for `Δ`
+off the block with `F'(Δ) = 0` (no relation needs to hold),
 
-- `ΔG = −Fold(Δc)/β` makes `Δf_1 = 0`, so rounds ≥ 1 coincide;
-- every round-0 message is then a linear form in `Δc`; on the `r` block,
-  write `r`'s univariate as `Σ_j X^j ρ_j(X^{2^k})` (`j` = the `k` folded
-  bits, `deg ρ_j < D = R/2^k`). a coset reveal at `y` is `(ρ_j(y))_j`
-  (an invertible map of the coset's values); every other round-0 message
-  — `u_ψ`, `u_G`, the OOD answers, the `2k` sumcheck values — has an `r`
-  part `Σ_j κ_j·ρ_j(w)` at one of the `1 + s_0` points `w ∈ {z_ψ^{2^k},
-  z_ood^{2^k}}`, because `F'` gives the block zero weight and the only
-  constraints that reach it are geometric (`pow`) points;
-- **masking lemma.** if `D ≥ q_0 + 3(1 + s_0)`, the points `w` lie in
-  `F_{p³} ∖ F_p` and are pairwise non-conjugate, and the coefficient
-  vectors `(κ_{e,w})` of the `E = 2 + s_0 + 2k` Fp3 messages are linearly
-  independent over `F_{p³}`, then for every `Δ` outside the block there is
-  a `Δr` that leaves every round-0 message unchanged. proof: fix the `q_0`
-  coset values per `j` by interpolation; the rest of `ρ_j` is `Z·σ_j`,
-  `Z = Π(Y − y_t)`, `deg σ_j < D − q_0`; by CRT over the `1 + s_0`
-  degree-3 minimal polynomials, `(σ_j(w))_{j,w}` takes every value in
-  `F_{p³}^{2^k(1+s_0)}` (`Z(w) ≠ 0` since `w ∉ F_p`); the messages are
-  `F_{p³}`-independent linear forms in that vector.
+- `ΔG = −Fold(Δc)/β` keeps `f_1 = Fold(h)`, so rounds ≥ 1 coincide;
+- every round-0 message — `u_ψ`, `u`, the OOD answers, the `2k` sumcheck
+  values, `E = 2 + s_0 + 2k` Fp3 — and every opened coset value of `c` is
+  a linear form in the block; split the block's univariate as
+  `Σ_j X^j ρ_j(X^{2^k})`, `deg ρ_j < D = R/2^k`: the opened cosets fix
+  `ρ_j(y_t)` for the `q_0` opened shift points;
+- **masking lemma.** if `D ≥ q_0 + 3(1 + s_0)` and the messages, reduced
+  modulo the cosets (on the basis `Z·Y^i`, `Z = Π_t(Y − y_t)`, of each
+  `ρ_j`'s kernel), have `F_p`-rank `3(E − 1)` — one relation, `σ_k`
+  fixed by `f_1`, holds automatically — then a block change keeps every
+  round-0 message and coset value whatever `Δ` is. The rank condition is
+  a property of the public coins; the prover checks it on every proof
+  (2–4 ms at 2^15) and the simulator conditions the same way.
+- the Spartan transcript never reads the block, `G` or the salts.
+
+The lemma needs the block weights `ξ` uniform: a block weight at one
+geometric point (attempt 1) makes the round-0 sumcheck's block parts
+telescope onto two directions per point, one combination of revealed
+values cancels the block, and the rank is one Fp3 short.
 
 **cost at 2^16.** `q_0 = 38`, `s_0 = 1`, `k = 4`: `D ≥ 44`, so `R = 1024`
 mask slots; per round-0 leaf `+24 B (G) + 32 B (salt)`: ≈ 2.2 KB, plus

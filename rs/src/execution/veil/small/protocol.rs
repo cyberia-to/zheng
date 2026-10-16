@@ -181,16 +181,45 @@ pub(crate) fn prove(
         let mu = Fp3::squeeze(&mut t);
         let w = weight(s, slots, &end, &xi, mu);
         let mut lt = pcs_transcript(&mut t);
-        match zk::open_zk(params, &data, &w, &mut lt).map_err(|e| format!("veil-W: open: {e:?}"))? {
+        let outcome = zk::open_zk(params, &data, &w, &mut lt).map_err(|e| format!("veil-W: open: {e:?}"))?;
+        #[cfg(test)]
+        let outcome = testing::observe(outcome);
+        match outcome {
             ZkOutcome::Opened(vals, opening) => {
                 debug_assert_eq!(vals.v, end.value + mu * u_psi, "the claim's value");
                 lap("open");
-                return Ok(Parts { params: *params, root, spartan: msgs.into(), u_psi, vals, opening });
+                return Ok(Parts { params: *params, root, spartan: msgs.into(), u_psi, vals, opening: *opening });
             }
             ZkOutcome::Resample => continue,
         }
     }
     Err("veil-W: the round-0 rank check failed on every attempt".into())
+}
+
+/// Test hooks: force resamples, count real ones.
+#[cfg(test)]
+pub(crate) mod testing {
+    use super::ZkOutcome;
+    use core::cell::Cell;
+
+    thread_local! {
+        /// Openings still to be turned into `Resample` (forced).
+        pub static FORCE: Cell<u32> = const { Cell::new(0) };
+        /// `Resample`s lens answered (real).
+        pub static REAL: Cell<u32> = const { Cell::new(0) };
+    }
+
+    pub fn observe(o: ZkOutcome) -> ZkOutcome {
+        if matches!(o, ZkOutcome::Resample) {
+            REAL.with(|r| r.set(r.get() + 1));
+            return o;
+        }
+        if FORCE.with(|f| f.get()) > 0 {
+            FORCE.with(|f| f.set(f.get() - 1));
+            return ZkOutcome::Resample;
+        }
+        o
+    }
 }
 
 /// Commitments a prover tries before giving up (each fails the rank check

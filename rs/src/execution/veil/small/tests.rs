@@ -76,3 +76,32 @@ fn layouts_meet_the_lemma_bound_and_keep_masks_off_the_wires() {
         assert!(admit(&params, &s).unwrap() >= MIN_SECURITY_BITS);
     }
 }
+
+#[test]
+fn a_resampled_proof_uses_fresh_masks_and_verifies() {
+    use super::protocol::testing::FORCE;
+    let plain = seeded(&square_secret(), &[], &[12], 9);
+    FORCE.with(|f| f.set(2));
+    let resampled = seeded(&square_secret(), &[], &[12], 9);
+    assert_eq!(FORCE.with(|f| f.get()), 0, "both forced resamples consumed");
+    verify(&resampled.0, &resampled.1).unwrap();
+    assert_ne!(plain.1, resampled.1, "the third attempt commits other masks");
+    FORCE.with(|f| f.set(4));
+    let err = prove_with_coins(&square_secret(), &[], &[12], 1 << 20, &Coins::seeded([9; 32]));
+    assert!(err.is_err(), "four failed attempts give up");
+    FORCE.with(|f| f.set(0));
+}
+
+#[test]
+fn the_rank_check_passes_on_every_proof_of_a_run() {
+    // completeness evidence: real resamples over 100 proofs of two shapes
+    use super::protocol::testing::REAL;
+    REAL.with(|r| r.set(0));
+    for seed in 0..50u8 {
+        let (s, p) = seeded(&square_secret(), &[], &[12], seed);
+        verify(&s, &p).unwrap();
+        let (s, p) = seeded(&hash_secret(), &[], &[7], seed);
+        verify(&s, &p).unwrap();
+    }
+    assert_eq!(REAL.with(|r| r.get()), 0);
+}

@@ -25,7 +25,7 @@ seed and vary by a few hundred bytes across seeds (deduplicated queries).
 
 ## 1. verdict
 
-**G1 is met by the prototype, pending merge review:** the `SPEND` fixture
+**G1 is met by the prototype (independent review: no critical or high finding; §7):** the `SPEND` fixture
 of depth 40 proves in zero knowledge in **46,480–46,704 B** at 128.08
 proven bits (112.08 without grinding), in 695 ms on Metal and 782 ms on
 the CPU under load 62–66, against 165,933 B for veil on the depth-34
@@ -65,21 +65,26 @@ the opened round-0 leaves — coset of `c`, `Ĝ(y_j)`, salt — with their
 siblings, every later root, OOD answer, sumcheck value, opened leaf and
 sibling, the final polynomial), the grinding nonces.
 
-Simulator: run the honest prover on any witness of the statement (e.g. a
-fixed one). Indistinguishability by a measure-preserving bijection of the
-prover's randomness for two witnesses `w`, `w'` at fixed coins:
+Simulator (no witness): (i) veil's Spartan simulator gives the masked
+sumcheck messages and evaluations, hence `V`; (ii) commit any `c_sim` with
+`F'(c_sim) = V` off the block (three slots solve it), a uniform block, `G`
+and salts, and run the honest opening, rank check included. (ii) has the
+real opening's distribution given the Spartan transcript, because the real
+opening depends on `c` off the block only through `F'(c) = V`: for two
+vectors differing by `Δ` off the block with `F'(Δ) = 0` (no relation needs
+to hold), a measure-preserving change of `(r, G)` at fixed coins makes
+every value identical —
 
-1. veil's argument changes `(g1, g2, pad fill)` so that the Spartan
-   transcript, hence `V = F'(c)`, is identical; it never reads the block;
-2. `ΔG = −Fold(Δc)/β` keeps `f_1 = Fold(h)` identical: every message after
+1. `ΔG = −Fold(Δc)/β` keeps `f_1 = Fold(h)` identical: every message after
    round 0 and every later Merkle root coincide;
-3. the remaining round-0 values are the `q₀·2^{k₀}` opened coset values of
+2. the remaining round-0 values are the `q₀·2^{k₀}` opened coset values of
    `c` and `E = 2 + s₀ + 2k₀` Fp3 messages, all linear in the block; when
    their reduction modulo the cosets has `F_p`-rank `3(E − 1)` (one relation
    automatic), a block change matches every off-block change (masking
    lemma); `Ĝ(y_j)` follows from the cosets; the prover outputs only such
    transcripts and the event depends on public coins only;
-4. unopened round-0 leaves are hashed with 256-bit salts.
+3. unopened round-0 leaves are hashed with 256-bit salts;
+4. the Spartan transcript never reads the block, `G` or the salts.
 
 Distance: veil's `ε_v + 2/p³` plus `Q·2^-256`, plus the coins PRF's
 advantage; zero knowledge in the ROM after Fiat–Shamir (BCS, eprint
@@ -133,7 +138,8 @@ values 4,864, `Ĝ` 912, salts 1,216, siblings 13,376), later openings
 | lens `whir::zk::tests` | completeness at five shapes, wrong `v`/`u`/nonce/weight/root, every round-0 symbol bound (coset, `Ĝ` limbs, salt limbs), bit-flip scan of a small opening (0 accepted), plain/zk commitments not interchangeable, zk bits ≥ 128 at the device shapes, the rank check passes uniform `ξ` and catches a geometric `Ψ` |
 | lens `whir::zk::lemma` | exact linear algebra on whole tables: every round-0 message kept by a block change (uniform `ξ`); geometric `Ψ` one Fp3 short; below the size bound unsolvable |
 | lens `whir::zk::lemma_prod` | block-restricted rank equals the lemma's at 2^14, 2^16, 2^17 |
-| zheng `veil::small::tests` | secret-input proofs verify, OS coins differ, seeded proofs reproduce, statement binding, byte regions, layouts meet the bound |
+| lens `the_rank_check_is_the_provers_own_round0` | one real opening, coins read back: the model's round-0 messages equal the proof's (`u`, OOD, sumcheck, every opened coset and `Ĝ`), and `check::rows` equals the model's derivative per block slot, entry by entry |
+| zheng `veil::small::tests` | secret-input proofs verify, OS coins differ, seeded proofs reproduce, statement binding, byte regions, layouts meet the bound; forced resamples (fresh masks, the third attempt verifies, four failures give up); 0 real resamples over 100 proofs |
 | zheng `veil::small::zk_tests` | per-category chi-square (two witnesses `x`, `−x`, 40 proofs each) |
 | zheng `tests/veil_w.rs` | statements bound, spliced proofs, weak/foreign parameters refused, bit-flip scan |
 
@@ -172,6 +178,28 @@ exact tests of §6 do. This statement has no committed round after `f_0`.
   transcript is never output.
 - *Not constant time* (as veil).
 
+## 7b. independent review (2026-10-16)
+
+An independent reviewer (separate agent, read-only, code and specs
+re-derived by hand) found **no critical or high finding**: transcript
+order, the bound values, `check_zk_opening`, the explicit-entry closing
+check, `F'` and the Libra weights, `Layout::compact`, the wire parser and
+the ledger arithmetic checked; the rank check's rows re-derived by hand.
+Findings and their resolution:
+
+| severity | finding | resolution |
+|---|---|---|
+| medium | the argument coupled two *witnesses* (witness indistinguishability), not a simulator without one | §3 and the ledger row now give the witness-free simulator: veil's Spartan simulator, then any `c_sim` with `F'(c_sim) = V`; the coupling needs only `F'(Δ) = 0` off the block |
+| medium | nothing automated tied the rank check to the prover's messages | `the_rank_check_is_the_provers_own_round0` (lens): model = proof, rows = derivative |
+| medium | the research page still described the geometric design and a CRT proof that does not apply to `ξ` | rewritten for `ξ` and the rank condition; the geometric design is attempt 1 |
+| low | lens spec omitted the grinding before `β` | added |
+| low | `μ`'s term counted inconsistently between code and row | `veil::small::bits` counts veil's IOP as `veil::report` does and `|Λ|/p³` for `μ` on its own; the row says so (veil's own `t + 3` / `t + 2` mismatch noted, not changed) |
+| low | `verify_relation` binds the relation only through the caller's statement bytes | documented (as veil and profile 1) |
+| low | `open_zk` without a block runs no check | documented on `open_zk` |
+| low | shapes whose round 0 opens every leaf would always resample; no failure bound for `MAX_ATTEMPTS` | `Slots::derive` refuses such shapes; completeness evidence 0 resamples / 100 proofs; a bound is not proven (open) |
+| low | the marginal chi-square cannot see a linear leak; the resample path untested | the exact lens tests carry the argument; forced-resample test added |
+| info | any valid grinding nonce is accepted | inherent to grinding, as elsewhere in WHIR |
+
 ## 8. hemera 0.4
 
 Everything above is on hemera 0.3. hemera 0.4 (profile #15: 6 + 6 full
@@ -186,4 +214,6 @@ they stay as measured while the relation with its masks fits 2^15.
 - no envelope profile (`ZHVEILW1` bytes beside a `PrivateStatement`); no
   held proving key;
 - the relation compiler cap for depth 40 (§5);
-- no external review of the masking lemma.
+- no external (human) review of the masking lemma; no proven bound on the
+  rank check's failure probability (completeness only — zero knowledge
+  does not depend on it).

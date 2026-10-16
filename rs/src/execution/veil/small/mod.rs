@@ -63,10 +63,15 @@ pub(crate) fn bits(params: &WhirParams, s: &Setup) -> Result<f64, String> {
     let slots = Slots::derive(s, params)?;
     let open = lens::rspcs::whir::zk::zk_security_bits(params, slots.n);
     let t = s.instance.matrices.len();
-    // veil's Spartan terms (`report`), plus one for μ
-    let terms = s.log_m * s.degree + s.log_m + 1 + 2 * s.layout.vars + 1 + (t - 1) + 1 + 1;
     let p3 = 3.0 * (nebu::field::P as f64).log2();
-    Ok(open.min(p3 - (terms as f64).log2()))
+    // veil's masked Spartan IOP, counted as `veil::report` counts it
+    let terms = s.log_m * s.degree + s.log_m + 1 + 2 * s.layout.vars + 1 + (t - 1) + 1;
+    let iop = p3 - (terms as f64).log2();
+    // μ binds u_ψ: one value of μ per list element passes a wrong Ψ(c*) or F'(c*)
+    let r0 = lens::rspcs::WhirConfig::derive(params, slots.n).map_err(|e| format!("veil-W: {e:?}"))?.rounds[0];
+    let list = lens::rspcs::soundness::proximity(r0.regime, r0.log_inv_rate, r0.log_domain).log_list;
+    let mu = p3 - list;
+    Ok(open.min(iop).min(mu))
 }
 
 /// Admit a parameter set: in the verifier's range and ≥ 128 proven bits.
@@ -150,6 +155,9 @@ pub fn prove_relation(
 }
 
 /// Verify against a relation and public coordinates the caller derived.
+/// The transcript absorbs `statement`, not the relation or the pins: the
+/// caller's statement bytes must bind both (as `verify` does with the
+/// verifying key's digest and the statement), as for veil and profile 1.
 pub fn verify_relation(
     instance: &CCSInstance,
     proof: &SmallProof,

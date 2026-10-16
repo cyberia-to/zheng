@@ -38,6 +38,9 @@ use crate::types::CCSInstance;
 const DOMAIN: &[u8] = b"zheng-veil-v1";
 const PCS_DOMAIN: &[u8] = b"zheng-veil-pcs-v1";
 
+/// A layout constructor (`Layout::new` or `Layout::compact`).
+type LayoutFn = fn(&CCSInstance, &[(usize, Goldilocks)]) -> Result<Layout, String>;
+
 /// What prover and verifier derive from the relation and the pins.
 pub(crate) struct Setup {
     pub instance: CCSInstance,
@@ -60,7 +63,7 @@ impl Setup {
     fn with_layout(
         base: &CCSInstance,
         pins: &[(usize, Goldilocks)],
-        layout: fn(&CCSInstance, &[(usize, Goldilocks)]) -> Result<Layout, String>,
+        layout: LayoutFn,
     ) -> Result<Self, String> {
         let (instance, ext) = pad::extend(base)?;
         let layout = layout(&instance, pins)?;
