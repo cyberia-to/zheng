@@ -66,7 +66,7 @@ round polynomials travel without their linear coefficient; the verifier restores
 | digest | 32 bytes (4 limbs): 2^128 classical collision (birthday on p²), ~2^85 quantum (BHT) |
 | domain separation | per-phase prefix absorb |
 
-the digest row is why hemera profile v2 (hemera#15) proposes longer identity digests; in-proof Merkle nodes stay 32 bytes.
+hemera 0.4 (hemera#15, frozen 2026-10-16) keeps the 32-byte digest; longer identity digests stay recorded as an option in hemera's specs. in-proof Merkle nodes stay 32 bytes.
 
 ## soundness
 

@@ -76,7 +76,9 @@ Four row kinds over the 49 + 54 circuit columns:
   value must be zero when `live`) or a free witness;
 - **PERM**: a hemera permutation in four rows (input and states after
   rounds 0, 1; after rounds 2, 3 and the 16 partial-round inverses; after
-  rounds 20–22; the output) — 160 constraints of degree ≤ 8; the input
+  rounds 20–22; the output) — 160 constraints of degree ≤ 8 — the hemera
+  0.3 layout; hemera 0.4 (frozen 2026-10-16: 60 x⁷ rounds, no inverse
+  witness) needs a re-cut PERM block, pending the code sweep; the input
   of a block is fixed by flags on the row before it: rate lanes kept,
   zeroed or bound to memory; capacity chained, fresh with a tag, or a
   Merkle node whose current digest comes from the previous output and

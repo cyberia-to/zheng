@@ -75,7 +75,7 @@ a light-client checkpoint is a state root plus the decider proof of the accumula
 
 - zheng's succinct and zk profiles are new code with weeks of review, not years of production; STARK provers have years.
 - the relation compiler (program → CCS) is tested against native nox but not proven; it is a conjectured row of the soundness ledger.
-- hemera's 32-byte digest gives 128-bit classical and about 85-bit quantum collision resistance; longer identity digests are proposed as hemera profile v2. Merkle nodes inside proofs stay 32 bytes.
+- hemera's 32-byte digest gives 128-bit classical and about 85-bit quantum collision resistance; hemera 0.4 (frozen 2026-10-16) keeps the 32-byte digest. Merkle nodes inside proofs stay 32 bytes.
 - the 1 ms verification goal is not met yet.
 
 ## references
