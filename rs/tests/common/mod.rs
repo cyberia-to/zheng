@@ -14,6 +14,8 @@ pub const ADD: &str = "[2 [[3 [[4 [[9 [[0 7] [1 0]]] [[1 0] [8 [1 0]]]]] [0 1]]]
 
 pub const P: u64 = 0xFFFF_FFFF_0000_0001;
 
+pub mod spend;
+
 pub fn parse(text: &str) -> ExecutionNoun {
     fn go(b: &[u8], p: &mut usize) -> ExecutionNoun {
         while b[*p].is_ascii_whitespace() {

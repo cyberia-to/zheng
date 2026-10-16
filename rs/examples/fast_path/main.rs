@@ -79,6 +79,49 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
     })
 }
 
+/// The SPEND-shaped fixture of depth `d`: program, public input `[fee]`,
+/// secrets in call order.
+fn spend_fixture(depth: usize) -> (N, Vec<u64>, Vec<u64>) {
+    let fee = 3;
+    fn size(n: &N) -> (usize, usize) {
+        match n {
+            N::Atom(_) => (1, 0),
+            N::Pair(a, b) => {
+                let (x, dx) = size(a);
+                let (y, dy) = size(b);
+                (x + y + 1, 1 + dx.max(dy))
+            }
+        }
+    }
+    let (nodes, depth_n) = size(&common::spend::program(depth));
+    eprintln!("  spend-{depth}: program {nodes} nodes, depth {depth_n}");
+    (common::spend::program(depth), vec![fee], common::spend::secrets(depth, fee))
+}
+
+/// A zk fixture: `spend-<d>`, or a public fixture with its first input
+/// made secret.
+fn zk_fixture(name: &str) -> Option<(N, Vec<u64>, Vec<u64>)> {
+    if let Some(d) = name.strip_prefix("spend-") {
+        return Some(spend_fixture(d.parse().ok()?));
+    }
+    let (prog, input) = program(name)?;
+    Some((with_secret(prog), vec![], input[..1].to_vec()))
+}
+
+/// `[2 [[3 [secret [0 1]]] [1 inner]]]`: run `inner` on `[secret 0]`.
+fn with_secret(inner: N) -> N {
+    let secret_op = N::Pair(
+        Box::new(N::Atom(16)),
+        Box::new(N::Pair(
+            Box::new(N::Pair(Box::new(N::Atom(1)), Box::new(N::Atom(0)))),
+            Box::new(N::Pair(Box::new(N::Atom(1)), Box::new(N::Atom(0)))),
+        )),
+    );
+    let wrap = |a: N, b: N| N::Pair(Box::new(a), Box::new(b));
+    let subject = wrap(N::Atom(3), wrap(secret_op, wrap(N::Atom(0), N::Atom(1))));
+    wrap(N::Atom(2), wrap(subject, wrap(N::Atom(1), inner)))
+}
+
 fn text(n: &N) -> String {
     match n {
         N::Atom(a) => a.to_string(),
@@ -161,10 +204,148 @@ fn main() {
             );
             continue;
         }
+        if let Some(depth) = name.strip_prefix("p1-spend-") {
+            // the non-hiding floor of the SPEND relation: profile 1 on the
+            // same relation and witness (the statement made public)
+            let depth: usize = depth.parse().expect("p1-spend-<depth>");
+            let (prog, public, secrets) = spend_fixture(depth);
+            let (st, prepared, witness) =
+                zheng::execution::private::prepare_execution(&prog, &public, &secrets, BUDGET).expect("spend");
+            let out = &st.execution.public_output;
+            assert_eq!(out.last(), Some(&0), "every spend check holds");
+            eprintln!("  {name}: {} outputs, {} cycles, check {}", out.len(), st.execution.cycles, out.last().unwrap());
+            let inst = prepared.relation.instance;
+            let referenced: std::collections::BTreeSet<usize> = inst
+                .matrices
+                .iter()
+                .flat_map(|m| m.entries.iter().flatten().filter(|e| e.1 != nebu::Goldilocks::ZERO).map(|e| e.0))
+                .collect();
+            eprintln!("  {name}: {} columns, {} referenced, {} rows", inst.num_cols, referenced.len(), inst.num_rows);
+            let mut pins: Vec<_> =
+                prepared.public_coordinates.iter().map(|&(i, v)| (i, nebu::Goldilocks::new(v))).collect();
+            pins.insert(0, (0, nebu::Goldilocks::ONE));
+            let z: Vec<_> = witness.into_iter().map(nebu::Goldilocks::new).collect();
+            let vars = succinct::committed_vars(&inst, &pins).unwrap();
+            let p = params(vars);
+            let mut prove = vec![];
+            let mut last = None;
+            for _ in 0..reps {
+                let t = Instant::now();
+                last = Some(succinct::prove_relation::<Whir>(&p, &inst, &z, &pins, b"spend").expect("prove"));
+                prove.push(ms(t));
+            }
+            let proof = last.unwrap();
+            let verify: Vec<f64> = (0..reps)
+                .map(|_| {
+                    let t = Instant::now();
+                    succinct::verify_relation(&inst, &pins, b"spend", &proof).expect("verify");
+                    ms(t)
+                })
+                .collect();
+            let bytes = zheng::envelope::succinct_proof_bytes(&proof.into()).len();
+            let (bits, bare, grind) = ledger(&p, vars);
+            println!(
+                "| {name} | {backend} | {} | {vars} | 2^{} | {:.1} | {:.2} | {bytes} (proof) | {bits:.2} | {bare:.2} | {grind:.1} |",
+                label(&p),
+                inst.num_rows.trailing_zeros(),
+                median(prove),
+                median(verify)
+            );
+            continue;
+        }
+        if let Some(inner) = name.strip_prefix("veilw-") {
+            // zk with the WHIR opening (veil-W, research)
+            let Some((prog, public, secrets)) = zk_fixture(inner) else {
+                eprintln!("unknown fixture {name}");
+                continue;
+            };
+            let mut prove = vec![];
+            let mut last = None;
+            for _ in 0..reps {
+                let t = Instant::now();
+                match zheng::execution::veil::small::prove(&prog, &public, &secrets, BUDGET) {
+                    Ok(r) => last = Some(r),
+                    Err(e) => {
+                        println!("| {name} | {backend} | veil-W | — | — | {e} | | | | | |");
+                        break;
+                    }
+                }
+                prove.push(ms(t));
+            }
+            let Some((statement, proof)) = last else { continue };
+            if std::env::var_os("FAST_KEY").is_some() {
+                // warm: the veil-W proving key held across proofs, verify with its key
+                let t = Instant::now();
+                let key = zheng::execution::veil::small::ProvingKey::new(&prog, public.len()).expect("key");
+                let key_ms = ms(t);
+                let warm: Vec<f64> = (0..reps)
+                    .map(|_| {
+                        let t = Instant::now();
+                        let (s, p) = zheng::execution::veil::small::prove_with_key(&key, &prog, &public, &secrets, BUDGET).expect("prove");
+                        let took = ms(t);
+                        assert_eq!(s, statement);
+                        zheng::execution::veil::small::verify(&s, &p).expect("keyed proof verifies");
+                        took
+                    })
+                    .collect();
+                let vkeyed: Vec<f64> = (0..reps)
+                    .map(|_| {
+                        let t = Instant::now();
+                        zheng::execution::veil::small::verify_with(&statement, &proof, Some(key.verifying_key())).expect("verify");
+                        ms(t)
+                    })
+                    .collect();
+                eprintln!("  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms; verify with key {:.2} ms (medians of {reps})", median(warm), median(vkeyed));
+            }
+            let verify: Vec<f64> = (0..reps)
+                .map(|_| {
+                    let t = Instant::now();
+                    zheng::execution::veil::small::verify(&statement, &proof).expect("verify");
+                    ms(t)
+                })
+                .collect();
+            let (inst, pins) = {
+                let p = statement.prepare().expect("prepare");
+                let pins: Vec<_> = p.public_coordinates.iter().map(|&(i, v)| (i, nebu::Goldilocks::new(v))).collect();
+                (p.relation.instance, pins)
+            };
+            let (n, block, used) = zheng::execution::veil::small::shape(&inst, &pins).expect("shape");
+            if std::env::var_os("FAST_BREAKDOWN").is_some() {
+                let cats = zheng::execution::veil::small::inspect::revealed_relation(&inst, &pins, &proof).expect("revealed");
+                let total: usize = cats.iter().map(|(_, v)| 8 * v.len()).sum();
+                for (cat, v) in &cats {
+                    eprintln!("  {name}: {cat}: {} B", 8 * v.len());
+                }
+                eprintln!("  {name}: categories {total} B, framing {} B", proof.as_bytes().len() - total);
+            }
+            println!(
+                "| {name} | {backend} | veil-W n={n} R={block} used={used} | {n} | 2^{} | {:.1} | {:.2} | {} (proof) | — | — | — |",
+                inst.num_rows.trailing_zeros(),
+                median(prove),
+                median(verify),
+                proof.as_bytes().len()
+            );
+            continue;
+        }
         if let Some(inner) = name.strip_prefix("veil-") {
             // zk (envelope profile 2): the same statement with its input
             // secret — [2 [[3 [secret [0 1]]] [1 inner]]] runs `inner` on
             // [secret 0]
+            if let Some(d) = inner.strip_prefix("spend-") {
+                let (prog, public, secrets) = spend_fixture(d.parse().expect("spend-<d>"));
+                let t = Instant::now();
+                let r = zheng::execution::veil::prove(&prog, &public, &secrets, BUDGET);
+                let took = ms(t);
+                match r {
+                    Ok((st, pf)) => {
+                        let t = Instant::now();
+                        zheng::execution::veil::verify(&st, &pf).expect("verify");
+                        println!("| {name} | {backend} | veil (profile 2) | — | — | {took:.1} | {:.2} | {} (proof) | — | — | — |", ms(t), pf.as_bytes().len());
+                    }
+                    Err(e) => println!("| {name} | {backend} | veil | — | — | {e} | | | | | |"),
+                }
+                continue;
+            }
             let Some((inner_prog, input)) = program(inner) else {
                 eprintln!("unknown fixture {name}");
                 continue;
