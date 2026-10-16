@@ -75,6 +75,9 @@ pub(crate) mod label {
     pub const W_G: Label = Label(10);
     /// veil-W: the round-0 leaf salts, leaf-major.
     pub const W_SALT: Label = Label(11);
+    /// veil-W after `a` resamples (the round-0 rank check failed): the
+    /// block, `G` and the salts move to labels `W_RETRY + 3a + {0, 1, 2}`.
+    pub const W_RETRY: u64 = 1 << 16;
     /// Tests only: labels from here up.
     #[cfg(test)]
     pub const TEST: Label = Label(1 << 32);

@@ -19,12 +19,12 @@
 //!    `F' = A(0,r')·eq(r', ·)` off the mask region plus the Libra weights
 //!    on `g1`, `g2`'s slots.
 
-use lens::rspcs::whir::zk::{self, Weight, ZkMask, ZkValues};
+use lens::rspcs::whir::zk::{self, Weight, ZkMask, ZkOutcome, ZkValues};
 use lens::rspcs::WhirProof;
 use lens::{Commitment, WhirParams};
 use nebu::{Fp3, Goldilocks};
 
-use super::super::coins::{Coins, label};
+use super::super::coins::{Coins, Label, label};
 use super::super::libra::{self, Mask};
 use super::super::protocol::{Setup, SpartanEnd, SpartanMsgs, pcs_transcript, spartan_prove, spartan_verify};
 use super::layout::Slots;
@@ -152,30 +152,50 @@ pub(crate) fn prove(
     debug_assert!(zp[slots.used..half].iter().all(|&x| x == Goldilocks::ZERO));
     let lib: Vec<Goldilocks> = g1.limbs().into_iter().chain(g2.limbs()).collect();
     c[slots.lib..slots.lib + slots.lib_len].copy_from_slice(&lib);
-    coins.fill(label::W_BLOCK, &mut c[slots.block_start()..]);
     let (_, log_leaves) = zk::round0_shape(params, slots.n).map_err(|e| format!("veil-W: {e:?}"))?;
-    let mask = ZkMask {
-        g: coins.exts(label::W_G, 1 << (slots.n - slots.k0)),
-        salts: coins.bases(label::W_SALT, zk::SALT_LIMBS << log_leaves),
-    };
-    lap("masks");
-    let (root, data) = zk::commit_zk(params, &c, mask).map_err(|e| format!("veil-W: commit: {e:?}"))?;
-    lap("commit");
-    let mut t = Transcript::new();
-    prologue(&mut t, statement, params, s, slots, &root);
-    let (msgs, end) = spartan_prove(s, relabelled, zp, &g1, &g2, &mut t);
-    lap("sumchecks");
-    let xi = block_weights(&mut t, slots);
-    let u_psi = psi_value(&xi, &c[slots.block_start()..]);
-    t.absorb_eval(u_psi);
-    let mu = Fp3::squeeze(&mut t);
-    let w = weight(s, slots, &end, &xi, mu);
-    let mut lt = pcs_transcript(&mut t);
-    let (vals, opening) = zk::open_zk(params, &data, &w, &mut lt).map_err(|e| format!("veil-W: open: {e:?}"))?;
-    debug_assert_eq!(vals.v, end.value + mu * u_psi, "the claim's value");
-    lap("open");
-    Ok(Parts { params: *params, root, spartan: msgs.into(), u_psi, vals, opening })
+    for attempt in 0..MAX_ATTEMPTS {
+        // fresh block, G and salts per attempt; g1, g2 and the pad fill stay
+        // (a discarded attempt is never output)
+        let labels = if attempt == 0 {
+            [label::W_BLOCK, label::W_G, label::W_SALT]
+        } else {
+            let b = label::W_RETRY + 3 * attempt;
+            [Label(b), Label(b + 1), Label(b + 2)]
+        };
+        coins.fill(labels[0], &mut c[slots.block_start()..]);
+        let mask = ZkMask {
+            g: coins.exts(labels[1], 1 << (slots.n - slots.k0)),
+            salts: coins.bases(labels[2], zk::SALT_LIMBS << log_leaves),
+            block: Some(slots.rho),
+        };
+        lap("masks");
+        let (root, data) = zk::commit_zk(params, &c, mask).map_err(|e| format!("veil-W: commit: {e:?}"))?;
+        lap("commit");
+        let mut t = Transcript::new();
+        prologue(&mut t, statement, params, s, slots, &root);
+        let (msgs, end) = spartan_prove(s, relabelled, zp, &g1, &g2, &mut t);
+        lap("sumchecks");
+        let xi = block_weights(&mut t, slots);
+        let u_psi = psi_value(&xi, &c[slots.block_start()..]);
+        t.absorb_eval(u_psi);
+        let mu = Fp3::squeeze(&mut t);
+        let w = weight(s, slots, &end, &xi, mu);
+        let mut lt = pcs_transcript(&mut t);
+        match zk::open_zk(params, &data, &w, &mut lt).map_err(|e| format!("veil-W: open: {e:?}"))? {
+            ZkOutcome::Opened(vals, opening) => {
+                debug_assert_eq!(vals.v, end.value + mu * u_psi, "the claim's value");
+                lap("open");
+                return Ok(Parts { params: *params, root, spartan: msgs.into(), u_psi, vals, opening });
+            }
+            ZkOutcome::Resample => continue,
+        }
+    }
+    Err("veil-W: the round-0 rank check failed on every attempt".into())
 }
+
+/// Commitments a prover tries before giving up (each fails the rank check
+/// with negligible probability at a supported shape).
+const MAX_ATTEMPTS: u64 = 4;
 
 /// Verify against the relation and pins the caller derived.
 pub(crate) fn verify(s: &Setup, statement: &[u8], p: &Parts) -> Result<(), String> {
