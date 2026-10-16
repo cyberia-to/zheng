@@ -382,7 +382,11 @@ Protocol (`veil::small::protocol`), zheng transcript, Fp3 challenges:
    eq((q_{<ρ}, 1, …, 1), ·) + Σ_{Libra slot b} (w_b − a0·eq(q, b))·[· = b] +
    Σ_k μ·ξ_k·[· = 2^n − R + k]`, `q` = `r'` in lens order padded with zeros
    to `n` coordinates, `a0 = A(0, r')`, `w_b` veil's Libra weights; the
-   verifier's value for `Λ(c)` is `V + μ·u_ψ`.
+   verifier's value for `Λ(c)` is `V + μ·u_ψ`. The prover names the block
+   to lens, which runs the round-0 rank check; on `Resample` the prover
+   recommits with a fresh block, `G` and salts (labels `W_RETRY + 3a + …`
+   for attempt `a`, at most four attempts) and outputs only the passing
+   proof.
 
 Policy: WHIR parameters in the succinct profile's range and the bound
 `min(zk opening terms, ε_IOP)` ≥ 128 proven bits (`veil::small::admit`).
