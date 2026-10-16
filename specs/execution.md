@@ -340,6 +340,66 @@ Zero knowledge, as proven in the [soundness ledger](soundness.md) § zk:
 honest-verifier statistical zero knowledge in the random-oracle model, and
 zero knowledge in the ROM after Fiat–Shamir.
 
+## Zk profile with a WHIR opening (veil-W, research — no envelope profile)
+
+Gate G1 of soft3 `proposals/privacy-frozen.md`; attempts and measurements
+in `docs/explanation/zk-small.md`, audit `audit/zk-small-2026-10.md`.
+`veil::small::{prove, verify, prove_relation, verify_relation}` over the
+same `PrivateStatement`s as veil; `veil::small::inspect` returns the
+revealed values by category. Not reachable from the envelope: a proof is
+`ZHVEILW1` bytes beside a statement.
+
+Masked relation: veil's (`veil::pad`), the same masking rows. Layout
+(`Layout::compact`): as the succinct profile's, except that every free
+column no matrix reads is dropped (not only those past the last read
+one), so the free half holds the read wires at slots `[0, used)`.
+
+Committed vector `c ∈ F^{2^n}` (`veil::small::layout`): the free half at
+`[0, used)`, zero up to `lib`; the Libra masks `g1 ‖ g2` (veil's, three
+base entries per Fp3 coefficient) at `[lib, lib + |g1| + |g2|)`; the block
+`r` of `R = 2^ρ` uniform values at `[2^n − R, 2^n)` (the slots whose top
+`n − ρ` index bits are one). With round-0 folding `k₀`, `q₀` round-0
+queries and `s₀` round-0 OOD samples of the WHIR schedule at `(params,
+n)`, `R = next_pow2(2^{k₀}·(q₀ + 3·(1 + s₀)))`; `n` is the least size `≥ ℓ`
+with `used ≤ lib = 2^n − R − |g1| − |g2|`. No matrix reads a mask slot.
+
+Opening: lens's zero-knowledge WHIR opening (`lens/specs/whir.md` §
+zero-knowledge opening) with the mask table `G` uniform on `2^{n−k₀}`
+Fp3 entries and four uniform salt limbs per round-0 leaf.
+
+Protocol (`veil::small::protocol`), zheng transcript, Fp3 challenges:
+
+1. absorb `"zheng-veil-w-v1"`, the statement bytes (length prefixed), the
+   WHIR parameter header, `ℓ`, `m`, the outer degree, `n`, the root;
+2. veil's steps 2–4 (`veil::protocol::spartan_{prove,verify}`): outer and
+   inner sumchecks masked by `g1`, `g2`, the evaluations, `λ`; the inner
+   sumcheck runs on the free half with every mask slot zero; the final
+   claim's value is `V = λ·g1(ρ_x) + C2`;
+3. `ξ_0 … ξ_{R−1}` (one Fp3 squeeze each); send `u_ψ = Σ_k ξ_k·c[2^n − R + k]`;
+   `μ`;
+4. one zero-knowledge WHIR opening, on a lens transcript seeded by a
+   squeeze of the zheng transcript, of `Λ = a0·eq(q, ·) − a0·Π_{i≥ρ} q_i ·
+   eq((q_{<ρ}, 1, …, 1), ·) + Σ_{Libra slot b} (w_b − a0·eq(q, b))·[· = b] +
+   Σ_k μ·ξ_k·[· = 2^n − R + k]`, `q` = `r'` in lens order padded with zeros
+   to `n` coordinates, `a0 = A(0, r')`, `w_b` veil's Libra weights; the
+   verifier's value for `Λ(c)` is `V + μ·u_ψ`.
+
+Policy: WHIR parameters in the succinct profile's range and the bound
+`min(zk opening terms, ε_IOP)` ≥ 128 proven bits (`veil::small::admit`).
+The prover uses `succinct::device_params(n)`.
+
+Body (`ZHVEILW1`): the WHIR parameter header (8 B), the root, `Σ g1`, the
+outer rounds, the `t` evaluations, `Σ g2`, the inner rounds (as veil's),
+`u_ψ`, `u = Λ(g)`, the grinding nonce before `β` (u64, 0 without), then
+the lens `WhirProof` bytes after its header (round-0 openings carry
+`2^{k₀} + 7` base symbols per leaf). Counts from the verifier's shape;
+consumed exactly.
+
+Prover coins: veil's streams 1–3, plus 9 the block `r`, 10 the table `G`,
+11 the round-0 salts (leaf-major).
+
+Zero knowledge: [soundness ledger](soundness.md) § zk, row veil-W.
+
 ## Envelope
 
 `zheng::envelope::Envelope` is the one wire form: magic `ZHENGPF1`, version
