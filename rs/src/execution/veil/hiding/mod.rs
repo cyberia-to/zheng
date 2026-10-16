@@ -183,7 +183,8 @@ impl Config {
     /// cost of checking the opening inside the recursion circuit — per
     /// query the two polynomials' Horner evaluations (`5k` gates), the
     /// column's two combinations (`2T`), its leaf sponge and its 4-ary
-    /// path (a permutation weighs 16 gates: four rows of four).
+    /// path (a permutation weighs the gate rows its gadget takes,
+    /// `PERM_ROWS · GATES`).
     pub fn derive_rec(params: &HidingParams, entries: usize) -> Result<Self, String> {
         if !params.in_range() || entries == 0 || entries > 1 << 26 {
             return Err("veil: commitment parameters or size out of range".into());
@@ -191,7 +192,8 @@ impl Config {
         let cost = |c: &Self| {
             let t = c.total_rows();
             let perms = (t + SALT).div_ceil(crate::recursion::perm::RATE) + (c.log_n as usize).div_ceil(2);
-            c.queries * (5 * c.k + 2 * t + 16 * perms)
+            use crate::recursion::circuit::layout::{GATES, PERM_ROWS};
+            c.queries * (5 * c.k + 2 * t + PERM_ROWS * GATES * perms)
         };
         (6..=16)
             .filter_map(|lk| Self::with_width(params, entries, 1 << lk))
