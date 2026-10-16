@@ -90,3 +90,25 @@ pub(crate) fn read(bytes: &[u8], key: &RecKey) -> Result<RecProof, String> {
     r.finish().map_err(e)?;
     Ok(RecProof { root, g1, outer, evals, g2, inner, mu, row_test, linear, nonce, openings })
 }
+
+impl RecProof {
+    /// A proof of the right shape under `key`, every value zero (key
+    /// derivation: a circuit's layout is fixed by shapes alone).
+    pub fn dummy(key: &RecKey) -> Self {
+        let (log_m, d, t, vars, big_k, k, leaf, path) = shape(key);
+        let z = Fp3::ZERO;
+        RecProof {
+            root: [nebu::Goldilocks::ZERO; 4],
+            g1: z,
+            outer: vec![vec![z; d]; log_m],
+            evals: vec![z; t],
+            g2: z,
+            inner: vec![vec![z; 2]; vars],
+            mu: z,
+            row_test: vec![z; big_k],
+            linear: vec![z; big_k + k - 1],
+            nonce: 0,
+            openings: (0..key.cfg.queries).map(|_| LeafOpening { symbols: vec![z; leaf], path: vec![[nebu::Goldilocks::ZERO; 4]; path], leaf: None }).collect(),
+        }
+    }
+}

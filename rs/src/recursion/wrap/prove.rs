@@ -55,6 +55,13 @@ pub(crate) fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
 /// Prove that the circuit ran `inner`'s verifier and output the digest of
 /// `pubs` and `pn`; returns the proof and that digest (its public input).
 pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp3>) -> Result<(WrapProof, Digest), String> {
+    prove_with(k, |b| run(b, inner, pubs, pn, |b, c| b.set_output(c)))
+}
+
+/// Prove that the circuit ran `program` (which marks its output chain and
+/// returns the public input it output) — a wrap level over any verifier
+/// program (`recursion::agg`).
+pub(crate) fn prove_with(k: &WrapKey, program: impl FnOnce(&mut Builder) -> [crate::recursion::circuit::builder::Var; 4]) -> Result<(WrapProof, Digest), String> {
     let lap = crate::recursion::ivc::timer_pub("    wrap ");
     let n = k.params.n;
     let rows = 1usize << n;
@@ -62,7 +69,7 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let is_inner = k.inner();
     let air = CircuitAir::default();
     let mut b = Builder::new(true);
-    let xv = run(&mut b, inner, pubs, pn, |b, c| b.set_output(c));
+    let xv = program(&mut b);
     b.finish()?;
     let x: Digest = xv.map(|v| b.value(v).c0);
     let (v1, pre_cols, out) = trace::generate(&b, &air, n)?;
