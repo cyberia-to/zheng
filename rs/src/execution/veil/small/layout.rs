@@ -51,6 +51,7 @@ impl Slots {
         (1 << self.n) - self.block()
     }
     /// Per sub-polynomial coefficients `D = R / 2^{k₀}`.
+    #[cfg(test)]
     pub fn per_coset(&self) -> usize {
         self.block() >> self.k0
     }
