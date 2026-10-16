@@ -13,7 +13,7 @@ use nebu::Goldilocks;
 
 use hemera::{Hasher, ROUNDS_TOTAL};
 use hemera::field::Goldilocks as HGoldilocks;
-use hemera::trace::{FullRoundWitnesses, RoundVisitor};
+use hemera::trace::{FullRoundWitnesses, RoundVisitor, SboxWitnesses};
 
 use lens::{Commitment, Opening};
 
@@ -25,8 +25,8 @@ const NUM_QUERIES: usize = 20;
 
 /// Replay the historical Tensor transcript into universal squeeze rows.
 ///
-/// For a `k`-variable opening, produces `k × 20 × 24` rows:
-/// - 24 rows per squeeze (one per Poseidon2 round)
+/// For a `k`-variable opening, produces `k × 20 × 60` rows:
+/// - 60 rows per squeeze (one per Poseidon2 round)
 /// - 20 squeezes per Brakedown folding round
 /// - `k` folding rounds
 ///
@@ -72,8 +72,8 @@ pub fn build_transcript_steps(
     steps
 }
 
-/// The 24 universal rows of one Poseidon2 permutation: transition k → k+1
-/// for k = 0..23, the last pair closing on the final state (round index 24
+/// The 60 universal rows of one Poseidon2 permutation: transition k → k+1
+/// for k = 0..59, the last pair closing on the final state (round index 60
 /// is the squeeze sentinel, as in a trace hash block).
 pub(crate) fn squeeze_rows(visitor: &SqueezeVisitor) -> Vec<CCSWitness> {
     let states = &visitor.states;
@@ -105,7 +105,7 @@ impl RoundVisitor for SqueezeVisitor {
         self.states.push(hstate(state));
     }
 
-    fn partial_round(&mut self, _index: u8, state: &[HGoldilocks; 16], _sbox_out: HGoldilocks) {
+    fn partial_round(&mut self, _index: u8, state: &[HGoldilocks; 16], _witness: SboxWitnesses) {
         self.states.push(hstate(state));
     }
 }

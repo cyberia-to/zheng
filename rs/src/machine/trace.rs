@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use nebu::Goldilocks;
 
 use super::exec::{Builder, Entry, g};
-use super::hemera::{Tables, atom1_input, atom2_input, head4, hop_input, pair_input};
+use super::hemera::{ROUNDS, Tables, atom1_input, atom2_input, head4, hop_input, pair_input};
 use super::layout::*;
 use super::run::Digests;
 use crate::air::Trace;
@@ -99,17 +99,23 @@ fn bits_rows(b: &mut Builder, base: usize, v: u64) {
 /// The permutation rows of a block (phases 2..=27) for `input`; the
 /// output row's slot 0 carries the output under `id`.
 fn perm_rows(b: &mut Builder, t: &Tables, base: usize, input: &[Goldilocks; 16], id: u64) -> [u64; 4] {
-    let (states, invs) = t.trace(input);
+    let (states, sbox) = t.trace(input);
     for (i, &x) in input.iter().enumerate() {
         b.setf(base + PH_MDS, STATE + i, x);
     }
-    for (k, s) in states.iter().enumerate() {
-        for (i, &x) in s.iter().enumerate() {
-            b.setf(base + PH_ROUND0 + k, STATE + i, x);
+    for ph in PH_ROUND0..PH_OUT {
+        let (k, count) = phase_rounds(ph).expect("a round phase");
+        for (i, &x) in states[k].iter().enumerate() {
+            b.setf(base + ph, STATE + i, x);
         }
-        if k < invs.len() {
-            b.setf(base + PH_ROUND0 + k, PINV, invs[k]);
+        if count > 1 {
+            for j in 0..count {
+                b.setf(base + ph, PW + j, sbox[k + j]);
+            }
         }
+    }
+    for (i, &x) in states[ROUNDS].iter().enumerate() {
+        b.setf(base + PH_OUT, STATE + i, x);
     }
     let out = u4(head4(states.last().expect("output")));
     b.set(base + PH_OUT, slot(0, KEY), id);

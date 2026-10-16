@@ -229,11 +229,16 @@ pub const G_EH2: usize = wg(21);
 // ── permutation region (rows ≥ the region start, 32-row blocks) ───────
 pub const JOB_ID: usize = OBJ;
 pub const STATE: usize = X; // 16 columns 11..26
-pub const PINV: usize = 27;
 pub const J_PAIR: usize = 28;
 pub const J_ATOM1: usize = 29;
 pub const J_ATOM2: usize = 30;
 pub const J_HOP: usize = 31;
+/// Partial-round S-box outputs of a quad row: `PW + j` holds
+/// `(s₀ + rc_j)⁷` of the row's `j`-th partial round (columns 56..59; the
+/// slot area 32..55 and column 27 are unused on round rows).
+pub const PW: usize = WIT;
+/// Partial rounds per quad row.
+pub const QUAD: usize = 4;
 /// Bits rows of an atom job (phases 0, 1).
 pub const B_LO: usize = 11;
 pub const B_HL: usize = 12;
@@ -247,8 +252,29 @@ pub const BLOCK: usize = 32;
 pub const PH_BITS0: usize = 0;
 pub const PH_BITS1: usize = 1;
 pub const PH_MDS: usize = 2;
-pub const PH_ROUND0: usize = 3; // rounds 0..23 at phases 3..26
-pub const PH_OUT: usize = 27;
+/// hemera 0.4's 60 rounds on 24 rows: the 6 initial full rounds at phases
+/// 3..9 (one a row), the 48 partial rounds at phases 9..21 (four a row,
+/// `QUAD`), the 6 terminal full rounds at phases 21..27.
+pub const PH_ROUND0: usize = 3;
+pub const PH_PART0: usize = PH_ROUND0 + super::hemera::RF_HALF; // 9
+pub const PART_ROWS: usize = super::hemera::RP / QUAD; // 12
+pub const PH_FULL1: usize = PH_PART0 + PART_ROWS; // 21
+pub const PH_OUT: usize = PH_FULL1 + super::hemera::RF_HALF; // 27
+const _: () = assert!(super::hemera::RP % QUAD == 0 && PH_OUT < BLOCK);
+
+/// The rounds of a block phase: `(first round, count)` — one full round
+/// or `QUAD` partial rounds — or none (bits, MDS, output, idle rows).
+pub const fn phase_rounds(ph: usize) -> Option<(usize, usize)> {
+    if ph >= PH_ROUND0 && ph < PH_PART0 {
+        Some((ph - PH_ROUND0, 1))
+    } else if ph >= PH_PART0 && ph < PH_FULL1 {
+        Some((super::hemera::PARTIAL_FIRST + QUAD * (ph - PH_PART0), QUAD))
+    } else if ph >= PH_FULL1 && ph < PH_OUT {
+        Some((super::hemera::PARTIAL_END + ph - PH_FULL1, 1))
+    } else {
+        None
+    }
+}
 
 // ── memory tags ──────────────────────────────────────────────────────
 pub const TAG_ATOM: u64 = 1;

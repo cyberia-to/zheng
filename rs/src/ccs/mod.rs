@@ -326,7 +326,7 @@ pub fn build_look_steps_from_trace(
 /// Build universal Poseidon2 rows for the Fiat-Shamir transcript of every axis opening.
 ///
 /// For each prover-active axis row (same predicate as
-/// [`build_axis_steps_from_trace`]), produces num_vars × 20 × 24 rows
+/// [`build_axis_steps_from_trace`]), produces num_vars × 20 × 60 rows
 /// encoding the Poseidon2 permutations inside the Brakedown proximity
 /// protocol. Interpreter-mode rows consume no opening.
 ///
@@ -352,7 +352,7 @@ pub fn build_axis_transcript_steps(
 
 /// Build universal Poseidon2 rows for the Fiat-Shamir transcript of every look opening.
 ///
-/// For each look row in the trace, produces num_vars × 20 × 24 rows encoding
+/// For each look row in the trace, produces num_vars × 20 × 60 rows encoding
 /// the Poseidon2 permutations inside the Brakedown proximity protocol.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `openings` has fewer entries
@@ -666,7 +666,7 @@ mod tests {
         for (i, (inst, wit)) in steps.iter().enumerate() {
             assert!(is_satisfied(inst, wit), "honest look step {i} unsatisfied");
         }
-        assert_eq!(rows.len(), 14 * 24, "one root chain of 14 compressions");
+        assert_eq!(rows.len(), 14 * hemera::ROUNDS_TOTAL, "one root chain of 14 compressions");
         for (i, wit) in rows.iter().enumerate() {
             assert!(is_satisfied(universal_ccs(), wit), "root row {i} unsatisfied");
         }
