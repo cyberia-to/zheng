@@ -286,6 +286,14 @@ fn main() {
                 (p.relation.instance, pins)
             };
             let (n, block, used) = zheng::execution::veil::small::shape(&inst, &pins).expect("shape");
+            if std::env::var_os("FAST_BREAKDOWN").is_some() {
+                let cats = zheng::execution::veil::small::inspect::revealed_relation(&inst, &pins, &proof).expect("revealed");
+                let total: usize = cats.iter().map(|(_, v)| 8 * v.len()).sum();
+                for (cat, v) in &cats {
+                    eprintln!("  {name}: {cat}: {} B", 8 * v.len());
+                }
+                eprintln!("  {name}: categories {total} B, framing {} B", proof.as_bytes().len() - total);
+            }
             println!(
                 "| {name} | {backend} | veil-W n={n} R={block} used={used} | {n} | 2^{} | {:.1} | {:.2} | {} (proof) | — | — | — |",
                 inst.num_rows.trailing_zeros(),

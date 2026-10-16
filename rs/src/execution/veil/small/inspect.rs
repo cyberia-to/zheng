@@ -68,6 +68,18 @@ pub(crate) fn categories(p: &Parts) -> Revealed {
         ("later OOD + sumcheck", limbs(&o.rounds.iter().flat_map(|r| r.ood.iter().chain(&r.sumcheck).copied()).collect::<Vec<_>>())),
         ("later roots", digests(&o.rounds.iter().map(|r| r.root).collect::<Vec<_>>())),
         ("later opened symbols", limbs(&later)),
+        (
+            "later siblings",
+            digests(
+                &o.rounds
+                    .iter()
+                    .skip(1)
+                    .map(|r| &r.opening)
+                    .chain(if o.rounds.is_empty() { None } else { Some(&o.final_opening) })
+                    .flat_map(|op| op.siblings.iter().copied())
+                    .collect::<Vec<_>>(),
+            ),
+        ),
         ("final polynomial", limbs(&o.final_poly)),
     ]
 }
