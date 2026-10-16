@@ -38,6 +38,18 @@ pub mod tag {
     pub const PUBLIC: u64 = 10;
     /// A long message absorbed as a digest (`recursion::msg`).
     pub const MSG: u64 = 11;
+    /// A field-native zk proof's transcript (`execution::veil::rec`).
+    pub const VEIL: u64 = 12;
+    /// The digest of one aggregated transaction's public inputs
+    /// (`recursion::agg`).
+    pub const AGG_TX: u64 = 13;
+    /// An aggregation node: two children's digests.
+    pub const AGG_NODE: u64 = 14;
+    /// A block: the aggregation root, the transaction count, the block's
+    /// fields.
+    pub const AGG_BLOCK: u64 = 15;
+    /// A pass-through level over a block digest.
+    pub const AGG_PASS: u64 = 16;
 }
 
 fn to_h(x: Goldilocks) -> HG {

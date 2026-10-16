@@ -19,11 +19,11 @@ use crate::types::CCSInstance;
 
 /// The zk profile's prover state for one program and input count.
 pub struct ProvingKey {
-    vk: VerifyingKey,
+    pub(crate) vk: VerifyingKey,
     /// pinned columns, `(0, ·)` first
-    pinned: Vec<usize>,
-    setup: Setup,
-    relabelled: CCSInstance,
+    pub(crate) pinned: Vec<usize>,
+    pub(crate) setup: Setup,
+    pub(crate) relabelled: CCSInstance,
 }
 
 impl ProvingKey {
@@ -91,15 +91,15 @@ pub fn prove_bound_with_key(
     prove_keyed(key, program, input, secret, budget, bind, &Coins::os()?)
 }
 
-pub(crate) fn prove_keyed(
+/// The statement, the witness and the pinned coordinates of one keyed
+/// execution (shared by `prove_keyed` and the field-native flavour).
+pub(crate) fn prepare_keyed(
     key: &ProvingKey,
     program: &ExecutionNoun,
     input: &[u64],
     secret: &[u64],
     budget: u64,
-    bind: &dyn Fn(&PrivateStatement) -> Vec<u8>,
-    coins: &Coins,
-) -> Result<(PrivateStatement, VeilProof), String> {
+) -> Result<(PrivateStatement, Vec<Goldilocks>, Vec<(usize, Goldilocks)>), String> {
     if secret.len() > 4096 || secret.iter().any(|&v| v >= nebu::field::P) {
         return Err("invalid private input bounds or field encoding".into());
     }
@@ -135,13 +135,25 @@ pub(crate) fn prove_keyed(
     if pins.iter().any(|&(i, v)| witness.z[i] != v) {
         return Err("veil: witness disagrees with the statement".into());
     }
-    let statement = PrivateStatement { execution };
+    Ok((PrivateStatement { execution }, witness.z, pins))
+}
+
+pub(crate) fn prove_keyed(
+    key: &ProvingKey,
+    program: &ExecutionNoun,
+    input: &[u64],
+    secret: &[u64],
+    budget: u64,
+    bind: &dyn Fn(&PrivateStatement) -> Vec<u8>,
+    coins: &Coins,
+) -> Result<(PrivateStatement, VeilProof), String> {
+    let (statement, z, _) = prepare_keyed(key, program, input, secret, budget)?;
     let bytes = crate::execution::succinct::keyed_statement(&key.vk, &bind(&statement));
     let parsed = protocol::prove_prepared(
         &HidingParams::default(),
         &key.setup,
         &key.relabelled,
-        &witness.z,
+        &z,
         &bytes,
         coins,
     )?;
