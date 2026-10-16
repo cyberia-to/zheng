@@ -76,7 +76,7 @@ PATTERN → CONSTRAINT                                        │ DEGREE │ CON
 12 and      bit decomposition + AND per bit                 │ 2      │ ~64
 13 not      bitwise complement                              │ 1      │ ~64
 14 shl      shift via multiplication by 2^n                 │ 2      │ ~64
-15 hash     Poseidon2 round function across rows            │ 7      │ ~736
+15 hash     Poseidon2 round function across rows            │ 7      │ ~1,440
 16 call     inject + dispatch (Layer 1 check verification)  │ varies │ varies
 17 look     BBG polynomial evaluation + opening proof       │ 1      │ 1
 ```

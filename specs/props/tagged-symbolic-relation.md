@@ -87,8 +87,10 @@ left/right digest limbs in lanes0..7 with FLAG_PARENT=2 in lane9. Native nox
 uses is_root=false: FLAG_ROOT is deliberately not set even for the top noun.
 
 Every permutation uses Hemera's 16-lane linear layers, pinned round constants,
-eight full x^7 rounds and sixteen inverse partial rounds. Inverse at zero is
-constrained to zero. No runtime native hash call supplies unconstrained witness
+the pinned profile's rounds — hemera 0.3 when this contract was written:
+eight full x^7 rounds and sixteen inverse partial rounds, inverse at zero
+constrained to zero; hemera 0.4 (frozen 2026-10-16) has twelve full and
+forty-eight partial x^7 rounds and no inverse witness. No runtime native hash call supplies unconstrained witness
 digest values; native code is used only for fixed linear-layer coefficients.
 
 A fixed atom/pair tag chooses that digest construction. A symbolic tag computes

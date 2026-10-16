@@ -19,11 +19,11 @@ its digest is four field elements (32 bytes). the generic bounds for a
 - classical collision resistance: birthday on p^4 outputs, `p^2 ≈ 2^128`.
 - quantum collision resistance: Brassard–Høyer–Tapp, `p^(4/3) ≈ 2^85`.
 
-these are generic bounds; hemera's own parameters are young and its
-inverse-S-box partial rounds unanalysed, so the ledger lists the hash
-row as conjectured. hemera profile v2 (hemera#15) proposes longer
-identity digests for long-lived names; Merkle nodes inside proofs stay
-32 bytes.
+these are generic bounds; hemera's parameters are young — hemera 0.4
+(hemera#15: x⁷ in every round, 6 + 6 full and 48 partial rounds, frozen
+2026-10-16) is under a public cryptanalysis campaign — so the ledger
+lists the hash row as conjectured. the 32-byte digest is kept; Merkle
+nodes inside proofs stay 32 bytes.
 
 zheng uses hemera for Merkle trees over Reed–Solomon codewords (the
 commitment), for Fiat–Shamir challenge derivation, for verifying-key

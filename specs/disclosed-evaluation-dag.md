@@ -42,7 +42,7 @@ Each rule checks the required body shape and exact premise arity.
 | 10 less-than | two operand evaluations | Atom operands use canonical u64 order; result is 0 for less-than, otherwise 1. |
 | 11, 12, 14 | two operand evaluations | Atom operands are below 2^32. Result is xor, and or left shift masked to 32 bits. Shift counts at least 32 produce zero. |
 | 13 complement | `(object,body)` | Child is an atom below 2^32; result is its 32-bit complement. |
-| 15 hash | `(object,body)` | Initialize native Hemera StepSponge with the child's four particle limbs followed by four zeros, with zero capacity. Apply its initial MDS and 24 rounds. Result is hash-data containing the first four final canonical limbs. |
+| 15 hash | `(object,body)` | Initialize native Hemera StepSponge with the child's four particle limbs followed by four zeros, with zero capacity. Apply its initial linear layer and every round of the pinned hemera profile (60 under hemera 0.4; the 0.3 record had 24). Result is hash-data containing the first four final canonical limbs. |
 
 Only evaluated invocations require supported tags. Quoted and unselected nouns
 may contain malformed formulas or service tags. Inverse zero, malformed shapes,
