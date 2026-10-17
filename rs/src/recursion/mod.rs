@@ -38,5 +38,6 @@ pub mod prove;
 pub mod ivc;
 pub mod wire;
 pub mod vkey;
+pub mod agg;
 #[cfg(test)]
 mod review;

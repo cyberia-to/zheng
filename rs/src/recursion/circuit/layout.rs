@@ -32,6 +32,8 @@ pub const LIVE: usize = 48;
 
 // ARITH
 pub const GATES: usize = 4;
+/// Rows one hemera permutation block takes (the PERM gadget).
+pub const PERM_ROWS: usize = 4;
 pub fn gate_x(g: usize) -> usize {
     12 * g
 }

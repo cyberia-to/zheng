@@ -30,14 +30,14 @@ pub(crate) fn column_bytes(column: &[Goldilocks], salt: &[Goldilocks]) -> Vec<u8
         .collect()
 }
 
-/// Commit to `entries` (row-major, rows of `config.k`).
-pub(crate) fn commit(
-    params: &HidingParams,
-    entries: &[Goldilocks],
-    coins: &Coins,
-) -> Result<(Commitment, Committed), String> {
+/// The codeword rows of a commitment under `config`: the coefficients
+/// (data rows with their padding, then `m_a`, `m_b`, `m_P`), their
+/// encodings and the column salts — shared by the byte-hashed commitment
+/// and the field-native one (`veil::rec`).
+pub(crate) type Rows = (Vec<Vec<Goldilocks>>, Vec<Vec<Goldilocks>>, Vec<[Goldilocks; SALT]>);
+
+pub(crate) fn rows(config: &Config, entries: &[Goldilocks], coins: &Coins) -> Rows {
     let lap = crate::laps::timer("veil commit");
-    let config = Config::derive(params, entries.len())?;
     let (k, big_k) = (config.k, config.big_k());
     lap(&format!("shape k={k} rows={} log_n={} queries={}", config.rows, config.log_n, config.queries));
     // data rows with their padding ν_i, in threads (row i's ν_i is
@@ -79,6 +79,19 @@ pub(crate) fn commit(
     let salts: Vec<[Goldilocks; SALT]> =
         flat.chunks_exact(SALT).map(|s| core::array::from_fn(|i| s[i])).collect();
     lap("salts");
+    (coeffs, encoded, salts)
+}
+
+/// Commit to `entries` (row-major, rows of `config.k`).
+pub(crate) fn commit(
+    params: &HidingParams,
+    entries: &[Goldilocks],
+    coins: &Coins,
+) -> Result<(Commitment, Committed), String> {
+    let lap = crate::laps::timer("veil commit");
+    let config = Config::derive(params, entries.len())?;
+    let (coeffs, encoded, salts) = rows(&config, entries, coins);
+    let n = config.n();
     let tree = Tree::build(n, |j| {
         let column: Vec<Goldilocks> = encoded.iter().map(|row| row[j]).collect();
         column_bytes(&column, &salts[j])
@@ -136,15 +149,15 @@ pub(crate) fn eq_msb(point: &[Fp3]) -> Vec<Fp3> {
 }
 
 /// `q(X) = Σ_i Λ'_i(X) p_i(X)` over the data rows.
-fn functional_poly(c: &Committed, f: &Functional) -> Vec<Fp3> {
-    let (k, big_k) = (c.config.k, c.config.big_k());
+fn functional_rows(coeffs: &[Vec<Goldilocks>], config: &Config, f: &Functional) -> Vec<Fp3> {
+    let (k, big_k) = (config.k, config.big_k());
     let mut q = vec![Fp3::ZERO; big_k + k - 1];
     let (hi, lo) = split(&f.point, k);
     // tensor rows: (Σ_i scale·eq(hi, i)·p_i) · E(X), E = Σ_c eq(lo, c) X^{k−1−c}
     let row_w = eq_msb(&f.point[..hi]);
     let mut comb = vec![Fp3::ZERO; big_k];
     for (i, &w) in row_w.iter().enumerate() {
-        add_scaled(&mut comb, f.scale * w, &c.coeffs[i]);
+        add_scaled(&mut comb, f.scale * w, &coeffs[i]);
     }
     for (col, &e) in eq_msb(&f.point[hi..hi + lo]).iter().enumerate() {
         let shift = k - 1 - col;
@@ -161,31 +174,39 @@ fn functional_poly(c: &Committed, f: &Functional) -> Vec<Fp3> {
             ws.push((f.explicit[i].0 % k, f.explicit[i].1));
             i += 1;
         }
-        add_row_product(&mut q, k, &ws, &c.coeffs[row]);
+        add_row_product(&mut q, k, &ws, &coeffs[row]);
     }
     q
+}
+
+/// The opening's two polynomials for challenges `(α, ρ_L)`: the row test
+/// `p_P = Σ_i α^i p_i` over every codeword row and the linear
+/// `q = Σ_i Λ'_i p_i + ρ_L·(m_a + X^K m_b)`.
+pub(crate) fn messages(coeffs: &[Vec<Goldilocks>], config: &Config, f: &Functional, alpha: Fp3, rho: Fp3) -> (Vec<Fp3>, Vec<Fp3>) {
+    let (k, big_k, rows) = (config.k, config.big_k(), config.rows);
+    let (m_a, m_b) = (&coeffs[rows], &coeffs[rows + 1]);
+    let mut row_test = vec![Fp3::ZERO; big_k];
+    let mut power = Fp3::ONE;
+    for p in coeffs {
+        add_scaled(&mut row_test, power, p);
+        power *= alpha;
+    }
+    let mut linear = functional_rows(coeffs, config, f);
+    add_scaled(&mut linear[..big_k], rho, m_a);
+    add_scaled(&mut linear[big_k..], rho, &m_b[..k - 1]);
+    (row_test, linear)
 }
 
 /// Open `f` at `value = Σ Λ_e u_e` on the lens transcript `t`.
 pub(crate) fn open(c: &Committed, f: &Functional, value: Fp3, t: &mut Transcript) -> HidingProof {
     let cfg = c.config;
-    let (k, big_k, rows) = (cfg.k, cfg.big_k(), cfg.rows);
     let root = Commitment(c.tree.root());
     prologue(t, &c.params, c.entries, &root, value);
-    let (m_a, m_b) = (&c.coeffs[rows], &c.coeffs[rows + 1]);
-    let mu = Fp3::from_base(m_a[k - 1]);
+    let mu = Fp3::from_base(c.coeffs[cfg.rows][cfg.k - 1]);
     t.absorb_fp3(mu);
     let alpha = t.squeeze_fp3();
     let rho = t.squeeze_fp3();
-    let mut row_test = vec![Fp3::ZERO; big_k];
-    let mut power = Fp3::ONE;
-    for p in &c.coeffs {
-        add_scaled(&mut row_test, power, p);
-        power *= alpha;
-    }
-    let mut linear = functional_poly(c, f);
-    add_scaled(&mut linear[..big_k], rho, m_a);
-    add_scaled(&mut linear[big_k..], rho, &m_b[..k - 1]);
+    let (row_test, linear) = messages(&c.coeffs, &cfg, f, alpha, rho);
     t.absorb_fp3_slice(&row_test);
     t.absorb_fp3_slice(&linear);
     let pow_nonce = pow::grind(t, cfg.pow_bits);

@@ -36,10 +36,11 @@ mod key;
 mod libra;
 mod pad;
 mod protocol;
+pub mod rec;
 mod wire;
 
 #[cfg(test)]
-pub(super) mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 mod zk_tests;
 

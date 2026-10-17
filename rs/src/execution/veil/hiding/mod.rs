@@ -47,7 +47,7 @@
 //! random-oracle term.
 
 pub(crate) mod proof;
-mod prove;
+pub(crate) mod prove;
 mod verify;
 
 pub(crate) use proof::HidingProof;
@@ -176,6 +176,28 @@ impl Config {
         (6..=16)
             .filter_map(|lk| Self::with_width(params, entries, 1 << lk))
             .min_by(|a, b| a.estimate().total_cmp(&b.estimate()))
+            .ok_or_else(|| "veil: no commitment shape".into())
+    }
+
+    /// The width for the field-native flavour (`veil::rec`): the least
+    /// cost of checking the opening inside the recursion circuit — per
+    /// query the two polynomials' Horner evaluations (`5k` gates), the
+    /// column's two combinations (`2T`), its leaf sponge and its 4-ary
+    /// path (a permutation weighs the gate rows its gadget takes,
+    /// `PERM_ROWS · GATES`).
+    pub fn derive_rec(params: &HidingParams, entries: usize) -> Result<Self, String> {
+        if !params.in_range() || entries == 0 || entries > 1 << 26 {
+            return Err("veil: commitment parameters or size out of range".into());
+        }
+        let cost = |c: &Self| {
+            let t = c.total_rows();
+            let perms = (t + SALT).div_ceil(crate::recursion::perm::RATE) + (c.log_n as usize).div_ceil(2);
+            use crate::recursion::circuit::layout::{GATES, PERM_ROWS};
+            c.queries * (5 * c.k + 2 * t + PERM_ROWS * GATES * perms)
+        };
+        (6..=16)
+            .filter_map(|lk| Self::with_width(params, entries, 1 << lk))
+            .min_by_key(cost)
             .ok_or_else(|| "veil: no commitment shape".into())
     }
 

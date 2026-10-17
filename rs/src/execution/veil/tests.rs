@@ -17,7 +17,7 @@ fn with_secret(body: N) -> N {
     pair(N::Atom(2), pair(push, pair(N::Atom(1), body)))
 }
 /// x · x for one secret x.
-pub(super) fn square_secret() -> N {
+pub(crate) fn square_secret() -> N {
     with_secret(pair(N::Atom(7), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(2)))))
 }
 /// x · a + b for a secret x and public a, b (subject `[x [a [b 0]]]`).

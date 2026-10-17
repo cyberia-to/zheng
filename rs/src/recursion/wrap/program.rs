@@ -177,15 +177,25 @@ pub(crate) fn level_config(params: &WrapParams, vars: usize, fresh: usize, key_w
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
 /// never read: layouts are fixed by shapes).
 fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize), key_root: Option<Digest>) -> Result<WrapKey, String> {
-    let air = CircuitAir::default();
     let pn = ClaimV { point: vec![Fp3::ZERO; inner.pn_len()], value: Fp3::ZERO };
+    derive_key_with(params, ivc, inner.pn_len(), key_root, |b| {
+        run(b, inner, &dummy_publics(), &pn, |b, c| b.set_output(c));
+    })
+}
+
+/// Derive the key of a wrap level whose circuit runs `program` (on data
+/// of the right shape; the program marks its output chain): the key a
+/// level over any verifier program has (`recursion::agg`). `pn`: the
+/// deferred claim's point length the level's proofs carry (0 for none).
+pub(crate) fn derive_key_with(params: WrapParams, ivc: (lens::WhirParams, usize), pn: usize, key_root: Option<Digest>, program: impl FnOnce(&mut Builder)) -> Result<WrapKey, String> {
+    let air = CircuitAir::default();
     let mut b = Builder::new(false);
-    run(&mut b, inner, &dummy_publics(), &pn, |b, c| b.set_output(c));
+    program(&mut b);
     let rows = b.rows();
     let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
     let n = if params.n == 0 { rows.next_power_of_two().trailing_zeros().max(4) as usize } else { params.n };
     let (_, pre, out_row) = trace::generate(&b, &air, n)?;
-    assemble(WrapParams { n, ..params }, ivc, pre, out_row, rows, census, inner.pn_len(), key_root)
+    assemble(WrapParams { n, ..params }, ivc, pre, out_row, rows, census, pn, key_root)
 }
 
 /// Everything but the circuit layout (`pre`, the output row, the census)
