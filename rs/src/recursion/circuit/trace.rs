@@ -2,8 +2,8 @@
 //! columns (the circuit's key) and the phase-2 memory columns.
 //!
 //! Regions, in order: ARITH (gates, four a row; row 0 also writes `live`),
-//! BITS (four rows per decomposition), PERM (chains, each contiguous, four
-//! rows per block), padding. A block's input flags sit on the row before
+//! BITS (four rows per decomposition), PERM (chains, each contiguous,
+//! `PERM_ROWS` rows per block), padding. A block's input flags sit on the row before
 //! it (the previous block's last row, or the last row before the region).
 
 use nebu::{Fp3, Goldilocks};
@@ -81,9 +81,9 @@ impl KeyOut {
 }
 
 /// The permutation rows of every block, chain by chain, in threads.
-fn perm_cells(b: &Builder, air: &CircuitAir) -> Vec<[[Goldilocks; 48]; 4]> {
+fn perm_cells(b: &Builder, air: &CircuitAir) -> Vec<[[Goldilocks; 48]; PERM_ROWS]> {
     let xs: Vec<&[Goldilocks; crate::recursion::perm::WIDTH]> = b.chains.iter().flat_map(|ch| ch.blocks.iter().map(|blk| &blk.x)).collect();
-    let mut out = vec![[[Goldilocks::ZERO; 48]; 4]; xs.len()];
+    let mut out = vec![[[Goldilocks::ZERO; 48]; PERM_ROWS]; xs.len()];
     let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
     let chunk = xs.len().div_ceil(threads).max(1);
     std::thread::scope(|sc| {
@@ -276,7 +276,7 @@ fn lay_out(b: &Builder, air: &CircuitAir, n: usize, key: bool) -> Result<(Trace,
                     }
                 }
             }
-            let last = r + 3;
+            let last = r + PERM_ROWS - 1;
             for &(lane, wide, v) in &blk.outs {
                 p.set(pre::ADDR + lane, last, addr(v));
                 p.set(pre::E + lane, last, neg_count(b, v));
@@ -296,7 +296,7 @@ fn lay_out(b: &Builder, air: &CircuitAir, n: usize, key: bool) -> Result<(Trace,
                     p.one(pre::E + RATE + i, last);
                 }
             }
-            r += 4;
+            r += PERM_ROWS;
         }
     }
     Ok((t, p.0, out_row))

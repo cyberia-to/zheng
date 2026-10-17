@@ -1,10 +1,12 @@
-//! Symbolic nox structural hashing. Every nonlinear sponge lane is a
-//! constrained wire (a full-round S-box is one degree-7 row, a partial-round
-//! inverse three degree-2 rows); linear layers are public linear forms.
+//! Symbolic nox structural hashing (hemera 0.4). Every nonlinear sponge
+//! lane is a constrained wire (an S-box, full or partial round, is one
+//! degree-7 row); linear layers are public linear forms.
 //! A subtree that is constant in the program is hashed natively at compile
 //! time: the verifier derives the same constants from the same program, and
 //! the circuit it replaces had no witness freedom to begin with.
 use super::*;
+use crate::machine::hemera::{PARTIAL_FIRST, ROUNDS, RP, is_full};
+use hemera::constants::NUM_EXTERNAL;
 use hemera::field::Goldilocks as H;
 use std::sync::OnceLock;
 
@@ -99,20 +101,6 @@ impl Builder {
         }
     }
 
-    fn hash_inv(&mut self, value: &Value) -> Result<Value, RelationError> {
-        let source = self.linear(value)?;
-        let index = self.wire(Op::Inverse(source.clone()));
-        let inverse = Value::Wire(index);
-        let nonzero = self.nonzero(value)?;
-        self.rows
-            .push((source, self.linear(&inverse)?, self.linear(&nonzero)?));
-        let zero = self.add(&Value::Constant(F::ONE), &nonzero, true)?;
-        // x=0 must select inv(0)=0, rather than an unconstrained inverse wire.
-        self.rows
-            .push((self.linear(&inverse)?, self.linear(&zero)?, vec![]));
-        Ok(inverse)
-    }
-
     pub(super) fn hash_permute(&mut self, input: State) -> Result<State, RelationError> {
         if self.ops.len() > MAX_RELATION || self.rows.len() + self.sbox.len() > MAX_RELATION {
             return Err(RelationError::Limit);
@@ -127,17 +115,18 @@ impl Builder {
             }));
         }
         let mut state = self.hash_mds(&input, false)?;
-        for round in 0..24 {
-            let partial = (4..20).contains(&round);
+        for round in 0..ROUNDS {
+            let partial = !is_full(round);
             if partial {
-                let rc = hemera::constants::ROUND_CONSTANTS_U64[128 + round - 4];
+                let rc = hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
                 let value = self.add(&state[0], &Value::Constant(F::new(rc)), false)?;
-                state[0] = self.hash_inv(&value)?;
+                let x = self.linear(&value)?;
+                state[0] = self.pow7(x);
             } else {
-                let offset = if round < 4 {
+                let offset = if round < PARTIAL_FIRST {
                     round * 16
                 } else {
-                    (round - 16) * 16
+                    (round - RP) * 16
                 };
                 for lane in 0..16 {
                     let rc = hemera::constants::ROUND_CONSTANTS_U64[offset + lane];
@@ -326,37 +315,5 @@ mod tests {
             crate::execution::proof::verify(&relation.instance, &proof, b"hash test", &public)
                 .is_err()
         );
-    }
-
-    #[test]
-    fn partial_inverse_zero_is_constrained() {
-        let mut builder = Builder {
-            inputs: 1,
-            ops: vec![],
-            rows: vec![],
-            sbox: vec![],
-            calls: 0,
-            active: Value::Constant(F::ONE),
-            lookups: vec![],
-            state: None,
-        };
-        let inverse = builder.hash_inv(&Value::Wire(1)).unwrap();
-        let Value::Wire(index) = inverse else {
-            unreachable!()
-        };
-        let mut z = vec![F::ONE, F::ZERO];
-        // Witness generation is shared with the relation; all inverse and
-        // selector witnesses are zero (one-minus-selector is a form, not a wire).
-        z.resize(2 + builder.ops.len(), F::ZERO);
-        let satisfies = |z: &[F]| {
-            builder.rows.iter().all(|(a, b, c)| {
-                let eval =
-                    |terms: &Linear| terms.iter().fold(F::ZERO, |acc, &(i, k)| acc + z[i] * k);
-                eval(a) * eval(b) == eval(c)
-            })
-        };
-        assert!(satisfies(&z));
-        z[index] = F::new(123);
-        assert!(!satisfies(&z));
     }
 }

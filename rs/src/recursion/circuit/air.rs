@@ -6,18 +6,15 @@ use nebu::{Fp3, Goldilocks};
 
 use super::layout::*;
 use crate::air::num::Num;
-use crate::machine::hemera::{Tables, is_full};
+use crate::machine::hemera::{PARTIAL_END, PARTIAL_FIRST, RP, Tables, is_full};
 use crate::recursion::perm::{NODE_TAG, RATE, WIDTH};
-
-/// Coefficients of the partial rounds: lane `i` of the state before
-/// partial round `k` as a combination of the 16 lanes after round 3 and
-/// the inverses `w_0..w_{k−1}`.
-type Lin = [[Goldilocks; 32]; WIDTH];
 
 pub struct CircuitAir {
     tables: Tables,
-    /// `z_k`, `k = 0..=16`.
-    partial: Vec<Lin>,
+    /// `z_k`, `k = 0..=48`: lane `i` of the state before partial round
+    /// `k` as a combination of the 16 lanes after full round 5 and the
+    /// S-box outputs `w_0..w_{k−1}` (`Tables::partial_chain`).
+    partial: Vec<Vec<Vec<Goldilocks>>>,
     constraints: usize,
 }
 
@@ -72,30 +69,7 @@ pub struct Row<'a, T = Fp3> {
 impl Default for CircuitAir {
     fn default() -> Self {
         let tables = Tables::default();
-        let mut partial = Vec::with_capacity(17);
-        let mut z: Lin = [[Goldilocks::ZERO; 32]; WIDTH];
-        for (i, row) in z.iter_mut().enumerate() {
-            row[i] = Goldilocks::ONE;
-        }
-        partial.push(z);
-        for k in 0..16 {
-            let mut v = z;
-            v[0] = [Goldilocks::ZERO; 32];
-            v[0][16 + k] = Goldilocks::ONE;
-            let mut nz: Lin = [[Goldilocks::ZERO; 32]; WIDTH];
-            for (i, nrow) in nz.iter_mut().enumerate() {
-                for (j, vrow) in v.iter().enumerate() {
-                    let m = tables.internal[i][j];
-                    if m != Goldilocks::ZERO {
-                        for (a, &b) in nrow.iter_mut().zip(vrow) {
-                            *a += m * b;
-                        }
-                    }
-                }
-            }
-            z = nz;
-            partial.push(z);
-        }
+        let partial = tables.partial_chain(RP);
         let mut air = Self { tables, partial, constraints: 0 };
         let z1 = vec![Fp3::ZERO; V1];
         let z2 = vec![Fp3::ZERO; V2];
@@ -132,12 +106,15 @@ impl CircuitAir {
         })
     }
 
-    fn lin<T: Num>(&self, k: usize, i: usize, y4: &[T], w: &[T]) -> T {
+    /// Lane `i` of the state before partial round `k` over the lanes
+    /// `y6` after full round 5 and the S-box outputs `w` (`w[j]` for
+    /// `j < k`; a missing `w` is never read).
+    fn lin<T: Num>(&self, k: usize, i: usize, y6: &[T], w: &[T]) -> T {
         let co = &self.partial[k][i];
         let mut acc = T::ZERO;
         for j in 0..16 {
             if co[j] != Goldilocks::ZERO {
-                acc += T::from_base(co[j]) * y4[j];
+                acc += T::from_base(co[j]) * y6[j];
             }
         }
         for j in 0..k {
@@ -148,47 +125,29 @@ impl CircuitAir {
         acc
     }
 
-    /// The permutation's output for input `x` from the row function (a
+    /// The permutation's rows for input `x` from the row function (a
     /// self-check of the layout against hemera).
-    pub fn rows_of(&self, x: &[Goldilocks; WIDTH]) -> [[Goldilocks; 48]; 4] {
-        let mds = |s: &[Goldilocks; WIDTH]| -> [Goldilocks; WIDTH] {
-            core::array::from_fn(|j| (0..WIDTH).fold(Goldilocks::ZERO, |a, i| a + self.tables.mds[j][i] * s[i]))
-        };
-        let full = |s: &[Goldilocks; WIDTH], k: usize| -> [Goldilocks; WIDTH] {
-            let rc = &self.tables.rc[k];
-            let sb: [Goldilocks; WIDTH] = core::array::from_fn(|i| (s[i] + rc[i]).pow7());
-            mds(&sb)
-        };
-        let y0 = mds(x);
-        let y1 = full(&y0, 0);
-        let y2 = full(&y1, 1);
-        let y3 = full(&y2, 2);
-        let y4 = full(&y3, 3);
-        let mut w = [Goldilocks::ZERO; 16];
-        let mut z = y4;
-        for (k, wk) in w.iter_mut().enumerate() {
-            let u = z[0] + self.tables.rc[4 + k][0];
-            *wk = if u == Goldilocks::ZERO { Goldilocks::ZERO } else { u.inv() };
-            let mut v = z;
-            v[0] = *wk;
-            z = core::array::from_fn(|i| (0..WIDTH).fold(Goldilocks::ZERO, |a, j| a + self.tables.internal[i][j] * v[j]));
-        }
-        let y5 = full(&z, 20);
-        let y6 = full(&y5, 21);
-        let y7 = full(&y6, 22);
-        let y8 = full(&y7, 23);
-        let mut rows = [[Goldilocks::ZERO; 48]; 4];
+    pub fn rows_of(&self, x: &[Goldilocks; WIDTH]) -> [[Goldilocks; 48]; PERM_ROWS] {
+        let (states, sbox) = self.tables.trace(x);
+        let y = |k: usize| &states[k]; // the state after round k − 1 (y(0) = MDS·x)
+        let w = &sbox[PARTIAL_FIRST..PARTIAL_END];
+        let mut rows = [[Goldilocks::ZERO; 48]; PERM_ROWS];
         let put = |r: &mut [Goldilocks; 48], at: usize, v: &[Goldilocks]| r[at..at + v.len()].copy_from_slice(v);
         put(&mut rows[0], PX, x);
-        put(&mut rows[0], PY1, &y1);
-        put(&mut rows[0], PY2, &y2);
-        put(&mut rows[1], PY3, &y3);
-        put(&mut rows[1], PY4, &y4);
-        put(&mut rows[1], PW, &w);
-        put(&mut rows[2], PY5, &y5);
-        put(&mut rows[2], PY6, &y6);
-        put(&mut rows[2], PY7, &y7);
-        put(&mut rows[3], PY8, &y8);
+        put(&mut rows[0], PY1, y(1));
+        put(&mut rows[0], PY2, y(2));
+        put(&mut rows[1], PY3, y(3));
+        put(&mut rows[1], PY4, y(4));
+        put(&mut rows[1], PY5, y(5));
+        put(&mut rows[2], PY6, y(6));
+        put(&mut rows[2], PW, &w[..32]);
+        put(&mut rows[3], PW2, &w[32..]);
+        put(&mut rows[3], PY7, y(PARTIAL_END + 1));
+        put(&mut rows[3], PY8, y(PARTIAL_END + 2));
+        put(&mut rows[4], PY9, y(PARTIAL_END + 3));
+        put(&mut rows[4], PY10, y(PARTIAL_END + 4));
+        put(&mut rows[4], PY11, y(PARTIAL_END + 5));
+        put(&mut rows[5], PY12, y(PARTIAL_END + 6));
         rows
     }
 
@@ -249,10 +208,11 @@ impl CircuitAir {
         out.push(b[3] * l[BMAX] * l[BLO]);
 
         // PERM
-        let ph: [T; 4] = core::array::from_fn(|k| p[pre::PERM + k]);
+        let ph: [T; PERM_ROWS] = core::array::from_fn(|k| p[pre::PERM + k]);
         let mdsx: Vec<T> = (0..WIDTH)
             .map(|j| (0..WIDTH).fold(T::ZERO, |a, i| a + T::from_base(self.tables.mds[j][i]) * l[PX + i]))
             .collect();
+        // row 0: x → y1, y2 | y3
         let y1 = self.full(&mdsx, 0);
         let y2 = self.full(&l[PY1..PY1 + 16], 1);
         let y3 = self.full(&l[PY2..PY2 + 16], 2);
@@ -261,32 +221,47 @@ impl CircuitAir {
             out.push(ph[0] * (l[PY2 + j] - y2[j]));
             out.push(ph[0] * (n[PY3 + j] - y3[j]));
         }
+        // row 1: y3 → y4, y5 | y6
         let y4 = self.full(&l[PY3..PY3 + 16], 3);
-        let wv = &l[PW..PW + 16];
-        let y4c = &l[PY4..PY4 + 16];
+        let y5 = self.full(&l[PY4..PY4 + 16], 4);
+        let y6 = self.full(&l[PY5..PY5 + 16], 5);
         for j in 0..WIDTH {
             out.push(ph[1] * (l[PY4 + j] - y4[j]));
+            out.push(ph[1] * (l[PY5 + j] - y5[j]));
+            out.push(ph[1] * (n[PY6 + j] - y6[j]));
         }
-        for k in 0..16 {
-            let u = self.lin(k, 0, y4c, wv) + T::from_base(self.tables.rc[4 + k][0]);
-            let w = wv[k];
-            out.push(ph[1] * (u * w * u - u));
-            out.push(ph[1] * (w * u * w - w));
+        // row 2: y6 and w_0..w_31 | w_32..w_47, y7 — the 48 partial rounds
+        // are the chain `self.partial` over y6 and the S-box outputs
+        let y6c = &l[PY6..PY6 + 16];
+        let wv: Vec<T> = l[PW..PW + 32].iter().chain(&n[PW2..PW2 + 16]).copied().collect();
+        for k in 0..RP {
+            let u = self.lin(k, 0, y6c, &wv) + T::from_base(self.tables.rc[PARTIAL_FIRST + k][0]);
+            out.push(ph[2] * (wv[k] - pow7(u)));
         }
-        let z16: Vec<T> = (0..WIDTH).map(|i| self.lin(16, i, y4c, wv)).collect();
-        let y5 = self.full(&z16, 20);
-        let y6 = self.full(&l[PY5..PY5 + 16], 21);
-        let y7 = self.full(&l[PY6..PY6 + 16], 22);
-        let y8 = self.full(&l[PY7..PY7 + 16], 23);
+        let z48: Vec<T> = (0..WIDTH).map(|i| self.lin(RP, i, y6c, &wv)).collect();
+        let y7 = self.full(&z48, PARTIAL_END);
         for j in 0..WIDTH {
-            out.push(ph[1] * (n[PY5 + j] - y5[j]));
-            out.push(ph[2] * (l[PY6 + j] - y6[j]));
-            out.push(ph[2] * (l[PY7 + j] - y7[j]));
-            out.push(ph[2] * (n[PY8 + j] - y8[j]));
+            out.push(ph[2] * (n[PY7 + j] - y7[j]));
+        }
+        // row 3: y7 → y8 | y9
+        let y8 = self.full(&l[PY7..PY7 + 16], PARTIAL_END + 1);
+        let y9 = self.full(&l[PY8..PY8 + 16], PARTIAL_END + 2);
+        for j in 0..WIDTH {
+            out.push(ph[3] * (l[PY8 + j] - y8[j]));
+            out.push(ph[3] * (n[PY9 + j] - y9[j]));
+        }
+        // row 4: y9 → y10, y11 | y12 (the output)
+        let y10 = self.full(&l[PY9..PY9 + 16], PARTIAL_END + 3);
+        let y11 = self.full(&l[PY10..PY10 + 16], PARTIAL_END + 4);
+        let y12 = self.full(&l[PY11..PY11 + 16], PARTIAL_END + 5);
+        for j in 0..WIDTH {
+            out.push(ph[4] * (l[PY10 + j] - y10[j]));
+            out.push(ph[4] * (l[PY11 + j] - y11[j]));
+            out.push(ph[4] * (n[PY12 + j] - y12[j]));
         }
 
         // the next block's input, from flags on this row
-        let o8 = &l[PY8..PY8 + 16];
+        let o8 = &l[PY12..PY12 + 16];
         let nx = &n[PX..PX + 16];
         for j in 0..RATE {
             out.push(p[pre::KEEP + j] * (nx[j] - o8[j]));
@@ -355,7 +330,7 @@ pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {
     };
     let arith = p[pre::ARITH];
     let any = p[pre::BITS] + p[pre::BITS + 1] + p[pre::BITS + 2] + p[pre::BITS + 3];
-    let (ph0, ph3) = (p[pre::PERM], p[pre::PERM + 3]);
+    let (ph0, ph3) = (p[pre::PERM], p[pre::PERM + PERM_ROWS - 1]);
     core::array::from_fn(|s| {
         let av = if s < 4 * GATES {
             let g = s / 4;
@@ -367,7 +342,7 @@ pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {
         let bv = if s < BITS_ROW { l[s] } else { l[BVAL] };
         let p0 = if s < RATE { packed(&l[PX..PX + 16], s) } else { T::ZERO };
         let p3 = match s {
-            s if s < RATE => packed(&l[PY8..PY8 + 16], s),
+            s if s < RATE => packed(&l[PY12..PY12 + 16], s),
             s if s < RATE + 4 => l[PRT + s - RATE],
             s if s == RATE + 4 => l[PBIT],
             s if s == RATE + 5 => l[PBIT2],
@@ -388,11 +363,11 @@ mod tests {
         let rows = air.rows_of(&x);
         let mut y = x;
         crate::recursion::perm::permute(&mut y);
-        assert_eq!(&rows[3][PY8..PY8 + 16], &y[..]);
-        // the PERM constraints hold on the four rows
+        assert_eq!(&rows[PERM_ROWS - 1][PY12..PY12 + 16], &y[..]);
+        // the PERM constraints hold on the six rows
         let mut p = vec![Fp3::ZERO; pre::COUNT];
         let z2 = vec![Fp3::ZERO; V2];
-        for ph in 0..3 {
+        for ph in 0..PERM_ROWS - 1 {
             p.iter_mut().for_each(|v| *v = Fp3::ZERO);
             p[pre::PERM + ph] = Fp3::ONE;
             let lift = |r: &[Goldilocks; 48]| {

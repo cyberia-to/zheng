@@ -5,10 +5,13 @@
 //!
 //! - **ARITH**: four gates `out = qm·x·(y + qs·z) + qa·x + qb·y + qc·z + qk`
 //!   over Fp3 (12 columns each: x, y, z, out);
-//! - **PERM** (4 rows per hemera permutation): row 0 the input `x` and the
-//!   states after rounds 0, 1; row 1 after rounds 2, 3 and the 16 partial
-//!   rounds' inverses; row 2 after rounds 20–22; row 3 the output, a
-//!   Merkle root to compare and the next node's direction bit;
+//! - **PERM** ([`PERM_ROWS`] = 6 rows per hemera 0.4 permutation, three
+//!   16-lane states a row): row 0 the input `x` and the states after full
+//!   rounds 0, 1; row 1 after rounds 2, 3, 4; row 2 after round 5 and the
+//!   S-box outputs of partial rounds 0–31; row 3 the S-box outputs of
+//!   partial rounds 32–47 and the states after full rounds 6, 7; row 4
+//!   after rounds 8, 9, 10; row 5 the output (after round 11), a Merkle
+//!   root to compare and the next node's direction bits;
 //! - **BITS** (4 rows per canonical 64-bit decomposition, 16 bits a row);
 //! - padding.
 //!
@@ -46,16 +49,25 @@ pub fn gate_out(g: usize) -> usize {
 }
 
 // PERM
+/// Rows of a permutation block.
+pub const PERM_ROWS: usize = 6;
 pub const PX: usize = 0; // row 0: input
 pub const PY1: usize = 16;
 pub const PY2: usize = 32;
 pub const PY3: usize = 0; // row 1
 pub const PY4: usize = 16;
-pub const PW: usize = 32;
-pub const PY5: usize = 0; // row 2
-pub const PY6: usize = 16;
-pub const PY7: usize = 32;
-pub const PY8: usize = 0; // row 3
+pub const PY5: usize = 32;
+pub const PY6: usize = 0; // row 2
+/// Partial S-box outputs `w_0..w_31` (row 2) and `w_32..w_47` (row 3).
+pub const PW: usize = 16;
+pub const PW2: usize = 0; // row 3
+pub const PY7: usize = 16;
+pub const PY8: usize = 32;
+pub const PY9: usize = 0; // row 4
+pub const PY10: usize = 16;
+pub const PY11: usize = 32;
+/// The output state (row 5).
+pub const PY12: usize = 0;
 pub const PRT: usize = 16;
 pub const PBIT: usize = 20;
 /// The second direction bit of a 4-ary node.
@@ -74,13 +86,13 @@ pub mod pre {
     pub const ARITH: usize = 0;
     /// BITS phases 0..4.
     pub const BITS: usize = 1;
-    /// PERM phases 0..4.
+    /// PERM phases `0..PERM_ROWS`.
     pub const PERM: usize = 5;
     /// The row has memory slots (their inverse constraints apply).
-    pub const MEM: usize = 9;
-    pub const ADDR: usize = 10;
+    pub const MEM: usize = PERM + super::PERM_ROWS;
+    pub const ADDR: usize = MEM + 1;
     pub const E: usize = ADDR + super::SLOTS;
-    /// A slot of a PERM row 0 / row 3 covering lanes `j..j+3` as one Fp3.
+    /// A slot of a PERM row 0 / last row covering lanes `j..j+3` as one Fp3.
     pub const WIDE: usize = E + super::SLOTS;
     pub const WIDES: usize = 7;
     pub const GATE: usize = WIDE + WIDES;

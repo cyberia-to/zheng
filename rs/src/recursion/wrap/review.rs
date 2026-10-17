@@ -129,8 +129,8 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
             _ => true,
         };
     }
-    if let Some(ph) = (0..4).find(|&k| on(pre::PERM + k)) {
-        if ph < 3 || c < PRT {
+    if let Some(ph) = (0..PERM_ROWS).find(|&k| on(pre::PERM + k)) {
+        if ph + 1 < PERM_ROWS || c < PRT {
             return false;
         }
         return match c {

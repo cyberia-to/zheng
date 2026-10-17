@@ -32,6 +32,12 @@ impl Builder {
             let cost = super::super::node::COST;
             return Ok((out, Value::Constant(F::new(cost)), cost));
         }
+        if super::super::node::wide::is_node(f) {
+            // the wide node jet: two permutations, the formula's nox cost
+            let out = self.node_wide(obj)?;
+            let cost = super::super::node::wide::COST;
+            return Ok((out, Value::Constant(F::new(cost)), cost));
+        }
         let (tag, body) = pair(f)?;
         let tag = match tag {
             ExecutionNoun::Atom(t) => *t,

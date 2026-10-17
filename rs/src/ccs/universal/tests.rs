@@ -127,12 +127,12 @@ fn non_hash_row_cannot_arm_poseidon_gates() {
 
 #[test]
 fn squeeze_boundary_pair_has_no_counter_constraint() {
-    // Squeeze row (k = 24) followed by a quote row: κ = 0, no r14 chain.
-    assert!(ok(&tagged(15, &[(reg_t(14), 24), (reg_t1(0), 1), (reg_t1(14), 0)])));
+    // Squeeze row (k = 60) followed by a quote row: κ = 0, no r14 chain.
+    assert!(ok(&tagged(15, &[(reg_t(14), 60), (reg_t1(0), 1), (reg_t1(14), 0)])));
     // Round row k = 7 followed by k = 9: κ = 1 and the counter breaks.
     assert!(!ok(&tagged(15, &[(reg_t(14), 7), (reg_t1(14), 9)])));
     // Out-of-range round index: no u_k can be set.
-    assert!(!ok(&tagged(15, &[(reg_t(14), 25), (reg_t1(14), 26)])));
+    assert!(!ok(&tagged(15, &[(reg_t(14), 61), (reg_t1(14), 62)])));
 }
 
 // ── pattern gadgets ──────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
-//! Native Hemera identity, fully constrained, including optional noun topology.
-//! Keep framing aligned with nox/rs/data/hash.rs and execution/hash.rs.
+//! Native Hemera identity (hemera 0.4: x⁷ in every round), fully
+//! constrained, including optional noun topology. Keep framing aligned
+//! with nox/rs/data/hash.rs and execution/hash.rs.
 use super::{build::Builder, *};
+use crate::machine::hemera::{PARTIAL_FIRST, ROUNDS, RP, is_full};
+use hemera::constants::NUM_EXTERNAL;
 use hemera::field::Goldilocks as H;
 use std::sync::OnceLock;
 type State = [Wire; 16];
@@ -51,27 +54,30 @@ impl Builder {
         }
         Ok(out)
     }
+    fn sbox(&mut self, x: Wire) -> Result<Wire, Error> {
+        let square = self.mul(x, x)?;
+        let cube = self.mul(square, x)?;
+        let fourth = self.mul(square, square)?;
+        self.mul(cube, fourth)
+    }
     pub fn permute(&mut self, input: State) -> Result<State, Error> {
         let mut state = self.linear_layer(input, false)?;
-        for round in 0..24 {
-            let partial = (4..20).contains(&round);
+        for round in 0..ROUNDS {
+            let partial = !is_full(round);
             if partial {
-                let rc = hemera::constants::ROUND_CONSTANTS_U64[128 + round - 4];
+                let rc = hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
                 let x = self.lin(vec![(state[0], F::ONE), (ONE, F::new(rc))])?;
-                state[0] = self.inverse_or_zero(x)?.0;
+                state[0] = self.sbox(x)?;
             } else {
-                let offset = if round < 4 {
+                let offset = if round < PARTIAL_FIRST {
                     round * 16
                 } else {
-                    (round - 16) * 16
+                    (round - RP) * 16
                 };
                 for (lane, value) in state.iter_mut().enumerate() {
                     let rc = hemera::constants::ROUND_CONSTANTS_U64[offset + lane];
                     let x = self.lin(vec![(*value, F::ONE), (ONE, F::new(rc))])?;
-                    let square = self.mul(x, x)?;
-                    let cube = self.mul(square, x)?;
-                    let fourth = self.mul(square, square)?;
-                    *value = self.mul(cube, fourth)?;
+                    *value = self.sbox(x)?;
                 }
             }
             state = self.linear_layer(state, partial)?;

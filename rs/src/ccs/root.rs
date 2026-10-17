@@ -110,7 +110,7 @@ pub fn root_to_bytes(root: &[Goldilocks; 4]) -> [u8; 32] {
 
 /// Replay the root chain and emit universal Poseidon2 rows for every compression.
 ///
-/// 14 compressions × 24 round rows = 336 universal-step witnesses, the same
+/// 14 compressions × 60 round rows = 840 universal-step witnesses, the same
 /// row shape as a trace hash pair, so they fold into the single Layer-1
 /// accumulator. Returns the rows and the recomputed root limbs; the caller
 /// binds those limbs to the trace registers with eq steps.
@@ -181,7 +181,7 @@ mod tests {
         let leaves = sample_leaves();
         let (steps, computed) = build_root_steps(&leaves);
         assert_eq!(computed, root_from_leaves(&leaves), "replay matches native fold");
-        assert_eq!(steps.len(), 14 * 24, "24 round pairs per compression");
+        assert_eq!(steps.len(), 14 * hemera::ROUNDS_TOTAL, "60 round pairs per compression");
         for (i, witness) in steps.iter().enumerate() {
             assert!(is_satisfied(universal_ccs(), witness), "root step {i} unsatisfied");
         }

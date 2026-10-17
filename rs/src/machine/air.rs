@@ -146,7 +146,7 @@ impl Machine {
         let p = init.len();
         let pre = |f: &dyn Fn(usize) -> u64| Public::Prefix((0..p).map(|i| c(f(i))).collect());
         let one = |cond: bool| if cond { Fp3::ONE } else { Fp3::ZERO };
-        let round = |ph: usize| ph.checked_sub(PH_ROUND0).filter(|&k| k < 24);
+        let round = phase_rounds;
         let mut publics = vec![
             pre(&|_| 1),
             pre(&|i| init[i].0),
@@ -159,15 +159,27 @@ impl Machine {
             region(|ph| one(ph == PH_BITS0), start),
             region(|ph| one(ph == PH_BITS1), start),
             region(|ph| one(ph == PH_MDS), start),
-            region(|ph| one(round(ph).is_some_and(super::hemera::is_full)), start),
-            region(|ph| one(round(ph).is_some_and(|k| !super::hemera::is_full(k))), start),
+            region(|ph| one(round(ph).is_some_and(|(k, _)| super::hemera::is_full(k))), start),
+            region(|ph| one(round(ph).is_some_and(|(k, _)| !super::hemera::is_full(k))), start),
             region(|ph| one(ph == PH_OUT), start),
             region(|ph| one(ph + 1 < BLOCK), start),
         ];
+        // round constants: a full round's 16, a quad row's four (lane 0 of
+        // each of its rounds) in `PUB_RC..PUB_RC + QUAD`
         for i in 0..16 {
             let rc = tables.rc;
             publics.push(region(
-                |ph| round(ph).map_or(Fp3::ZERO, |k| Fp3::from_base(rc[k][i])),
+                |ph| {
+                    round(ph).map_or(Fp3::ZERO, |(k, count)| {
+                        if count == 1 {
+                            Fp3::from_base(rc[k][i])
+                        } else if i < count {
+                            Fp3::from_base(rc[k + i][0])
+                        } else {
+                            Fp3::ZERO
+                        }
+                    })
+                },
                 start,
             ));
         }

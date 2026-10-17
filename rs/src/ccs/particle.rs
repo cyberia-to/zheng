@@ -6,9 +6,9 @@
 //! Poseidon2 hash blocks (nox pattern 15): the prover hint and the sponge
 //! replay that recovers the capacity columns the trace omits.
 //!
-//! Each hash block is 25 trace rows (24 round rows + 1 squeeze row). The
+//! Each hash block is 61 trace rows (60 round rows + 1 squeeze row). The
 //! round transitions are constrained by the universal step instance
-//! (`universal.rs`, rows 48..64 under the π gate) — this module supplies
+//! (`universal.rs`, rows 84..104 under the π gate) — this module supplies
 //! what those rows need beyond the registers: `state_k[8..16]` and
 //! `state_{k+1}[8..16]`, replayed from the claimed rate with
 //! [`hemera::StepSponge`].
@@ -26,7 +26,7 @@ pub struct HashAux {
     pub rate: [Goldilocks; 8],
 }
 
-/// Replay the sponge from `rate`: the 24 post-round states of the block.
+/// Replay the sponge from `rate`: the 60 post-round states of the block.
 pub fn replay_states(rate: &[Goldilocks; 8]) -> Vec<[Goldilocks; 16]> {
     let mut rate_h = [HGold::ZERO; 8];
     for (j, r) in rate.iter().enumerate() {
@@ -48,8 +48,8 @@ mod tests {
     }
 
     #[test]
-    fn replay_yields_24_states() {
-        assert_eq!(zero_rate_states().len(), 24);
+    fn replay_yields_60_states() {
+        assert_eq!(zero_rate_states().len(), hemera::ROUNDS_TOTAL);
     }
 
     #[test]
@@ -66,7 +66,7 @@ mod tests {
     fn universal_row_satisfied_by_all_real_full_rounds() {
         let states = zero_rate_states();
         let u = universal_ccs();
-        for k in (0..PARTIAL_FIRST).chain(PARTIAL_FIRST + NUM_PARTIAL..23) {
+        for k in (0..PARTIAL_FIRST).chain(PARTIAL_FIRST + NUM_PARTIAL..hemera::ROUNDS_TOTAL - 1) {
             let w = poseidon_witness(&states[k], &states[k + 1], k);
             assert!(is_satisfied(u, &w), "full round k={k} unsatisfied");
         }

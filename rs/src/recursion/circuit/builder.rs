@@ -345,6 +345,6 @@ impl Builder {
     pub fn rows(&self) -> usize {
         let arith = self.gates.len().div_ceil(crate::recursion::circuit::layout::GATES).max(1);
         let blocks: usize = self.chains.iter().map(|c| c.blocks.len()).sum();
-        arith + 4 * self.bits.len() + 4 * blocks
+        arith + 4 * self.bits.len() + crate::recursion::circuit::layout::PERM_ROWS * blocks
     }
 }
