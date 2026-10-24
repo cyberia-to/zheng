@@ -1,0 +1,216 @@
+// zheng's IOP in zippel — rs/src/spartan/{prover,verifier}.rs and rs/src/sumcheck/*,
+// written once as a choreography so zippel can (a) derive the transcript and
+// (b) run its completeness and special-soundness analyses on it.
+//
+// Oracle model: the lens (Brakedown) is replaced by the verifier evaluating ẑ
+// itself, so `z` is `instance`. What is analysed is the IOP; the commitment's
+// binding stays with the lens.
+//
+// CCS shape = nox's mul pattern: (A·z) ∘ (B·z) − (C·z) = 0, multisets {0,1},{2},
+// coefficients 1, −1. Matrices are dense, row-major, 2^LM rows × 2^NV columns.
+// zheng's max multiset size is 2, so the outer round polynomial has degree 3
+// (eq · A · B) and is sent as 4 evaluations; the inner one degree 2, 3 evaluations
+// — exactly OuterSumcheckProver::round_poly (num_pts = degree + 2) and
+// SumcheckProver::round_poly (3 points).
+
+fn matvec<F: Field, LM: Size, NV: Size>(
+    instance mat: [F; 2 ^ LM * 2 ^ NV],
+    instance v: [F; 2 ^ NV],
+) -> [F; 2 ^ LM] {
+    [reduce(+, [mat[i * 2 ^ NV + j] * v[j] for j in 0..2 ^ NV]) for i in 0..2 ^ LM]
+}
+
+// eq(x, ·) over the hypercube, least significant bit first — multilinear::eq_evals
+fn eq_weights<F: Field>(instance x: [F; 1]) -> [F; 2] {
+    [1 - x[0], x[0]]
+}
+
+fn eq_weights<F: Field, LM: Size, NV: Size, EK: 2..LM + NV + 1>(instance x: [F; EK]) -> [F; 2 ^ EK] {
+    let x_lo = x[0..EK - 1];
+    let a = x[EK - 1];
+    let prev = eq_weights(x_lo);
+    prev * (1 - a) ++ prev * a
+}
+
+// transcript.squeeze_challenges(log_m): LM challenges, one squeeze each
+fn draw_taus<F: Field>(instance _placeholder: [F; 1]) -> [F; 1] {
+    t <- challenge<F>;
+    [t]
+}
+
+fn draw_taus<F: Field, LM: Size, DK: 2..LM + 1>(instance placeholder: [F; DK]) -> [F; DK] {
+    let prev = draw_taus(placeholder[0..DK - 1]);
+    t <- challenge<F>;
+    prev ++ [t]
+}
+
+// outer sumcheck rounds (degree 3, 4 points): absorb the round polynomial, squeeze r
+fn outer_round<F: Field, LM: Size, V: 3..LM + 1>(
+    instance curr_poly: Poly<F, V, 3>,
+    instance points: [F; 4],
+    instance prev_challenges: [F; LM - V + 1],
+    instance prev_eval: F,
+    instance round_challenge: F,
+) -> {final_eval: F, challenges: [F; LM]} {
+    let residual_poly = eval(curr_poly, [round_challenge]);
+    let round_poly = reduce(
+        +,
+        [
+            eval<0>(residual_poly, tail)
+            for tail in [[i / 2 ^ j % 2 for j in 0..V - 2] for i in 0..2 ^ (V - 2)]
+        ],
+    );
+    evs <- [round_poly(t) for t in points];
+    verify(prev_eval == evs[0] + evs[1]);
+    let g = interpolate(points, evs);
+    r_next <- challenge<F>;
+    outer_round(residual_poly, points, prev_challenges ++ [r_next], g(r_next), r_next)
+}
+
+fn outer_round<F: Field, LM: Size>(
+    instance curr_poly: Poly<F, 2, 3>,
+    instance points: [F; 4],
+    instance prev_challenges: [F; LM - 1],
+    instance prev_eval: F,
+    instance round_challenge: F,
+) -> {final_eval: F, challenges: [F; LM]} {
+    let residual_poly = eval(curr_poly, [round_challenge]);
+    evs <- [residual_poly(t) for t in points];
+    verify(prev_eval == evs[0] + evs[1]);
+    let g = interpolate(points, evs);
+    r_final <- challenge<F>;
+    {|final_eval: g(r_final), challenges: prev_challenges ++ [r_final]|}
+}
+
+// inner sumcheck rounds (degree 2, 3 points)
+fn inner_round<F: Field, NV: Size, V: 3..NV + 1>(
+    instance curr_poly: Poly<F, V, 2>,
+    instance points: [F; 3],
+    instance prev_challenges: [F; NV - V + 1],
+    instance prev_eval: F,
+    instance round_challenge: F,
+) -> {final_eval: F, challenges: [F; NV]} {
+    let residual_poly = eval(curr_poly, [round_challenge]);
+    let round_poly = reduce(
+        +,
+        [
+            eval<0>(residual_poly, tail)
+            for tail in [[i / 2 ^ j % 2 for j in 0..V - 2] for i in 0..2 ^ (V - 2)]
+        ],
+    );
+    evs <- [round_poly(t) for t in points];
+    verify(prev_eval == evs[0] + evs[1]);
+    let g = interpolate(points, evs);
+    r_next <- challenge<F>;
+    inner_round(residual_poly, points, prev_challenges ++ [r_next], g(r_next), r_next)
+}
+
+fn inner_round<F: Field, NV: Size>(
+    instance curr_poly: Poly<F, 2, 2>,
+    instance points: [F; 3],
+    instance prev_challenges: [F; NV - 1],
+    instance prev_eval: F,
+    instance round_challenge: F,
+) -> {final_eval: F, challenges: [F; NV]} {
+    let residual_poly = eval(curr_poly, [round_challenge]);
+    evs <- [residual_poly(t) for t in points];
+    verify(prev_eval == evs[0] + evs[1]);
+    let g = interpolate(points, evs);
+    r_final <- challenge<F>;
+    {|final_eval: g(r_final), challenges: prev_challenges ++ [r_final]|}
+}
+
+proto zheng_spartan_fixed<F: Field, LM: Size, NV: Size>(
+    instance z: [F; 2 ^ NV],
+    instance placeholder_tau: [F; LM],
+) where
+    let mat_a = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    let mat_b = [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0];
+    let mat_c = [0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0];
+    matvec(mat_a, z) * matvec(mat_b, z) == matvec(mat_c, z)
+{
+    let mat_a = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    let mat_b = [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0];
+    let mat_c = [0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0];
+    // SpartanProver::prove — row_mv: (M_i · z) per matrix, as tables over the rows
+    let az = matvec(mat_a, z);
+    let bz = matvec(mat_b, z);
+    let cz = matvec(mat_c, z);
+    let f_a = mle(az);
+    let f_b = mle(bz);
+    let f_c = mle(cz);
+
+    // tau = transcript.squeeze_challenges(log_m); eq_tau = eq_evals(tau)
+    let tau = draw_taus(placeholder_tau);
+    let eq_tau_evs = eq_weights(tau);
+    let eq_tau = mle(eq_tau_evs);
+
+    // outer sumcheck: Σ_x eq(tau, x) · (az(x)·bz(x) − cz(x)) == 0 (error vector zero)
+    let g_poly = (f_a * f_b + f_c * -1) * eq_tau;
+    let pts3 = [0, 1, 2, 3];
+    let round_poly0 = reduce(
+        +,
+        [
+            eval<0>(g_poly, tail)
+            for tail in [[i / 2 ^ j % 2 for j in 0..LM - 1] for i in 0..2 ^ (LM - 1)]
+        ],
+    );
+    evs0 <- [round_poly0(t) for t in pts3];
+    verify(0 == evs0[0] + evs0[1]);
+    let g0 = interpolate(pts3, evs0);
+    rx0 <- challenge<F>;
+    let sc1 = outer_round(g_poly, pts3, [rx0], g0(rx0), rx0);
+    let rx = sc1.challenges;
+    let e_x = sc1.final_eval;
+
+    // matrix_evals: the prover sends (M_i · z)~(rx); the verifier checks the outer claim
+    let lx = eq_weights(rx);
+    v_a <- dot(lx, az);
+    v_b <- dot(lx, bz);
+    v_c <- dot(lx, cz);
+    let eq_tau_at_rx = dot(lx, eq_tau_evs);
+    verify(e_x == (v_a * v_b - v_c) * eq_tau_at_rx);
+
+    // gamma batches the three claims: Σ_i gamma^i v_i == Σ_col w_combined[col] · z[col]
+    gamma <- challenge<F>;
+    let t2 = v_a + gamma * v_b + gamma * gamma * v_c;
+    let w_comb = [
+        reduce(
+            +,
+            [
+                lx[r] * (mat_a[r * 2 ^ NV + c] + gamma * mat_b[r * 2 ^ NV + c] + gamma * gamma * mat_c[r * 2 ^ NV + c])
+                for r in 0..2 ^ LM
+            ],
+        )
+        for c in 0..2 ^ NV
+    ];
+    let w_mle = mle(w_comb);
+    let z_mle = mle(z);
+    let m_poly = w_mle * z_mle;
+
+    // inner sumcheck over the columns
+    let pts2 = [0, 1, 2];
+    let round_poly1 = reduce(
+        +,
+        [
+            eval<0>(m_poly, tail)
+            for tail in [[i / 2 ^ j % 2 for j in 0..NV - 1] for i in 0..2 ^ (NV - 1)]
+        ],
+    );
+    evs1 <- [round_poly1(t) for t in pts2];
+    verify(t2 == evs1[0] + evs1[1]);
+    let g1 = interpolate(pts2, evs1);
+    ry0 <- challenge<F>;
+    let sc2 = inner_round(m_poly, pts2, [ry0], g1(ry0), ry0);
+    let ry = sc2.challenges;
+    let e_y = sc2.final_eval;
+
+    // the prover sends ẑ(ry) (eval_value); the verifier evaluates w_combined itself
+    let ly = eq_weights(ry);
+    eval_value <- dot(ly, z);
+    let w_at_point = dot(ly, w_comb);
+    verify(e_y == w_at_point * eval_value);
+
+    // the lens opening, in the oracle model: ẑ(ry) really is eval_value
+    verify(eval_value == dot(ly, z))
+}

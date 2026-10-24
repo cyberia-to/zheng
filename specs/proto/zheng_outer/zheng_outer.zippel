@@ -1,0 +1,101 @@
+// zheng's outer sumcheck alone (rs/src/sumcheck/prover.rs OuterSumcheckProver +
+// the SpartanVerifier checks up to the matrix_evals). The three row tables
+// az, bz, cz are instance vectors here (in zheng they are M_i · z, bound later
+// by the inner sumcheck); the error vector is zero. Degree 3, four points.
+fn eq_weights<F: Field>(instance x: [F; 1]) -> [F; 2] {
+    [1 - x[0], x[0]]
+}
+
+fn eq_weights<F: Field, LM: Size, K: 2..LM + 1>(instance x: [F; K]) -> [F; 2 ^ K] {
+    let x_lo = x[0..K - 1];
+    let a = x[K - 1];
+    let prev = eq_weights(x_lo);
+    prev * (1 - a) ++ prev * a
+}
+
+fn draw_taus<F: Field>(instance _remaining: [F; 1]) -> [F; 1] {
+    t <- challenge<F>;
+    [t]
+}
+
+fn draw_taus<F: Field, LM: Size, K: 2..LM + 1>(instance remaining: [F; K]) -> [F; K] {
+    let prev = draw_taus(remaining[0..K - 1]);
+    t <- challenge<F>;
+    prev ++ [t]
+}
+
+fn outer_round<F: Field, LM: Size, V: 3..LM + 1>(
+    instance curr_poly: Poly<F, V, 3>,
+    instance points: [F; 4],
+    instance prev_challenges: [F; LM - V + 1],
+    instance prev_eval: F,
+    instance round_challenge: F,
+) -> {final_eval: F, challenges: [F; LM]} {
+    let residual_poly = eval(curr_poly, [round_challenge]);
+    let round_poly = reduce(
+        +,
+        [
+            eval<0>(residual_poly, tail)
+            for tail in [[i / 2 ^ j % 2 for j in 0..V - 2] for i in 0..2 ^ (V - 2)]
+        ],
+    );
+    evs <- [round_poly(t) for t in points];
+    verify(prev_eval == evs[0] + evs[1]);
+    let g = interpolate(points, evs);
+    r_next <- challenge<F>;
+    outer_round(residual_poly, points, prev_challenges ++ [r_next], g(r_next), r_next)
+}
+
+fn outer_round<F: Field, LM: Size>(
+    instance curr_poly: Poly<F, 2, 3>,
+    instance points: [F; 4],
+    instance prev_challenges: [F; LM - 1],
+    instance prev_eval: F,
+    instance round_challenge: F,
+) -> {final_eval: F, challenges: [F; LM]} {
+    let residual_poly = eval(curr_poly, [round_challenge]);
+    evs <- [residual_poly(t) for t in points];
+    verify(prev_eval == evs[0] + evs[1]);
+    let g = interpolate(points, evs);
+    r_final <- challenge<F>;
+    {|final_eval: g(r_final), challenges: prev_challenges ++ [r_final]|}
+}
+
+proto zheng_outer<F: Field, LM: Size, N: 2 ^ LM>(
+    instance az: [F; N],
+    instance bz: [F; N],
+    instance cz: [F; N],
+) where az * bz == cz {
+    let placeholder = [0 for _ in 0..LM];
+    let tau = draw_taus(placeholder);
+    let eq_tau_evs = eq_weights(tau);
+    let eq_tau = mle(eq_tau_evs);
+    let f_a = mle(az);
+    let f_b = mle(bz);
+    let f_c = mle(cz);
+    let g_poly = (f_a * f_b + f_c * -1) * eq_tau;
+
+    let pts3 = [0, 1, 2, 3];
+    let round_poly0 = reduce(
+        +,
+        [
+            eval<0>(g_poly, tail)
+            for tail in [[i / 2 ^ j % 2 for j in 0..LM - 1] for i in 0..2 ^ (LM - 1)]
+        ],
+    );
+    evs0 <- [round_poly0(t) for t in pts3];
+    verify(0 == evs0[0] + evs0[1]);
+    let g0 = interpolate(pts3, evs0);
+    rx0 <- challenge<F>;
+    let sc1 = outer_round(g_poly, pts3, [rx0], g0(rx0), rx0);
+    let rx = sc1.challenges;
+    let e_x = sc1.final_eval;
+
+    // matrix_evals: sent by the prover, checked against the final claim
+    let lx = eq_weights(rx);
+    v_a <- dot(lx, az);
+    v_b <- dot(lx, bz);
+    v_c <- dot(lx, cz);
+    let eq_tau_at_rx = dot(lx, eq_tau_evs);
+    verify(e_x == (v_a * v_b - v_c) * eq_tau_at_rx)
+}

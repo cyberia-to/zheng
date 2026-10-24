@@ -31,6 +31,6 @@ alias: zippel
 
 Not: replacing zheng's prover or verifier with zippel's runtime (arkworks, big fields, CPU only, no hash-based commitments), and not a dependency in any soft3 crate.
 
-## first experiment
+## first experiment — done 2026-10-24
 
-Write [[sumcheck]] and the SuperSpartan outer sumcheck as `.zippel` from zippel's `mle_sumcheck` and `spartan` examples, run the two analyses at `NUM_VARS = 3..4`, and compare the absorb/squeeze order with the transcript page. One day. If the analyses pass and the orders disagree, the page is wrong; if they fail, the protocol is.
+The IOP of `rs/src/spartan` + `rs/src/sumcheck` is in `specs/proto/` as five zippel protocols; results in [[zheng/audit/zippel-2026-10-24|audit/zippel-2026-10-24]]. The whole IOP (CCS fixed, lens as oracle) is **complete** by the Gröbner analysis in 43 ms; the outer and inner sumchecks alone pass up to three and four variables; a deliberate bug (a degree-3 round polynomial sent as three points) type-checks and runs but **fails completeness in 4.5 s**; the derived transcript order matches `transcript.rs`. Special soundness does not apply in the oracle model (no witness, nothing to extract), so a soundness verdict needs the commitment inside the protocol, which the hash-based lens cannot give zippel today. The gate to keep: `zippel-check` + completeness at those sizes + the bug variant failing.
