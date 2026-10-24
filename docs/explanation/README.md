@@ -81,6 +81,12 @@ for formal definitions, see reference/. for the hash primitive, see [[hemera]]. 
 | [[zheng/docs/explanation/performance|performance]] | prover costs, verifier costs, proof sizes — comparisons with [[Plonky3]], [[Binius]], [[Stwo]] |
 | [[zheng/docs/explanation/bbg-integration|bbg-integration]] | shared Brakedown primitives between proofs and [[BBG]] state — EdgeSets, LogUp, batch verification |
 
+### tooling
+
+| page | topic |
+|------|-------|
+| [[zheng/docs/explanation/zippel|zippel]] | eniac/zippel as a checker for zheng's IOPs — derived transcripts, completeness and special-soundness analyses; what it cannot cover and the first experiment |
+
 ## see also
 
 - [[nebu]] — the [[Goldilocks field]] underlying all arithmetic
