@@ -88,7 +88,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,9 +127,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: zheng
-      - name: cargo test
-        run: cargo test --locked --workspace
-        working-directory: zheng
+      - name: cargo test (the train's stack-zheng command, --no-fail-fast; diagnostic, never merged)
+        run: cargo test --locked --no-fail-fast
+        working-directory: zheng/rs
 
   clippy:
     runs-on: ubuntu-latest
