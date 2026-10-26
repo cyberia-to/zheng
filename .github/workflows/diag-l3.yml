@@ -1,0 +1,185 @@
+# DIAGNOSTIC — never merged (soft3 director plan, row L3, session 23).
+# zheng#73 (hemera 0.4 sweep) CI run 40262546358: 27 lib tests FAILED and the
+# `test` job was cancelled at its 90-min timeout before libtest printed the reasons;
+# recursion::review::a_state_unbound_from_the_last_public_input_is_refused ran
+# 03:20 -> 04:38 without finishing. Same stand as zheng's ci.yml.
+#  a: the 27 failures in release, so the panics print
+#  b: the long test alone, debug (30 min cap) then release (20 min cap)
+#  c: the whole workspace at opt-level 3 (debug assertions on), timed
+name: diag-l3-sweep
+
+on:
+  push:
+    branches: [diag/l3-sweep-failures]
+
+env:
+  CARGO_TERM_COLOR: always
+  # hemera's 0.4 line; set to main once hemera#25 (release/0.4 -> main) lands
+  HEMERA_REF: release/0.4
+  # lens's 0.2 line; set to master once lens#36 lands
+  LENS_REF: release/0.2
+  # nox's 0.4 line; set to master once the nox landing lands
+  NOX_REF: release/0.4
+  # empty = strata's default branch
+  STRATA_REF: ""
+  # empty = tade's default branch
+  TADE_REF: ""
+  # empty = honeycrisp's default branch
+  HONEYCRISP_REF: ""
+
+jobs:
+  a_failures_release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+
+      - name: run
+        working-directory: zheng
+        run: |
+          set -o pipefail
+          cargo test --locked --release -p zheng --lib -- --exact execution::disclosed::evaluation::tests::differential::all_pure_patterns_match_native_values_costs_and_frame_boundaries execution::disclosed::evaluation::tests::differential::axis_zero_and_hash_have_distinct_native_results_and_logical_step_counts execution::disclosed::memory::tests::native_headers_and_every_cost_case_are_derived_from_prior_records execution::disclosed::stream::tests::differential::all_native_rules_match_finite_dag_across_a_fresh_noun_table_per_event execution::disclosed::stream::tests::differential::canonical_field_word_and_hash_boundaries_match_native execution::proof::tests::direct_proofs_reproduce_the_frozen_v1_transcript execution::state_evidence::tests::root_matches_the_bbg_frozen_vectors execution::tagged::hash_tests::hash_optional_topology_is_selected_with_all_four_digest_limbs execution::tagged::hash_tests::native_equality_covers_atoms_pairs_optional_shapes_and_association execution::tagged::hash_tests::structural_axis_and_pattern_hash_match_native_framing_at_boundaries execution::tagged::node_cost_tests::adversarial::all_digest_limbs_padding_tags_and_disabled_mandatory_ports_are_constrained execution::tagged::node_cost_tests::adversarial::equal_particle_conflicting_cost_rejects_even_with_consistent_parent_arithmetic execution::tagged::node_cost_tests::adversarial::forged_auxiliary_bits_inverse_and_requests_reject_with_public_inputs_unchanged execution::tagged::node_cost_tests::adversarial::forged_input_with_updated_public_premise_still_violates_rows execution::tagged::node_cost_tests::adversarial::noncanonical_atom_alias_rejects_after_forged_digest_and_public_premises_are_updated execution::tagged::node_cost_tests::adversarial::unused_pair_costs_remain_explicit_public_premises execution::tagged::node_cost_tests::arithmetic::branch_dynamic_propagates_from_smaller_arm_and_max_keeps_both_limbs execution::tagged::node_cost_tests::arithmetic::shared_native_dag_reaches_u64_saturation_without_tree_expansion execution::tagged::node_cost_tests::backend::existing_backend_binds_component_premises_and_rejects_forged_witnesses execution::tagged::node_cost_tests::backend::fixed_schema_is_identical_across_builds execution::tagged::node_cost_tests::every_metadata_opcode_and_malformed_body_matches_native_cost execution::tagged::node_cost_tests::exact_gate_cap_accepts_and_one_below_cannot_finish_partial_component execution::tagged::node_cost_tests::fixed_schema_fits_declared_cap_and_requires_public_read_premises execution::tagged::word_tests::composed_hash_words_nested_continuations_and_inactive_malformed_match_native execution::veil::tests::seeded_proofs_do_not_depend_on_the_thread_count machine::tests::every_opcode_matches_native_nox_and_satisfies_the_relation recursion::wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript 2>&1 | tee ../a.txt || true
+
+  b_hung_test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+
+      - name: run
+        working-directory: zheng
+        run: |
+          set -o pipefail
+          cargo test --locked -p zheng --lib --no-run
+          start=$(date +%s)
+          timeout 1800 cargo test --locked -p zheng --lib -- --exact recursion::review::a_state_unbound_from_the_last_public_input_is_refused --nocapture 2>&1 | tail -50 || echo "debug exit $?"
+          echo "debug elapsed $(( $(date +%s) - start ))s"
+          start=$(date +%s)
+          timeout 1200 cargo test --locked --release -p zheng --lib -- --exact recursion::review::a_state_unbound_from_the_last_public_input_is_refused --nocapture 2>&1 | tail -50 || echo "release exit $?"
+          echo "release elapsed $(( $(date +%s) - start ))s"
+
+  c_suite_opt3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+
+      - name: run
+        working-directory: zheng
+        env:
+          CARGO_PROFILE_DEV_OPT_LEVEL: '3'
+        run: |
+          start=$(date +%s)
+          cargo test --locked --workspace --no-run
+          echo "build elapsed $(( $(date +%s) - start ))s"
+          start=$(date +%s)
+          timeout 5400 cargo test --locked --workspace 2>&1 | grep -E 'test result|FAILED|running|has been running|panicked' || echo "exit $?"
+          echo "test elapsed $(( $(date +%s) - start ))s"
