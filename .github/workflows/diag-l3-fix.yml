@@ -251,3 +251,4 @@ jobs:
           ZHENG_RATE=3 cargo run --locked --release -p zheng --example wrap_chain -- "4i:16,7i:22,9f:26" 2>&1 | grep -vE "Compiling|Finished|Running" || true
           cargo run --locked --release -p zheng --example ivc_plan -- 15,16 3,4 16 2>&1 | tail -30 || true
           cargo test --locked --release -p zheng --lib -- --exact --nocapture recursion::wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript 2>&1 | tail -20 || true
+          cargo test --locked --release -p zheng --lib -- --exact --nocapture recursion::wrap::tests::the_wrap_constraint_graph_compiles_to_the_circuit_constraints 2>&1 | grep -E "wrap G|test result" || true
