@@ -271,8 +271,8 @@ exact). The gate: `wrap::max_proof_bytes(final key)` ≤ 72 KiB
 72,965 B, 128.43 bits at the weakest row, proved end to end at 71,653 B with
 a final level of 2,022.4 s (`wrap::tests::the_shipped_final_proof_is_within_max_final_bytes_over_every_transcript`;
 `audit/wrap-frontier-hemera-0.4-2026-10-26.md`). The gate was 64 KiB; under hemera 0.4
-the previous chain (`9f:26`, fold 4) bounds at 74,525 B and no 64 KiB chain
-was measured at a prover cost within reach of the 2,022 s above;
+the previous chain (`9f:26`, fold 4) bounds at 74,525 B, and the 64 KiB chain `10f:32:5` (64,129 B) did not
+finish its final level within 355 min on 4 threads;
 `FinalProof::from_bytes` refuses longer input and profile 6 refuses a
 final key over the gate. A profile-6 envelope adds its header (11 B), format byte and
 chain (37 B), the statement (program digest 32 B, inputs, output tokens,

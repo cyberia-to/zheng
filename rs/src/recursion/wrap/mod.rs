@@ -89,8 +89,8 @@ use crate::air::{Air, Public, Shape, Vals};
 pub const SHIPPED: &str = "4i:16,7i:22,9f:26:5";
 
 /// The outermost proof's size bound: 72 KiB (73,728 B), by construction —
-/// raised from 64 KiB because the 64 KiB bound of the previous chain
-/// (`9f:26`, fold 4) is 74,525 B under hemera 0.4.
+/// raised from 64 KiB because the previous chain (`9f:26`, fold 4) bounds
+/// at 74,525 B under hemera 0.4.
 pub const MAX_FINAL_BYTES: usize = 73_728;
 
 /// The most bytes an outermost proof under the final key `k` takes over
