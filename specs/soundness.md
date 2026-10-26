@@ -111,10 +111,10 @@ Every number below is printed and checked ≥ 128 by
 (inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, inner
 1/128 with 22, final 1/256 with 30 and 1/512 with 24 and 26), by
 `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the shipped chain `wrap::SHIPPED` = `4i:16,7i:22,9f:26`, measured in
+(the shipped chain `wrap::SHIPPED` = `4i:16,7i:22,9f:26:5`, measured in
 `audit/wrap-fastverify-2026-10.md` and `audit/ivc-speed-2026-10.md`:
 inner 1/16 with 16 grinding bits (2^16 rows), inner 1/128 with 22 (2^15),
-final 1/512 with 26 (2^14) — weakest rows 128.09 / 128.24 / 128.40) and by
+final 1/512 with 26, folding factor 5 (2^14) — weakest rows 128.09 / 128.24 / 128.43) and by
 `examples/wrap_bench` for the derived keys. Every field-native schedule
 keeps lens's queries per round and re-chooses per round the Johnson
 regime, OOD count and fold/query grinding for the least grinding work
@@ -125,7 +125,7 @@ query 24/24/27 (was 17/20/25 and 26/26/26), level 1's combination 21
 interactively (every grinding removed — fold, query and combination
 challenges) the weakest rounds carry **110.23 / 104.24 / 101.89** bits
 (the final level's `fin` after its 27-bit query grinding — the
-queries 24/18/14 keep the proof ≤ 64,213 B over every transcript), so
+queries 24/18/14 kept the proof ≤ 64,213 B over every transcript under hemera 0.3 and `9f:26`; `9f:26:5` bounds at 72,965 B now (72 KiB gate)), so
 the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,
 `audit/wrap-2026-10.md`) carried 98.02 interactively at its final level.

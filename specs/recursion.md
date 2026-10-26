@@ -254,10 +254,10 @@ evaluates `u_λ` slot by slot: with `ℓ − fv ≤ n` every cell of one slot
 shares its row's `eq(α, ·)` factor, so the term is one product per slot
 and a Horner sum over the reads (`wrap::wiring`).
 
-The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`): the IVC proof
+The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26:5`): the IVC proof
 (rate 1/16, `ivc::SHIPPED_RATE`, steps of `2^15` rows, 4-ary trees) →
 inner 1/16 grinding 16 bits (the IVC final verifier, 48,453 of 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
-1/512 grinding 26 (2^14 rows). The final level's circuit size (≤ 2^14,
+1/512 grinding 26, folding factor 5 (2^14 rows). The final level's circuit size (≤ 2^14,
 so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the
 final circuit verifies; the base-field key (a key leaf of 6 permutations
 instead of 11) makes 1/128 fit — 16,230 of 16,384 rows; the final rate and grinding fix the
@@ -266,17 +266,22 @@ without proving). **Size gate.** The outermost proof's size is bounded by constr
 not measured: every message shape is fixed by the final key and a
 multi-opening of `q` leaves carries at most `Σ_levels (a·n_{l+1} − n_l)`
 siblings with `n_l = min(q, nodes at level l)` (`whir::wire::max_siblings`,
-exact). The gate: `wrap::max_proof_bytes(final key)` ≤ 64 KiB
-(`wrap::MAX_FINAL_BYTES` = 65,536), hard, by key — the shipped chain
-64,213 B (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`);
+exact). The gate: `wrap::max_proof_bytes(final key)` ≤ 72 KiB
+(`wrap::MAX_FINAL_BYTES` = 73,728), hard, by key — the shipped chain
+72,965 B, 128.43 bits at the weakest row, proved end to end at 71,653 B with
+a final level of 2,022.4 s (`wrap::tests::the_shipped_final_proof_is_within_max_final_bytes_over_every_transcript`;
+`audit/wrap-frontier-hemera-0.4-2026-10-26.md`). The gate was 64 KiB; under hemera 0.4
+the previous chain (`9f:26`, fold 4) bounds at 74,525 B and no 64 KiB chain
+was measured at a prover cost within reach of the 2,022 s above;
 `FinalProof::from_bytes` refuses longer input and profile 6 refuses a
 final key over the gate. A profile-6 envelope adds its header (11 B), format byte and
 chain (37 B), the statement (program digest 32 B, inputs, output tokens,
-cycles, budget, state) and the proof's length varint (3 B): it is ≤ 64 KiB
-over every transcript whenever the encoded statement takes ≤ 1,272 B
-(65,536 − 64,213 − 51; small programs take ≈ 0.6–0.9 KB); a larger statement
-(many inputs or outputs) can push the envelope past 64 KiB while the
-proof stays under its gate. A verifying key travels as bytes (`WrapKey::vk_bytes`,
+cycles, budget, state) and the proof's length varint (3 B): it is ≤ 72 KiB
+over every transcript whenever the encoded statement takes ≤ 712 B
+(73,728 − 72,965 − 51; small programs take ≈ 0.6–0.9 KB, so some do not
+fit); a larger statement (many inputs or outputs) can push the envelope past
+72 KiB while the proof stays under its gate. A profile-6 envelope no longer
+fits 64 KiB. A verifying key travels as bytes (`WrapKey::vk_bytes`,
 pinned by `vk_digest`): it verifies, it does not prove.
 The outermost proof (`FinalProof`) is the deferred nox-public claim and
 the final wrap; `wrap::verify_final` refuses a key derived for another

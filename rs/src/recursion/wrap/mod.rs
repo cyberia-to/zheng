@@ -76,17 +76,22 @@ use crate::air::num::{Graph, Num, record};
 use crate::air::{Air, Public, Shape, Vals};
 
 /// The shipped chain of levels over the IVC proof, innermost first, as
-/// the benches spell it (`<log inv rate><i|f>[:<grinding bits>]`): inner
+/// the benches spell it (`<log inv rate><i|f>[:<grinding bits>[:<fold>]]`): inner
 /// 1/16 grinding 16 bits (2^16 rows), inner 1/128 grinding 22 (2^15; its
 /// key over the base field, `splitkey`, so the final circuit fits 2^14),
-/// final 1/512 grinding 26 (2^14): the outermost proof is ≤ 64,213 B
-/// over every transcript ([`max_proof_bytes`] ≤ [`MAX_FINAL_BYTES`]), so a
-/// profile-6 envelope of a statement up to ≈ 1.3 KB fits 64 KiB —
-/// `audit/wrap-fastverify-2026-10.md`.
-pub const SHIPPED: &str = "4i:16,7i:22,9f:26";
+/// final 1/512 grinding 26 with folding factor 5 (2^14): the outermost
+/// proof is ≤ 72,965 B over every transcript ([`max_proof_bytes`] ≤
+/// [`MAX_FINAL_BYTES`]), 128.43 bits at the weakest row, proved end to end
+/// at 71,653 B with a final level of 2,022.4 s (zheng run 40334403053). A
+/// profile-6 envelope no longer fits 64 KiB: it fits 72 KiB for a
+/// statement up to 712 B (73,728 − 72,965 − 51) —
+/// `audit/wrap-frontier-hemera-0.4-2026-10-26.md`.
+pub const SHIPPED: &str = "4i:16,7i:22,9f:26:5";
 
-/// The outermost proof's size bound: 64 KiB, by construction.
-pub const MAX_FINAL_BYTES: usize = 65_536;
+/// The outermost proof's size bound: 72 KiB (73,728 B), by construction —
+/// raised from 64 KiB because the 64 KiB bound of the previous chain
+/// (`9f:26`, fold 4) is 74,525 B under hemera 0.4.
+pub const MAX_FINAL_BYTES: usize = 73_728;
 
 /// The most bytes an outermost proof under the final key `k` takes over
 /// every transcript (no two queries sharing a Merkle node): every message
