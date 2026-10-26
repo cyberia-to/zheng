@@ -112,10 +112,11 @@ fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
 pub const SHIPPED_POW: u8 = 16;
 
 /// The recursion profile's shipped rate under the wrap chain (profile 6):
-/// 1/8 (`examples/ivc_plan`: with 4-ary trees the step circuit fits 24,259
-/// of 32,768 rows at 16 grinding bits; every committed word is half the
-/// 1/16 codeword; `audit/ivc-speed-2026-10.md`).
-pub const SHIPPED_RATE: u8 = 3;
+/// 1/16 (`examples/ivc_plan`: under hemera 0.4 (60 permutation rounds) with
+/// 4-ary trees the step circuit fits 28,615 of 32,768 rows at 16 grinding
+/// bits; at rate 1/8 it needs 34,090 rows and `key` refuses it;
+/// `audit/ivc-speed-2026-10.md`).
+pub const SHIPPED_RATE: u8 = 4;
 
 /// A step size and parameter set planned without committing the key: the
 /// step circuit's rows (it must fit the step's `2^n` with the nox

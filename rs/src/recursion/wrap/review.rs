@@ -400,7 +400,7 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 }
 
 /// The shipped chain's levels (`audit/wrap-fastverify-2026-10.md`:
-/// `4i:16,7i:22,9f:26`, grinding 16 / 22 / 26 bits) reach 128 bits on
+/// `4i:16,7i:22,9f:26:5`, grinding 16 / 22 / 26 bits) reach 128 bits on
 /// every row; the weakest row of each level and its interactive value
 /// (every grinding removed: folds, queries, the combination) as printed
 /// in the audit.
@@ -411,11 +411,14 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
     for (rate, pow, n, mode, reads) in [
         (4u8, 16u8, 16usize, Mode::Inner, 0usize),
         (7, 22, 15, Mode::Inner, 0),
-        (9, 26, 14, Mode::Final, 1 << 18),
+        (9, 26, 15, Mode::Final, 1 << 18),
     ] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;
+        if mode == Mode::Final {
+            whir.folding_factor = 5;
+        }
         let params = WrapParams { whir, n, mode };
         let fresh = crate::accumulate::fresh_ood(&whir, n + super::CBITS).unwrap();
         // the levels' own opening configurations: an inner key is 132
@@ -474,12 +477,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
     }
     // the figures `specs/soundness.md` and the audit state, under the
     // rebalanced schedule (`whir::schedule`; `audit/ivc-speed-2026-10.md`):
-    // weakest 128.09 / 128.24 / 128.40, interactively 110.23 / 104.24 /
-    // 101.89 (final: `fin` after its 27 bits) — five input words at each
+    // weakest 128.09 / 128.24 / 128.43, interactively 110.23 / 104.24 /
+    // 101.43 (final: `fold_2` after its 27-bit fold grinding) — five input words at each
     // inner level (`audit/proof-stack-review-2026-10.md` D1)
     for (got, want) in weakest
         .iter()
-        .zip([(128.09, 110.23), (128.24, 104.24), (128.40, 101.89)])
+        .zip([(128.09, 110.23), (128.24, 104.24), (128.43, 101.43)])
     {
         assert!(
             (got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01,

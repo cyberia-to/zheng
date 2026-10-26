@@ -97,11 +97,11 @@ fn a_coefficient_applies_as_the_field_product() {
     assert_eq!(Coef::of(t * t), Coef::T2);
 }
 
-/// The shipped chain's outermost proof is ≤ 64 KiB over every transcript
+/// The shipped chain's outermost proof is ≤ `MAX_FINAL_BYTES` (72 KiB) over every transcript
 /// (a hard bound from the key's shapes, not a measurement), and the bound
 /// is tight: a proof whose queries share no Merkle node reaches it.
 #[test]
-fn the_shipped_final_proof_is_at_most_64_kib_over_every_transcript() {
+fn the_shipped_final_proof_is_within_max_final_bytes_over_every_transcript() {
     use crate::recursion::ivc;
     let mut whir = crate::execution::succinct::params_for(20);
     whir.log_inv_rate = 4;
@@ -115,6 +115,9 @@ fn the_shipped_final_proof_is_at_most_64_kib_over_every_transcript() {
         let mut w = whir;
         w.log_inv_rate = rate.parse().unwrap();
         w.pow_bits = parts.next().unwrap().parse().unwrap();
+        if let Some(k) = parts.next() {
+            w.folding_factor = k.parse().unwrap();
+        }
         let params = WrapParams {
             whir: w,
             n: 0,
