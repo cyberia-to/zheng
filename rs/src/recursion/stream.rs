@@ -149,7 +149,10 @@ pub fn commit(
     let w = 1usize << log_width;
     let leaves = n / w;
     let per = leaves / b;
-    assert!(per >= 1 && leaves.is_multiple_of(b), "a leaf lies in one coset");
+    assert!(
+        per >= 1 && leaves.is_multiple_of(b),
+        "a leaf lies in one coset"
+    );
     let lpm = if members[0].is_ext() { 3 } else { 1 };
     let planes = members.len() * lpm;
     let mut vals_out = if keep {

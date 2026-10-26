@@ -41,12 +41,12 @@ fn main() {
                         }
                     };
                     let led = params::ledger(&pp);
-                    let (wn, wb, _) = led
-                        .iter()
-                        .cloned()
-                        .fold((String::new(), f64::INFINITY, 0), |a, x| {
-                            if x.1 < a.1 { x } else { a }
-                        });
+                    let (wn, wb, _) =
+                        led.iter()
+                            .cloned()
+                            .fold((String::new(), f64::INFINITY, 0), |a, x| {
+                                if x.1 < a.1 { x } else { a }
+                            });
                     let inter = led
                         .iter()
                         .map(|x| x.1 - x.2 as f64)
