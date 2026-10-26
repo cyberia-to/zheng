@@ -50,11 +50,11 @@ use crate::recursion::wrap::{self, FinalProof, Inner, Mode, WrapKey, WrapParams}
 
 /// Version of the profile-6 body (2: the program bound by its digest; 3:
 /// the chain `wrap::SHIPPED`, IVC at 16 grinding bits, the final level's
-/// message digests; 4: the final level at 1/1024 with 32 grinding bits and
-/// folding factor 5 — its proof ≤ 64,129 B over every transcript; 5: the inner levels' keys over the
+/// message digests; 4: the final level at 26 grinding bits — its proof
+/// ≤ 64,213 B over every transcript; 5: the inner levels' keys over the
 /// base field, the second level at 1/128 with 22 grinding bits; 6: the
-/// IVC at rate 1/16 under 4-ary trees).
-pub const WRAPPED_FORMAT: u8 = 6;
+/// IVC at rate 1/8 under 4-ary trees; 7: hemera 0.4: the IVC at rate 1/16, the final level at 1/1024 with 32 grinding bits and folding factor 5 (`10f:32:5`) — its proof ≤ 64,129 B over every transcript).
+pub const WRAPPED_FORMAT: u8 = 7;
 /// Upper bound on the final proof bytes: 64 KiB, by construction — the
 /// admitted final key's `wrap::max_proof_bytes` (64,129 B, over every
 /// transcript) is ≤ this, checked when the key is built.
