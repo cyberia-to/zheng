@@ -411,7 +411,7 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
     for (rate, pow, n, mode, reads) in [
         (4u8, 16u8, 16usize, Mode::Inner, 0usize),
         (7, 22, 15, Mode::Inner, 0),
-        (9, 26, 14, Mode::Final, 1 << 18),
+        (9, 26, 15, Mode::Final, 1 << 18),
     ] {
         let mut whir = base;
         whir.log_inv_rate = rate;

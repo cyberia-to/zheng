@@ -78,8 +78,8 @@ use crate::air::{Air, Public, Shape, Vals};
 /// The shipped chain of levels over the IVC proof, innermost first, as
 /// the benches spell it (`<log inv rate><i|f>[:<grinding bits>[:<fold>]]`): inner
 /// 1/16 grinding 16 bits (2^16 rows), inner 1/128 grinding 22 (2^15; its
-/// key over the base field, `splitkey`, so the final circuit fits 2^14),
-/// final 1/512 grinding 26 with folding factor 5 (2^14): the outermost
+/// key over the base field, `splitkey`), final 1/512 grinding 26 with
+/// folding factor 5 (23,921 rows, so 2^15): the outermost
 /// proof is ≤ 72,965 B over every transcript ([`max_proof_bytes`] ≤
 /// [`MAX_FINAL_BYTES`]), 128.43 bits at the weakest row, proved end to end
 /// at 71,653 B with a final level of 2,022.4 s (zheng run 40334403053). A
