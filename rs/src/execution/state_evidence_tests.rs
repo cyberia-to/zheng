@@ -8,7 +8,9 @@ pub(crate) fn evidence(tables: Vec<StateTable>) -> StateEvidence {
     StateEvidence::with_tables(tables)
 }
 
-/// bbg `root.rs` frozen vectors (zheng 0.4 `ccs::root_from_leaves`).
+/// bbg `root.rs` frozen vectors (zheng 0.4 `ccs::root_from_leaves`). The
+/// expected limbs are bbg's own `root_from_leaves` at hemera 0.4 on the same
+/// leaves (bbg `feat/hemera-0.4`, diagnostic run 40271462412), not zheng's.
 #[test]
 fn root_matches_the_bbg_frozen_vectors() {
     let mut sample = [[0u64; 4]; LEAVES];
@@ -21,19 +23,19 @@ fn root_matches_the_bbg_frozen_vectors() {
     assert_eq!(
         state_root_of(&sample),
         [
-            1839648704373557657,
-            16245063762079522430,
-            2767124943183982576,
-            17812001250628018905
+            16477432153173169099,
+            2862899266947497366,
+            7945034968111883254,
+            17129176143486639903
         ]
     );
     assert_eq!(
         state_root_of(&[[0; 4]; LEAVES]),
         [
-            9231417576306038954,
-            11425091536555908058,
-            3672555888010110395,
-            14299998217756054807
+            15741156245502277318,
+            17748832454126187283,
+            6317947328775582205,
+            8240840581287171100
         ]
     );
 }
