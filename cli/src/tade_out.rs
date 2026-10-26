@@ -9,7 +9,7 @@
 
 use std::io::{IsTerminal, Write};
 
-use tape::{Chunk, Writer, encode_nested, kv, render, sigil};
+use tade::{Chunk, Writer, encode_nested, kv, render, sigil};
 
 use crate::style::{self, paint};
 

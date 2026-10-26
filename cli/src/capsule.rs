@@ -12,7 +12,7 @@
 //! Encoding: `(sigil::BAR, render::STRUCT)` chunk whose payload is
 //! `encode_nested` of `kv` pairs in fixed order (formula, object, budget).
 
-use tape::{Chunk, Reader, encode_nested, kv, read_kv, render, sigil};
+use tade::{Chunk, Reader, encode_nested, kv, read_kv, render, sigil};
 
 /// A nox program: what to run and with how much budget.
 pub struct Program {
