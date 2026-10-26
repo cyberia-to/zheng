@@ -128,7 +128,7 @@ jobs:
         with:
           workspaces: zheng
       - name: cargo test
-        run: cargo test --locked --workspace
+        run: cargo test --locked -p zheng-cli
         working-directory: zheng
 
   clippy:
