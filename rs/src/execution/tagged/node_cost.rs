@@ -223,7 +223,9 @@ impl Builder {
             self.read_port(branch, b.right, n)?,
         ];
         // Fixed metadata costs mirror nox::data::cost::PATTERN_COSTS.
-        let costs = [1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, HASH_COST, 1, 1];
+        let costs = [
+            1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, HASH_COST, 1, 1,
+        ];
         let base = self.lin(
             tags.into_iter()
                 .zip(costs)

@@ -43,21 +43,21 @@ pub const FLAGS: usize = 16;
 /// `OP_WORD` covers xor, and, shl (tags 11, 12, 14; cost 32): its tag is
 /// the formula's own tag atom, restricted to those three.
 pub const OPS: [(usize, u64, u64); 15] = [
-    (0, 0, 1),    // axis
-    (1, 1, 1),    // quote
-    (2, 2, 1),    // compose
-    (3, 3, 1),    // cons
-    (4, 4, 1),    // branch
-    (5, 5, 1),    // add
-    (6, 6, 1),    // sub
-    (7, 7, 1),    // mul
-    (8, 8, 64),   // inv
-    (9, 9, 1),    // eq
+    (0, 0, 1),           // axis
+    (1, 1, 1),           // quote
+    (2, 2, 1),           // compose
+    (3, 3, 1),           // cons
+    (4, 4, 1),           // branch
+    (5, 5, 1),           // add
+    (6, 6, 1),           // sub
+    (7, 7, 1),           // mul
+    (8, 8, 64),          // inv
+    (9, 9, 1),           // eq
     (10, 15, HASH_COST), // hash
-    (11, 10, 64), // lt
-    (13, 13, 32), // not
-    (14, 16, 1),  // call
-    (15, 17, 1),  // look
+    (11, 10, 64),        // lt
+    (13, 13, 32),        // not
+    (14, 16, 1),         // call
+    (15, 17, 1),         // look
 ];
 pub const OP_AXIS: usize = FLAG0;
 pub const OP_QUOTE: usize = FLAG0 + 1;
