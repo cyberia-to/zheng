@@ -218,5 +218,5 @@ jobs:
         with:
           workspaces: zheng
       - name: cargo fmt
-        run: cargo fmt --all --check
+        run: cargo fmt --check
         working-directory: zheng
