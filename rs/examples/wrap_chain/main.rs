@@ -76,6 +76,22 @@ fn main() {
                 .map(|(i, _)| i)
                 .collect();
             line.push(format!("{l}: {} rows (perm blocks {}) → 2^{} · q {q:?} · {weak:.2} bits · key columns with Fp3 entries {ext_cols:?}", k.rows, k.census[2], k.params.n));
+            line.push(format!(
+                "  census {l}: constraints {} · gates {} · bits {} · perm blocks {} · rows = gates/4 {} + bits*4 {} + perms*PERM_ROWS({}) {} = {} · n {} · ell {} · key_phys {} · key_words {}",
+                k.constraints,
+                k.census[0],
+                k.census[1],
+                k.census[2],
+                k.census[0].div_ceil(4),
+                k.census[1] * 4,
+                zheng::recursion::circuit::layout::PERM_ROWS,
+                k.census[2] * zheng::recursion::circuit::layout::PERM_ROWS,
+                k.census[0].div_ceil(4) + k.census[1] * 4 + k.census[2] * zheng::recursion::circuit::layout::PERM_ROWS,
+                k.params.n,
+                k.params.n + wrap::CBITS,
+                k.key_phys.len(),
+                k.key_words()
+            ));
             if !k.inner() {
                 line.push(format!(
                     "final proof ≤ {} B over every transcript",
