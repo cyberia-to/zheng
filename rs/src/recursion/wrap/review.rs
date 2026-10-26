@@ -19,7 +19,11 @@ use crate::recursion::sponge::Sponge;
 use crate::recursion::word::{Arity, Word, verify_leaf};
 
 fn e(i: u64) -> Fp3 {
-    Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i + 11), Goldilocks::new(3 * i))
+    Fp3::new(
+        Goldilocks::new(i * 7 + 1),
+        Goldilocks::new(i + 11),
+        Goldilocks::new(3 * i),
+    )
 }
 
 /// A verifier exercising every operation a wrap level records: gates,
@@ -48,7 +52,9 @@ fn program<O: Ops>(o: &mut O, w2: &Word, w4: &Word, leaf: usize) {
     for w in [w2, w4] {
         let op = w.open(leaf);
         let nb = w.layout.log_leaves() as usize;
-        let lb: Vec<O::V> = (0..nb).map(|k| o.witness(Fp3::from_base(Goldilocks::new(((leaf >> k) & 1) as u64)))).collect();
+        let lb: Vec<O::V> = (0..nb)
+            .map(|k| o.witness(Fp3::from_base(Goldilocks::new(((leaf >> k) & 1) as u64))))
+            .collect();
         let root: [O::V; 4] = core::array::from_fn(|i| o.witness(Fp3::from_base(w.root()[i])));
         let syms = verify_leaf(o, w.is_ext(), w.arity, &op, &lb, root, "root");
         let t = o.dot(&syms, &syms);
@@ -57,9 +63,15 @@ fn program<O: Ops>(o: &mut O, w2: &Word, w4: &Word, leaf: usize) {
 }
 
 fn words() -> (Word, Word) {
-    let layout = lens::rspcs::whir::LeafLayout { log_domain: 9, log_width: 2 };
+    let layout = lens::rspcs::whir::LeafLayout {
+        log_domain: 9,
+        log_width: 2,
+    };
     let evals: Vec<Goldilocks> = (0..128u64).map(|i| Goldilocks::new(i * 5 + 2)).collect();
-    (Word::commit_base_a(layout, &evals, Arity::Two), Word::commit_base_a(layout, &evals, Arity::Four))
+    (
+        Word::commit_base_a(layout, &evals, Arity::Two),
+        Word::commit_base_a(layout, &evals, Arity::Four),
+    )
 }
 
 fn lift(t: &Trace, r: usize) -> Vec<Fp3> {
@@ -73,8 +85,20 @@ fn local_breaks(air: &CircuitAir, t1: &Trace, p: &Pre, rows: &[usize]) -> bool {
     let mut buf = vec![Fp3::ZERO; air.local_constraints()];
     rows.iter().any(|&r| {
         let (l1, n1, pr) = (lift(t1, r), lift(t1, (r + 1) % n), p.row(r));
-        let mut s = Sink { buf: &mut buf, i: 0 };
-        let row = Row { l1: &l1, l2: &z2, n1: &n1, n2: &z2, p: &pr, pin: &[Fp3::ZERO; PIN], alpha: Fp3::ZERO, beta: Fp3::ZERO };
+        let mut s = Sink {
+            buf: &mut buf,
+            i: 0,
+        };
+        let row = Row {
+            l1: &l1,
+            l2: &z2,
+            n1: &n1,
+            n2: &z2,
+            p: &pr,
+            pin: &[Fp3::ZERO; PIN],
+            alpha: Fp3::ZERO,
+            beta: Fp3::ZERO,
+        };
         air.eval_local(&row, &mut s);
         buf.iter().any(|&v| v != Fp3::ZERO)
     })
@@ -118,7 +142,11 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
     if on(pre::ARITH) {
         let (g, k) = (c / 12, (c % 12) / 3);
         let unused = pr[pre::E + 4 * g + k] == Fp3::ZERO;
-        return if k < 3 { unused } else { unused && pr[pre::gate(g, pre::QCOMP)] == Fp3::ZERO };
+        return if k < 3 {
+            unused
+        } else {
+            unused && pr[pre::gate(g, pre::QCOMP)] == Fp3::ZERO
+        };
     }
     if let Some(ph) = (0..4).find(|&k| on(pre::BITS + k)) {
         return match c {
@@ -129,8 +157,8 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
             _ => true,
         };
     }
-    if let Some(ph) = (0..4).find(|&k| on(pre::PERM + k)) {
-        if ph < 3 || c < PRT {
+    if let Some(ph) = (0..PERM_ROWS).find(|&k| on(pre::PERM + k)) {
+        if ph + 1 < PERM_ROWS || c < PRT {
             return false;
         }
         return match c {
@@ -168,7 +196,10 @@ fn the_linear_wiring_pins_every_cell_the_memory_argument_pins() {
         // the slot values are linear in the row's cells (no constant)
         let z = vec![Fp3::ZERO; V1];
         let v = crate::recursion::circuit::air::slot_values(&z, &p.row(r));
-        assert!(v.iter().all(|&x| x == Fp3::ZERO), "row {r}: an affine slot value");
+        assert!(
+            v.iter().all(|&x| x == Fp3::ZERO),
+            "row {r}: an affine slot value"
+        );
     }
     let u = u_table(&w, n, e(91));
     assert_eq!(wiring_sum(&u, &t1), Fp3::ZERO, "an honest run is wired");
@@ -201,8 +232,14 @@ fn the_linear_wiring_pins_every_cell_the_memory_argument_pins() {
         }
     }
     assert!(pinned > 2000, "{pinned} pinned cells");
-    assert!(free.is_empty(), "cells neither constrained nor wired (row, col): {free:?}");
-    assert!(weaker.is_empty(), "cells the memory argument pins and the wiring does not: {weaker:?}");
+    assert!(
+        free.is_empty(),
+        "cells neither constrained nor wired (row, col): {free:?}"
+    );
+    assert!(
+        weaker.is_empty(),
+        "cells the memory argument pins and the wiring does not: {weaker:?}"
+    );
 }
 
 /// The class of #53's finding: a value the native verifier refuses (an
@@ -226,76 +263,122 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
     // each case natively and in the circuit (written twice: closures are
     // not generic over the interpreter)
     let cases: Vec<(&str, Case, bool)> = vec![
-        ("an Fp3 challenge absorbed as a base lane", |o| {
-            let v = ext_value(o);
-            let mut sp = Sponge::new(o, tag::PUBLIC);
-            sp.absorb(o, v);
-            sp.squeeze(o);
-        }, native(|o| {
-            let v = ext_value(o);
-            let mut sp = Sponge::new(o, tag::PUBLIC);
-            sp.absorb(o, v);
-            sp.squeeze(o);
-        })),
-        ("bits of an Fp3 value", |o| {
-            let v = ext_value(o);
-            o.bits(v, 8);
-        }, native(|o| {
-            let v = ext_value(o);
-            o.bits(v, 8);
-        })),
-        ("an Fp3 Merkle root", |o| {
-            let v = ext_value(o);
-            let mut c = o.chain(tag::LEAF);
-            let z = o.zero();
-            o.permute(&mut c, &[crate::recursion::ops::In::Var(z, true), crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero]);
-            o.digest_eq(&c, [v, z, z, z], "root");
-        }, native(|o| {
-            let v = ext_value(o);
-            let mut c = o.chain(tag::LEAF);
-            let z = o.zero();
-            o.permute(&mut c, &[crate::recursion::ops::In::Var(z, true), crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero, crate::recursion::ops::In::Zero]);
-            o.digest_eq(&c, [v, z, z, z], "root");
-        })),
-        ("a Merkle direction 2", |o| {
-            let one = o.one();
-            let two = o.add(one, one);
-            let mut sp = Sponge::new(o, tag::LEAF);
-            sp.absorb(o, one);
-            sp.flush(o);
-            o.node(&mut sp.chain, two, [Goldilocks::ONE; 4]);
-        }, native(|o| {
-            let one = o.one();
-            let two = o.add(one, one);
-            let mut sp = Sponge::new(o, tag::LEAF);
-            sp.absorb(o, one);
-            sp.flush(o);
-            o.node(&mut sp.chain, two, [Goldilocks::ONE; 4]);
-        })),
-        ("a 4-ary direction 2", |o| {
-            let one = o.one();
-            let two = o.add(one, one);
-            let mut sp = Sponge::new(o, tag::LEAF);
-            sp.absorb(o, one);
-            sp.flush(o);
-            o.node4(&mut sp.chain, [one, two], [[Goldilocks::ONE; 4]; 3]);
-        }, native(|o| {
-            let one = o.one();
-            let two = o.add(one, one);
-            let mut sp = Sponge::new(o, tag::LEAF);
-            sp.absorb(o, one);
-            sp.flush(o);
-            o.node4(&mut sp.chain, [one, two], [[Goldilocks::ONE; 4]; 3]);
-        })),
-        ("the inverse of zero", |o| {
-            let one = o.one();
-            let z = o.sub(one, one);
-            o.inv(z, "nonzero");
-        }, native(|o| {
-            let one = o.one();
-            let z = o.sub(one, one);
-            o.inv(z, "nonzero");
-        })),
+        (
+            "an Fp3 challenge absorbed as a base lane",
+            |o| {
+                let v = ext_value(o);
+                let mut sp = Sponge::new(o, tag::PUBLIC);
+                sp.absorb(o, v);
+                sp.squeeze(o);
+            },
+            native(|o| {
+                let v = ext_value(o);
+                let mut sp = Sponge::new(o, tag::PUBLIC);
+                sp.absorb(o, v);
+                sp.squeeze(o);
+            }),
+        ),
+        (
+            "bits of an Fp3 value",
+            |o| {
+                let v = ext_value(o);
+                o.bits(v, 8);
+            },
+            native(|o| {
+                let v = ext_value(o);
+                o.bits(v, 8);
+            }),
+        ),
+        (
+            "an Fp3 Merkle root",
+            |o| {
+                let v = ext_value(o);
+                let mut c = o.chain(tag::LEAF);
+                let z = o.zero();
+                o.permute(
+                    &mut c,
+                    &[
+                        crate::recursion::ops::In::Var(z, true),
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                    ],
+                );
+                o.digest_eq(&c, [v, z, z, z], "root");
+            },
+            native(|o| {
+                let v = ext_value(o);
+                let mut c = o.chain(tag::LEAF);
+                let z = o.zero();
+                o.permute(
+                    &mut c,
+                    &[
+                        crate::recursion::ops::In::Var(z, true),
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                        crate::recursion::ops::In::Zero,
+                    ],
+                );
+                o.digest_eq(&c, [v, z, z, z], "root");
+            }),
+        ),
+        (
+            "a Merkle direction 2",
+            |o| {
+                let one = o.one();
+                let two = o.add(one, one);
+                let mut sp = Sponge::new(o, tag::LEAF);
+                sp.absorb(o, one);
+                sp.flush(o);
+                o.node(&mut sp.chain, two, [Goldilocks::ONE; 4]);
+            },
+            native(|o| {
+                let one = o.one();
+                let two = o.add(one, one);
+                let mut sp = Sponge::new(o, tag::LEAF);
+                sp.absorb(o, one);
+                sp.flush(o);
+                o.node(&mut sp.chain, two, [Goldilocks::ONE; 4]);
+            }),
+        ),
+        (
+            "a 4-ary direction 2",
+            |o| {
+                let one = o.one();
+                let two = o.add(one, one);
+                let mut sp = Sponge::new(o, tag::LEAF);
+                sp.absorb(o, one);
+                sp.flush(o);
+                o.node4(&mut sp.chain, [one, two], [[Goldilocks::ONE; 4]; 3]);
+            },
+            native(|o| {
+                let one = o.one();
+                let two = o.add(one, one);
+                let mut sp = Sponge::new(o, tag::LEAF);
+                sp.absorb(o, one);
+                sp.flush(o);
+                o.node4(&mut sp.chain, [one, two], [[Goldilocks::ONE; 4]; 3]);
+            }),
+        ),
+        (
+            "the inverse of zero",
+            |o| {
+                let one = o.one();
+                let z = o.sub(one, one);
+                o.inv(z, "nonzero");
+            },
+            native(|o| {
+                let one = o.one();
+                let z = o.sub(one, one);
+                o.inv(z, "nonzero");
+            }),
+        ),
     ];
     let air = CircuitAir::default();
     for (what, case, refused_natively) in cases {
@@ -325,7 +408,11 @@ fn values_the_native_verifier_refuses_break_both_wrap_modes() {
 fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated() {
     let base = crate::execution::succinct::params_for(20);
     let mut weakest = Vec::new();
-    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (7, 22, 15, Mode::Inner, 0), (9, 26, 14, Mode::Final, 1 << 18)] {
+    for (rate, pow, n, mode, reads) in [
+        (4u8, 16u8, 16usize, Mode::Inner, 0usize),
+        (7, 22, 15, Mode::Inner, 0),
+        (9, 26, 14, Mode::Final, 1 << 18),
+    ] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;
@@ -334,17 +421,30 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         // the levels' own opening configurations: an inner key is 132
         // physical columns (`splitkey`: 108 logical + 2·12 limbs) in three
         // base words (`tests/proof_stack_review.rs` checks the derived keys)
-        let key_words = if mode == Mode::Inner { crate::recursion::splitkey::words(132) } else { 0 };
-        let cfg = super::program::level_config(&params, n + super::CBITS, fresh, key_words).unwrap();
+        let key_words = if mode == Mode::Inner {
+            crate::recursion::splitkey::words(132)
+        } else {
+            0
+        };
+        let cfg =
+            super::program::level_config(&params, n + super::CBITS, fresh, key_words).unwrap();
         let constraints = super::View(&CircuitAir::default(), mode).constraints();
         let rows = ledger(&params, &cfg, constraints, reads);
         for (nm, b) in &rows {
-            eprintln!("1/{} {mode:?} (constraints {constraints}): {nm:<40} {b:.2}", 1u32 << rate);
+            eprintln!(
+                "1/{} {mode:?} (constraints {constraints}): {nm:<40} {b:.2}",
+                1u32 << rate
+            );
         }
         for (i, rd) in cfg.wc.rounds.iter().enumerate() {
             eprintln!("1/{} {mode:?} round {i}: {rd:?}", 1u32 << rate);
         }
-        let (name, bits) = rows.iter().cloned().fold((String::new(), f64::INFINITY), |a, r| if r.1 < a.1 { r } else { a });
+        let (name, bits) = rows
+            .iter()
+            .cloned()
+            .fold((String::new(), f64::INFINITY), |a, r| {
+                if r.1 < a.1 { r } else { a }
+            });
         assert!(bits >= 128.0, "{rate} {mode:?}: {name} {bits}");
         // the grinding rounds without their grinding: the interactive bound
         let mut inter = f64::INFINITY;
@@ -365,7 +465,11 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
         if let Some((_, b)) = rows.iter().find(|r| r.0 == "fin") {
             inter = inter.min(b - f64::from(last.query_pow));
         }
-        eprintln!("1/{} {mode:?} (pow {pow}, combination {}): weakest {name} {bits:.2}; interactive weakest {inter:.2}", 1u32 << rate, cfg.comb_pow);
+        eprintln!(
+            "1/{} {mode:?} (pow {pow}, combination {}): weakest {name} {bits:.2}; interactive weakest {inter:.2}",
+            1u32 << rate,
+            cfg.comb_pow
+        );
         weakest.push((bits, inter));
     }
     // the figures `specs/soundness.md` and the audit state, under the
@@ -373,8 +477,14 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
     // weakest 128.09 / 128.24 / 128.40, interactively 110.23 / 104.24 /
     // 101.89 (final: `fin` after its 27 bits) — five input words at each
     // inner level (`audit/proof-stack-review-2026-10.md` D1)
-    for (got, want) in weakest.iter().zip([(128.09, 110.23), (128.24, 104.24), (128.40, 101.89)]) {
-        assert!((got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01, "{weakest:?}");
+    for (got, want) in weakest
+        .iter()
+        .zip([(128.09, 110.23), (128.24, 104.24), (128.40, 101.89)])
+    {
+        assert!(
+            (got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01,
+            "{weakest:?}"
+        );
     }
 }
 
@@ -393,11 +503,32 @@ fn a_final_proof_under_another_step_size_is_refused_by_its_key() {
     whir.log_inv_rate = 4;
     whir.pow_bits = 24;
     let ikey = ivc::key(&whir, 15).unwrap();
-    let k = super::derive_key_ivc(WrapParams { whir, n: 0, mode: Mode::Final }, &ikey).unwrap();
+    let k = super::derive_key_ivc(
+        WrapParams {
+            whir,
+            n: 0,
+            mode: Mode::Final,
+        },
+        &ikey,
+    )
+    .unwrap();
     assert_eq!(k.ivc, (whir, 15));
     // a final-mode level is never verified by a circuit
-    assert!(super::derive_key_wrap(WrapParams { whir, n: 0, mode: Mode::Inner }, &k).is_err());
-    let (_, prog, input) = crate::machine::tests::programs().into_iter().find(|p| p.0 == "add").unwrap();
+    assert!(
+        super::derive_key_wrap(
+            WrapParams {
+                whir,
+                n: 0,
+                mode: Mode::Inner
+            },
+            &k
+        )
+        .is_err()
+    );
+    let (_, prog, input) = crate::machine::tests::programs()
+        .into_iter()
+        .find(|p| p.0 == "add")
+        .unwrap();
     let run = crate::machine::execute_exact(&prog, &input, 1 << 20, 16).unwrap();
     let st = run.statement;
     let derived = st.derive().unwrap();
@@ -407,10 +538,15 @@ fn a_final_proof_under_another_step_size_is_refused_by_its_key() {
         start,
         segments: 1,
         chain: [Goldilocks::ZERO; 4],
-        pn: crate::recursion::state::ClaimV { point: vec![Fp3::ZERO; k.pn], value: Fp3::ZERO },
+        pn: crate::recursion::state::ClaimV {
+            point: vec![Fp3::ZERO; k.pn],
+            value: Fp3::ZERO,
+        },
         wrap: super::program::dummy_proof(&k),
     };
-    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::verify_statement(&st, &whir, &k, &fp)));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        super::verify_statement(&st, &whir, &k, &fp)
+    }));
     match r {
         Ok(Err(e)) => assert!(e.contains("another recursive proof"), "{e}"),
         Ok(Ok(())) => panic!("accepted"),

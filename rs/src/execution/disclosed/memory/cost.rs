@@ -1,4 +1,5 @@
 use super::{Cost, Error, Memory, Value, VerifiedNode};
+use crate::execution::HASH_COST;
 
 fn combine(base: u64, a: Cost, b: Cost, force_dynamic: bool) -> Cost {
     let value = base.saturating_add(a.value()).saturating_add(b.value());
@@ -29,7 +30,9 @@ impl Memory {
             return Ok(Cost::Exact(0));
         };
         // Canonical nox dispatch metadata, including services as quoted data.
-        let costs = [1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, 25, 1, 1];
+        let costs = [
+            1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, HASH_COST, 1, 1,
+        ];
         let Some(&base) = usize::try_from(tag).ok().and_then(|i| costs.get(i)) else {
             return Ok(Cost::Exact(0));
         };

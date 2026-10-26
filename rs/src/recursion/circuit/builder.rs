@@ -135,7 +135,10 @@ impl Builder {
     /// placed.
     pub fn finish(&self) -> Result<(), String> {
         if self.pending != 0 {
-            return Err(format!("circuit: {} allocated values not placed", self.pending));
+            return Err(format!(
+                "circuit: {} allocated values not placed",
+                self.pending
+            ));
         }
         match self.errors.first() {
             None => Ok(()),
@@ -155,7 +158,13 @@ impl Builder {
                 self.read(*v);
             }
         }
-        self.gates.push(GateRec { g, ops, used, out, kind });
+        self.gates.push(GateRec {
+            g,
+            ops,
+            used,
+            out,
+            kind,
+        });
     }
 }
 
@@ -190,7 +199,10 @@ impl Ops for Builder {
         if let Some(&v) = self.consts.get(&key(x)) {
             return v;
         }
-        let g = Gate { qk: x, ..Gate::default() };
+        let g = Gate {
+            qk: x,
+            ..Gate::default()
+        };
         let any = self.live;
         let out = self.new_var(x);
         self.gate_rec(g, [any, any, any], GateKind::Compute, Some(out));
@@ -198,7 +210,10 @@ impl Ops for Builder {
         out
     }
     fn chain(&mut self, tag: u64) -> BChain {
-        self.chains.push(ChainRec { tag, blocks: Vec::new() });
+        self.chains.push(ChainRec {
+            tag,
+            blocks: Vec::new(),
+        });
         BChain(self.chains.len() - 1)
     }
     fn permute(&mut self, c: &mut BChain, items: &[In<Var>]) {
@@ -261,8 +276,15 @@ impl Ops for Builder {
         let y = self.chains[c.0].blocks.last().expect("a block").y;
         let cur = perm::head(&y);
         let bv = self.value(bit);
-        self.check(bv == Fp3::ZERO || bv == Fp3::ONE, "a Merkle direction is not a bit");
-        let (l, r) = if bv == Fp3::ONE { (sibling, cur) } else { (cur, sibling) };
+        self.check(
+            bv == Fp3::ZERO || bv == Fp3::ONE,
+            "a Merkle direction is not a bit",
+        );
+        let (l, r) = if bv == Fp3::ONE {
+            (sibling, cur)
+        } else {
+            (cur, sibling)
+        };
         let x = perm::node_input(l, r);
         let mut y2 = x;
         perm::permute(&mut y2);
@@ -281,7 +303,10 @@ impl Ops for Builder {
         let mut pos = 0;
         for (k, &b) in bits.iter().enumerate() {
             let bv = self.value(b);
-            self.check(bv == Fp3::ZERO || bv == Fp3::ONE, "a Merkle direction is not a bit");
+            self.check(
+                bv == Fp3::ZERO || bv == Fp3::ONE,
+                "a Merkle direction is not a bit",
+            );
             if bv == Fp3::ONE {
                 pos |= 1 << k;
             }
@@ -318,7 +343,11 @@ impl Ops for Builder {
         let bits: Vec<Var> = (0..want)
             .map(|i| self.new_var(Fp3::from_base(Goldilocks::new((value >> i) & 1))))
             .collect();
-        self.bits.push(BitsRec { v, value, bits: bits.clone() });
+        self.bits.push(BitsRec {
+            v,
+            value,
+            bits: bits.clone(),
+        });
         bits
     }
 }
@@ -337,14 +366,23 @@ impl Builder {
             Fp3::from_base(y[lane])
         };
         let v = self.new_var(val);
-        self.chains[c.0].blocks.last_mut().expect("a block").outs.push((lane, wide, v));
+        self.chains[c.0]
+            .blocks
+            .last_mut()
+            .expect("a block")
+            .outs
+            .push((lane, wide, v));
         v
     }
 
     /// Rows the recorded operations need.
     pub fn rows(&self) -> usize {
-        let arith = self.gates.len().div_ceil(crate::recursion::circuit::layout::GATES).max(1);
+        let arith = self
+            .gates
+            .len()
+            .div_ceil(crate::recursion::circuit::layout::GATES)
+            .max(1);
         let blocks: usize = self.chains.iter().map(|c| c.blocks.len()).sum();
-        arith + 4 * self.bits.len() + 4 * blocks
+        arith + 4 * self.bits.len() + crate::recursion::circuit::layout::PERM_ROWS * blocks
     }
 }

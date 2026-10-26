@@ -51,13 +51,20 @@ pub fn threads() -> usize {
     std::env::var("ZHENG_VERIFY_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()).min(16))
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map_or(1, |n| n.get())
+                .min(16)
+        })
         .max(1)
 }
 
 /// `f` over `0..n` in contiguous chunks on [`threads`] threads, in order
 /// (the persistent pool, [`crate::recursion::pool`]).
-pub(crate) fn par_chunks<T: Send>(n: usize, f: impl Fn(core::ops::Range<usize>) -> T + Sync) -> Vec<T> {
+pub(crate) fn par_chunks<T: Send>(
+    n: usize,
+    f: impl Fn(core::ops::Range<usize>) -> T + Sync,
+) -> Vec<T> {
     crate::recursion::pool::map_chunks(n, threads(), f)
 }
 
@@ -70,7 +77,11 @@ pub(crate) fn par_eq_table(point: &[Fp3]) -> Vec<Fp3> {
     }
     let (lo, hi) = (eq_table(&point[..k]), eq_table(&point[k..]));
     let (lo, hi) = (&lo, &hi);
-    par_chunks(hi.len(), |r| r.flat_map(|h| lo.iter().map(move |&l| l * hi[h])).collect::<Vec<_>>()).concat()
+    par_chunks(hi.len(), |r| {
+        r.flat_map(|h| lo.iter().map(move |&l| l * hi[h]))
+            .collect::<Vec<_>>()
+    })
+    .concat()
 }
 
 /// The key's columns at `ρ` from the key itself.
@@ -90,7 +101,17 @@ pub(crate) fn key_at(k: &WrapKey, rho: &[Fp3]) -> Vec<Fp3> {
             }
         })
     };
-    par_chunks(k.sparse.len(), |r| r.map(|j| if k.key_cols[j] { col(&k.sparse[j]) } else { Fp3::ZERO }).collect::<Vec<_>>()).concat()
+    par_chunks(k.sparse.len(), |r| {
+        r.map(|j| {
+            if k.key_cols[j] {
+                col(&k.sparse[j])
+            } else {
+                Fp3::ZERO
+            }
+        })
+        .collect::<Vec<_>>()
+    })
+    .concat()
 }
 
 /// `λ^i` for `i < n`, in parallel chunks.
@@ -127,7 +148,10 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     let inner = k.inner();
     // final mode evaluates the key, the wiring and the closing in the
     // field and enters them as constants: a circuit would leave them free
-    assert!(inner || o.native(), "wrap: a final-mode level is verified natively only");
+    assert!(
+        inner || o.native(),
+        "wrap: a final-mode level is verified natively only"
+    );
     let mut t = Sponge::new(o, tag::WRAP);
     t.absorb_all(o, &x);
     let mut roots = Vec::with_capacity(2);
@@ -161,7 +185,10 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     }
     // final mode (a native verifier): the columns as one digest
     let (local, sent): (Vec<O::V>, Vec<O::V>) = if inner {
-        (pf.local.iter().map(|&v| t.absorb_free_ext(o, v)).collect(), pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect())
+        (
+            pf.local.iter().map(|&v| t.absorb_free_ext(o, v)).collect(),
+            pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect(),
+        )
     } else {
         let both: Vec<Fp3> = pf.local.iter().chain(&pf.next).copied().collect();
         let mut v = crate::recursion::msg::absorb(o, &mut t, &both);
@@ -176,7 +203,11 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     lap("zerocheck");
     // inner: the key's physical columns at ρ (sent), the logical ones
     // rebuilt for the constraints (`splitkey`); final: evaluated here
-    let phys: Vec<O::V> = if inner { pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect() } else { Vec::new() };
+    let phys: Vec<O::V> = if inner {
+        pf.key.iter().map(|&v| t.absorb_free_ext(o, v)).collect()
+    } else {
+        Vec::new()
+    };
     let key: Vec<O::V> = if inner {
         crate::recursion::splitkey::logical(o, &k.key_phys, &phys, pre::COUNT)
     } else {
@@ -203,7 +234,9 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         let gl = t.squeeze_exts(o, CBITS);
         let gn = t.squeeze_exts(o, CBITS);
         let cols = |o: &mut O, g: &[O::V], keep: &dyn Fn(usize) -> bool| -> Vec<O::V> {
-            (0..1usize << CBITS).map(|c| if keep(c) { gm::eq_row(o, c, g) } else { zero }).collect()
+            (0..1usize << CBITS)
+                .map(|c| if keep(c) { gm::eq_row(o, c, g) } else { zero })
+                .collect()
         };
         let cl = cols(o, &gl, &|c| c < V1);
         let cn = cols(o, &gn, &|c| k.next_cols.contains(&c));
@@ -218,11 +251,37 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
                 ClaimRef::Multi(p, y) => (whir::Weight::Eq(p), y),
             })
             .collect();
-        claims.push((whir::Weight::RowCol { next: false, rho: rho.clone(), col: cl }, vl));
-        claims.push((whir::Weight::RowCol { next: true, rho: rho.clone(), col: cn }, vn));
+        claims.push((
+            whir::Weight::RowCol {
+                next: false,
+                rho: rho.clone(),
+                col: cl,
+            },
+            vl,
+        ));
+        claims.push((
+            whir::Weight::RowCol {
+                next: true,
+                rho: rho.clone(),
+                col: cn,
+            },
+            vn,
+        ));
         claims.push((whir::Weight::Native(0), zero));
-        let wiring = super::wiring::WiringWeight { k, lambda: o.value(lambda.expect("final mode")) };
-        whir::verify_direct(o, &k.cfg, &mut t, roots[0], false, claims, &[&wiring], &pf.whir);
+        let wiring = super::wiring::WiringWeight {
+            k,
+            lambda: o.value(lambda.expect("final mode")),
+        };
+        whir::verify_direct(
+            o,
+            &k.cfg,
+            &mut t,
+            roots[0],
+            false,
+            claims,
+            &[&wiring],
+            &pf.whir,
+        );
         lap("opening");
         return;
     }
@@ -245,7 +304,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     }
     let mut claim = sigma.expect("a word");
     let mut rho2 = Vec::with_capacity(n);
-    for pair in pf.shift.chunks_exact(2) {
+    for pair in pf.shift.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);
@@ -257,14 +316,25 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     let eqr = gm::eq(o, &rho, &rho2);
     let nxt = gm::next_eval(o, &rho, &rho2);
     let kk = o.mul_add(beta, nxt, eqr);
-    let vz = if inner { o.mul_add(zeta, vals[1], vals[0]) } else { vals[0] };
+    let vz = if inner {
+        o.mul_add(zeta, vals[1], vals[0])
+    } else {
+        vals[0]
+    };
     let lhs = o.mul(kk, vz);
     o.assert_eq(lhs, claim, "wrap: shift reduction");
     let mut inputs: Vec<InstV<O::V>> = Vec::with_capacity(4);
     for (w, (root, cl)) in roots.into_iter().zip(oods).enumerate() {
         let mut claims = cl;
-        claims.push(ClaimRef::Multi(rho2.iter().chain(&gs[w]).copied().collect(), vals[w]));
-        inputs.push(InstV { root, ext: false, claims });
+        claims.push(ClaimRef::Multi(
+            rho2.iter().chain(&gs[w]).copied().collect(),
+            vals[w],
+        ));
+        inputs.push(InstV {
+            root,
+            ext: false,
+            claims,
+        });
     }
     if let Some(key_root) = k.key_root {
         // Σ_p eq(γ, p)·P_p(ρ) = Σ_w eq(γ_hi, w)·v_w, v_w the w-th word at
@@ -283,7 +353,11 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
         let zg: Vec<O::V> = rho.iter().chain(&gk[..CBITS]).copied().collect();
         for &vh in &v {
             let root = key_root.map(|x| o.constant(Fp3::from_base(x)));
-            inputs.push(InstV { root, ext: false, claims: vec![ClaimRef::Multi(zg.clone(), vh)] });
+            inputs.push(InstV {
+                root,
+                ext: false,
+                claims: vec![ClaimRef::Multi(zg.clone(), vh)],
+            });
         }
     }
     whir::verify(o, &k.cfg, &mut t, &inputs, &pf.whir);

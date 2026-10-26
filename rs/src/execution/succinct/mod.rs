@@ -10,19 +10,19 @@
 //! § succinct and `specs/soundness.md` for the bound.
 
 mod choice;
+#[cfg(test)]
+mod fold_tests;
 mod key;
 mod pcs;
 pub(crate) mod protocol;
-#[cfg(test)]
-mod fold_tests;
 
-pub use protocol::{SuccinctProof, prove as prove_relation, verify as verify_relation};
 pub use choice::{SMALL_MAX_VARS, device_params, params_for, prove_default, prove_with};
 pub use key::{ProvingKey, RelationKey, prove_relation_with_key, prove_with_key};
-pub use pcs::{MIN_SECURITY_BITS, SuccinctPcs, admit};
 /// The schemes and their parameters, so callers need not depend on lens.
 pub use lens::rspcs::whir::Decoding;
 pub use lens::{MultilinearPcs, TensorRs, TensorRsParams, Whir, WhirParams};
+pub use pcs::{MIN_SECURITY_BITS, SuccinctPcs, admit};
+pub use protocol::{SuccinctProof, prove as prove_relation, verify as verify_relation};
 
 use super::state::{self, StateStatement};
 use super::state_evidence::StateEvidence;
@@ -33,7 +33,9 @@ use nebu::Goldilocks;
 pub const FORMAT: &str = "zheng-nox-succinct-execution-v1";
 
 fn with_constant(public: Vec<(usize, Goldilocks)>) -> Vec<(usize, Goldilocks)> {
-    core::iter::once((0, Goldilocks::ONE)).chain(public).collect()
+    core::iter::once((0, Goldilocks::ONE))
+        .chain(public)
+        .collect()
 }
 
 /// The bytes the transcript absorbs first: the verifying key's digest,

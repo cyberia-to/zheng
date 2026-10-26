@@ -23,9 +23,9 @@
 //! `ε_mca(d)` is `d` times lens's affine-line term (`soundness::mca_log2`):
 //! Johnson `(μ+½)^7/(3ρ^{3/2})·d·n²/|K|`, unique decoding `d·n/|K|`.
 
+use lens::WhirParams;
 use lens::rspcs::soundness::{Regime, ext_field_bits, log2_add, mca_log2, proximity};
 use lens::rspcs::whir::{LeafLayout, WhirConfig};
-use lens::WhirParams;
 
 /// Bits every accumulation step must prove (round-by-round, grinding
 /// included).
@@ -80,7 +80,10 @@ fn ood_count(log_list: f64, num_vars: usize) -> Result<usize, String> {
 pub fn fresh_ood(whir: &WhirParams, num_vars: usize) -> Result<usize, String> {
     let wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("ood: whir: {e}"))?;
     let spec = wc.rounds[0];
-    ood_count(proximity(spec.regime, spec.log_inv_rate, spec.log_domain).log_list, num_vars)
+    ood_count(
+        proximity(spec.regime, spec.log_inv_rate, spec.log_domain).log_list,
+        num_vars,
+    )
 }
 
 impl AccConfig {
@@ -98,7 +101,9 @@ impl AccConfig {
         let wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("acc: whir: {e}"))?;
         let whir_bits = wc.security_bits();
         if whir_bits < MIN_BITS {
-            return Err(format!("acc: the decider's WHIR proves {whir_bits:.2} bits < {MIN_BITS}"));
+            return Err(format!(
+                "acc: the decider's WHIR proves {whir_bits:.2} bits < {MIN_BITS}"
+            ));
         }
         let spec = wc.rounds[0];
         let layout = LeafLayout::derive(whir, num_vars).map_err(|e| format!("acc: {e}"))?;

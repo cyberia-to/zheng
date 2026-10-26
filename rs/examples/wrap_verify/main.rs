@@ -33,7 +33,10 @@ fn fixture(name: &str) -> Option<(zheng::execution::ExecutionNoun, Vec<u64>)> {
 }
 
 fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
-    std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+    std::env::var(k)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
 }
 
 use zheng::recursion::ivc::thread_cpu_ms;
@@ -56,7 +59,15 @@ fn derive(spec: &[&str], whir: &lens::WhirParams, ikey: &ivc::Key) -> WrapKey {
         if let Some(k) = parts.next() {
             w.folding_factor = k.parse().expect("fold");
         }
-        let params = WrapParams { whir: w, n: 0, mode: if mode == "f" { Mode::Final } else { Mode::Inner } };
+        let params = WrapParams {
+            whir: w,
+            n: 0,
+            mode: if mode == "f" {
+                Mode::Final
+            } else {
+                Mode::Inner
+            },
+        };
         let k = match keys.last() {
             None => wrap::derive_key_ivc(params, ikey),
             Some(prev) => wrap::derive_key_wrap(params, prev),
@@ -84,7 +95,11 @@ fn main() {
     let last = match std::fs::read(&vk_file) {
         Ok(b) => {
             let k = WrapKey::from_vk_bytes(&b).expect("verifying key");
-            eprintln!("verifying key {vk_file}: {} B, loaded in {:.1} ms", b.len(), ms(t));
+            eprintln!(
+                "verifying key {vk_file}: {} B, loaded in {:.1} ms",
+                b.len(),
+                ms(t)
+            );
             k
         }
         Err(_) => {
@@ -93,7 +108,11 @@ fn main() {
             let k = derive(&specs, &wbase, &ikey);
             let b = k.vk_bytes();
             std::fs::write(&vk_file, &b).expect("store key");
-            eprintln!("verifying key derived in {:.0} s, stored ({} B)", t.elapsed().as_secs_f64(), b.len());
+            eprintln!(
+                "verifying key derived in {:.0} s, stored ({} B)",
+                t.elapsed().as_secs_f64(),
+                b.len()
+            );
             let back = WrapKey::from_vk_bytes(&b).expect("reload");
             assert_eq!(back.vk_bytes(), b, "verifying key round trip");
             back
@@ -107,14 +126,28 @@ fn main() {
             w.write_at.len() - 1,
             w.write_cells.len(),
             last.gc.len(),
-            last.sparse.iter().zip(&last.key_cols).filter(|c| *c.1).map(|c| c.0.len()).sum::<usize>(),
+            last.sparse
+                .iter()
+                .zip(&last.key_cols)
+                .filter(|c| *c.1)
+                .map(|c| c.0.len())
+                .sum::<usize>(),
             last.key_cols.iter().filter(|&&u| u).count(),
             last.key_cols.len()
         );
     }
-    let bytes = std::fs::read(format!("{dir}/{name}.final-{}", specs.join("_"))).expect("stored final proof");
+    let bytes = std::fs::read(format!("{dir}/{name}.final-{}", specs.join("_")))
+        .expect("stored final proof");
     let header = FinalProof::from_bytes(&bytes, &last).expect("parse");
-    let prep = ivc::prepare(&run.statement, &whir, header.log_rows, header.start, header.segments, header.chain).expect("prepare");
+    let prep = ivc::prepare(
+        &run.statement,
+        &whir,
+        header.log_rows,
+        header.start,
+        header.segments,
+        header.chain,
+    )
+    .expect("prepare");
     let threads = std::env::var("ZHENG_VERIFY_THREADS").unwrap_or_else(|_| "all".into());
     // cold: the first verification of the process
     let p0 = perm::count();
@@ -140,7 +173,11 @@ fn main() {
     cpu.sort_by(|a, b| a.partial_cmp(b).expect("times"));
     parse_cpu.sort_by(|a, b| a.partial_cmp(b).expect("times"));
     let load = std::fs::read_to_string("/proc/loadavg").ok().or_else(|| {
-        std::process::Command::new("sysctl").args(["-n", "vm.loadavg"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        std::process::Command::new("sysctl")
+            .args(["-n", "vm.loadavg"])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
     });
     println!(
         "{name}: final proof {} B (≤ {} B over every transcript) · threads {threads} · verify cold {cold:.3} ms · warm median {:.3} ms (min {:.3}, max {:.3}, {runs} runs; main-thread CPU median {:.3} ms, of it parsing {:.3} ms) · permutations {} single + {} batched · load {}",

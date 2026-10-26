@@ -33,7 +33,9 @@ fn bind(t: &mut ProverTranscript, word: &Word, s: usize) -> (Vec<Fp3>, Vec<Fp3>)
 }
 
 fn columns(t: &Trace) -> Vec<Vec<Fp3>> {
-    (0..t.width).map(|c| (0..t.rows()).map(|r| Fp3::from_base(t.row(r)[c])).collect()).collect()
+    (0..t.width)
+        .map(|c| (0..t.rows()).map(|r| Fp3::from_base(t.row(r)[c])).collect())
+        .collect()
 }
 
 /// `u_λ` as a table over the word's index `col·N + row`.
@@ -54,7 +56,12 @@ pub(crate) fn wiring_table(k: &WrapKey, lambda: Fp3) -> Vec<Fp3> {
 
 /// Prove that the circuit ran `inner`'s verifier and output the digest of
 /// `pubs` and `pn`; returns the proof and that digest (its public input).
-pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp3>) -> Result<(WrapProof, Digest), String> {
+pub fn prove(
+    k: &WrapKey,
+    inner: &Inner<'_>,
+    pubs: &Publics<Fp3>,
+    pn: &ClaimV<Fp3>,
+) -> Result<(WrapProof, Digest), String> {
     let lap = crate::recursion::ivc::timer_pub("    wrap ");
     let n = k.params.n;
     let rows = 1usize << n;
@@ -102,18 +109,33 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
         m *= mu;
     }
     let local_cols = cols.clone();
-    let succ: Vec<Vec<Fp3>> = local_cols.iter().map(|c| (0..rows).map(|r| c[(r + 1) % rows]).collect()).collect();
+    let succ: Vec<Vec<Fp3>> = local_cols
+        .iter()
+        .map(|c| (0..rows).map(|r| c[(r + 1) % rows]).collect())
+        .collect();
     cols.extend(succ);
     cols.extend(k.pre.cols.iter().cloned());
     for &xj in &x {
         cols.push(Public::Sparse(vec![(k.out_row, Fp3::from_base(xj))]).table(n));
     }
-    let (zc, rho, evals) = zerocheck_prove(&View(&air, mode), w, cols, eq_table(&tau), &ab, &mus, &mut t);
+    let (zc, rho, evals) = zerocheck_prove(
+        &View(&air, mode),
+        w,
+        cols,
+        eq_table(&tau),
+        &ab,
+        &mus,
+        &mut t,
+    );
     lap("zerocheck");
     let local = evals[..w].to_vec();
     let next: Vec<Fp3> = k.next_cols.iter().map(|&c| evals[w + c]).collect();
     // an inner level sends its key's physical columns at ρ (`splitkey`)
-    let keyv = if is_inner { crate::recursion::splitkey::at(&k.sparse, &k.key_phys, &rho) } else { Vec::new() };
+    let keyv = if is_inner {
+        crate::recursion::splitkey::at(&k.sparse, &k.key_phys, &rho)
+    } else {
+        Vec::new()
+    };
     if is_inner {
         for &v in local.iter().chain(&next) {
             t.absorb_ext(v);
@@ -128,13 +150,39 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
         let gl = t.squeeze_exts(CBITS);
         let gn = t.squeeze_exts(CBITS);
         let (el, en) = (eq_table(&gl), eq_table(&gn));
-        let cl: Vec<Fp3> = (0..WORD).map(|c| if c < V1 { el[c] } else { Fp3::ZERO }).collect();
-        let cn: Vec<Fp3> = (0..WORD).map(|c| if k.next_cols.contains(&c) { en[c] } else { Fp3::ZERO }).collect();
-        let vl = local.iter().zip(&cl).fold(Fp3::ZERO, |a, (&x, &c)| a + x * c);
-        let vn = k.next_cols.iter().zip(&next).fold(Fp3::ZERO, |a, (&c, &x)| a + x * cn[c]);
-        let rowcol = |rt: Vec<Fp3>, col: &[Fp3]| -> Vec<Fp3> { (0..WORD * rows).map(|i| rt[i % rows] * col[i / rows]).collect() };
+        let cl: Vec<Fp3> = (0..WORD)
+            .map(|c| if c < V1 { el[c] } else { Fp3::ZERO })
+            .collect();
+        let cn: Vec<Fp3> = (0..WORD)
+            .map(|c| {
+                if k.next_cols.contains(&c) {
+                    en[c]
+                } else {
+                    Fp3::ZERO
+                }
+            })
+            .collect();
+        let vl = local
+            .iter()
+            .zip(&cl)
+            .fold(Fp3::ZERO, |a, (&x, &c)| a + x * c);
+        let vn = k
+            .next_cols
+            .iter()
+            .zip(&next)
+            .fold(Fp3::ZERO, |a, (&c, &x)| a + x * cn[c]);
+        let rowcol = |rt: Vec<Fp3>, col: &[Fp3]| -> Vec<Fp3> {
+            (0..WORD * rows)
+                .map(|i| rt[i % rows] * col[i / rows])
+                .collect()
+        };
         let up = |z: Fp3| eq_table(&pow_point(z, n + CBITS));
-        let mut claims: Vec<(Vec<Fp3>, Fp3)> = oods[0].0.iter().zip(&oods[0].1).map(|(&z, &y)| (up(z), y)).collect();
+        let mut claims: Vec<(Vec<Fp3>, Fp3)> = oods[0]
+            .0
+            .iter()
+            .zip(&oods[0].1)
+            .map(|(&z, &y)| (up(z), y))
+            .collect();
         claims.push((rowcol(eq_table(&rho), &cl), vl));
         claims.push((rowcol(next_table(&rho), &cn), vn));
         claims.push((wiring_table(k, lambda), Fp3::ZERO));
@@ -161,7 +209,11 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
             t.absorb_ext(v);
         }
     }
-    let gk = if is_inner { t.squeeze_exts(crate::recursion::splitkey::BITS) } else { vec![] };
+    let gk = if is_inner {
+        t.squeeze_exts(crate::recursion::splitkey::BITS)
+    } else {
+        vec![]
+    };
     // shift
     let nw = words.len();
     let gs: Vec<Vec<Fp3>> = (0..nw).map(|_| t.squeeze_exts(CBITS)).collect();
@@ -174,14 +226,24 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
         .zip(&gs)
         .map(|(&(lo, hi), g)| {
             let e = eq_table(g);
-            (0..rows).map(|r| (lo..hi).fold(Fp3::ZERO, |a, c| a + e[c - lo] * local_cols[c][r])).collect()
+            (0..rows)
+                .map(|r| (lo..hi).fold(Fp3::ZERO, |a, c| a + e[c - lo] * local_cols[c][r]))
+                .collect()
         })
         .collect();
     drop(local_cols);
     let eqr = eq_table(&rho);
     let nx = next_table(&rho);
     let kt: Vec<Fp3> = (0..rows).map(|y| eqr[y] + beta * nx[y]).collect();
-    let q: Vec<Fp3> = (0..rows).map(|r| if nw == 2 { ps[0][r] + zeta * ps[1][r] } else { ps[0][r] }).collect();
+    let q: Vec<Fp3> = (0..rows)
+        .map(|r| {
+            if nw == 2 {
+                ps[0][r] + zeta * ps[1][r]
+            } else {
+                ps[0][r]
+            }
+        })
+        .collect();
     let (shift, rho2) = shift_prove(&mut t, kt, q, &mut ps);
     let vals: Vec<Fp3> = ps.iter().map(|p| p[0]).collect();
     for &v in &vals {
@@ -198,7 +260,13 @@ pub fn prove(k: &WrapKey, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp
     let mut kv = Vec::new();
     let mut opened: Vec<&dyn whir::Tree> = words.iter().map(|w| w as &dyn whir::Tree).collect();
     let fresh_kw = match (&k.key_root, &k.kw) {
-        (Some(_), None) => Some(crate::recursion::splitkey::commit(layout, n, &k.pre, &k.key_phys, k.arity())),
+        (Some(_), None) => Some(crate::recursion::splitkey::commit(
+            layout,
+            n,
+            &k.pre,
+            &k.key_phys,
+            k.arity(),
+        )),
         _ => None,
     };
     if let Some(kw) = k.kw.as_ref().or(fresh_kw.as_ref()) {

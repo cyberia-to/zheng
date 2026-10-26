@@ -3,6 +3,7 @@ use super::{
     types::{Metrics, Output},
     *,
 };
+use crate::execution::HASH_COST;
 
 impl Activation {
     pub fn enter(
@@ -25,7 +26,7 @@ impl Activation {
         if tag > 15 {
             return Err(Error::UnsupportedOpcode);
         }
-        let cost = [1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, 25][tag as usize];
+        let cost = [1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, HASH_COST][tag as usize];
         let metrics = Metrics::leaf(cost, limits)?;
         let stage = match tag {
             0 => Stage::Ready(Output::axis(memory, object, body)?),

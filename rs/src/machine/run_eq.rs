@@ -12,7 +12,11 @@ use super::layout::*;
 use super::run::{Digests, RunState};
 
 fn inv_or_zero(x: Goldilocks) -> Goldilocks {
-    if x == Goldilocks::ZERO { Goldilocks::ZERO } else { x.inv() }
+    if x == Goldilocks::ZERO {
+        Goldilocks::ZERO
+    } else {
+        x.inv()
+    }
 }
 
 pub(crate) fn eq(

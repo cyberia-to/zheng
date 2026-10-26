@@ -11,8 +11,15 @@ fn setup(n: usize, seed: u8) -> (Vec<Goldilocks>, Functional, Fp3) {
     let entries = coins.bases(n);
     let tensor = (n / 2).next_power_of_two().min(n).trailing_zeros() as usize;
     let point: Vec<Fp3> = (0..tensor).map(|_| coins.ext()).collect();
-    let explicit: Vec<(usize, Fp3)> = ((1 << tensor)..n).step_by(3).map(|e| (e, coins.ext())).collect();
-    let f = Functional { scale: coins.ext(), point, explicit };
+    let explicit: Vec<(usize, Fp3)> = ((1 << tensor)..n)
+        .step_by(3)
+        .map(|e| (e, coins.ext()))
+        .collect();
+    let f = Functional {
+        scale: coins.ext(),
+        point,
+        explicit,
+    };
     let eq = prove::eq_msb(&f.point);
     let mut value = Fp3::ZERO;
     for (e, &w) in eq.iter().enumerate() {
@@ -30,7 +37,15 @@ fn run(n: usize, tamper: &dyn Fn(&mut HidingProof, &mut Fp3)) -> Result<(), Stri
     let (root, committed) = commit(&params, &entries, &Coins::seeded([1; 32])).unwrap();
     let mut proof = open(&committed, &f, value, &mut Transcript::new(b"t"));
     tamper(&mut proof, &mut value);
-    verify(&params, &root, n, &f, value, &proof, &mut Transcript::new(b"t"))
+    verify(
+        &params,
+        &root,
+        n,
+        &f,
+        value,
+        &proof,
+        &mut Transcript::new(b"t"),
+    )
 }
 
 #[test]
@@ -50,15 +65,24 @@ fn forged_values_and_messages_are_rejected() {
         ("mu", Box::new(move |p, _| p.mu += one)),
         ("row test", Box::new(move |p, _| p.row_test[3] += one)),
         ("linear", Box::new(move |p, _| p.linear[200] += one)),
-        ("linear coefficient and value", Box::new(move |p, v| {
-            *v += one;
-            let mid = p.linear.len() / 2;
-            p.linear[mid] += one;
-        })),
+        (
+            "linear coefficient and value",
+            Box::new(move |p, v| {
+                *v += one;
+                let mid = p.linear.len() / 2;
+                p.linear[mid] += one;
+            }),
+        ),
         ("column", Box::new(|p, _| p.columns[5] += Goldilocks::ONE)),
         ("salt", Box::new(|p, _| p.salts[0] += Goldilocks::ONE)),
-        ("sibling", Box::new(|p, _| p.siblings[0] = hemera::Hash::from_bytes([7; 32]))),
-        ("nonce", Box::new(|p, _| p.pow_nonce = p.pow_nonce.map(|n| n + 1))),
+        (
+            "sibling",
+            Box::new(|p, _| p.siblings[0] = hemera::Hash::from_bytes([7; 32])),
+        ),
+        (
+            "nonce",
+            Box::new(|p, _| p.pow_nonce = p.pow_nonce.map(|n| n + 1)),
+        ),
     ];
     for (name, tamper) in cases {
         assert!(run(n, tamper.as_ref()).is_err(), "{name}");
@@ -71,4 +95,3 @@ fn security_is_proven_above_128_bits() {
     assert!(cfg.security_bits() >= 128.0, "{}", cfg.security_bits());
     assert!(cfg.k > cfg.queries, "padding covers every opened column");
 }
-

@@ -88,7 +88,11 @@ pub fn record(inputs: usize, f: impl FnOnce(&[Sym]) -> Vec<Sym>) -> Graph {
     let ins: Vec<Sym> = (0..inputs as u32).map(|i| push(Node::Input(i))).collect();
     let outputs = f(&ins);
     let nodes = ARENA.with(|a| core::mem::take(&mut *a.borrow_mut()));
-    Graph { nodes, inputs, outputs }
+    Graph {
+        nodes,
+        inputs,
+        outputs,
+    }
 }
 
 impl Graph {
@@ -235,28 +239,47 @@ impl Graph {
             }
         }
         let base = self.inputs + consts.len();
-        let mut next = base as u32;
-        let resolve = |x: Sym, slot: &[u32], cidx: &std::collections::BTreeMap<[u64; 3], u32>| -> u32 {
-            match x {
-                Sym::N(j) => slot[j as usize],
-                Sym::C(c) => self.inputs as u32 + cidx[&[c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()]],
-            }
-        };
-        for (&i, &(op, a, b)) in order.iter().zip(&pending) {
+        let resolve =
+            |x: Sym, slot: &[u32], cidx: &std::collections::BTreeMap<[u64; 3], u32>| -> u32 {
+                match x {
+                    Sym::N(j) => slot[j as usize],
+                    Sym::C(c) => {
+                        self.inputs as u32 + cidx[&[c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()]]
+                    }
+                }
+            };
+        for (next, (&i, &(op, a, b))) in (base as u32..).zip(order.iter().zip(&pending)) {
             let e = match (op, a, b) {
-                (OP_MUL, x, Sym::C(c)) | (OP_MUL, Sym::C(c), x) if is_base(c) && !matches!(x, Sym::C(_)) => {
-                    (OP_MULB, resolve(x, &slot, &cidx), cidx[&[c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()]])
+                (OP_MUL, x, Sym::C(c)) | (OP_MUL, Sym::C(c), x)
+                    if is_base(c) && !matches!(x, Sym::C(_)) =>
+                {
+                    (
+                        OP_MULB,
+                        resolve(x, &slot, &cidx),
+                        cidx[&[c.c0.as_u64(), c.c1.as_u64(), c.c2.as_u64()]],
+                    )
                 }
                 _ => (op, resolve(a, &slot, &cidx), resolve(b, &slot, &cidx)),
             };
             ops.push(e);
             slot[i] = next;
-            next += 1;
         }
-        let outputs = self.outputs.iter().map(|&s| resolve(s, &slot, &cidx)).collect();
-        Compiled { ops, consts, inputs: self.inputs, outputs }
+        let outputs = self
+            .outputs
+            .iter()
+            .map(|&s| resolve(s, &slot, &cidx))
+            .collect();
+        Compiled {
+            ops,
+            consts,
+            inputs: self.inputs,
+            outputs,
+        }
     }
 }
+
+/// The slot form of a [`Compiled`] graph: `(ops, consts, inputs, outputs)`.
+pub type Parts<'a> = (&'a [(u8, u32, u32)], &'a [Fp3], usize, &'a [u32]);
 
 impl Compiled {
     /// Evaluate at `inputs`.
@@ -283,7 +306,7 @@ impl Compiled {
     }
     /// The slot form: `(ops, consts, inputs, outputs)` (slots: inputs,
     /// then constants, then one per op; `OP_MULB`'s `b` indexes consts).
-    pub fn parts(&self) -> (&[(u8, u32, u32)], &[Fp3], usize, &[u32]) {
+    pub fn parts(&self) -> Parts<'_> {
         (&self.ops, &self.consts, self.inputs, &self.outputs)
     }
     /// Operations evaluated.
@@ -380,4 +403,3 @@ mod tests {
         assert_eq!(g.eval(&[x, y]), vec![poly(x, y), poly(Fp3::ONE, y)]);
     }
 }
-

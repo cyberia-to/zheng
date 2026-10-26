@@ -27,7 +27,11 @@ fn whir() -> lens::WhirParams {
 }
 
 fn proof(two_steps: bool) -> (MachineStatement, IvcProof) {
-    let (prog, input) = if two_steps { (common::tree_program(12), vec![3]) } else { (common::parse(common::ADD), vec![7, 5]) };
+    let (prog, input) = if two_steps {
+        (common::tree_program(12), vec![3])
+    } else {
+        (common::parse(common::ADD), vec![7, 5])
+    };
     let run = machine::execute_exact(&prog, &input, 1 << 40, 15).unwrap();
     assert_eq!(run.segments(), if two_steps { 2 } else { 1 });
     let p = ivc::prove_run(&run, &whir()).unwrap();
@@ -43,10 +47,15 @@ fn refused(st: &MachineStatement, honest: &IvcProof, p: &IvcProof, what: &str) {
     let w = whir();
     assert!(ivc::verify(st, p, &w).is_err(), "{what}: accepted");
     let k = ivc::key(&w, 15).unwrap();
-    let Ok(b) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| p.to_bytes(&k))) else { return };
+    let Ok(b) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| p.to_bytes(&k))) else {
+        return;
+    };
     if let Ok(q) = IvcProof::from_bytes(&b, |lr| ivc::key(&w, lr as usize)) {
         if &q != honest {
-            assert!(ivc::verify(st, &q, &w).is_err(), "{what}: accepted after the wire");
+            assert!(
+                ivc::verify(st, &q, &w).is_err(),
+                "{what}: accepted after the wire"
+            );
         }
     }
 }
@@ -76,7 +85,12 @@ fn attacks(two: bool) {
         let path = &mut bad.step.acc.openings[1][word].path;
         path[0] = path[3];
         if bad != p {
-            refused(&st, &p, &bad, &format!("word {word}: sibling from another level"));
+            refused(
+                &st,
+                &p,
+                &bad,
+                &format!("word {word}: sibling from another level"),
+            );
         }
         // another query's opening at this position (another leaf; the
         // base step's zero accumulator has the same symbols and path at
@@ -88,9 +102,17 @@ fn attacks(two: bool) {
         }) {
             let mut bad = p.clone();
             bad.step.acc.openings[0][word] = p.step.acc.openings[other][word].clone();
-            refused(&st, &p, &bad, &format!("word {word}: another leaf's opening"));
+            refused(
+                &st,
+                &p,
+                &bad,
+                &format!("word {word}: another leaf's opening"),
+            );
         } else {
-            assert!(word == 0 && !two, "only the zero accumulator opens alike everywhere");
+            assert!(
+                word == 0 && !two,
+                "only the zero accumulator opens alike everywhere"
+            );
         }
         // a path one node short, one node long
         let mut bad = p.clone();
@@ -142,11 +164,29 @@ fn rebalanced_schedules_keep_lens_queries_and_reach_128_bits() {
     let mut prev: Option<zheng::recursion::wrap::WrapKey> = None;
     for (i, l) in levels.iter().enumerate() {
         let wk = match &prev {
-            None => zheng::recursion::wrap::derive_key_ivc_at(*l, &ikey, zheng::envelope::wrapped::INNER_ROOTS[0].map(Goldilocks::new)),
-            Some(pk) => if i + 1 < levels.len() { zheng::recursion::wrap::derive_key_wrap_at(*l, pk, zheng::envelope::wrapped::INNER_ROOTS[i].map(Goldilocks::new)) } else { zheng::recursion::wrap::derive_key_wrap(*l, pk) },
+            None => zheng::recursion::wrap::derive_key_ivc_at(
+                *l,
+                &ikey,
+                zheng::envelope::wrapped::INNER_ROOTS[0].map(Goldilocks::new),
+            ),
+            Some(pk) => {
+                if i + 1 < levels.len() {
+                    zheng::recursion::wrap::derive_key_wrap_at(
+                        *l,
+                        pk,
+                        zheng::envelope::wrapped::INNER_ROOTS[i].map(Goldilocks::new),
+                    )
+                } else {
+                    zheng::recursion::wrap::derive_key_wrap(*l, pk)
+                }
+            }
         }
         .unwrap();
-        cfgs.push((["level 0", "level 1", "final"][i], wk.cfg.clone(), wk.cfg.wc.num_vars));
+        cfgs.push((
+            ["level 0", "level 1", "final"][i],
+            wk.cfg.clone(),
+            wk.cfg.wc.num_vars,
+        ));
         prev = Some(wk);
     }
     for (name, c, vars) in cfgs {

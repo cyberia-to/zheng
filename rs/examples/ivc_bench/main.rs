@@ -30,7 +30,10 @@ fn fixture(name: &str) -> Option<(N, Vec<u64>)> {
 }
 
 fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
-    std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+    std::env::var(k)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
 }
 
 fn main() {
@@ -40,7 +43,11 @@ fn main() {
     whir.pow_bits = env("ZHENG_POW", ivc::SHIPPED_POW);
     let n: u32 = env("ZHENG_STEP", 15);
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let names = if args.is_empty() { vec!["add.tri".into()] } else { args };
+    let names = if args.is_empty() {
+        vec!["add.tri".into()]
+    } else {
+        args
+    };
     let t0 = Instant::now();
     let key = ivc::key(&whir, n as usize).expect("key");
     let p = &key.params;
@@ -59,7 +66,11 @@ fn main() {
         let run = machine::execute_exact(&prog, &input, 1 << 40, n).expect("run");
         let t_run = t1.elapsed();
         if std::env::var_os("ZHENG_DRY").is_some() {
-            println!("{name}: cycles {} · {} steps of 2^{n}", run.statement.cycles, run.segments());
+            println!(
+                "{name}: cycles {} · {} steps of 2^{n}",
+                run.statement.cycles,
+                run.segments()
+            );
             continue;
         }
         common::prof_report("key");
@@ -71,7 +82,8 @@ fn main() {
         if let Ok(dir) = std::env::var("ZHENG_PROOF_DIR") {
             std::fs::write(format!("{dir}/{name}.ivc"), &bytes).expect("write proof");
         }
-        let parsed = ivc::IvcProof::from_bytes(&bytes, |lr| ivc::key(&whir, lr as usize)).expect("parse");
+        let parsed =
+            ivc::IvcProof::from_bytes(&bytes, |lr| ivc::key(&whir, lr as usize)).expect("parse");
         assert_eq!(parsed, proof);
         let mut v = Vec::new();
         for _ in 0..5 {
@@ -80,7 +92,15 @@ fn main() {
             v.push(t3.elapsed().as_secs_f64() * 1e3);
         }
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let prep = ivc::prepare(&run.statement, &whir, parsed.log_rows, parsed.start, parsed.segments, parsed.chain).expect("prepare");
+        let prep = ivc::prepare(
+            &run.statement,
+            &whir,
+            parsed.log_rows,
+            parsed.start,
+            parsed.segments,
+            parsed.chain,
+        )
+        .expect("prepare");
         let mut vp = Vec::new();
         for _ in 0..5 {
             let t3 = Instant::now();
@@ -89,7 +109,11 @@ fn main() {
         }
         vp.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let segs = run.segments();
-        let parts: Vec<String> = proof.sizes(&key).iter().map(|(k, v)| format!("{k} {v}")).collect();
+        let parts: Vec<String> = proof
+            .sizes(&key)
+            .iter()
+            .map(|(k, v)| format!("{k} {v}"))
+            .collect();
         println!("{name}: parts {}", parts.join(" · "));
         println!(
             "{name}: cycles {} · {} steps of 2^{n} rows · proof {} B · run {:.0} ms · prove {:.0} ms ({:.0} ms/step) · verify median {:.2} ms (prepared {:.2} ms)",

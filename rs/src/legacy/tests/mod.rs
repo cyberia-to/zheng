@@ -23,7 +23,7 @@ fn zero_statement() -> Statement {
         input_hash: [0u8; 32],
         output_hash: [0u8; 32],
         focus_bound: 0,
-    bbg_root: [0u8; 32],
+        bbg_root: [0u8; 32],
     }
 }
 
@@ -47,7 +47,11 @@ fn commit_verify_roundtrip() {
     let stmt = zero_statement();
     let params = ProofParams::default();
     let trace_proof = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
-    assert_eq!(trace_proof.group_count(), 1, "no openings: universal group only");
+    assert_eq!(
+        trace_proof.group_count(),
+        1,
+        "no openings: universal group only"
+    );
     assert!(verify(&trace_proof, &stmt, &params).is_ok());
 }
 
@@ -56,8 +60,18 @@ fn commit_verify_roundtrip() {
 #[test]
 fn commit_rejects_unknown_pattern_tag() {
     let trace = malformed_trace();
-    let err = commit(&trace, &[], &[], &[], &zero_statement(), &ProofParams::default());
-    assert!(matches!(err, Err(CommitError::StepUnsatisfied(0))), "{err:?}");
+    let err = commit(
+        &trace,
+        &[],
+        &[],
+        &[],
+        &zero_statement(),
+        &ProofParams::default(),
+    );
+    assert!(
+        matches!(err, Err(CommitError::StepUnsatisfied(0))),
+        "{err:?}"
+    );
 }
 
 // ── helpers for manual witness construction ──────────────────────────────
@@ -79,7 +93,10 @@ fn fold_universal(rows: &[CCSWitness]) -> ProofGroup {
         crate::folding::fold_step(&mut acc, instance, w, &mut transcript).unwrap();
     }
     let proof = decide(&acc, &zero_statement(), &ProofParams::default()).unwrap();
-    ProofGroup { proof, accumulator: acc }
+    ProofGroup {
+        proof,
+        accumulator: acc,
+    }
 }
 
 #[test]
@@ -92,7 +109,10 @@ fn fold_add_multi_step_commit_verify() {
     ];
     let universal = fold_universal(&rows);
     assert_eq!(universal.accumulator.step_count, 3);
-    let trace_proof = TraceProof { universal, binding: None };
+    let trace_proof = TraceProof {
+        universal,
+        binding: None,
+    };
     assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
 }
 
@@ -109,7 +129,10 @@ fn fold_mixed_patterns_commit_verify() {
     ];
     let universal = fold_universal(&rows);
     assert_eq!(universal.accumulator.step_count, 3);
-    let trace_proof = TraceProof { universal, binding: None };
+    let trace_proof = TraceProof {
+        universal,
+        binding: None,
+    };
     assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
 }
 
@@ -213,11 +236,8 @@ fn prove_raw_linear_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
     use crate::ccs::reg_t;
     use crate::folding::fold::fold_step_unchecked;
 
-    let universal_acc = fold_all(
-        universal_ccs(),
-        &[row(1, &[(reg_t(4), 5), (reg_t(7), 5)])],
-    )
-    .unwrap();
+    let universal_acc =
+        fold_all(universal_ccs(), &[row(1, &[(reg_t(4), 5), (reg_t(7), 5)])]).unwrap();
     let eq = eq_instance();
     let mut binding_acc = Accumulator::blank(&eq);
     let mut transcript = Transcript::new_v1();
@@ -234,7 +254,10 @@ fn prove_raw_linear_steps(steps: &[(CCSInstance, CCSWitness)]) -> TraceProof {
         proof: run_decide(&acc, &stmt, &linkage, &params).unwrap(),
         accumulator: acc,
     };
-    TraceProof { universal: close(universal_acc), binding: Some(close(binding_acc)) }
+    TraceProof {
+        universal: close(universal_acc),
+        binding: Some(close(binding_acc)),
+    }
 }
 
 mod axis;

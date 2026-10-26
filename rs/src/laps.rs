@@ -6,7 +6,10 @@ pub(crate) fn timer(scope: &'static str) -> impl Fn(&str) {
     let clock = std::time::Instant::now();
     move |what: &str| {
         if on {
-            eprintln!("  {scope} {what}: {:.1} ms", clock.elapsed().as_secs_f64() * 1e3);
+            eprintln!(
+                "  {scope} {what}: {:.1} ms",
+                clock.elapsed().as_secs_f64() * 1e3
+            );
         }
     }
 }

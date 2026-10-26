@@ -17,12 +17,18 @@ use crate::recursion::state::ClaimV;
 use crate::recursion::whir;
 use crate::recursion::word::Digest;
 
+/// A row's used slots: `(slot, cells as (op, value))`.
+type RowSlots = Vec<(usize, Vec<(u8, Fp3)>)>;
+
 /// The verifier a wrap circuit runs, with the proof it checks.
 pub enum Inner<'a> {
     /// The IVC final verifier on a recursive proof.
     Ivc { key: &'a Key, proof: &'a IvcProof },
     /// The verifier of a wrap proof.
-    Wrap { key: &'a WrapKey, proof: &'a WrapProof },
+    Wrap {
+        key: &'a WrapKey,
+        proof: &'a WrapProof,
+    },
 }
 
 impl Inner<'_> {
@@ -37,7 +43,11 @@ impl Inner<'_> {
 
 /// The digest of the public values (generically); returns it and its
 /// chain (the circuit marks the chain's last row as the public input).
-pub fn public_digest<O: Ops>(o: &mut O, pubs: &Publics<O::V>, pn: &ClaimV<O::V>) -> ([O::V; 4], O::Chain) {
+pub fn public_digest<O: Ops>(
+    o: &mut O,
+    pubs: &Publics<O::V>,
+    pn: &ClaimV<O::V>,
+) -> ([O::V; 4], O::Chain) {
     let mut sp = Sponge::new(o, tag::PUBLIC);
     for (v, ext) in pubs.items() {
         if ext {
@@ -56,7 +66,10 @@ pub fn public_digest<O: Ops>(o: &mut O, pubs: &Publics<O::V>, pn: &ClaimV<O::V>)
 pub fn public_digest_native(pubs: &Publics<Fp3>, pn: &ClaimV<Fp3>) -> Result<Digest, String> {
     let mut o = crate::recursion::ops::Native::new();
     let p = finalv::constants(&mut o, pubs);
-    let pn = ClaimV { point: pn.point.clone(), value: pn.value };
+    let pn = ClaimV {
+        point: pn.point.clone(),
+        value: pn.value,
+    };
     let (d, _) = public_digest(&mut o, &p, &pn);
     o.finish()?;
     Ok(d.map(|x| x.c0))
@@ -65,13 +78,28 @@ pub fn public_digest_native(pubs: &Publics<Fp3>, pn: &ClaimV<Fp3>) -> Result<Dig
 /// The program: verify `inner` on its proof and output the digest of the
 /// public values it binds. `pubs`, `pn`: the values the prover claims
 /// (`pn` is computed, not read, when the inner verifier is the IVC's).
-pub fn run<O: Ops>(o: &mut O, inner: &Inner<'_>, pubs: &Publics<Fp3>, pn: &ClaimV<Fp3>, mark: impl FnOnce(&mut O, &O::Chain)) -> [O::V; 4] {
-    let items: Vec<O::V> = pubs.items().into_iter().map(|(v, _)| o.witness(v)).collect();
+pub fn run<O: Ops>(
+    o: &mut O,
+    inner: &Inner<'_>,
+    pubs: &Publics<Fp3>,
+    pn: &ClaimV<Fp3>,
+    mark: impl FnOnce(&mut O, &O::Chain),
+) -> [O::V; 4] {
+    let items: Vec<O::V> = pubs
+        .items()
+        .into_iter()
+        .map(|(v, _)| o.witness(v))
+        .collect();
     let pv = Publics::from_items(&items);
     let pn_v = match inner {
-        Inner::Ivc { key, proof } => finalv::run(o, key, &pv, &proof.state, &proof.step, &proof.decider),
+        Inner::Ivc { key, proof } => {
+            finalv::run(o, key, &pv, &proof.state, &proof.step, &proof.decider)
+        }
         Inner::Wrap { key, proof } => {
-            let pn_v = ClaimV { point: pn.point.iter().map(|&x| o.witness(x)).collect(), value: o.witness(pn.value) };
+            let pn_v = ClaimV {
+                point: pn.point.iter().map(|&x| o.witness(x)).collect(),
+                value: o.witness(pn.value),
+            };
             let (x, _) = public_digest(o, &pv, &pn_v);
             super::verify(o, key, x, proof);
             pn_v
@@ -122,8 +150,21 @@ fn key_over_ivc(params: WrapParams, key: &Key, root: Option<Digest>) -> Result<W
     let state = ivc_program::dummy_state(&key.params);
     let step = ivc_program::dummy_proof(&key.params);
     let decider = decide::dummy(&key.dcfg);
-    let proof = IvcProof { log_rows: key.params.n as u32, start: 0, segments: 1, chain: [nebu::Goldilocks::ZERO; 4], state, step, decider };
-    derive_key(params, &Inner::Ivc { key, proof: &proof }, (key.params.whir, key.params.n), root)
+    let proof = IvcProof {
+        log_rows: key.params.n as u32,
+        start: 0,
+        segments: 1,
+        chain: [nebu::Goldilocks::ZERO; 4],
+        state,
+        step,
+        decider,
+    };
+    derive_key(
+        params,
+        &Inner::Ivc { key, proof: &proof },
+        (key.params.whir, key.params.n),
+        root,
+    )
 }
 
 /// The layout a level would have, its key words not committed (a zero
@@ -134,7 +175,15 @@ pub fn derive_shape(params: WrapParams, inner: &WrapKey) -> Result<WrapKey, Stri
         return Err("wrap: a final-mode level is verified natively only".into());
     }
     let proof = dummy_proof(inner);
-    derive_key(params, &Inner::Wrap { key: inner, proof: &proof }, inner.ivc, Some([nebu::Goldilocks::ZERO; 4]))
+    derive_key(
+        params,
+        &Inner::Wrap {
+            key: inner,
+            proof: &proof,
+        },
+        inner.ivc,
+        Some([nebu::Goldilocks::ZERO; 4]),
+    )
 }
 
 /// [`derive_shape`] over the IVC final verifier.
@@ -156,43 +205,103 @@ pub fn derive_key_wrap(params: WrapParams, key: &WrapKey) -> Result<WrapKey, Str
 
 /// [`derive_key_wrap`] for an inner level whose key root is known
 /// (pinned).
-pub fn derive_key_wrap_at(params: WrapParams, key: &WrapKey, root: Digest) -> Result<WrapKey, String> {
+pub fn derive_key_wrap_at(
+    params: WrapParams,
+    key: &WrapKey,
+    root: Digest,
+) -> Result<WrapKey, String> {
     if !key.inner() {
         return Err("wrap: a final-mode level is verified natively only".into());
     }
     let proof = dummy_proof(key);
-    derive_key(params, &Inner::Wrap { key, proof: &proof }, key.ivc, Some(root))
+    derive_key(
+        params,
+        &Inner::Wrap { key, proof: &proof },
+        key.ivc,
+        Some(root),
+    )
 }
 
 /// The opening's configuration of a level with `vars` variables per word
 /// and `fresh` OOD samples per trace word.
-pub(crate) fn level_config(params: &WrapParams, vars: usize, fresh: usize, key_words: usize) -> Result<whir::Config, String> {
+pub(crate) fn level_config(
+    params: &WrapParams,
+    vars: usize,
+    fresh: usize,
+    key_words: usize,
+) -> Result<whir::Config, String> {
     let committed = params.mode == Mode::Inner;
-    let groups: Vec<usize> = if committed { vec![1, 1, key_words] } else { vec![1] };
-    let claims = if committed { 2 * (fresh + 1) + key_words } else { fresh + 3 };
-    let arity = if committed { crate::recursion::word::Arity::Four } else { crate::recursion::word::Arity::Two };
+    let groups: Vec<usize> = if committed {
+        vec![1, 1, key_words]
+    } else {
+        vec![1]
+    };
+    let claims = if committed {
+        2 * (fresh + 1) + key_words
+    } else {
+        fresh + 3
+    };
+    let arity = if committed {
+        crate::recursion::word::Arity::Four
+    } else {
+        crate::recursion::word::Arity::Two
+    };
     Ok(whir::Config::derive(&params.whir, vars, &groups, claims)?.with_arity(arity))
 }
 
 /// Derive the key of a wrap level over `inner`'s verifier (the proof is
 /// never read: layouts are fixed by shapes).
-fn derive_key(params: WrapParams, inner: &Inner<'_>, ivc: (lens::WhirParams, usize), key_root: Option<Digest>) -> Result<WrapKey, String> {
+fn derive_key(
+    params: WrapParams,
+    inner: &Inner<'_>,
+    ivc: (lens::WhirParams, usize),
+    key_root: Option<Digest>,
+) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
-    let pn = ClaimV { point: vec![Fp3::ZERO; inner.pn_len()], value: Fp3::ZERO };
+    let pn = ClaimV {
+        point: vec![Fp3::ZERO; inner.pn_len()],
+        value: Fp3::ZERO,
+    };
     let mut b = Builder::new(false);
     run(&mut b, inner, &dummy_publics(), &pn, |b, c| b.set_output(c));
     let rows = b.rows();
-    let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
-    let n = if params.n == 0 { rows.next_power_of_two().trailing_zeros().max(4) as usize } else { params.n };
+    let census = [
+        b.gates.len(),
+        b.bits.len(),
+        b.chains.iter().map(|c| c.blocks.len()).sum(),
+    ];
+    let n = if params.n == 0 {
+        rows.next_power_of_two().trailing_zeros().max(4) as usize
+    } else {
+        params.n
+    };
     let (_, pre, out_row) = trace::generate(&b, &air, n)?;
-    assemble(WrapParams { n, ..params }, ivc, pre, out_row, rows, census, inner.pn_len(), key_root)
+    assemble(
+        WrapParams { n, ..params },
+        ivc,
+        pre,
+        out_row,
+        rows,
+        census,
+        inner.pn_len(),
+        key_root,
+    )
 }
 
 /// Everything but the circuit layout (`pre`, the output row, the census)
 /// rebuilt from it; an inner level's key words are committed unless their
 /// root is given.
 #[allow(clippy::too_many_arguments)]
-fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre, out_row: usize, rows: usize, census: [usize; 3], pn: usize, key_root: Option<Digest>) -> Result<WrapKey, String> {
+fn assemble(
+    params: WrapParams,
+    ivc: (lens::WhirParams, usize),
+    pre: trace::Pre,
+    out_row: usize,
+    rows: usize,
+    census: [usize; 3],
+    pn: usize,
+    key_root: Option<Digest>,
+) -> Result<WrapKey, String> {
     let air = CircuitAir::default();
     let n = params.n;
     let vars = n + super::CBITS;
@@ -200,14 +309,25 @@ fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre,
     let committed = params.mode == Mode::Inner;
     let sparse = crate::recursion::vkey::sparse(&pre);
     // an inner level's key over the base field (`splitkey`)
-    let key_phys = if committed { crate::recursion::splitkey::columns(&crate::recursion::splitkey::ext_columns(&sparse)) } else { Vec::new() };
-    let cfg = level_config(&params, vars, fresh, crate::recursion::splitkey::words(key_phys.len())).map_err(|e| format!("{e} (circuit {rows} rows → 2^{n})"))?;
+    let key_phys = if committed {
+        crate::recursion::splitkey::columns(&crate::recursion::splitkey::ext_columns(&sparse))
+    } else {
+        Vec::new()
+    };
+    let cfg = level_config(
+        &params,
+        vars,
+        fresh,
+        crate::recursion::splitkey::words(key_phys.len()),
+    )
+    .map_err(|e| format!("{e} (circuit {rows} rows → 2^{n})"))?;
     let arity = cfg.arity;
     let wiring = (!committed).then(|| wiring(&pre));
     let key_ext = !committed && crate::recursion::vkey::ext(&pre);
     // the key words are committed (and kept: the prover opens them) unless
     // their root is given (pinned, or a shape-only plan)
-    let kw = (committed && key_root.is_none()).then(|| crate::recursion::splitkey::commit(cfg.layout(0), n, &pre, &key_phys, arity));
+    let kw = (committed && key_root.is_none())
+        .then(|| crate::recursion::splitkey::commit(cfg.layout(0), n, &pre, &key_phys, arity));
     let key_root = match (committed, key_root) {
         (false, _) => None,
         (true, Some(r)) => Some(r),
@@ -215,8 +335,19 @@ fn assemble(params: WrapParams, ivc: (lens::WhirParams, usize), pre: trace::Pre,
     };
     let (g, constraints) = g_graph(&air, params.mode);
     let gc = g.compile();
-    let key_cols = super::key_used(&g, if committed { super::COLS } else { crate::recursion::circuit::layout::V1 });
-    let w = if committed { super::COLS } else { crate::recursion::circuit::layout::V1 };
+    let key_cols = super::key_used(
+        &g,
+        if committed {
+            super::COLS
+        } else {
+            crate::recursion::circuit::layout::V1
+        },
+    );
+    let w = if committed {
+        super::COLS
+    } else {
+        crate::recursion::circuit::layout::V1
+    };
     let used = g.used_inputs();
     let next_cols: Vec<usize> = (0..w).filter(|&c| committed || used[w + c]).collect();
     Ok(WrapKey {
@@ -259,7 +390,16 @@ impl WrapKey {
         w.raw(&self.params.whir.header());
         w.bool(self.params.mode == Mode::Final);
         w.raw(&self.ivc.0.header());
-        for v in [self.ivc.1, self.params.n, self.pn, self.out_row, self.rows, self.census[0], self.census[1], self.census[2]] {
+        for v in [
+            self.ivc.1,
+            self.params.n,
+            self.pn,
+            self.out_row,
+            self.rows,
+            self.census[0],
+            self.census[1],
+            self.census[2],
+        ] {
             w.varint(v as u64);
         }
         if let Some(r) = &self.key_root {
@@ -279,21 +419,45 @@ impl WrapKey {
         if r.raw(LAYOUT_TAG.len()).map_err(e)? != LAYOUT_TAG {
             return Err("wrap key layout: tag".into());
         }
-        let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "wrap key layout: header")?;
-        let mode = if r.bool().map_err(e)? { Mode::Final } else { Mode::Inner };
-        let ivc_whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "wrap key layout: recursive header")?;
+        let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?)
+            .map_err(|_| "wrap key layout: header")?;
+        let mode = if r.bool().map_err(e)? {
+            Mode::Final
+        } else {
+            Mode::Inner
+        };
+        let ivc_whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?)
+            .map_err(|_| "wrap key layout: recursive header")?;
         let mut v = [0usize; 8];
         for x in &mut v {
             *x = usize::try_from(r.varint().map_err(e)?).map_err(|_| "wrap key layout: size")?;
         }
         let [ivc_n, n, pn, out_row, rows, c0, c1, c2] = v;
-        if !(10..=20).contains(&ivc_n) || !(4..=20).contains(&n) || out_row >= 1 << n || rows > 1 << n || pn > 64 {
+        if !(10..=20).contains(&ivc_n)
+            || !(4..=20).contains(&n)
+            || out_row >= 1 << n
+            || rows > 1 << n
+            || pn > 64
+        {
             return Err("wrap key layout: geometry".into());
         }
-        let key_root = if mode == Mode::Inner { Some(vkey::read_digest(&mut r)?) } else { None };
+        let key_root = if mode == Mode::Inner {
+            Some(vkey::read_digest(&mut r)?)
+        } else {
+            None
+        };
         let pre = vkey::read_pre(&mut r, 1 << n)?;
         r.finish().map_err(e)?;
-        assemble(WrapParams { whir, n, mode }, (ivc_whir, ivc_n), pre, out_row, rows, [c0, c1, c2], pn, key_root)
+        assemble(
+            WrapParams { whir, n, mode },
+            (ivc_whir, ivc_n),
+            pre,
+            out_row,
+            rows,
+            [c0, c1, c2],
+            pn,
+            key_root,
+        )
     }
 }
 
@@ -311,7 +475,7 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
     let mut kappa = vec![Vec::new(); rows * SLOTS];
     let key = |x: Fp3| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()];
     // every used slot's cells, per row (rows are independent: threads)
-    let slots_of = |r: usize| -> Vec<(usize, Vec<(u8, Fp3)>)> {
+    let slots_of = |r: usize| -> RowSlots {
         let p = pre.row(r);
         if p[pc::MEM] != one {
             return Vec::new();
@@ -332,16 +496,28 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
                 }
             }
         }
-        used.into_iter().map(|s| (s, core::mem::take(&mut per[s]))).collect()
+        used.into_iter()
+            .map(|s| (s, core::mem::take(&mut per[s])))
+            .collect()
     };
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16);
     let chunk = rows.div_ceil(threads);
-    let per_row: Vec<Vec<(usize, Vec<(u8, Fp3)>)>> = std::thread::scope(|sc| {
+    let per_row: Vec<RowSlots> = std::thread::scope(|sc| {
         let hs: Vec<_> = (0..rows)
             .step_by(chunk)
-            .map(|lo| sc.spawn(move || (lo..(lo + chunk).min(rows)).map(slots_of).collect::<Vec<_>>()))
+            .map(|lo| {
+                sc.spawn(move || {
+                    (lo..(lo + chunk).min(rows))
+                        .map(slots_of)
+                        .collect::<Vec<_>>()
+                })
+            })
             .collect();
-        hs.into_iter().flat_map(|h| h.join().expect("wiring thread")).collect()
+        hs.into_iter()
+            .flat_map(|h| h.join().expect("wiring thread"))
+            .collect()
     });
     // reads in row order; a later write of an address replaces an earlier
     for (r, slots) in per_row.into_iter().enumerate() {
@@ -376,5 +552,11 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
             write_cells.push((j as u32, x(w, c), super::Coef::of(kc)));
         }
     }
-    Wiring::new(reads_at.len(), read_cells, write_reads, write_at, write_cells)
+    Wiring::new(
+        reads_at.len(),
+        read_cells,
+        write_reads,
+        write_at,
+        write_cells,
+    )
 }

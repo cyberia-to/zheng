@@ -30,7 +30,20 @@ const ONE: Wire = 0;
 const ZERO: Wire = 1;
 const MAX_NODES: usize = 4096;
 const MAX_DEPTH: usize = 128;
-const MAX_GATES: usize = 32768;
+/// Operation wires (= constraint rows) of one Hemera permutation in the
+/// tagged builder: the opening linear layer (16), then per full round 16
+/// lanes of one round-constant add and a four-product x^7 S-box plus a
+/// linear layer (16 * 5 + 16), per partial round one lane (5 + 16).
+const PERMUTATION_GATES: usize =
+    16 + hemera::ROUNDS_F * (16 * 5 + 16) + hemera::ROUNDS_P * (5 + 16);
+/// Permutations in the one node-cost component: seven records, each an atom
+/// digest (two permutations) and a pair digest (one).
+const NODE_COST_PERMUTATIONS: usize = 7 * 3;
+/// The gate and row ceiling. The declared 32768 was sized when a permutation
+/// was hemera 0.3's 24 rounds; at hemera 0.4's 60 rounds the permutations
+/// of the node-cost component alone need more than that, so the ceiling is
+/// the least power of two holding them, which moves with the round count.
+const MAX_GATES: usize = (NODE_COST_PERMUTATIONS * PERMUTATION_GATES).next_power_of_two();
 #[derive(Clone, Debug)]
 struct Node {
     id: usize,

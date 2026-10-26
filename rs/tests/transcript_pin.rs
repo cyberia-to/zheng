@@ -13,7 +13,11 @@ mod common;
 use zheng::machine;
 
 fn whir() -> lens::WhirParams {
-    lens::WhirParams { log_inv_rate: 3, pow_bits: 16, ..lens::WhirParams::default() }
+    lens::WhirParams {
+        log_inv_rate: 3,
+        pow_bits: 16,
+        ..lens::WhirParams::default()
+    }
 }
 
 fn digest(bytes: &[u8]) -> String {

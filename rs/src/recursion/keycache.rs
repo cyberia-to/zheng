@@ -44,7 +44,13 @@ pub fn load(dir: &Path, id: [u64; 2]) -> Option<Vec<Vec<Digest>>> {
     let mut u64s = |n: usize| -> Option<Vec<u64>> {
         let s = b.get(at..at + 8 * n)?;
         at += 8 * n;
-        Some(s.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().expect("8"))).collect())
+        Some(
+            s.as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| u64::from_le_bytes(*c))
+                .collect(),
+        )
     };
     let head = u64s(2)?;
     if head[0] != u64::from_le_bytes(*MAGIC) {
@@ -57,7 +63,13 @@ pub fn load(dir: &Path, id: [u64; 2]) -> Option<Vec<Vec<Digest>>> {
         if v.iter().any(|&x| x >= nebu::field::P) {
             return None;
         }
-        levels.push(v.chunks_exact(4).map(|d| core::array::from_fn(|i| Goldilocks::new(d[i]))).collect());
+        levels.push(
+            v.as_chunks::<4>()
+                .0
+                .iter()
+                .map(|d| core::array::from_fn(|i| Goldilocks::new(d[i])))
+                .collect(),
+        );
     }
     (at == b.len()).then_some(levels)
 }

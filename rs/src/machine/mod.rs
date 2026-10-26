@@ -147,7 +147,13 @@ impl Run {
     /// Segment `i`'s AIR.
     pub fn machine(&self, i: usize) -> Machine {
         let rows = 1usize << self.seg_log;
-        Machine::new(self.constants.clone(), &self.init, self.start, i * rows, rows)
+        Machine::new(
+            self.constants.clone(),
+            &self.init,
+            self.start,
+            i * rows,
+            rows,
+        )
     }
 }
 
@@ -215,8 +221,14 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<MachineProof, String> {
         let [i1, i2] = pair;
         let d1 = lens::Whir::commit(whir, &w1s[i].column_major(wp)).1;
         let d2 = lens::Whir::commit(whir, &w2s[i].column_major(wp)).1;
-        let x1 = accumulate::Witnessed { instance: i1, data: d1 };
-        let x2 = accumulate::Witnessed { instance: i2, data: d2 };
+        let x1 = accumulate::Witnessed {
+            instance: i1,
+            data: d1,
+        };
+        let x2 = accumulate::Witnessed {
+            instance: i2,
+            data: d2,
+        };
         let mut inputs: Vec<&accumulate::Witnessed> = acc.iter().collect();
         inputs.push(&x1);
         inputs.push(&x2);
@@ -249,7 +261,11 @@ pub fn prove(
 }
 
 /// Verify a machine proof of a statement that reads no state.
-pub fn verify(st: &MachineStatement, proof: &MachineProof, whir: &WhirParams) -> Result<(), String> {
+pub fn verify(
+    st: &MachineStatement,
+    proof: &MachineProof,
+    whir: &WhirParams,
+) -> Result<(), String> {
     verify_with_state(st, proof, whir, None)
 }
 
@@ -267,7 +283,9 @@ pub fn authenticate_state(
             .authenticate(state.root)?;
         for &(ns, key, value) in &state.reads {
             if auth.cell(ns, key) != Some(value) {
-                return Err(format!("machine: read ({ns}, {key}) is not the authenticated value"));
+                return Err(format!(
+                    "machine: read ({ns}, {key}) is not the authenticated value"
+                ));
             }
         }
     }
@@ -324,7 +342,12 @@ pub fn verify_with_state(
         acc = Some(accumulate::verify_step(&cfg, &inputs, step, &mut t)?);
     }
     lap("verify steps");
-    let r = accumulate::verify_decider(&cfg, acc.as_ref().expect("a segment"), &proof.decider, &mut t);
+    let r = accumulate::verify_decider(
+        &cfg,
+        acc.as_ref().expect("a segment"),
+        &proof.decider,
+        &mut t,
+    );
     lap("verify decider");
     r
 }

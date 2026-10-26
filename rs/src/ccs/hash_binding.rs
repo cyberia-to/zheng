@@ -20,7 +20,7 @@
 //! - round row k (0..23): r4-r7 = state_k[0..4], r10-r13 = state_k[4..8],
 //!   r14 = k
 //! - squeeze row: r4-r7 = output digest (final state[0..4]),
-//!   r10-r13 = final state[4..8], r14 = 24
+//!   r10-r13 = final state[4..8], r14 = 60
 //!
 //! They fold into the shared linear eq-step accumulator group, inheriting
 //! the option-A linkage digest and the degree-1 zero-error rule from
@@ -34,13 +34,14 @@
 use nebu::Goldilocks;
 use nox::TraceRow;
 
-use super::particle::{replay_states, HashAux};
+use super::particle::{HashAux, replay_states};
 use super::selector;
 use super::verifier_steps::eq_step;
 use crate::types::{CCSInstance, CCSWitness, CommitError};
 
-/// Rows per hash block: 24 round rows + 1 squeeze row.
-const BLOCK_ROWS: usize = 25;
+/// Rows per hash block: 60 round rows + 1 squeeze row (hemera 0.4; nox's
+/// pattern 15 emits one row per round).
+const BLOCK_ROWS: usize = hemera::ROUNDS_TOTAL + 1;
 
 fn reg(row: &TraceRow, i: usize) -> Goldilocks {
     Goldilocks::new(row.r()[i]).canonicalize()
@@ -53,7 +54,7 @@ fn reg(row: &TraceRow, i: usize) -> Goldilocks {
 /// runs of at least 2 rows consume one [`HashAux`] each, in trace order.
 ///
 /// Returns `Err(CommitError::TraceOverflow)` if `aux` has fewer entries than
-/// hash blocks, `Err(CommitError::HashBinding)` if a block is not 25 rows or
+/// hash blocks, `Err(CommitError::HashBinding)` if a block is not 61 rows or
 /// any binding is unsatisfied — commit refuses to emit a proof whose hash
 /// rows diverge from the replay of the claimed rate.
 pub fn build_hash_binding_steps_from_trace(
@@ -103,7 +104,7 @@ pub fn build_hash_binding_steps_from_trace(
             steps.push(eq_step(Goldilocks::new(k as u64), reg(row, 14)));
         }
 
-        // Squeeze row: output digest = final state[0..4], r14 = 24 sentinel,
+        // Squeeze row: output digest = final state[0..4], r14 = 60 sentinel,
         // budget decrement of the whole block.
         let sq = &block[BLOCK_ROWS - 1];
         let last = &states[BLOCK_ROWS - 2];
@@ -113,7 +114,10 @@ pub fn build_hash_binding_steps_from_trace(
         for j in 0..4 {
             steps.push(eq_step(last[4 + j], reg(sq, 10 + j)));
         }
-        steps.push(eq_step(Goldilocks::new((BLOCK_ROWS - 1) as u64), reg(sq, 14)));
+        steps.push(eq_step(
+            Goldilocks::new((BLOCK_ROWS - 1) as u64),
+            reg(sq, 14),
+        ));
         // No budget binding: specs/trace.md claims r9 = r8 - 25 on the
         // squeeze row, but nox records r8 before evaluating the hash body
         // sub-formula, whose cost varies (observed r8=100, r9=74 for

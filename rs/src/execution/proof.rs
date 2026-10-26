@@ -235,8 +235,10 @@ mod tests {
     use super::*;
     use crate::types::SparseMatrix;
 
+    /// hemera 0.4 (60 rounds); the 0.3 value was c6745fa9...a5065. The digest
+    /// is over hemera-hashed bytes (zheng run 40271393643).
     const FROZEN_V1_DIGEST: &str =
-        "c6745fa9d65a39309760396d0f614dc78e79cdbb261186c063ab2c1f631a5065";
+        "52ac826cbe86e489822f2c44f9bed45929fe2f4e5c6564be592acd6ab4dd6d5c";
 
     fn relation() -> (CCSInstance, CCSWitness, Vec<(usize, Goldilocks)>) {
         // The public output z[3] must equal public input z[1] times z[2].
@@ -369,7 +371,10 @@ mod tests {
         let proof = prove(&instance, &witness, b"frozen-v1", &public).unwrap();
         let mut h = hemera::Hasher::new();
         h.update(proof.spartan.commitment.as_bytes());
-        for polys in [&proof.spartan.outer_sumcheck_polys, &proof.spartan.sumcheck_polys] {
+        for polys in [
+            &proof.spartan.outer_sumcheck_polys,
+            &proof.spartan.sumcheck_polys,
+        ] {
             for p in polys.iter() {
                 for c in &p.coeffs {
                     h.update(&c.as_u64().to_le_bytes());
@@ -380,7 +385,10 @@ mod tests {
             h.update(&e.as_u64().to_le_bytes());
         }
         h.update(&proof.spartan.eval_value.as_u64().to_le_bytes());
-        if let lens::Opening::TensorMerkle { row_combination, .. } = &proof.spartan.pcs_opening {
+        if let lens::Opening::TensorMerkle {
+            row_combination, ..
+        } = &proof.spartan.pcs_opening
+        {
             h.update(row_combination);
         }
         assert_eq!(h.finalize().to_hex(), FROZEN_V1_DIGEST);

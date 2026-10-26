@@ -85,7 +85,9 @@ pub fn tokens(noun: &N) -> Vec<NounToken> {
 
 /// The subject of public inputs `[x_k [… [x_1 0]]]`.
 pub fn subject(input: &[u64]) -> N {
-    input.iter().fold(N::Atom(0), |acc, &x| N::Pair(Box::new(N::Atom(x)), Box::new(acc)))
+    input.iter().fold(N::Atom(0), |acc, &x| {
+        N::Pair(Box::new(N::Atom(x)), Box::new(acc))
+    })
 }
 
 /// The structural digest of a noun (nox identity).

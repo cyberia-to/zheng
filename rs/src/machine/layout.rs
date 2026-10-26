@@ -3,6 +3,8 @@
 //! are shared between row kinds, every constraint is gated by the kind (or
 //! by a public phase column in the permutation region).
 
+use crate::execution::HASH_COST;
+
 /// Phase-1 columns.
 pub const W1: usize = 64;
 
@@ -41,21 +43,21 @@ pub const FLAGS: usize = 16;
 /// `OP_WORD` covers xor, and, shl (tags 11, 12, 14; cost 32): its tag is
 /// the formula's own tag atom, restricted to those three.
 pub const OPS: [(usize, u64, u64); 15] = [
-    (0, 0, 1),    // axis
-    (1, 1, 1),    // quote
-    (2, 2, 1),    // compose
-    (3, 3, 1),    // cons
-    (4, 4, 1),    // branch
-    (5, 5, 1),    // add
-    (6, 6, 1),    // sub
-    (7, 7, 1),    // mul
-    (8, 8, 64),   // inv
-    (9, 9, 1),    // eq
-    (10, 15, 25), // hash
-    (11, 10, 64), // lt
-    (13, 13, 32), // not
-    (14, 16, 1),  // call
-    (15, 17, 1),  // look
+    (0, 0, 1),           // axis
+    (1, 1, 1),           // quote
+    (2, 2, 1),           // compose
+    (3, 3, 1),           // cons
+    (4, 4, 1),           // branch
+    (5, 5, 1),           // add
+    (6, 6, 1),           // sub
+    (7, 7, 1),           // mul
+    (8, 8, 64),          // inv
+    (9, 9, 1),           // eq
+    (10, 15, HASH_COST), // hash
+    (11, 10, 64),        // lt
+    (13, 13, 32),        // not
+    (14, 16, 1),         // call
+    (15, 17, 1),         // look
 ];
 pub const OP_AXIS: usize = FLAG0;
 pub const OP_QUOTE: usize = FLAG0 + 1;
@@ -181,7 +183,13 @@ pub const B_AND: usize = FLAG0 + 6;
 pub const B_NOT: usize = FLAG0 + 7;
 pub const B_SHL: usize = FLAG0 + 8;
 pub const B_LT: usize = FLAG0 + 9;
-pub const WOPS: [(usize, u64); 5] = [(B_XOR, T_XOR), (B_AND, T_AND), (B_NOT, T_NOT), (B_SHL, T_SHL), (B_LT, T_LT)];
+pub const WOPS: [(usize, u64); 5] = [
+    (B_XOR, T_XOR),
+    (B_AND, T_AND),
+    (B_NOT, T_NOT),
+    (B_SHL, T_SHL),
+    (B_LT, T_LT),
+];
 pub const B_CNT: usize = FLAG0 + 10;
 pub const B_LINV: usize = FLAG0 + 11; // (CNT − 31)·LINV = 1 − LAST
 pub const B_LAST: usize = FLAG0 + 12;
@@ -229,11 +237,16 @@ pub const G_EH2: usize = wg(21);
 // ── permutation region (rows ≥ the region start, 32-row blocks) ───────
 pub const JOB_ID: usize = OBJ;
 pub const STATE: usize = X; // 16 columns 11..26
-pub const PINV: usize = 27;
 pub const J_PAIR: usize = 28;
 pub const J_ATOM1: usize = 29;
 pub const J_ATOM2: usize = 30;
 pub const J_HOP: usize = 31;
+/// Partial-round S-box outputs of a quad row: `PW + j` holds
+/// `(s₀ + rc_j)⁷` of the row's `j`-th partial round (columns 56..59; the
+/// slot area 32..55 and column 27 are unused on round rows).
+pub const PW: usize = WIT;
+/// Partial rounds per quad row.
+pub const QUAD: usize = 4;
 /// Bits rows of an atom job (phases 0, 1).
 pub const B_LO: usize = 11;
 pub const B_HL: usize = 12;
@@ -247,8 +260,29 @@ pub const BLOCK: usize = 32;
 pub const PH_BITS0: usize = 0;
 pub const PH_BITS1: usize = 1;
 pub const PH_MDS: usize = 2;
-pub const PH_ROUND0: usize = 3; // rounds 0..23 at phases 3..26
-pub const PH_OUT: usize = 27;
+/// hemera 0.4's 60 rounds on 24 rows: the 6 initial full rounds at phases
+/// 3..9 (one a row), the 48 partial rounds at phases 9..21 (four a row,
+/// `QUAD`), the 6 terminal full rounds at phases 21..27.
+pub const PH_ROUND0: usize = 3;
+pub const PH_PART0: usize = PH_ROUND0 + super::hemera::RF_HALF; // 9
+pub const PART_ROWS: usize = super::hemera::RP / QUAD; // 12
+pub const PH_FULL1: usize = PH_PART0 + PART_ROWS; // 21
+pub const PH_OUT: usize = PH_FULL1 + super::hemera::RF_HALF; // 27
+const _: () = assert!(super::hemera::RP.is_multiple_of(QUAD) && PH_OUT < BLOCK);
+
+/// The rounds of a block phase: `(first round, count)` — one full round
+/// or `QUAD` partial rounds — or none (bits, MDS, output, idle rows).
+pub const fn phase_rounds(ph: usize) -> Option<(usize, usize)> {
+    if ph >= PH_ROUND0 && ph < PH_PART0 {
+        Some((ph - PH_ROUND0, 1))
+    } else if ph >= PH_PART0 && ph < PH_FULL1 {
+        Some((super::hemera::PARTIAL_FIRST + QUAD * (ph - PH_PART0), QUAD))
+    } else if ph >= PH_FULL1 && ph < PH_OUT {
+        Some((super::hemera::PARTIAL_END + ph - PH_FULL1, 1))
+    } else {
+        None
+    }
+}
 
 // ── memory tags ──────────────────────────────────────────────────────
 pub const TAG_ATOM: u64 = 1;

@@ -26,10 +26,10 @@ use nebu::field::P;
 use super::body::{execution, read_execution, read_state, state};
 use super::codec::{Reader, Writer};
 use super::{Envelope, EnvelopeError as E};
+use crate::execution::ExecutionStatement;
 use crate::execution::state::StateStatement;
 use crate::execution::state_evidence::StateEvidence;
 use crate::execution::succinct::{SuccinctPcs, SuccinctProof};
-use crate::execution::ExecutionStatement;
 use crate::spartan::reduce::CompressedRounds;
 
 const MAX_MATRICES: usize = 16;
@@ -135,14 +135,13 @@ fn proof<Pc: SuccinctPcs>(p: &SuccinctProof<Pc>, w: &mut Writer) {
     w.raw(&Pc::proof_body(&p.opening));
 }
 
-fn read_proof<Pc: SuccinctPcs>(
-    params: Pc::Params,
-    r: &mut Reader,
-) -> Result<SuccinctProof<Pc>, E> {
+fn read_proof<Pc: SuccinctPcs>(params: Pc::Params, r: &mut Reader) -> Result<SuccinctProof<Pc>, E> {
     let root = r.raw(32)?;
     if root
-        .chunks_exact(8)
-        .any(|l| u64::from_le_bytes(l.try_into().expect("8 bytes")) >= P)
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .any(|l| u64::from_le_bytes(*l) >= P)
     {
         return Err(E::NonCanonical);
     }

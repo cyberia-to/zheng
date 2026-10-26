@@ -15,9 +15,9 @@
 //! [`WrapKey::vk_digest`] (hemera over the bytes), or derive the key.
 
 use lens::PcsError;
-use lens::rspcs::wire::{Reader, Writer};
 use lens::WhirParams;
 use lens::rspcs::whir::Decoding;
+use lens::rspcs::wire::{Reader, Writer};
 
 use super::{Coef, Mode, Wiring, WrapKey, WrapParams};
 use crate::air::num::{Graph, Node, Sym};
@@ -51,7 +51,14 @@ fn read_whir_params(r: &mut Reader<'_>) -> R<WhirParams> {
         _ => return Err(PcsError::Malformed),
     };
     let max_final_vars = r.u8()?;
-    Ok(WhirParams { log_inv_rate, folding_factor, security_target, pow_bits, decoding, max_final_vars })
+    Ok(WhirParams {
+        log_inv_rate,
+        folding_factor,
+        security_target,
+        pow_bits,
+        decoding,
+        max_final_vars,
+    })
 }
 
 fn coef(w: &mut Writer, c: Coef) {
@@ -115,7 +122,9 @@ fn cells(w: &mut Writer, v: &[(u32, u32, Coef)]) {
 
 fn read_cell_list(r: &mut Reader<'_>) -> R<Vec<(u32, u32, Coef)>> {
     let n = r.count(9)?;
-    (0..n).map(|_| Ok((r.u32()? as u32, r.u32()? as u32, read_coef(r)?))).collect()
+    (0..n)
+        .map(|_| Ok((r.u32()? as u32, r.u32()? as u32, read_coef(r)?)))
+        .collect()
 }
 
 fn u32s(w: &mut Writer, v: &[u32]) {
@@ -145,7 +154,16 @@ impl WrapKey {
         });
         whir_params(&mut w, &self.ivc.0);
         w.u32(self.ivc.1);
-        for v in [self.fresh, self.out_row, self.constraints, self.pn, self.rows, self.census[0], self.census[1], self.census[2]] {
+        for v in [
+            self.fresh,
+            self.out_row,
+            self.constraints,
+            self.pn,
+            self.rows,
+            self.census[0],
+            self.census[1],
+            self.census[2],
+        ] {
             w.u32(v);
         }
         w.u8(self.key_ext as u8);
@@ -156,7 +174,10 @@ impl WrapKey {
                 digest(&mut w, d);
             }
         }
-        u32s(&mut w, &self.next_cols.iter().map(|&c| c as u32).collect::<Vec<_>>());
+        u32s(
+            &mut w,
+            &self.next_cols.iter().map(|&c| c as u32).collect::<Vec<_>>(),
+        );
         w.u32(self.sparse.len());
         for col in &self.sparse {
             w.u32(col.len());
@@ -253,7 +274,11 @@ impl WrapKey {
         let mut sparse = Vec::with_capacity(ncols);
         for _ in 0..ncols {
             let m = r.count(28)?;
-            sparse.push((0..m).map(|_| Ok((r.u32()? as u32, r.ext()?))).collect::<R<Vec<_>>>()?);
+            sparse.push(
+                (0..m)
+                    .map(|_| Ok((r.u32()? as u32, r.ext()?)))
+                    .collect::<R<Vec<_>>>()?,
+            );
         }
         let wiring = match r.u8()? {
             0 => None,
@@ -263,7 +288,13 @@ impl WrapKey {
                 let write_reads = read_u32s(&mut r)?;
                 let write_at = read_u32s(&mut r)?;
                 let write_cells = read_cell_list(&mut r)?;
-                Some(Wiring::new(reads, read_cells, write_reads, write_at, write_cells))
+                Some(Wiring::new(
+                    reads,
+                    read_cells,
+                    write_reads,
+                    write_at,
+                    write_cells,
+                ))
             }
             _ => return Err(PcsError::Malformed),
         };
@@ -286,12 +317,32 @@ impl WrapKey {
             });
         }
         let no = r.count(2)?;
-        let outputs = (0..no).map(|_| read_sym(&mut r, nn)).collect::<R<Vec<_>>>()?;
+        let outputs = (0..no)
+            .map(|_| read_sym(&mut r, nn))
+            .collect::<R<Vec<_>>>()?;
         r.finish()?;
-        let key_phys = if mode == Mode::Inner { crate::recursion::splitkey::columns(&crate::recursion::splitkey::ext_columns(&sparse)) } else { Vec::new() };
-        let cfg = super::program::level_config(&params, n + super::CBITS, fresh, crate::recursion::splitkey::words(key_phys.len())).map_err(|_| PcsError::Malformed)?;
-        let g = Graph { nodes, inputs, outputs };
-        let w = if mode == Mode::Inner { super::COLS } else { crate::recursion::circuit::layout::V1 };
+        let key_phys = if mode == Mode::Inner {
+            crate::recursion::splitkey::columns(&crate::recursion::splitkey::ext_columns(&sparse))
+        } else {
+            Vec::new()
+        };
+        let cfg = super::program::level_config(
+            &params,
+            n + super::CBITS,
+            fresh,
+            crate::recursion::splitkey::words(key_phys.len()),
+        )
+        .map_err(|_| PcsError::Malformed)?;
+        let g = Graph {
+            nodes,
+            inputs,
+            outputs,
+        };
+        let w = if mode == Mode::Inner {
+            super::COLS
+        } else {
+            crate::recursion::circuit::layout::V1
+        };
         if g.inputs != super::g_inputs(w) {
             return Err(PcsError::Malformed);
         }
@@ -329,10 +380,17 @@ impl WrapKey {
         let cells = super::WORD << n;
         let w = self.cols();
         let ok_graph = self.g.inputs == super::g_inputs(w)
-            && self.g.nodes.iter().all(|x| !matches!(x, Node::Input(i) if *i as usize >= self.g.inputs))
+            && self
+                .g
+                .nodes
+                .iter()
+                .all(|x| !matches!(x, Node::Input(i) if *i as usize >= self.g.inputs))
             && self.g.outputs.len() == 1;
         let ok_sparse = self.sparse.len() == crate::recursion::circuit::layout::pre::COUNT
-            && self.sparse.iter().all(|c| c.iter().all(|&(x, _)| (x as usize) < rows));
+            && self
+                .sparse
+                .iter()
+                .all(|c| c.iter().all(|&(x, _)| (x as usize) < rows));
         let ok_wiring = match &self.wiring {
             None => self.params.mode == Mode::Inner,
             Some(wi) => {
@@ -341,8 +399,14 @@ impl WrapKey {
                     && wi.write_at.windows(2).all(|p| p[0] <= p[1])
                     && *wi.write_at.last().unwrap_or(&0) as usize == wi.write_reads.len()
                     && wi.write_reads.iter().all(|&i| (i as usize) < wi.reads)
-                    && wi.read_cells.iter().all(|&(i, x, _)| (i as usize) < wi.reads && (x as usize) < cells)
-                    && wi.write_cells.iter().all(|&(j, x, _)| (j as usize) < writes && (x as usize) < cells)
+                    && wi
+                        .read_cells
+                        .iter()
+                        .all(|&(i, x, _)| (i as usize) < wi.reads && (x as usize) < cells)
+                    && wi
+                        .write_cells
+                        .iter()
+                        .all(|&(j, x, _)| (j as usize) < writes && (x as usize) < cells)
             }
         };
         let ok_mode = (self.params.mode == Mode::Inner) == self.key_root.is_some();
@@ -351,7 +415,9 @@ impl WrapKey {
         // key columns evaluated are derived from the graph on load
         let ok_next = ok_graph && {
             let used = self.g.used_inputs();
-            let want: Vec<usize> = (0..w).filter(|&c| self.params.mode == Mode::Inner || used[w + c]).collect();
+            let want: Vec<usize> = (0..w)
+                .filter(|&c| self.params.mode == Mode::Inner || used[w + c])
+                .collect();
             self.next_cols == want && self.key_cols == super::key_used(&self.g, w)
         };
         ok_graph

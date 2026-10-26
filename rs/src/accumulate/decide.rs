@@ -34,7 +34,11 @@ fn whir_transcript(t: &mut Transcript) -> Transcript {
 }
 
 /// Prove that `acc`'s word is a codeword whose message satisfies its claims.
-pub fn decide(cfg: &AccConfig, acc: &Witnessed, t: &mut Transcript) -> Result<DeciderProof, String> {
+pub fn decide(
+    cfg: &AccConfig,
+    acc: &Witnessed,
+    t: &mut Transcript,
+) -> Result<DeciderProof, String> {
     let inst = &acc.instance;
     if acc.data.num_vars() != cfg.num_vars || acc.data.is_ext() != inst.ext {
         return Err("decide: word shape".into());
@@ -63,7 +67,9 @@ pub fn verify_decider(
     proof: &DeciderProof,
     t: &mut Transcript,
 ) -> Result<(), String> {
-    if inst.claims.iter().any(|c| c.point.len() != cfg.num_vars) || inst.claims.len() > cfg.max_claims.max(cfg.acc_claims()) {
+    if inst.claims.iter().any(|c| c.point.len() != cfg.num_vars)
+        || inst.claims.len() > cfg.max_claims.max(cfg.acc_claims())
+    {
         return Err("decide: claim shape".into());
     }
     t.absorb(b"zheng-acc-decide-v1");
@@ -78,9 +84,25 @@ pub fn verify_decider(
     t.absorb_fp3(proof.value);
     let mut lt = whir_transcript(t);
     let r = if inst.ext {
-        Whir::verify_ext(&cfg.whir, &inst.root, cfg.num_vars, &point, proof.value, &proof.whir, &mut lt)
+        Whir::verify_ext(
+            &cfg.whir,
+            &inst.root,
+            cfg.num_vars,
+            &point,
+            proof.value,
+            &proof.whir,
+            &mut lt,
+        )
     } else {
-        Whir::verify(&cfg.whir, &inst.root, cfg.num_vars, &point, proof.value, &proof.whir, &mut lt)
+        Whir::verify(
+            &cfg.whir,
+            &inst.root,
+            cfg.num_vars,
+            &point,
+            proof.value,
+            &proof.whir,
+            &mut lt,
+        )
     };
     r.map_err(|e| format!("decide: whir: {e}"))
 }

@@ -23,7 +23,9 @@ fn arena(r: &mut nox::Reduction<8192>, n: &N) -> nox::Order {
 fn back(r: &nox::Reduction<8192>, o: nox::Order) -> N {
     match r.get(o).unwrap().inner {
         nox::data::Data::Atom { value } => N::Atom(value.as_u64()),
-        nox::data::Data::Pair { left, right } => N::Pair(Box::new(back(r, left)), Box::new(back(r, right))),
+        nox::data::Data::Pair { left, right } => {
+            N::Pair(Box::new(back(r, left)), Box::new(back(r, right)))
+        }
     }
 }
 
@@ -110,7 +112,10 @@ fn a_merkle_path_and_a_multi_segment_run_prove() {
     // a wrong root: the program outputs 1, and the statement claiming 0 fails
     let bad = common::merkle_program(8, Some(&N::Atom(9)));
     let run_bad = agrees(&bad, &[5], machine::SEGMENT_LOG_ROWS);
-    assert_eq!(statement::parse(&run_bad.statement.output).unwrap(), N::Atom(1));
+    assert_eq!(
+        statement::parse(&run_bad.statement.output).unwrap(),
+        N::Atom(1)
+    );
     let mut lie = run_bad.statement.clone();
     lie.output = statement::tokens(&N::Atom(0));
     let proof_bad = machine::prove_run(&run_bad, &w).unwrap();
@@ -129,7 +134,10 @@ fn a_merkle_path_and_a_multi_segment_run_prove() {
     // a self-referencing recursion (computed formulas all the way down)
     let rec = common::rec_program();
     let run = agrees(&rec, &[6], 9);
-    assert_eq!(statement::parse(&run.statement.output).unwrap(), N::Atom(64));
+    assert_eq!(
+        statement::parse(&run.statement.output).unwrap(),
+        N::Atom(64)
+    );
     let p2 = machine::prove_run(&run, &w).unwrap();
     machine::verify(&run.statement, &p2, &w).unwrap();
     // a segment's proof moved to another position does not verify
@@ -142,7 +150,11 @@ fn a_merkle_path_and_a_multi_segment_run_prove() {
 fn the_machine_rides_the_envelope_as_profile_four() {
     use zheng::envelope::{Envelope, Profile};
     let w = whir();
-    let run = agrees(&common::parse(common::ADD), &[7, 5], machine::SEGMENT_LOG_ROWS);
+    let run = agrees(
+        &common::parse(common::ADD),
+        &[7, 5],
+        machine::SEGMENT_LOG_ROWS,
+    );
     let proof = machine::prove_run(&run, &w).unwrap();
     let env = Envelope::Machine {
         params: w,
@@ -159,7 +171,10 @@ fn the_machine_rides_the_envelope_as_profile_four() {
     assert!(back.verify(None).is_err());
     let hash = machine::statement::tokens(&common::parse(common::HASH));
     assert!(back.verify_program(&hash, None).is_err());
-    assert_eq!(Envelope::from_bytes_for(&bytes, &hash), Err(zheng::envelope::EnvelopeError::ProgramMismatch));
+    assert_eq!(
+        Envelope::from_bytes_for(&bytes, &hash),
+        Err(zheng::envelope::EnvelopeError::ProgramMismatch)
+    );
     // weak parameters in the header are refused by the policy
     let mut weak = bytes.clone();
     weak[11 + 2] = 1; // log_inv_rate 1 (after the format byte and the header's version)
@@ -182,7 +197,11 @@ fn bit_flip_scan_of_a_full_machine_envelope() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use zheng::envelope::Envelope;
     let w = zheng::execution::succinct::params_for(20);
-    let run = agrees(&common::parse(common::ADD), &[7, 5], machine::SEGMENT_LOG_ROWS);
+    let run = agrees(
+        &common::parse(common::ADD),
+        &[7, 5],
+        machine::SEGMENT_LOG_ROWS,
+    );
     let proof = machine::prove_run(&run, &w).unwrap();
     let env = Envelope::Machine {
         params: w,
@@ -231,7 +250,10 @@ fn bit_flip_scan_of_a_full_machine_envelope() {
 fn long_runs_agree_with_native_nox() {
     let run = agrees(&common::rec_program(), &[14], machine::SEGMENT_LOG_ROWS);
     assert_eq!(run.statement.cycles, 393_202);
-    assert_eq!(statement::parse(&run.statement.output).unwrap(), N::Atom(1 << 14));
+    assert_eq!(
+        statement::parse(&run.statement.output).unwrap(),
+        N::Atom(1 << 14)
+    );
     let run = agrees(&common::tree_program(14), &[3], machine::SEGMENT_LOG_ROWS);
     assert_eq!(run.statement.cycles, 4 * (1 << 14) - 1);
 }

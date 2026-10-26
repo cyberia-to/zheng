@@ -44,7 +44,13 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
         n,
         push2,
         K_EVAL,
-        &[(OBJ, fobj), (X, x), (K, alloc), (D, fd + one), (ALLOC, alloc + one)],
+        &[
+            (OBJ, fobj),
+            (X, x),
+            (K, alloc),
+            (D, fd + one),
+            (ALLOC, alloc + one),
+        ],
     );
     // CONS2: allocate the pair (x, val)
     let g = f(F_CONS2);
@@ -53,14 +59,26 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
     out.push(g * (pay(1, 1) - val));
     out.push(g * pay(1, 2));
     out.push(g * pay(1, 3));
-    go(out, n, g, K_RET, &[(X, alloc), (K, parent), (ALLOC, alloc + one)]);
+    go(
+        out,
+        n,
+        g,
+        K_RET,
+        &[(X, alloc), (K, parent), (ALLOC, alloc + one)],
+    );
     // COMP2: evaluate the computed formula on the computed subject
     go(
         out,
         n,
         f(F_COMP2),
         K_EVAL,
-        &[(OBJ, x), (X, val), (K, parent), (D, fd + one), (ALLOC, alloc)],
+        &[
+            (OBJ, x),
+            (X, val),
+            (K, parent),
+            (D, fd + one),
+            (ALLOC, alloc),
+        ],
     );
     // BR: test atom, select an arm
     let g = f(F_BR);
@@ -75,7 +93,13 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
         n,
         g,
         K_EVAL,
-        &[(OBJ, fobj), (X, arm), (K, parent), (D, fd + one), (ALLOC, alloc)],
+        &[
+            (OBJ, fobj),
+            (X, arm),
+            (K, parent),
+            (D, fd + one),
+            (ALLOC, alloc),
+        ],
     );
     // the operand atoms of B2AR / B2EQ / B2W / B2LOOK
     let (u, w) = (pay(1, 0), pay(2, 0));
@@ -108,21 +132,35 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
     let mixed = g * (ka + kb - c::<T>(2) * ka * kb);
     out.push(atoms * (pay(3, 0) - (one - iseq)) + mixed * (pay(3, 0) - one));
     let pairs = g * (one - ka) * (one - kb);
-    go(out, n, pairs, K_EQD, &[(OBJ, x), (X, val), (K, parent), (ALLOC, alloc)]);
+    go(
+        out,
+        n,
+        pairs,
+        K_EQD,
+        &[(OBJ, x), (X, val), (K, parent), (ALLOC, alloc)],
+    );
     // the atom result of add / sub / mul / eq(atom|mixed)
     let wr = f(F_B2AR) + g - pairs;
     out.push(wr * (key(3) - alloc));
     for i in 1..4 {
         out.push(wr * pay(3, i));
     }
-    go(out, n, wr, K_RET, &[(X, alloc), (K, parent), (ALLOC, alloc + one)]);
+    go(
+        out,
+        n,
+        wr,
+        K_RET,
+        &[(X, alloc), (K, parent), (ALLOC, alloc + one)],
+    );
     // B2W: the result atom is written here, the 32 WBIT rows prove it
     let g = f(F_B2W);
     out.push(g * (key(3) - alloc));
     for i in 1..4 {
         out.push(g * pay(3, i));
     }
-    let wsum = WOPS.iter().fold(T::ZERO, |a, &(col, code)| a + n[col] * c::<T>(code));
+    let wsum = WOPS
+        .iter()
+        .fold(T::ZERO, |a, &(col, code)| a + n[col] * c::<T>(code));
     out.push(g * (wsum - op));
     go(
         out,
@@ -149,7 +187,13 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
         n,
         g,
         K_AUX,
-        &[(S_LOOK, one), (OBJ, fobj), (X, pay(3, 2)), (K, parent), (ALLOC, alloc)],
+        &[
+            (S_LOOK, one),
+            (OBJ, fobj),
+            (X, pay(3, 2)),
+            (K, parent),
+            (ALLOC, alloc),
+        ],
     );
     // UHASH: the hash opcode's output, as hash_data
     let g = f(F_UHASH);
@@ -167,7 +211,13 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
     for i in 1..4 {
         out.push(g * pay(2, i));
     }
-    go(out, n, g, K_RET, &[(X, alloc), (K, parent), (ALLOC, alloc + one)]);
+    go(
+        out,
+        n,
+        g,
+        K_RET,
+        &[(X, alloc), (K, parent), (ALLOC, alloc + one)],
+    );
     // CALL1: the tag is an atom; the witness rows follow (stack empty)
     let g = f(F_CALL1);
     out.push(g * (key(1) - val));
@@ -176,7 +226,14 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
         n,
         g,
         K_AUX,
-        &[(OBJ, fobj), (X, x), (D, fd), (K, parent), (ALLOC, alloc), (W_SP, T::ZERO)],
+        &[
+            (OBJ, fobj),
+            (X, x),
+            (D, fd),
+            (K, parent),
+            (ALLOC, alloc),
+            (W_SP, T::ZERO),
+        ],
     );
     out.push(g * (one - n[S_WATOM] - n[S_WPAIR] - n[S_WJOIN]));
     // CALL2: the check returned the atom 0; the witness is the value
@@ -208,7 +265,17 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
         out.push(gb * pay(s, 2));
         out.push(gb * pay(s, 3));
     }
-    go(out, n, gb, K_RET, &[(X, alloc + c::<T>(2)), (K, l[K]), (ALLOC, alloc + c::<T>(3))]);
+    go(
+        out,
+        n,
+        gb,
+        K_RET,
+        &[
+            (X, alloc + c::<T>(2)),
+            (K, l[K]),
+            (ALLOC, alloc + c::<T>(3)),
+        ],
+    );
 
     // EQD: two digests, all four limbs equal or not
     let ge = l[K_EQD];
@@ -228,5 +295,11 @@ pub(crate) fn constrain<T: Num>(_m: &super::air::Machine, v: &Vals<'_, T>, out: 
     for i in 1..4 {
         out.push(ge * pay(2, i));
     }
-    go(out, n, ge, K_RET, &[(X, alloc), (K, l[K]), (ALLOC, alloc + one)]);
+    go(
+        out,
+        n,
+        ge,
+        K_RET,
+        &[(X, alloc), (K, l[K]), (ALLOC, alloc + one)],
+    );
 }

@@ -42,7 +42,12 @@ impl ProvingKey {
         let layout = Layout::new(&vk.relation().instance, &pins)?;
         let relabelled = layout.instance(&vk.relation().instance);
         let pinned = pins.iter().map(|&(i, _)| i).collect();
-        Ok(Self { vk, pinned, layout, relabelled })
+        Ok(Self {
+            vk,
+            pinned,
+            layout,
+            relabelled,
+        })
     }
 
     /// The verifying key this proving key carries.
@@ -79,7 +84,11 @@ pub fn prove_with_key(
     let witness = relation
         .witness(&statement.inputs())
         .map_err(|e| format!("execution witness: {e:?}"))?;
-    statement.public_output = relation.output_indices.iter().map(|&i| witness.z[i].as_u64()).collect();
+    statement.public_output = relation
+        .output_indices
+        .iter()
+        .map(|&i| witness.z[i].as_u64())
+        .collect();
     statement.cycles = witness.z[relation.cost_index].as_u64();
     if statement.cycles > budget {
         return Err("execution cost exceeds budget".into());
@@ -88,13 +97,18 @@ pub fn prove_with_key(
     if pins.len() != key.pinned.len() || pins.iter().zip(&key.pinned).any(|(&(i, _), &j)| i != j) {
         return Err("succinct: pinned coordinates differ from the key's".into());
     }
-    if witness.z.len() != relation.instance.num_cols || pins.iter().any(|&(i, v)| witness.z[i] != v) {
+    if witness.z.len() != relation.instance.num_cols || pins.iter().any(|&(i, v)| witness.z[i] != v)
+    {
         return Err("succinct: witness disagrees with the statement".into());
     }
     let layout = Layout {
         vars: key.layout.vars,
         map: key.layout.map.clone(),
-        public: pins.iter().enumerate().map(|(slot, &(_, v))| (slot, v)).collect::<Vec<(usize, Goldilocks)>>(),
+        public: pins
+            .iter()
+            .enumerate()
+            .map(|(slot, &(_, v))| (slot, v))
+            .collect::<Vec<(usize, Goldilocks)>>(),
     };
     let proof: SuccinctProof<Whir> = protocol::prove_laid_out(
         &choose(layout.vars),
@@ -123,11 +137,25 @@ impl RelationKey {
     pub fn new(instance: &CCSInstance, pinned: &[usize]) -> Result<Self, String> {
         let pins: Vec<(usize, Goldilocks)> = pinned
             .iter()
-            .map(|&i| (i, if i == 0 { Goldilocks::ONE } else { Goldilocks::ZERO }))
+            .map(|&i| {
+                (
+                    i,
+                    if i == 0 {
+                        Goldilocks::ONE
+                    } else {
+                        Goldilocks::ZERO
+                    },
+                )
+            })
             .collect();
         let layout = Layout::new(instance, &pins)?;
         let relabelled = layout.instance(instance);
-        Ok(Self { layout, relabelled, pinned: pinned.to_vec(), num_cols: instance.num_cols })
+        Ok(Self {
+            layout,
+            relabelled,
+            pinned: pinned.to_vec(),
+            num_cols: instance.num_cols,
+        })
     }
 
     /// Committed variables of the relation.
@@ -158,7 +186,11 @@ pub fn prove_relation_with_key<P: super::SuccinctPcs>(
     let layout = Layout {
         vars: key.layout.vars,
         map: key.layout.map.clone(),
-        public: pins.iter().enumerate().map(|(slot, &(_, v))| (slot, v)).collect(),
+        public: pins
+            .iter()
+            .enumerate()
+            .map(|(slot, &(_, v))| (slot, v))
+            .collect(),
     };
     protocol::prove_laid_out(params, &layout, &key.relabelled, z, statement)
 }
@@ -213,13 +245,30 @@ mod tests {
         let key = ProvingKey::new(&program, 1).unwrap();
         for x in [7u64, 9, 0] {
             let (s1, p1) = super::super::prove_default(&program, &[x], 1_000_000).unwrap();
-            let (s2, p2) = prove_with_key(&key, &program, &[x], 1_000_000, super::super::device_params).unwrap();
-            let e1 = Envelope::Succinct { statement: SuccinctStatement::Execution(s1), proof: p1 };
-            let e2 = Envelope::Succinct { statement: SuccinctStatement::Execution(s2), proof: p2 };
+            let (s2, p2) =
+                prove_with_key(&key, &program, &[x], 1_000_000, super::super::device_params)
+                    .unwrap();
+            let e1 = Envelope::Succinct {
+                statement: SuccinctStatement::Execution(s1),
+                proof: p1,
+            };
+            let e2 = Envelope::Succinct {
+                statement: SuccinctStatement::Execution(s2),
+                proof: p2,
+            };
             assert_eq!(e1.to_bytes(), e2.to_bytes());
             e2.verify(None).unwrap();
         }
-        assert!(prove_with_key(&key, &program, &[7, 8], 1_000_000, super::super::device_params).is_err());
+        assert!(
+            prove_with_key(
+                &key,
+                &program,
+                &[7, 8],
+                1_000_000,
+                super::super::device_params
+            )
+            .is_err()
+        );
         // a caller-built relation: the held relation key proves the same
         // bytes as prove_relation, verifies, decodes from its bytes
         let (statement, relation, witness, public) =
@@ -229,12 +278,24 @@ mod tests {
         let rk = RelationKey::new(&relation.instance, &indices).unwrap();
         let params = super::super::device_params(rk.vars());
         let bytes = statement.transcript_bytes();
-        let a = super::super::prove_relation::<Whir>(&params, &relation.instance, &witness.z, &pins, &bytes).unwrap();
+        let a = super::super::prove_relation::<Whir>(
+            &params,
+            &relation.instance,
+            &witness.z,
+            &pins,
+            &bytes,
+        )
+        .unwrap();
         let b = prove_relation_with_key::<Whir>(&params, &rk, &witness.z, &pins, &bytes).unwrap();
-        let (ea, eb) = (crate::envelope::succinct_proof_bytes(&a.into()), crate::envelope::succinct_proof_bytes(&b.into()));
+        let (ea, eb) = (
+            crate::envelope::succinct_proof_bytes(&a.into()),
+            crate::envelope::succinct_proof_bytes(&b.into()),
+        );
         assert_eq!(ea, eb);
         let decoded = crate::envelope::succinct_proof_from_bytes(&eb).unwrap();
-        let crate::envelope::AnySuccinct::Whir(d) = decoded else { panic!("whir") };
+        let crate::envelope::AnySuccinct::Whir(d) = decoded else {
+            panic!("whir")
+        };
         super::super::verify_relation(&relation.instance, &pins, &bytes, &d).unwrap();
         let mut bad = eb.clone();
         bad.push(0);
@@ -243,6 +304,8 @@ mod tests {
         wrong.pop();
         assert!(prove_relation_with_key::<Whir>(&params, &rk, &witness.z, &wrong, &bytes).is_err());
         let other = parse("[0 2]");
-        assert!(prove_with_key(&key, &other, &[7], 1_000_000, super::super::device_params).is_err());
+        assert!(
+            prove_with_key(&key, &other, &[7], 1_000_000, super::super::device_params).is_err()
+        );
     }
 }

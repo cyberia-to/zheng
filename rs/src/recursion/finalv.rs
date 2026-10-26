@@ -42,7 +42,12 @@ pub struct Publics<V> {
 impl<V: Copy> Publics<V> {
     /// Every value with its width (Fp3 or base), in a fixed order.
     pub fn items(&self) -> Vec<(V, bool)> {
-        let mut out: Vec<(V, bool)> = self.ctx.iter().chain(&self.chain).map(|&v| (v, false)).collect();
+        let mut out: Vec<(V, bool)> = self
+            .ctx
+            .iter()
+            .chain(&self.chain)
+            .map(|&v| (v, false))
+            .collect();
         out.push((self.segments, false));
         out.extend(self.ch.iter().map(|&v| (v, true)));
         out.extend(self.k.to_vec().into_iter().map(|v| (v, false)));
@@ -65,7 +70,14 @@ pub const PUBLICS: usize = 11 + crate::machine::air::KCONSTS;
 /// Verify the last step from `state`, the final state against `pubs`, the
 /// deferred constraint claim and the decider; returns the deferred
 /// nox-public claim.
-pub fn run<O: Ops>(o: &mut O, key: &Key, pubs: &Publics<O::V>, state: &State, step: &StepProof, dec: &Decider) -> ClaimV<O::V> {
+pub fn run<O: Ops>(
+    o: &mut O,
+    key: &Key,
+    pubs: &Publics<O::V>,
+    state: &State,
+    step: &StepProof,
+    dec: &Decider,
+) -> ClaimV<O::V> {
     let p = &key.params;
     let (st, x) = state::absorb_free(o, &p.dims, state);
     let fin = step::verify(o, p, &st, x, step);
@@ -82,7 +94,16 @@ pub fn run<O: Ops>(o: &mut O, key: &Key, pubs: &Publics<O::V>, state: &State, st
     ins.extend(pubs.k.to_vec());
     let g = o.graph(&key.g, &ins)[0];
     o.assert_eq(g, fin.g.value, "final: deferred constraints");
-    decide::verify(o, &key.dcfg, &fin.acc, &fin.pv, key.kw_root, key.key_ext, p.n, dec);
+    decide::verify(
+        o,
+        &key.dcfg,
+        &fin.acc,
+        &fin.pv,
+        key.kw_root,
+        key.key_ext,
+        p.n,
+        dec,
+    );
     fin.pn
 }
 

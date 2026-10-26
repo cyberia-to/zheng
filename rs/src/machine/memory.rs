@@ -15,7 +15,11 @@ use crate::air::Vals;
 
 /// `c0 + T·c1 + T²·c2` for the Fp3 basis element `T`.
 pub(crate) fn ext<T: Num>(c: &[T]) -> T {
-    let t = T::from_fp3(Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO));
+    let t = T::from_fp3(Fp3::new(
+        Goldilocks::ZERO,
+        Goldilocks::ONE,
+        Goldilocks::ZERO,
+    ));
     c[0] + t * c[1] + t * t * c[2]
 }
 

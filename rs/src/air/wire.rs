@@ -60,11 +60,17 @@ impl AirProof {
     }
     pub fn read(r: &mut Reader<'_>) -> Result<Self, PcsError> {
         let s = r.count(64)?;
-        let roots1 = (0..s).map(|_| r.digest().map(Commitment)).collect::<Result<_, _>>()?;
-        let roots2 = (0..s).map(|_| r.digest().map(Commitment)).collect::<Result<_, _>>()?;
+        let roots1 = (0..s)
+            .map(|_| r.digest().map(Commitment))
+            .collect::<Result<_, _>>()?;
+        let roots2 = (0..s)
+            .map(|_| r.digest().map(Commitment))
+            .collect::<Result<_, _>>()?;
         let ood1 = (0..s).map(|_| r.exts()).collect::<Result<_, _>>()?;
         let ood2 = (0..s).map(|_| r.exts()).collect::<Result<_, _>>()?;
-        let segments = (0..s).map(|_| SegmentProof::read(r)).collect::<Result<_, _>>()?;
+        let segments = (0..s)
+            .map(|_| SegmentProof::read(r))
+            .collect::<Result<_, _>>()?;
         Ok(Self {
             roots1,
             roots2,

@@ -27,9 +27,8 @@ use lens::brakedown::Brakedown;
 use lens::{Commitment, Lens, MultilinearPoly, Opening};
 
 use crate::ccs::{
-    AxisOpening, HashAux, LookOpening, build_axis_steps_from_trace,
-    build_axis_transcript_steps, build_hash_binding_steps_from_trace,
-    build_look_steps_from_trace, build_look_transcript_steps,
+    AxisOpening, HashAux, LookOpening, build_axis_steps_from_trace, build_axis_transcript_steps,
+    build_hash_binding_steps_from_trace, build_look_steps_from_trace, build_look_transcript_steps,
     build_universal_steps_from_trace, eq_instance, universal_ccs,
 };
 use crate::folding::{decide as run_decide, fold_step};
@@ -69,11 +68,15 @@ pub(crate) fn linkage_digest(commitments: &[&Commitment]) -> [u8; 32] {
 }
 
 /// Fold a sequence of witnesses of one instance into a fresh accumulator.
-pub(crate) fn fold_all(instance: &CCSInstance, witnesses: &[CCSWitness]) -> Result<Accumulator, CommitError> {
+pub(crate) fn fold_all(
+    instance: &CCSInstance,
+    witnesses: &[CCSWitness],
+) -> Result<Accumulator, CommitError> {
     let mut acc = Accumulator::blank(instance);
     let mut transcript = Transcript::new_v1();
     for w in witnesses {
-        fold_step(&mut acc, instance, w, &mut transcript).map_err(|_| CommitError::TraceOverflow)?;
+        fold_step(&mut acc, instance, w, &mut transcript)
+            .map_err(|_| CommitError::TraceOverflow)?;
     }
     Ok(acc)
 }
@@ -164,7 +167,10 @@ pub fn commit(
     let close = |acc: Accumulator| -> Result<ProofGroup, CommitError> {
         let proof =
             run_decide(&acc, statement, &linkage, params).map_err(CommitError::DecideFailed)?;
-        Ok(ProofGroup { proof, accumulator: acc })
+        Ok(ProofGroup {
+            proof,
+            accumulator: acc,
+        })
     };
     let universal = close(universal_acc)?;
     let binding = binding_acc.map(close).transpose()?;
@@ -234,8 +240,10 @@ pub fn verify(
 ) -> Result<(), VerifyError> {
     // Recompute the cross-group linkage digest from the proof's own groups —
     // it must match what every group's decide transcript absorbed.
-    let commitments: Vec<&Commitment> =
-        proof.groups().map(|g| &g.accumulator.witness_commitment).collect();
+    let commitments: Vec<&Commitment> = proof
+        .groups()
+        .map(|g| &g.accumulator.witness_commitment)
+        .collect();
     let linkage = linkage_digest(&commitments);
 
     let eq = eq_instance();
@@ -253,7 +261,10 @@ pub fn verify(
         // universal instance is not linear: its rows are gated products, so
         // its error vector carries genuine cross terms and this rule cannot
         // apply — commit()'s per-row gate is what refuses a violated row.
-        let linear = instance.multisets.iter().all(|multiset| multiset.len() <= 1);
+        let linear = instance
+            .multisets
+            .iter()
+            .all(|multiset| multiset.len() <= 1);
         if linear && acc.error_evals.iter().any(|&e| e != Goldilocks::ZERO) {
             return Err(VerifyError::LinearErrorNonzero);
         }

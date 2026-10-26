@@ -2,8 +2,8 @@
 //! (`specs/recursion.md` § circuit).
 
 pub mod air;
-pub mod layout;
 pub mod builder;
+pub mod layout;
 pub mod trace;
 
 #[cfg(test)]

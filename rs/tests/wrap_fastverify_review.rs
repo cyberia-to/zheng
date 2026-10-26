@@ -35,9 +35,18 @@ fn stored() -> Stored {
     let mut whir = zheng::execution::succinct::params_for(20);
     whir.log_inv_rate = ivc::SHIPPED_RATE;
     whir.pow_bits = ivc::SHIPPED_POW;
-    let run = machine::execute_exact(&common::parse(common::ADD), &[7, 5], 1 << 40, 15).expect("run");
+    let run =
+        machine::execute_exact(&common::parse(common::ADD), &[7, 5], 1 << 40, 15).expect("run");
     let h = FinalProof::from_bytes(&bytes, &key).expect("parse");
-    let prep = ivc::prepare(&run.statement, &whir, h.log_rows, h.start, h.segments, h.chain).expect("prepare");
+    let prep = ivc::prepare(
+        &run.statement,
+        &whir,
+        h.log_rows,
+        h.start,
+        h.segments,
+        h.chain,
+    )
+    .expect("prepare");
     Stored { key, bytes, prep }
 }
 
@@ -72,7 +81,10 @@ fn concurrent_verifiers_accept_and_refuse_as_one_verifier_alone() {
     }
     let baseline: Vec<Result<(), String>> = cases.iter().map(|c| check(&s, c)).collect();
     assert!(baseline[0].is_ok());
-    assert!(baseline[1..].iter().all(|r| r.is_err()), "a flipped proof accepted");
+    assert!(
+        baseline[1..].iter().all(|r| r.is_err()),
+        "a flipped proof accepted"
+    );
     let threads = 12;
     let rounds = 3;
     std::thread::scope(|sc| {
@@ -82,14 +94,26 @@ fn concurrent_verifiers_accept_and_refuse_as_one_verifier_alone() {
                 for r in 0..rounds {
                     // each thread its own order; the honest proof often
                     for k in 0..cases.len() {
-                        let i = if k % 4 == 0 { 0 } else { (k * 7919 + th * 104_729 + r * 13) % cases.len() };
-                        assert_eq!(check(s, &cases[i]), baseline[i], "thread {th}, round {r}, case {i}");
+                        let i = if k % 4 == 0 {
+                            0
+                        } else {
+                            (k * 7919 + th * 104_729 + r * 13) % cases.len()
+                        };
+                        assert_eq!(
+                            check(s, &cases[i]),
+                            baseline[i],
+                            "thread {th}, round {r}, case {i}"
+                        );
                     }
                 }
             });
         }
     });
-    eprintln!("{} cases ({} decoded flips) × {threads} threads × {rounds} rounds: every result as alone", cases.len(), cases.len() - 1);
+    eprintln!(
+        "{} cases ({} decoded flips) × {threads} threads × {rounds} rounds: every result as alone",
+        cases.len(),
+        cases.len() - 1
+    );
 }
 
 /// (4, 5, 7) The shipped final key: its ledger with the wiring's actual
@@ -107,8 +131,18 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
         eprintln!("shipped final key (reads {}): {nm:<40} {b:.2}", w.reads);
     }
     let weakest = rows.iter().map(|r| r.1).fold(f64::INFINITY, f64::min);
-    assert!(weakest >= 128.0 && (weakest - 128.40).abs() < 0.01, "{weakest}");
-    assert_eq!((k.params.whir.log_inv_rate, k.params.whir.pow_bits, k.params.n), (9, 26, 14));
+    assert!(
+        weakest >= 128.0 && (weakest - 128.40).abs() < 0.01,
+        "{weakest}"
+    );
+    assert_eq!(
+        (
+            k.params.whir.log_inv_rate,
+            k.params.whir.pow_bits,
+            k.params.n
+        ),
+        (9, 26, 14)
+    );
     // columns
     let used = k.g.used_inputs();
     assert_eq!(&used[2 * V1..2 * V1 + pre::COUNT], &k.key_cols[..]);
@@ -117,8 +151,14 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
     // compiled graph
     let mut x = 7u64;
     let mut e = || {
-        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        Fp3::new(Goldilocks::new(x), Goldilocks::new(x.rotate_left(21)), Goldilocks::new(x.rotate_left(42)))
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        Fp3::new(
+            Goldilocks::new(x),
+            Goldilocks::new(x.rotate_left(21)),
+            Goldilocks::new(x.rotate_left(42)),
+        )
     };
     for _ in 0..4 {
         let ins: Vec<Fp3> = (0..k.g.inputs).map(|_| e()).collect();
@@ -130,7 +170,9 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
     let lambda = e();
     let alpha: Vec<Fp3> = (0..pre_vars).map(|_| e()).collect();
     let fm: Vec<Fp3> = (0..1usize << k.cfg.wc.final_vars).map(|_| e()).collect();
-    let slot = w.closing(n, lambda, &alpha, &fm).expect("the shipped wiring takes the slot form");
+    let slot = w
+        .closing(n, lambda, &alpha, &fm)
+        .expect("the shipped wiring takes the slot form");
     let lp = w.powers(lambda);
     let ws = w.write_sums(&lp);
     let mut u = vec![Fp3::ZERO; wrap::WORD << n];
@@ -142,7 +184,9 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
     }
     let ea = eq_table(&alpha);
     let mask = (1usize << pre_vars) - 1;
-    let cell = u.iter().enumerate().fold(Fp3::ZERO, |a, (xi, &v)| a + v * ea[xi & mask] * fm[xi >> pre_vars]);
+    let cell = u.iter().enumerate().fold(Fp3::ZERO, |a, (xi, &v)| {
+        a + v * ea[xi & mask] * fm[xi >> pre_vars]
+    });
     assert_eq!(slot, cell);
     eprintln!(
         "shipped final key: {} reads, {} writes, |α| = {pre_vars}, {} of {} key columns, {} successor columns, {} compiled operations",

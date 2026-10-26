@@ -202,7 +202,8 @@ pub(crate) fn op_of(tag: u64) -> Option<(usize, u64)> {
 }
 
 /// A call-witness source: `(tag, subject) → witness`.
-pub type WitnessFn<'a> = &'a dyn Fn(u64, &crate::execution::ExecutionNoun) -> Option<crate::execution::ExecutionNoun>;
+pub type WitnessFn<'a> =
+    &'a dyn Fn(u64, &crate::execution::ExecutionNoun) -> Option<crate::execution::ExecutionNoun>;
 
 /// What a run needs beyond the program and its inputs: witnesses for
 /// `call` (the prover's choice; the relation checks them) and the state
@@ -212,5 +213,8 @@ pub struct Hints<'a> {
     /// `(tag, subject) → witness`; `None` halts the run, as nox's provider.
     pub witness: Option<WitnessFn<'a>>,
     /// The state evidence and the root it must authenticate under.
-    pub state: Option<(&'a crate::execution::state_evidence::StateEvidence, [u64; 4])>,
+    pub state: Option<(
+        &'a crate::execution::state_evidence::StateEvidence,
+        [u64; 4],
+    )>,
 }

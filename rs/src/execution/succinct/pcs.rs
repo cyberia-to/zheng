@@ -15,15 +15,17 @@
 //! below (so a hostile header cannot make the verifier allocate or loop
 //! without bound).
 
-use lens::{MultilinearPcs, PcsError, TensorRs, TensorRsParams, Whir, WhirParams};
 #[cfg(test)]
 use lens::rspcs::whir::Decoding;
+use lens::{MultilinearPcs, PcsError, TensorRs, TensorRsParams, Whir, WhirParams};
 
 /// Bits a succinct proof must carry: proven, never conjectured.
 pub const MIN_SECURITY_BITS: f64 = 128.0;
 
 /// A multilinear PCS the succinct profile can name on the wire.
-pub trait SuccinctPcs: MultilinearPcs<Params: Copy + Eq, Proof: Eq> + Clone + core::fmt::Debug {
+pub trait SuccinctPcs:
+    MultilinearPcs<Params: Copy + Eq, Proof: Eq> + Clone + core::fmt::Debug
+{
     /// Wire id (0 is never used).
     const ID: u8;
     /// Bytes of the parameter header.
@@ -41,7 +43,10 @@ pub trait SuccinctPcs: MultilinearPcs<Params: Copy + Eq, Proof: Eq> + Clone + co
 /// Admit `params` for a witness of `num_vars` variables, or say why not.
 pub fn admit<P: SuccinctPcs>(params: &P::Params, num_vars: usize) -> Result<f64, String> {
     if !P::in_range(params) {
-        return Err(format!("{}: parameters outside the verifier's range", P::NAME));
+        return Err(format!(
+            "{}: parameters outside the verifier's range",
+            P::NAME
+        ));
     }
     let bits = P::security_bits(params, num_vars);
     if bits < MIN_SECURITY_BITS {
@@ -134,12 +139,18 @@ mod tests {
             decoding: Decoding::Unique,
             ..WhirParams::default()
         };
-        assert!(admit::<Whir>(&unique, 10).unwrap() >= 128.0, "unique decoding is proven too");
+        assert!(
+            admit::<Whir>(&unique, 10).unwrap() >= 128.0,
+            "unique decoding is proven too"
+        );
         let deep = WhirParams {
             folding_factor: 9,
             ..WhirParams::default()
         };
-        assert!(admit::<Whir>(&deep, 10).is_err(), "outside the policy range");
+        assert!(
+            admit::<Whir>(&deep, 10).is_err(),
+            "outside the policy range"
+        );
         let wide = TensorRsParams {
             log_inv_rate: 9,
             ..TensorRsParams::default()
@@ -155,7 +166,10 @@ mod tests {
         h[0] ^= 1;
         assert!(Whir::params_from_header(&h).is_err());
         let t = TensorRsParams::default();
-        assert_eq!(TensorRs::params_from_header(&TensorRs::header(&t)).unwrap(), t);
+        assert_eq!(
+            TensorRs::params_from_header(&TensorRs::header(&t)).unwrap(),
+            t
+        );
         assert!(TensorRs::params_from_header(&[1, 2, 3]).is_err());
     }
 }

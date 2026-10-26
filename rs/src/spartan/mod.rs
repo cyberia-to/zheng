@@ -8,8 +8,8 @@
 //! succinct profile) and its lens-PCS wrappers (`prover`, `verifier`).
 
 pub mod iop;
-pub mod reduce;
 pub mod prover;
+pub mod reduce;
 pub mod verifier;
 
 pub use prover::SpartanProver;

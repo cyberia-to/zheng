@@ -247,7 +247,7 @@ fn review_tampered_op_chain_witness_and_walk_cells() {
     }
 }
 
-/// The relation has 604 constraints of degree ≤ 8: each constraint along a
+/// The relation has 606 constraints of degree ≤ 8: each constraint along a
 /// random line through (local, next, publics) is a polynomial whose 9th
 /// finite difference vanishes.
 #[test]
@@ -255,7 +255,7 @@ fn review_constraint_count_and_degree() {
     let run = execute(&op2(5, ax(2), q(1)), &[3], 1 << 20).unwrap();
     let m = run.machine(0);
     let k = m.shape().constraints;
-    assert_eq!(k, 604);
+    assert_eq!(k, 606);
     assert_eq!(m.shape().degree, 8);
     let mut seed = 0x9E37_79B9_7F4A_7C15u64;
     let mut rnd = || {

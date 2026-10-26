@@ -56,7 +56,10 @@ mod review;
 #[cfg(test)]
 mod tests;
 
-pub use program::{Inner, derive_key_ivc, derive_key_ivc_at, derive_key_wrap, derive_key_wrap_at, derive_shape, derive_shape_ivc, public_digest, public_digest_native};
+pub use program::{
+    Inner, derive_key_ivc, derive_key_ivc_at, derive_key_wrap, derive_key_wrap_at, derive_shape,
+    derive_shape_ivc, public_digest, public_digest_native,
+};
 pub use prove::prove;
 pub use verify::{check_shape, threads as verifier_threads, verify};
 
@@ -176,18 +179,30 @@ impl WrapKey {
         if self.inner() { COLS } else { V1 }
     }
     pub fn inputs(&self) -> usize {
-        if self.inner() { 2 + self.key_words() } else { 1 }
+        if self.inner() {
+            2 + self.key_words()
+        } else {
+            1
+        }
     }
     /// Symbol fields of the opened words.
     /// Symbol fields of the opened trees (round 0).
     pub fn exts(&self) -> Vec<bool> {
-        if self.inner() { vec![false, false, false] } else { vec![false] }
+        if self.inner() {
+            vec![false, false, false]
+        } else {
+            vec![false]
+        }
     }
     /// Trees of an inner level are 4-ary (half the permutations a path
     /// costs the circuit that verifies it); the final level's binary
     /// (fewest bytes).
     pub fn arity(&self) -> super::word::Arity {
-        if self.inner() { super::word::Arity::Four } else { super::word::Arity::Two }
+        if self.inner() {
+            super::word::Arity::Four
+        } else {
+            super::word::Arity::Two
+        }
     }
     /// The key's committed words (inner mode).
     pub fn key_words(&self) -> usize {
@@ -244,9 +259,21 @@ impl View<'_> {
         if self.1 == Mode::Inner { COLS } else { V1 }
     }
     pub fn constraints(&self) -> usize {
-        1 + if self.1 == Mode::Inner { self.0.constraints() } else { self.0.local_constraints() }
+        1 + if self.1 == Mode::Inner {
+            self.0.constraints()
+        } else {
+            self.0.local_constraints()
+        }
     }
-    pub fn eval_with<T: Num>(&self, local: &[T], next: &[T], pubs: &[T], alpha: T, beta: T, out: &mut [T]) {
+    pub fn eval_with<T: Num>(
+        &self,
+        local: &[T],
+        next: &[T],
+        pubs: &[T],
+        alpha: T,
+        beta: T,
+        out: &mut [T],
+    ) {
         let inner = self.1 == Mode::Inner;
         let w = self.width();
         let row = Row {
@@ -260,7 +287,10 @@ impl View<'_> {
             beta,
         };
         let k = self.constraints() - 1;
-        let mut s = Sink { buf: &mut out[..k], i: 0 };
+        let mut s = Sink {
+            buf: &mut out[..k],
+            i: 0,
+        };
         if inner {
             self.0.eval(&row, &mut s);
         } else {
@@ -272,7 +302,13 @@ impl View<'_> {
 
 impl Air for View<'_> {
     fn shape(&self) -> Shape {
-        Shape { w1: self.width(), w2: 0, challenges: 2, constraints: self.constraints(), degree: DEGREE }
+        Shape {
+            w1: self.width(),
+            w2: 0,
+            challenges: 2,
+            constraints: self.constraints(),
+            degree: DEGREE,
+        }
     }
     fn publics(&self) -> &[Public] {
         &[]
@@ -280,12 +316,29 @@ impl Air for View<'_> {
     fn eval(&self, v: &Vals<'_>, ch: &[Fp3], out: &mut [Fp3]) {
         self.eval_with(v.local, v.next, v.publics, ch[0], ch[1], out);
     }
-    fn eval_mix(&self, v: &Vals<'_, crate::air::mix::Mix>, ch: &[Fp3], out: &mut [crate::air::mix::Mix]) -> bool {
+    fn eval_mix(
+        &self,
+        v: &Vals<'_, crate::air::mix::Mix>,
+        ch: &[Fp3],
+        out: &mut [crate::air::mix::Mix],
+    ) -> bool {
         use crate::air::mix::Mix;
-        self.eval_with(v.local, v.next, v.publics, Mix::of(ch[0]), Mix::of(ch[1]), out);
+        self.eval_with(
+            v.local,
+            v.next,
+            v.publics,
+            Mix::of(ch[0]),
+            Mix::of(ch[1]),
+            out,
+        );
         true
     }
-    fn combine_graph(&self, inputs: usize, ch: &[Fp3], mu: &[Fp3]) -> Option<crate::air::num::Graph> {
+    fn combine_graph(
+        &self,
+        inputs: usize,
+        ch: &[Fp3],
+        mu: &[Fp3],
+    ) -> Option<crate::air::num::Graph> {
         use crate::air::num::{Sym, record};
         let (w, k) = (self.width(), self.constraints());
         Some(record(inputs, |i| {
@@ -293,7 +346,11 @@ impl Air for View<'_> {
             let (next, pubs) = rest.split_at(w);
             let mut out = vec![Sym::ZERO; k];
             self.eval_with(local, next, pubs, Sym::C(ch[0]), Sym::C(ch[1]), &mut out);
-            vec![out.iter().zip(mu).fold(Sym::ZERO, |acc, (&c, &m)| acc + c * Sym::C(m))]
+            vec![
+                out.iter()
+                    .zip(mu)
+                    .fold(Sym::ZERO, |acc, (&c, &m)| acc + c * Sym::C(m)),
+            ]
         }))
     }
 }
@@ -335,7 +392,11 @@ pub fn g_graph(air: &CircuitAir, mode: Mode) -> (Graph, usize) {
 /// deferred nox-public claim against the statement's columns, then the
 /// wrap proof under the public input the statement and that claim hash
 /// to.
-pub fn verify_final(prep: &super::ivc::Prepared, k: &WrapKey, fp: &FinalProof) -> Result<(), String> {
+pub fn verify_final(
+    prep: &super::ivc::Prepared,
+    k: &WrapKey,
+    fp: &FinalProof,
+) -> Result<(), String> {
     use super::ops::{Native, Ops};
     if prep.header != (fp.log_rows, fp.start, fp.segments, fp.chain) {
         return Err("wrap: header".into());
@@ -369,7 +430,12 @@ pub fn verify_final(prep: &super::ivc::Prepared, k: &WrapKey, fp: &FinalProof) -
 /// Verify the outermost proof of `st` (the recursive proof's WHIR
 /// parameters `ivc_whir`): prepare the statement under the proof's
 /// header, then [`verify_final`].
-pub fn verify_statement(st: &crate::machine::MachineStatement, ivc_whir: &lens::WhirParams, k: &WrapKey, fp: &FinalProof) -> Result<(), String> {
+pub fn verify_statement(
+    st: &crate::machine::MachineStatement,
+    ivc_whir: &lens::WhirParams,
+    k: &WrapKey,
+    fp: &FinalProof,
+) -> Result<(), String> {
     let prep = super::ivc::prepare(st, ivc_whir, fp.log_rows, fp.start, fp.segments, fp.chain)?;
     verify_final(&prep, k, fp)
 }
@@ -387,7 +453,12 @@ pub fn verify_native(k: &WrapKey, x: Digest, pf: &WrapProof) -> Result<(), Strin
 /// Every round-by-round term of a wrap level as `(name, bits)` — its own
 /// rounds and its opening's (`specs/soundness.md` § wrap). `reads`: the
 /// read slots of the final mode's wiring.
-pub fn ledger(params: &WrapParams, cfg: &whir::Config, constraints: usize, reads: usize) -> Vec<(String, f64)> {
+pub fn ledger(
+    params: &WrapParams,
+    cfg: &whir::Config,
+    constraints: usize,
+    reads: usize,
+) -> Vec<(String, f64)> {
     use lens::rspcs::soundness::{ext_field_bits, proximity};
     let k = ext_field_bits();
     let n = params.n;
@@ -396,10 +467,19 @@ pub fn ledger(params: &WrapParams, cfg: &whir::Config, constraints: usize, reads
     let s0 = cfg.wc.rounds[0];
     let list = proximity(s0.regime, s0.log_inv_rate, s0.log_domain).log_list;
     let fresh = crate::accumulate::fresh_ood(&params.whir, n + CBITS).unwrap_or(0);
-    out.push(("fresh-word binding (OOD)".into(), -(2.0 * list - 1.0 + fresh as f64 * ((n + CBITS) as f64 - k))));
-    out.push(("zerocheck μ (powers)".into(), k - log2((constraints - 1) as f64)));
+    out.push((
+        "fresh-word binding (OOD)".into(),
+        -(2.0 * list - 1.0 + fresh as f64 * ((n + CBITS) as f64 - k)),
+    ));
+    out.push((
+        "zerocheck μ (powers)".into(),
+        k - log2((constraints - 1) as f64),
+    ));
     out.push(("zerocheck τ".into(), k - log2(n as f64)));
-    out.push(("zerocheck round (degree 9)".into(), k - log2((DEGREE + 2) as f64)));
+    out.push((
+        "zerocheck round (degree 9)".into(),
+        k - log2((DEGREE + 2) as f64),
+    ));
     match params.mode {
         Mode::Inner => {
             let t = (crate::recursion::circuit::layout::SLOTS << n) as f64;
@@ -410,11 +490,17 @@ pub fn ledger(params: &WrapParams, cfg: &whir::Config, constraints: usize, reads
             out.push(("shift round (degree 2)".into(), k - 1.0));
             // the physical key columns batched over 8 variables (6 column,
             // 2 word): one multilinear identity in γ_k (`splitkey`)
-            out.push(("key column batching γ_k (8 variables)".into(), k - log2(crate::recursion::splitkey::BITS as f64)));
+            out.push((
+                "key column batching γ_k (8 variables)".into(),
+                k - log2(crate::recursion::splitkey::BITS as f64),
+            ));
         }
         Mode::Final => {
             out.push(("wiring λ".into(), k - log2(reads.max(2) as f64)));
-            out.push(("column batching (local, successor)".into(), k - log2(CBITS as f64)));
+            out.push((
+                "column batching (local, successor)".into(),
+                k - log2(CBITS as f64),
+            ));
         }
     }
     out.extend(cfg.terms());

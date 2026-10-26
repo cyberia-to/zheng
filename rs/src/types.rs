@@ -80,7 +80,11 @@ pub struct SparseMatrix {
 
 impl SparseMatrix {
     pub fn new(rows: usize, cols: usize) -> Self {
-        Self { rows, cols, entries: vec![vec![]; rows] }
+        Self {
+            rows,
+            cols,
+            entries: vec![vec![]; rows],
+        }
     }
 
     pub fn set(&mut self, row: usize, col: usize, val: Goldilocks) {
@@ -148,7 +152,9 @@ pub struct CCSWitness {
 
 #[derive(Debug)]
 pub enum VerifyError {
-    SumcheckFailed { round: usize },
+    SumcheckFailed {
+        round: usize,
+    },
     EvaluationMismatch,
     LensFailed,
     /// A degree-1 group carries a non-zero error term. Linear CCS instances

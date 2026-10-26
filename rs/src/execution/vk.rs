@@ -123,10 +123,21 @@ fn relation_digest(program_key: &[u8; 32], r: &ExecutionRelation) -> [u8; 32] {
         let c = c.as_u64();
         let p = nebu::field::P;
         // zigzag of the centred value: c ≤ p/2 → 2c, else 2(p − c) − 1
-        put(buf, if c <= p / 2 { c << 1 } else { ((p - c) << 1) - 1 });
+        put(
+            buf,
+            if c <= p / 2 {
+                c << 1
+            } else {
+                ((p - c) << 1) - 1
+            },
+        );
     }
     let i = &r.instance;
-    let nnz: usize = i.matrices.iter().flat_map(|m| m.entries.iter().map(Vec::len)).sum();
+    let nnz: usize = i
+        .matrices
+        .iter()
+        .flat_map(|m| m.entries.iter().map(Vec::len))
+        .sum();
     let mut buf: Vec<u8> = Vec::with_capacity(DIGEST_DOMAIN.len() + 64 + 8 * nnz);
     buf.extend_from_slice(DIGEST_DOMAIN);
     buf.extend_from_slice(program_key);
@@ -166,7 +177,16 @@ fn relation_digest(program_key: &[u8; 32], r: &ExecutionRelation) -> [u8; 32] {
     put(&mut buf, r.max_cost);
     put(&mut buf, r.lookups.len() as u64);
     for l in &r.lookups {
-        for x in [l.active, l.root[0], l.root[1], l.root[2], l.root[3], l.namespace, l.key, l.value] {
+        for x in [
+            l.active,
+            l.root[0],
+            l.root[1],
+            l.root[2],
+            l.root[3],
+            l.namespace,
+            l.key,
+            l.value,
+        ] {
             put(&mut buf, x as u64);
         }
     }

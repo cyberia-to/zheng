@@ -149,7 +149,7 @@ fn axis_zero_and_hash_have_distinct_native_results_and_logical_step_counts() {
     );
     assert_eq!(
         (evals.get(h).unwrap().cost(), evals.get(h).unwrap().steps()),
-        (26, 4)
+        (crate::execution::HASH_COST + 1, 4)
     );
 }
 

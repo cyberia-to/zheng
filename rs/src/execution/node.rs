@@ -8,52 +8,53 @@
 //! (`is_root = true`): one hemera Merkle level of `hemera::merkle`, the
 //! tree bbg's paths use.
 //!
-//! Semantics are a pure Layer-1 nox formula, [`formula`]: the permutation
-//! written in nox arithmetic (add, mul, eq, branch, compose; the partial
-//! round's inverse is `x^(p−2)` by square-and-multiply, so `0 ↦ 0` as in
-//! hemera). Any nox reducer runs it and gets the same digest and the same
-//! cost, [`COST`], whatever the input (every branch tests a constant of the
-//! formula, never data). The relation compiler recognises the formula and
-//! emits one permutation gadget over the eight limbs instead of compiling
-//! the arithmetic (`relation::node_gadget`); the gadget is the same
-//! function, so the compiled relation keeps nox's input → output and cost.
+//! Semantics are a pure Layer-1 nox formula, [`formula`]: the hemera 0.4
+//! permutation written in nox arithmetic (add, mul, eq, branch, compose;
+//! x⁷ in every round, 6 + 6 full and 48 partial). Any nox reducer runs it
+//! and gets the same digest and the same cost, [`COST`], whatever the
+//! input (every branch tests a constant of the formula, never data). The
+//! relation compiler recognises the formula and emits one permutation
+//! gadget over the eight limbs instead of compiling the arithmetic
+//! (`relation::node_gadget`); the gadget is the same function, so the
+//! compiled relation keeps nox's input → output and cost.
 //!
 //! Compared with pattern 15 on `[L R]` (structural hashing: every atom
 //! bit-decomposed and hashed by two permutations, then the pair node and
 //! the sponge, 24 permutations and 512 bit wires for two digests), one
 //! node is one permutation and no bit wires. The two are different
-//! functions: a program chooses which tree it verifies.
+//! functions: a program chooses which tree it verifies. The wide node of
+//! the pool's tree (64-byte digests, two permutations) is [`wide`].
 use super::ExecutionNoun as N;
 use hemera::field::Goldilocks as H;
 use std::sync::OnceLock;
 
 /// nox cycles of one node: the formula's reduction cost on any subject of
 /// the node's shape (asserted against native nox in the tests).
-pub const COST: u64 = 39_818;
+pub const COST: u64 = 19_105;
 
 /// Capacity flags of an interior node and of the root (`hemera::tree`).
 pub const FLAGS_NODE: u64 = 2;
 pub const FLAGS_ROOT: u64 = 3;
 
-fn at(v: u64) -> N {
+pub(crate) fn at(v: u64) -> N {
     N::Atom(v)
 }
-fn pr(a: N, b: N) -> N {
+pub(crate) fn pr(a: N, b: N) -> N {
     N::Pair(Box::new(a), Box::new(b))
 }
-fn ax(n: u64) -> N {
+pub(crate) fn ax(n: u64) -> N {
     pr(at(0), at(n))
 }
-fn q(x: N) -> N {
+pub(crate) fn q(x: N) -> N {
     pr(at(1), x)
 }
 fn op(tag: u64, a: N, b: N) -> N {
     pr(at(tag), pr(a, b))
 }
-fn compose(s: N, f: N) -> N {
+pub(crate) fn compose(s: N, f: N) -> N {
     op(2, s, f)
 }
-fn cons(a: N, b: N) -> N {
+pub(crate) fn cons(a: N, b: N) -> N {
     op(3, a, b)
 }
 fn branch(test: N, yes: N, no: N) -> N {
@@ -76,7 +77,7 @@ fn sub(parent: u64, rel: u64) -> u64 {
 }
 
 /// A balanced tree of 16 lanes: lane `i` at relative axis `16 + i`.
-fn tree16(mut lanes: Vec<N>, join: fn(N, N) -> N) -> N {
+pub(crate) fn tree16(mut lanes: Vec<N>, join: fn(N, N) -> N) -> N {
     debug_assert_eq!(lanes.len(), 16);
     while lanes.len() > 1 {
         let mut next = Vec::with_capacity(lanes.len() / 2);
@@ -95,14 +96,12 @@ const SBOX: u64 = 0;
 const M4: u64 = 1;
 const EXT: u64 = 2;
 const INT: u64 = 3;
-const INVLOOP: u64 = 4;
-const INV: u64 = 5;
-const FULL: u64 = 6;
-const PARTIAL: u64 = 7;
-const ROUNDS: u64 = 8;
+const FULL: u64 = 4;
+const PARTIAL: u64 = 5;
+pub(crate) const ROUNDS: u64 = 6;
 
 /// The axis of library entry `j` in a subject `[data LIB]`.
-fn lib(j: u64) -> u64 {
+pub(crate) fn lib(j: u64) -> u64 {
     sub(3, (1 << (j + 2)) - 2)
 }
 
@@ -118,8 +117,23 @@ fn sbox() -> N {
     mul(ax(2), x6)
 }
 
-/// hemera's 4×4 MDS block on `[[[a b] [c d]] LIB]`.
+/// hemera's 4×4 MDS block on `[[[a b] [c d]] LIB]`: the matrix read off
+/// `hemera::field::apply_mat4` (Poseidon2's M4), row by row.
 fn m4() -> N {
+    let matrix: [[u64; 4]; 4] = {
+        let mut m = [[0u64; 4]; 4];
+        for (col, m_col) in (0..4).map(|col| {
+            let mut e = [H::ZERO; 4];
+            e[col] = H::new(1);
+            hemera::field::apply_mat4(&mut e);
+            (col, e)
+        }) {
+            for (row, v) in m_col.iter().enumerate() {
+                m[row][col] = v.as_canonical_u64();
+            }
+        }
+        m
+    };
     let term = |k: u64, axis: u64| {
         if k == 1 {
             ax(axis)
@@ -134,8 +148,8 @@ fn m4() -> N {
         )
     };
     cons(
-        cons(lin([2, 3, 1, 1]), lin([1, 2, 3, 1])),
-        cons(lin([1, 1, 2, 3]), lin([3, 1, 1, 2])),
+        cons(lin(matrix[0]), lin(matrix[1])),
+        cons(lin(matrix[2]), lin(matrix[3])),
     )
 }
 
@@ -182,37 +196,6 @@ fn int() -> N {
     compose(cons(cons(ax(2), total.pop().expect("sum")), ax(3)), q(out))
 }
 
-/// Square-and-multiply on `[[acc [x runs]] LIB]`, the exponent MSB first
-/// as runs `[count bit]` of equal bits, ended by the run `[0 2]`.
-fn invloop() -> N {
-    let again =
-        |acc: N, runs: N| compose(cons(cons(acc, cons(ax(10), runs)), ax(3)), ax(lib(INVLOOP)));
-    let factor = branch(ax(45), q(at(1)), ax(10));
-    let step = again(
-        mul(mul(ax(4), ax(4)), factor),
-        cons(cons(op(6, ax(44), q(at(1))), ax(45)), ax(23)),
-    );
-    let next_run = again(ax(4), ax(23));
-    branch(
-        eq(ax(45), q(at(2))),
-        ax(4),
-        branch(eq(ax(44), q(at(0))), next_run, step),
-    )
-}
-
-/// `x^(p−2)` on `[x LIB]` (0 ↦ 0): `p − 2 = 0xFFFFFFFE_FFFFFFFF`, 31
-/// ones, a zero, 32 ones.
-fn inv() -> N {
-    let runs = [(31, 1), (1, 0), (32, 1), (0, 2)]
-        .into_iter()
-        .rev()
-        .fold(at(0), |rest, (n, b)| pr(pr(at(n), at(b)), rest));
-    compose(
-        cons(cons(q(at(1)), cons(ax(2), q(runs))), ax(3)),
-        ax(lib(INVLOOP)),
-    )
-}
-
 /// A full round on `[[S rc] LIB]`: S-box of every lane plus its constant,
 /// then the external layer.
 fn full() -> N {
@@ -222,13 +205,13 @@ fn full() -> N {
     call(EXT, tree16(lanes, cons))
 }
 
-/// A partial round on `[[S rc] LIB]`: lane 0 plus its constant, inverted,
-/// then the internal layer.
+/// A partial round on `[[S rc] LIB]`: lane 0 plus its constant through
+/// the S-box, then the internal layer.
 fn partial() -> N {
     let lanes = (0..16)
         .map(|i| {
             if i == 0 {
-                call(INV, add(ax(64), ax(5)))
+                call(SBOX, add(ax(64), ax(5)))
             } else {
                 ax(64 + i)
             }
@@ -250,45 +233,82 @@ fn rounds() -> N {
     branch(eq(ax(20), q(at(2))), ax(4), next)
 }
 
-/// hemera's schedule: the initial external layer, 4 full, 16 partial, 4
-/// full rounds, with their constants.
-fn schedule() -> N {
+/// Parts of hemera's schedule, in order, each a list of rounds `[kind rc]`
+/// ended by `[2 0]`: the initial external layer and the first 20 rounds,
+/// then 20, then the last 20 (three short lists keep the formula's
+/// nesting below the program depth limit).
+pub(crate) fn schedule_parts() -> [N; 3] {
+    use crate::machine::hemera::{PARTIAL_FIRST, ROUNDS as TOTAL, RP, is_full};
     let rc = hemera::constants::ROUND_CONSTANTS_U64;
-    let mut list = pr(pr(at(2), at(0)), at(0));
-    for round in (0..24).rev() {
-        let entry = if (4..20).contains(&round) {
-            pr(at(1), at(rc[128 + round - 4]))
+    let entry = |round: usize| {
+        if !is_full(round) {
+            pr(
+                at(1),
+                at(rc[hemera::constants::NUM_EXTERNAL + round - PARTIAL_FIRST]),
+            )
         } else {
-            let offset = if round < 4 {
+            let offset = if round < PARTIAL_FIRST {
                 round * 16
             } else {
-                (round - 16) * 16
+                (round - RP) * 16
             };
             pr(
                 at(0),
                 tree16((0..16).map(|l| at(rc[offset + l])).collect(), pr),
             )
-        };
-        list = pr(entry, list);
+        }
+    };
+    let part = |rounds: core::ops::Range<usize>, head: Option<N>| {
+        let mut list = pr(pr(at(2), at(0)), at(0));
+        for round in rounds.rev() {
+            list = pr(entry(round), list);
+        }
+        match head {
+            Some(h) => pr(h, list),
+            None => list,
+        }
+    };
+    let third = TOTAL / 3;
+    [
+        part(0..third, Some(pr(at(3), at(0)))),
+        part(third..2 * third, None),
+        part(2 * third..TOTAL, None),
+    ]
+}
+
+/// The environment every node formula carries in its subject:
+/// `[LIB [A [B C]]]` — the library and the three schedule parts.
+pub(crate) fn env() -> N {
+    let [a, b, c] = schedule_parts();
+    pr(library(), pr(a, pr(b, c)))
+}
+/// Axes of the environment's members inside `[S ENV]`.
+const ENV_LIB: u64 = 6;
+const ENV_PARTS: [u64; 3] = [14, 30, 31];
+
+/// Run one schedule part (at `part` of `[S ENV]`) on `S`: the state after
+/// its rounds.
+fn run_part(part: u64) -> N {
+    compose(
+        cons(cons(ax(2), ax(part)), ax(ENV_LIB)),
+        q(compose(ax(1), ax(lib(ROUNDS)))),
+    )
+}
+
+/// The whole permutation on `[S ENV]`: the three schedule parts in turn.
+pub(crate) fn permutation() -> N {
+    let mut f = run_part(ENV_PARTS[0]);
+    for part in &ENV_PARTS[1..] {
+        f = compose(cons(f, ax(3)), q(run_part(*part)));
     }
-    pr(pr(at(3), at(0)), list)
+    f
 }
 
 fn library() -> N {
-    [
-        sbox(),
-        m4(),
-        ext(),
-        int(),
-        invloop(),
-        inv(),
-        full(),
-        partial(),
-        rounds(),
-    ]
-    .into_iter()
-    .rev()
-    .fold(at(0), |rest, f| pr(f, rest))
+    [sbox(), m4(), ext(), int(), full(), partial(), rounds()]
+        .into_iter()
+        .rev()
+        .fold(at(0), |rest, f| pr(f, rest))
 }
 
 fn build() -> N {
@@ -303,10 +323,8 @@ fn build() -> N {
             .collect(),
         cons,
     );
-    let start = cons(cons(state, q(schedule())), q(library()));
-    let run = compose(start, q(compose(ax(1), ax(lib(ROUNDS)))));
     // the final state's lanes 0..4 are its axis 4: [[s0 s1] [s2 s3]]
-    compose(run, q(ax(4)))
+    compose(cons(state, q(env())), q(compose(permutation(), q(ax(4)))))
 }
 
 /// The node jet's nox formula, on the subject `[[L R] flags]`.
@@ -341,6 +359,9 @@ pub fn digest_noun(d: [u64; 4]) -> N {
 #[path = "node_jet.rs"]
 pub mod jet;
 
+#[path = "node_wide.rs"]
+pub mod wide;
+
 #[cfg(test)]
 #[path = "node_tests.rs"]
-mod tests;
+pub(crate) mod tests;

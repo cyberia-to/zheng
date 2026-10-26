@@ -149,9 +149,18 @@ mod tests {
         }
         // x^p − x mod f, as a polynomial of degree ≤ 2
         let h = vec![power.c0, power.c1 - Goldilocks::ONE, power.c2];
-        let f = vec![-Goldilocks::ONE, -Goldilocks::ONE, Goldilocks::ZERO, Goldilocks::ONE];
+        let f = vec![
+            -Goldilocks::ONE,
+            -Goldilocks::ONE,
+            Goldilocks::ZERO,
+            Goldilocks::ONE,
+        ];
         let g = gcd(&f, &h);
-        assert_eq!(g.len(), 1, "gcd(x^p − x, t³ − t − 1) must be a nonzero constant");
+        assert_eq!(
+            g.len(),
+            1,
+            "gcd(x^p − x, t³ − t − 1) must be a nonzero constant"
+        );
     }
 
     #[test]
@@ -159,7 +168,10 @@ mod tests {
         let a = Fp3::new(Goldilocks::new(3), Goldilocks::new(5), Goldilocks::new(7));
         assert_eq!(a * ChallengeField::inverse(a), Fp3::ONE);
         let b = <Fp3 as ChallengeField>::from_base(Goldilocks::new(9));
-        assert_eq!(b * Fp3::from_base(Goldilocks::new(2)), Fp3::from_base(Goldilocks::new(18)));
+        assert_eq!(
+            b * Fp3::from_base(Goldilocks::new(2)),
+            Fp3::from_base(Goldilocks::new(18))
+        );
         let mut bytes = Vec::new();
         a.encode(&mut bytes);
         assert_eq!(bytes.len(), 24);

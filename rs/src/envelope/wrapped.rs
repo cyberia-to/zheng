@@ -75,7 +75,14 @@ pub fn chain() -> (WhirParams, [WrapParams; LEVELS]) {
         whir.pow_bits = pow;
         WrapParams { whir, n: 0, mode }
     };
-    (ivc, [level(4, 16, Mode::Inner), level(7, 22, Mode::Inner), level(9, 26, Mode::Final)])
+    (
+        ivc,
+        [
+            level(4, 16, Mode::Inner),
+            level(7, 22, Mode::Inner),
+            level(9, 26, Mode::Final),
+        ],
+    )
 }
 
 /// The chain as it travels: IVC header, level count, per level header and
@@ -95,8 +102,18 @@ pub fn chain_bytes() -> Vec<u8> {
 /// the prover's derivation (`examples/wrap_keys`; checked by the prover
 /// and by `tests/keys.rs`).
 pub const INNER_ROOTS: [[u64; 4]; LEVELS - 1] = [
-    [5540538452882874538, 11187504229086026122, 4829481360188449553, 13504963134371504296],
-    [12648886311615323299, 12421038178371526965, 9103158066756740675, 1252468810972271725],
+    [
+        5540538452882874538,
+        11187504229086026122,
+        4829481360188449553,
+        13504963134371504296,
+    ],
+    [
+        12648886311615323299,
+        12421038178371526965,
+        9103158066756740675,
+        1252468810972271725,
+    ],
 ];
 
 fn pinned_root(i: usize) -> Digest {
@@ -110,7 +127,8 @@ fn final_slot() -> &'static Mutex<Option<Arc<WrapKey>>> {
 
 /// The whole chain's keys, derived once per process (the prover's).
 pub fn chain_keys() -> Result<Arc<Vec<Arc<WrapKey>>>, String> {
-    static C: OnceLock<Mutex<Option<Arc<Vec<Arc<WrapKey>>>>>> = OnceLock::new();
+    type Keys = Arc<Vec<Arc<WrapKey>>>;
+    static C: OnceLock<Mutex<Option<Keys>>> = OnceLock::new();
     let slot = C.get_or_init(|| Mutex::new(None));
     let mut g = slot.lock().expect("wrap keys");
     if let Some(c) = g.as_ref() {
@@ -126,9 +144,14 @@ pub fn chain_keys() -> Result<Arc<Vec<Arc<WrapKey>>>, String> {
         };
         keys.push(Arc::new(k));
     }
-    let roots: Vec<[u64; 4]> = keys[..LEVELS - 1].iter().map(|k| k.key_root.expect("an inner level").map(|v| v.as_u64())).collect();
+    let roots: Vec<[u64; 4]> = keys[..LEVELS - 1]
+        .iter()
+        .map(|k| k.key_root.expect("an inner level").map(|v| v.as_u64()))
+        .collect();
     if roots != INNER_ROOTS {
-        return Err(format!("wrapped: the inner levels' key roots {roots:?} are not the pinned ones (envelope::wrapped::INNER_ROOTS is stale)"));
+        return Err(format!(
+            "wrapped: the inner levels' key roots {roots:?} are not the pinned ones (envelope::wrapped::INNER_ROOTS is stale)"
+        ));
     }
     let c = Arc::new(keys);
     let last = c.last().expect("a level").clone();
@@ -163,7 +186,10 @@ fn check_bound(k: &WrapKey) -> Result<(), String> {
 /// Install the final key (rebuilt from a pinned layout: `keys`).
 pub(super) fn install_final(k: WrapKey) -> Result<(), String> {
     check_bound(&k)?;
-    final_slot().lock().expect("final key").get_or_insert(Arc::new(k));
+    final_slot()
+        .lock()
+        .expect("final key")
+        .get_or_insert(Arc::new(k));
     Ok(())
 }
 
@@ -188,7 +214,8 @@ pub fn final_key() -> Result<Arc<WrapKey>, String> {
 /// wrap the recursive proof through every level.
 pub fn prove(program: &ExecutionNoun, input: &[u64], budget: u64) -> Result<Envelope, String> {
     let (ivc_whir, _) = chain();
-    let run = machine::execute_exact(program, input, budget, STEP_LOG_ROWS).map_err(|e| format!("machine: {e:?}"))?;
+    let run = machine::execute_exact(program, input, budget, STEP_LOG_ROWS)
+        .map_err(|e| format!("machine: {e:?}"))?;
     let proof = ivc::prove_run(&run, &ivc_whir)?;
     wrap_recursive(&run.statement, &proof)
 }
@@ -198,13 +225,23 @@ pub fn wrap_recursive(st: &MachineStatement, proof: &ivc::IvcProof) -> Result<En
     let (ivc_whir, _) = chain();
     let keys = chain_keys()?;
     let ikey = ivc::key(&ivc_whir, STEP_LOG_ROWS as usize)?;
-    let prep = ivc::prepare(st, &ivc_whir, proof.log_rows, proof.start, proof.segments, proof.chain)?;
+    let prep = ivc::prepare(
+        st,
+        &ivc_whir,
+        proof.log_rows,
+        proof.start,
+        proof.segments,
+        proof.chain,
+    )?;
     let pn = ivc::verify_claim(&prep, proof)?;
     let mut last: Option<wrap::WrapProof> = None;
     for (i, k) in keys.iter().enumerate() {
         let inner = match &last {
             None => Inner::Ivc { key: &ikey, proof },
-            Some(w) => Inner::Wrap { key: &keys[i - 1], proof: w },
+            Some(w) => Inner::Wrap {
+                key: &keys[i - 1],
+                proof: w,
+            },
         };
         let (w, _) = wrap::prove(k, &inner, &prep.publics, &pn)?;
         last = Some(w);
@@ -225,7 +262,11 @@ pub fn wrap_recursive(st: &MachineStatement, proof: &ivc::IvcProof) -> Result<En
 
 /// Verify under the cached keys. A statement that reads state needs
 /// `state`: its reads are authenticated against it first.
-pub(super) fn verify(st: &MachineStatement, fp: &FinalProof, state: Option<&StateEvidence>) -> Result<(), String> {
+pub(super) fn verify(
+    st: &MachineStatement,
+    fp: &FinalProof,
+    state: Option<&StateEvidence>,
+) -> Result<(), String> {
     machine::authenticate_state(st, state)?;
     // the header names the recursive proof the admitted key is bound to,
     // checked before any key work

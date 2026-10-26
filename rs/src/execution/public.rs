@@ -13,7 +13,7 @@ pub(super) fn canonical(opening: &Opening, variables: usize) -> bool {
     let cols = 1usize << (variables / 2);
     fn fields(bytes: &[u8], count: usize) -> bool {
         bytes.len() == count * 8
-            && bytes.chunks_exact(8).all(|chunk| {
+            && bytes.as_chunks::<8>().0.iter().all(|chunk| {
                 let mut array = [0u8; 8];
                 array.copy_from_slice(chunk);
                 u64::from_le_bytes(array) < nebu::field::P

@@ -2,10 +2,12 @@
 //! permutation each (`specs/machine.md` § permutation region).
 //!
 //! Phases (public periodic columns): 0–1 the bits of an atom job, 2 the job
-//! input and hemera's initial linear layer, 3–26 the 24 rounds (state
-//! before the round on the round's row, round constants as public
-//! columns), 27 the output written to the table, 28–31 idle. The job (kind
-//! flags, id) is constant on phases 0–30.
+//! input and hemera's initial linear layer, 3–26 the 60 rounds (state
+//! before the row's first round on the row, round constants as public
+//! columns): 3–8 the initial full rounds, 9–20 the partial rounds four a
+//! row (`layout::QUAD`, the S-box outputs in `layout::PW`), 21–26 the
+//! terminal full rounds; 27 the output written to the table, 28–31 idle.
+//! The job (kind flags, id) is constant on phases 0–30.
 
 use crate::air::num::Num;
 
@@ -110,17 +112,26 @@ pub(crate) fn constrain<T: Num>(m: &Machine, v: &Vals<'_, T>, out: &mut Out<'_, 
         let mix = (0..16).fold(T::ZERO, |a, i| a + T::from_base(t.mds[j][i]) * sbox[i]);
         out.push(full * (n[STATE + j] - mix));
     }
+    // a quad row: four partial rounds, each S-box output a witness
+    // (degree 7), every lane after the quad linear in the witnesses
     let part = p[PUB_PART];
-    let u = st(0) + p[PUB_RC];
-    let w = l[PINV];
-    out.push(part * (u * w * u - u));
-    out.push(part * (w * u * w - w));
+    let w: Vec<T> = (0..QUAD).map(|j| l[PW + j]).collect();
+    let form = |co: &[nebu::Goldilocks]| {
+        (0..16 + QUAD).fold(T::ZERO, |a, v| {
+            if co[v] == nebu::Goldilocks::ZERO {
+                a
+            } else {
+                let x = if v < 16 { st(v) } else { w[v - 16] };
+                a + T::from_base(co[v]) * x
+            }
+        })
+    };
+    for j in 0..QUAD {
+        let u = form(&t.quad[j][0]) + p[PUB_RC + j];
+        out.push(part * (w[j] - pow7(u)));
+    }
     for j in 0..16 {
-        let mix = (0..16).fold(T::ZERO, |a, i| {
-            let x = if i == 0 { w } else { st(i) };
-            a + T::from_base(t.internal[j][i]) * x
-        });
-        out.push(part * (n[STATE + j] - mix));
+        out.push(part * (n[STATE + j] - form(&t.quad[QUAD][j])));
     }
     // the output row writes the first four lanes under the job id
     let o = p[PUB_OUT];

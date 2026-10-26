@@ -155,7 +155,7 @@ impl SpmvStatement {
                 b
             },
             focus_bound: self.n as u64,
-        bbg_root: [0u8; 32],
+            bbg_root: [0u8; 32],
         }
     }
 }
@@ -341,7 +341,12 @@ mod tests {
                 vt.absorb(&e.as_u64().to_le_bytes());
             }
             vt.absorb(&acc.step_count.to_le_bytes());
-            let r = SpartanVerifier::verify(&acc.committed_instance, &proof.proof, &acc.error_evals, &mut vt);
+            let r = SpartanVerifier::verify(
+                &acc.committed_instance,
+                &proof.proof,
+                &acc.error_evals,
+                &mut vt,
+            );
             assert!(r.is_ok(), "n={n}: {r:?}");
         }
     }

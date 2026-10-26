@@ -1,4 +1,5 @@
 use super::*;
+use crate::execution::HASH_COST;
 
 impl Evaluations<'_> {
     fn decode(&self, formula: u32) -> Result<(u64, u32), Error> {
@@ -11,7 +12,7 @@ impl Evaluations<'_> {
     }
     pub(super) fn dispatch_cost(&self, formula: u32) -> Result<u64, Error> {
         let (tag, _) = self.decode(formula)?;
-        Ok([1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, 25][tag as usize])
+        Ok([1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, HASH_COST][tag as usize])
     }
     fn child(
         &self,

@@ -12,31 +12,31 @@
 //! the committed words are hemera Merkle trees over field elements
 //! ([`word`]).
 
-pub mod ops;
-pub mod perm;
-pub mod sponge;
-pub mod msg;
-pub mod splitkey;
-pub mod pool;
-pub mod word;
-pub mod keycache;
-pub mod stream;
-pub mod circuit;
-pub mod gm;
 pub mod acc;
-pub mod whir;
-pub mod expr;
+pub mod circuit;
 pub mod decide;
+pub mod expr;
 pub mod finalv;
-pub mod wrap;
-pub mod params;
-pub mod program;
-pub mod relation;
-pub mod state;
-pub mod step;
-pub mod prove;
+pub mod gm;
 pub mod ivc;
-pub mod wire;
-pub mod vkey;
+pub mod keycache;
+pub mod msg;
+pub mod ops;
+pub mod params;
+pub mod perm;
+pub mod pool;
+pub mod program;
+pub mod prove;
+pub mod relation;
 #[cfg(test)]
 mod review;
+pub mod splitkey;
+pub mod sponge;
+pub mod state;
+pub mod step;
+pub mod stream;
+pub mod vkey;
+pub mod whir;
+pub mod wire;
+pub mod word;
+pub mod wrap;

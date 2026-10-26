@@ -61,7 +61,9 @@ pub(crate) fn modes<T: Num>(l: &[T], init_tag: T, ph_mds: T, ph_out: T) -> SlotM
 
     // RET: slot 0 reads the frame (or, terminal, the result's digest)
     let op = l[R_OP];
-    let frames = FRAME_TAGS.iter().fold(T::ZERO, |a, &(fl, t)| a + f(fl) * c::<T>(t))
+    let frames = FRAME_TAGS
+        .iter()
+        .fold(T::ZERO, |a, &(fl, t)| a + f(fl) * c::<T>(t))
         + f(F_B1) * (c::<T>(TAG_B1) + op)
         + (f(F_B2AR) + f(F_B2W)) * (c::<T>(TAG_B2) + op);
     tag[0] += rt * (frames + f(F_TERM) * c::<T>(TAG_DIG));
@@ -85,7 +87,8 @@ pub(crate) fn modes<T: Num>(l: &[T], init_tag: T, ph_mds: T, ph_out: T) -> SlotM
     read[2] += rt * (f(F_BR) + f(F_B2AR) + f(F_B2W) + f(F_B2LOOK) + f(F_B2EQ));
     write[2] += rt * f(F_UINV);
     let both_pairs = (one - l[Q_KA]) * (one - l[Q_KB]);
-    tag[3] += rt * ((f(F_B2AR) + f(F_B2W) + f(F_B2EQ)) * c::<T>(TAG_ATOM) + f(F_B2LOOK) * c::<T>(TAG_STATE));
+    tag[3] += rt
+        * ((f(F_B2AR) + f(F_B2W) + f(F_B2EQ)) * c::<T>(TAG_ATOM) + f(F_B2LOOK) * c::<T>(TAG_STATE));
     write[3] += rt * (f(F_B2AR) + f(F_B2W) + f(F_B2EQ) * (one - both_pairs));
     read[3] += rt * f(F_B2LOOK);
 
@@ -95,7 +98,12 @@ pub(crate) fn modes<T: Num>(l: &[T], init_tag: T, ph_mds: T, ph_out: T) -> SlotM
 
     // AUX
     let aux = l[K_AUX];
-    let (lk, wa, wp, wj) = (aux * f(S_LOOK), aux * f(S_WATOM), aux * f(S_WPAIR), aux * f(S_WJOIN));
+    let (lk, wa, wp, wj) = (
+        aux * f(S_LOOK),
+        aux * f(S_WATOM),
+        aux * f(S_WPAIR),
+        aux * f(S_WJOIN),
+    );
     // look: the subject's root pair, its root noun's digest, the value atom
     tag[0] += lk * c::<T>(TAG_PAIR);
     read[0] += lk;
@@ -146,7 +154,11 @@ pub(crate) fn modes<T: Num>(l: &[T], init_tag: T, ph_mds: T, ph_out: T) -> SlotM
     // permutation jobs: reads at the MDS phase, the result at OUT
     let (jp, j1, j2, jh) = (l[J_PAIR], l[J_ATOM1], l[J_ATOM2], l[J_HOP]);
     let pm = perm * ph_mds;
-    tag[0] += pm * (jp * c::<T>(TAG_PAIR) + j1 * c::<T>(TAG_ATOM) + j2 * c::<T>(TAG_ABASE) + jh * c::<T>(TAG_DIG));
+    tag[0] += pm
+        * (jp * c::<T>(TAG_PAIR)
+            + j1 * c::<T>(TAG_ATOM)
+            + j2 * c::<T>(TAG_ABASE)
+            + jh * c::<T>(TAG_DIG));
     read[0] += pm * (jp + j1 + j2 + jh);
     tag[1] += pm * jp * c::<T>(TAG_DIG);
     read[1] += pm * jp;

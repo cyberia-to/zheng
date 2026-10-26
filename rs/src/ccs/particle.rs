@@ -6,9 +6,9 @@
 //! Poseidon2 hash blocks (nox pattern 15): the prover hint and the sponge
 //! replay that recovers the capacity columns the trace omits.
 //!
-//! Each hash block is 25 trace rows (24 round rows + 1 squeeze row). The
+//! Each hash block is 61 trace rows (60 round rows + 1 squeeze row). The
 //! round transitions are constrained by the universal step instance
-//! (`universal.rs`, rows 48..64 under the π gate) — this module supplies
+//! (`universal.rs`, rows 84..104 under the π gate) — this module supplies
 //! what those rows need beyond the registers: `state_k[8..16]` and
 //! `state_{k+1}[8..16]`, replayed from the claimed rate with
 //! [`hemera::StepSponge`].
@@ -26,7 +26,7 @@ pub struct HashAux {
     pub rate: [Goldilocks; 8],
 }
 
-/// Replay the sponge from `rate`: the 24 post-round states of the block.
+/// Replay the sponge from `rate`: the 60 post-round states of the block.
 pub fn replay_states(rate: &[Goldilocks; 8]) -> Vec<[Goldilocks; 16]> {
     let mut rate_h = [HGold::ZERO; 8];
     for (j, r) in rate.iter().enumerate() {
@@ -41,15 +41,15 @@ pub fn replay_states(rate: &[Goldilocks; 8]) -> Vec<[Goldilocks; 16]> {
 mod tests {
     use super::*;
     use crate::ccs::selector::is_satisfied;
-    use crate::ccs::universal::{poseidon_witness, universal_ccs, NUM_PARTIAL, PARTIAL_FIRST};
+    use crate::ccs::universal::{NUM_PARTIAL, PARTIAL_FIRST, poseidon_witness, universal_ccs};
 
     fn zero_rate_states() -> Vec<[Goldilocks; 16]> {
         replay_states(&[Goldilocks::ZERO; 8])
     }
 
     #[test]
-    fn replay_yields_24_states() {
-        assert_eq!(zero_rate_states().len(), 24);
+    fn replay_yields_60_states() {
+        assert_eq!(zero_rate_states().len(), hemera::ROUNDS_TOTAL);
     }
 
     #[test]
@@ -66,7 +66,7 @@ mod tests {
     fn universal_row_satisfied_by_all_real_full_rounds() {
         let states = zero_rate_states();
         let u = universal_ccs();
-        for k in (0..PARTIAL_FIRST).chain(PARTIAL_FIRST + NUM_PARTIAL..23) {
+        for k in (0..PARTIAL_FIRST).chain(PARTIAL_FIRST + NUM_PARTIAL..hemera::ROUNDS_TOTAL - 1) {
             let w = poseidon_witness(&states[k], &states[k + 1], k);
             assert!(is_satisfied(u, &w), "full round k={k} unsatisfied");
         }
@@ -77,7 +77,10 @@ mod tests {
         let states = zero_rate_states();
         let k = 5usize;
         let w = poseidon_witness(&states[k], &states[k + 3], k);
-        assert!(!is_satisfied(universal_ccs(), &w), "skipping 3 rounds must not satisfy round {k}");
+        assert!(
+            !is_satisfied(universal_ccs(), &w),
+            "skipping 3 rounds must not satisfy round {k}"
+        );
     }
 
     /// Relaxed completeness at m=64: a witness that does NOT satisfy the
@@ -97,13 +100,19 @@ mod tests {
         let witness = poseidon_witness(&states[k], &states[k + 3], k);
         let ccs = universal_ccs();
         let error_evals = constraint_eval(ccs, &witness);
-        assert!(error_evals.iter().any(|&e| e != Goldilocks::ZERO), "precondition: unsatisfied");
+        assert!(
+            error_evals.iter().any(|&e| e != Goldilocks::ZERO),
+            "precondition: unsatisfied"
+        );
 
         let mut pt = Transcript::new_v1();
         let proof = SpartanProver::prove(ccs, &witness, &mut pt);
         let mut vt = Transcript::new_v1();
         let r = SpartanVerifier::verify(ccs, &proof, &error_evals, &mut vt);
-        assert!(r.is_ok(), "relaxed proof with honest nonzero error must verify: {r:?}");
+        assert!(
+            r.is_ok(),
+            "relaxed proof with honest nonzero error must verify: {r:?}"
+        );
     }
 
     #[test]
@@ -116,7 +125,10 @@ mod tests {
         let k = 7usize;
         let witness = poseidon_witness(&states[k], &states[k + 1], k);
         let ccs = universal_ccs();
-        assert!(is_satisfied(ccs, &witness), "precondition: witness must satisfy");
+        assert!(
+            is_satisfied(ccs, &witness),
+            "precondition: witness must satisfy"
+        );
 
         let mut pt = Transcript::new_v1();
         let proof = SpartanProver::prove(ccs, &witness, &mut pt);
