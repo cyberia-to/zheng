@@ -1,0 +1,222 @@
+# CI for zheng.
+#
+# zheng is a workspace (rs, cli) that depends on sibling crates through path deps
+# (../strata, ../hemera, ../lens, ../nox, ../tade, ../honeycrisp), so every job
+# lays out the same stand as the soft3 release train: zheng, strata, hemera, lens,
+# nox, tade and honeycrisp checked out side by side; even fmt loads the workspace.
+# The `lockfile` job resolves that stand and uploads the resulting Cargo.lock as an
+# artifact so it can be committed.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master, 'release/**']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # hemera's 0.4 line; set to main once hemera#25 (release/0.4 -> main) lands
+  HEMERA_REF: release/0.4
+  # lens's 0.2 line; set to master once lens#36 lands
+  LENS_REF: release/0.2
+  # nox's 0.4 line; set to master once the nox landing lands
+  NOX_REF: release/0.4
+  # empty = strata's default branch
+  STRATA_REF: ""
+  # empty = tade's default branch
+  TADE_REF: ""
+  # empty = honeycrisp's default branch
+  HONEYCRISP_REF: ""
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+      - name: resolve the stand
+        run: cargo metadata --format-version 1 > /dev/null
+        working-directory: zheng
+      - name: Cargo.lock changes
+        run: git -C zheng diff --stat -- Cargo.lock
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Cargo.lock
+          path: zheng/Cargo.lock
+      - name: committed Cargo.lock matches the stand
+        run: git -C zheng diff --exit-code -- Cargo.lock
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+      - name: cargo test
+        run: cargo test --locked --workspace
+        working-directory: zheng
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+      - name: cargo clippy
+        run: cargo clippy --locked --workspace -- -D warnings
+        working-directory: zheng
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+      - name: cargo fmt
+        run: cargo fmt --all --check
+        working-directory: zheng
