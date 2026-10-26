@@ -80,7 +80,7 @@ lookup records. Thus external verification authenticates only public tables,
 while the native private proof authenticates the actual hidden read and computation.
 
 The first bounded implementation requires all ten public namespaces and at most
-2048 total table fields, with the existing 32768 gate/row limit. Tables are public;
+2048 total table fields, with the derived gate/row limit of 65536 (`MAX_GATES`, hemera 0.4; see `noun-cost-component.md`). Tables are public;
 this does not disclose private BBG dimensions or implement hidden database state.
 Table contents, metadata and root are checked before verifier relation derivation.
 The native private backend hides query and witness columns under its protocol

@@ -15,7 +15,7 @@
 //! ```
 //!
 //! Decoding admits only the chain of [`chain`] (`wrap::SHIPPED`: IVC at
-//! rate 1/8 (`ivc::SHIPPED_RATE`, 4-ary trees) with `ivc::SHIPPED_POW` =
+//! rate 1/16 (`ivc::SHIPPED_RATE`, 4-ary trees) with `ivc::SHIPPED_POW` =
 //! 16 grinding bits over steps of 2^15 rows; wrap levels 1/16 inner with 16 grinding bits, 1/128 inner
 //! with 22 (its key over the base field), 1/512 final with 26) and only that step size in the proof's
 //! header, so a verifier needs exactly one final key
@@ -53,7 +53,7 @@ use crate::recursion::wrap::{self, FinalProof, Inner, Mode, WrapKey, WrapParams}
 /// message digests; 4: the final level at 26 grinding bits — its proof
 /// ≤ 64,213 B over every transcript; 5: the inner levels' keys over the
 /// base field, the second level at 1/128 with 22 grinding bits; 6: the
-/// IVC at rate 1/8 under 4-ary trees).
+/// IVC at rate 1/16 under 4-ary trees).
 pub const WRAPPED_FORMAT: u8 = 6;
 /// Upper bound on the final proof bytes: 64 KiB, by construction — the
 /// admitted final key's `wrap::max_proof_bytes` (64,213 B, over every

@@ -24,7 +24,7 @@ checked by the next step's circuit and only the last step's travel.
 ## objects
 
 - **parameters** (`Params`): WHIR parameters of every committed word
-  (profile 6: rate 1/8, 16 grinding bits — `ivc::SHIPPED_RATE`,
+  (profile 6: rate 1/16, 16 grinding bits — `ivc::SHIPPED_RATE`,
   `SHIPPED_POW`), the step size `2^n` rows (`n = 15`), `ℓ = n + 6` variables per word, the
   accumulation configuration for four input words (`AccConfig::derive`
   with `m = 4`).
@@ -255,7 +255,7 @@ shares its row's `eq(α, ·)` factor, so the term is one product per slot
 and a Horner sum over the reads (`wrap::wiring`).
 
 The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`): the IVC proof
-(rate 1/8, `ivc::SHIPPED_RATE`, steps of `2^15` rows, 4-ary trees) →
+(rate 1/16, `ivc::SHIPPED_RATE`, steps of `2^15` rows, 4-ary trees) →
 inner 1/16 grinding 16 bits (the IVC final verifier, 48,453 of 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
 1/512 grinding 26 (2^14 rows). The final level's circuit size (≤ 2^14,
 so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the

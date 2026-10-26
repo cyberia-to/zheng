@@ -81,9 +81,9 @@ at 24 grinding bits).
 
 Shipped under profile 6 since `audit/ivc-speed-2026-10.md`
 (`ivc::SHIPPED_RATE`, every IVC tree 4-ary, the decider's schedule
-rebalanced — `recursion::whir::schedule`): rate **1/8**, 16 grinding bits —
+rebalanced — `recursion::whir::schedule`): rate **1/16**, 16 grinding bits —
 `J = 88` claims, `t = 77` spot checks, `query_pow = 16`, `comb_pow = 17`;
-the step circuit 24,259 of 2^15 rows. Rows: combine 128.19, spot 128.08;
+the step circuit 28,615 of 2^15 rows under hemera 0.4 (34,090 at rate 1/8, which `ivc::key` refuses). Rows: combine 128.19, spot 128.08;
 decider batch combine 128.80, fold ≥ 128.24, shift ≥ 128.04, fin 128.11,
 OOD ≥ 154.4; interactively the weakest round carries **111.04** bits (the
 decider's second shift after its 17 query bits). The tree fan-in changes
