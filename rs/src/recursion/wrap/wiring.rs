@@ -14,8 +14,8 @@ use std::sync::OnceLock;
 use lens::rspcs::field::eq_table;
 use nebu::Fp3;
 
-use super::verify::{par_chunks, powers};
 use super::WrapKey;
+use super::verify::{par_chunks, powers};
 use crate::recursion::whir;
 
 /// The linear form of the memory argument (final mode): every read slot
@@ -84,11 +84,14 @@ impl Wiring {
     pub fn write_sums(&self, lp: &[Fp3]) -> Vec<Fp3> {
         self.write_at
             .windows(2)
-            .map(|r| self.write_reads[r[0] as usize..r[1] as usize].iter().fold(Fp3::ZERO, |a, &i| a + lp[i as usize]))
+            .map(|r| {
+                self.write_reads[r[0] as usize..r[1] as usize]
+                    .iter()
+                    .fold(Fp3::ZERO, |a, &i| a + lp[i as usize])
+            })
             .collect()
     }
 }
-
 
 /// Slot ranges of a wiring whose cells are grouped by slot (as derived).
 pub(super) struct Index {
@@ -119,8 +122,21 @@ fn apply_tag(tag: u16, v: Fp3) -> Fp3 {
 }
 
 impl Wiring {
-    pub fn new(reads: usize, read_cells: Vec<(u32, u32, Coef)>, write_reads: Vec<u32>, write_at: Vec<u32>, write_cells: Vec<(u32, u32, Coef)>) -> Self {
-        Self { index: OnceLock::new(), reads, read_cells, write_reads, write_at, write_cells }
+    pub fn new(
+        reads: usize,
+        read_cells: Vec<(u32, u32, Coef)>,
+        write_reads: Vec<u32>,
+        write_at: Vec<u32>,
+        write_cells: Vec<(u32, u32, Coef)>,
+    ) -> Self {
+        Self {
+            index: OnceLock::new(),
+            reads,
+            read_cells,
+            write_reads,
+            write_at,
+            write_cells,
+        }
     }
 
     /// The slot index for closing checks with `|α| = pre`, when cells
@@ -177,7 +193,9 @@ impl Wiring {
                 let cell_at = at(&self.write_cells, writes)?;
                 let mut read_write = vec![u32::MAX; self.reads];
                 for j in 0..writes {
-                    for &i in &self.write_reads[self.write_at[j] as usize..self.write_at[j + 1] as usize] {
+                    for &i in
+                        &self.write_reads[self.write_at[j] as usize..self.write_at[j + 1] as usize]
+                    {
                         if read_write[i as usize] != u32::MAX {
                             return None;
                         }
@@ -216,12 +234,20 @@ impl Wiring {
         let ea = eq_table(alpha);
         // a slot's term: eq(α, row_lo)·Σ coef·f_M(x_hi)
         let slot = |cells: &[u16], row: u16| -> Fp3 {
-            let s = cells.iter().fold(Fp3::ZERO, |a, &c| a + apply_tag(c & 3, fm[(c >> 2) as usize]));
+            let s = cells.iter().fold(Fp3::ZERO, |a, &c| {
+                a + apply_tag(c & 3, fm[(c >> 2) as usize])
+            });
             s * ea[row as usize]
         };
         let writes = ix.cell_at.len() - 1;
         let sw: Vec<Fp3> = par_chunks(writes, |r| {
-            r.map(|j| slot(&ix.wcell[ix.cell_at[j] as usize..ix.cell_at[j + 1] as usize], ix.wrow[j])).collect::<Vec<_>>()
+            r.map(|j| {
+                slot(
+                    &ix.wcell[ix.cell_at[j] as usize..ix.cell_at[j + 1] as usize],
+                    ix.wrow[j],
+                )
+            })
+            .collect::<Vec<_>>()
         })
         .concat();
         // Σ_i λ^i·(S_read(i) − S_write(w(i))): Horner per chunk, scaled by λ^start
@@ -233,7 +259,12 @@ impl Wiring {
             let start = r.start;
             let len = r.len();
             let mut acc = [Fp3::ZERO; H];
-            let d = |i: usize| slot(&ix.rcell[ix.read_at[i] as usize..ix.read_at[i + 1] as usize], ix.rrow[i]) - sw[ix.read_write[i] as usize];
+            let d = |i: usize| {
+                slot(
+                    &ix.rcell[ix.read_at[i] as usize..ix.read_at[i + 1] as usize],
+                    ix.rrow[i],
+                ) - sw[ix.read_write[i] as usize]
+            };
             for m in (0..len.div_ceil(H)).rev() {
                 for (k, a) in acc.iter_mut().enumerate() {
                     let off = m * H + k;
@@ -281,7 +312,11 @@ impl whir::NativeWeight for WiringWeight<'_> {
         let w = self.k.wiring.as_ref().expect("final mode");
         match w.closing(self.k.params.n, self.lambda, alpha, fm) {
             Some(v) => v,
-            None => self.partial(alpha, fm.len().trailing_zeros() as usize).iter().zip(fm).fold(Fp3::ZERO, |s, (&p, &f)| s + p * f),
+            None => self
+                .partial(alpha, fm.len().trailing_zeros() as usize)
+                .iter()
+                .zip(fm)
+                .fold(Fp3::ZERO, |s, (&p, &f)| s + p * f),
         }
     }
     fn table(&self) -> Vec<Fp3> {
@@ -297,8 +332,12 @@ impl whir::NativeWeight for WiringWeight<'_> {
         let lp = powers(self.lambda, w.reads);
         let writes = w.write_at.len() - 1;
         let ws: Vec<Fp3> = par_chunks(writes, |r| {
-            r.map(|j| w.write_reads[w.write_at[j] as usize..w.write_at[j + 1] as usize].iter().fold(Fp3::ZERO, |a, &i| a + lp[i as usize]))
-                .collect::<Vec<_>>()
+            r.map(|j| {
+                w.write_reads[w.write_at[j] as usize..w.write_at[j + 1] as usize]
+                    .iter()
+                    .fold(Fp3::ZERO, |a, &i| a + lp[i as usize])
+            })
+            .collect::<Vec<_>>()
         })
         .concat();
         let nr = w.read_cells.len();
@@ -326,4 +365,3 @@ impl whir::NativeWeight for WiringWeight<'_> {
         out
     }
 }
-

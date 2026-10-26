@@ -12,7 +12,10 @@ fn pair(a: N, b: N) -> N {
 }
 
 fn relation_and_witness() -> (CCSInstance, Vec<Goldilocks>) {
-    let add = pair(N::Atom(5), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
+    let add = pair(
+        N::Atom(5),
+        pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))),
+    );
     let program = pair(N::Atom(7), pair(add, pair(N::Atom(0), N::Atom(2))));
     let (statement, _) = certify_execution(&program, &[7, 5], 1000).unwrap();
     let relation = statement.relation().unwrap();
@@ -42,8 +45,15 @@ fn compressed_reduction_agrees_with_the_full_verifier() {
     let (proof, point) = prove::<Fp3>(&instance, &z, &mut Transcript::new());
     let full = verify::<Fp3>(&instance, &proof, &[], n, &mut Transcript::new()).unwrap();
     let (outer, inner) = compress_proof(&proof);
-    let r = reduce(&instance, &proof.matrix_evals, &outer, &inner, n, &mut Transcript::new())
-        .unwrap();
+    let r = reduce(
+        &instance,
+        &proof.matrix_evals,
+        &outer,
+        &inner,
+        n,
+        &mut Transcript::new(),
+    )
+    .unwrap();
     assert_eq!(r.point, full);
     assert_eq!(r.point, point);
     assert_eq!(r.claim, r.weight(&instance) * proof.eval_value);
@@ -93,7 +103,10 @@ fn every_compressed_coefficient_is_bound() {
     let mut long = outer.clone();
     long.rounds[0].push(Fp3::ZERO);
     assert!(!check(&instance, &proof, &long, &inner, n));
-    assert!(!check(&instance, &proof, &outer, &inner, n + 1), "one round short");
+    assert!(
+        !check(&instance, &proof, &outer, &inner, n + 1),
+        "one round short"
+    );
 }
 
 #[test]

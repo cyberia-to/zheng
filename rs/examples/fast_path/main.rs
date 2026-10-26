@@ -55,16 +55,23 @@ fn program(name: &str) -> Option<(N, Vec<u64>)> {
         "hash.tri" => (common::parse(common::HASH), vec![7]),
         h if h.starts_with("hash-") => {
             let n: usize = h[5..].parse().ok()?;
-            (common::hash_inputs(n), (0..n as u64).map(|i| 1000 + 7 * i).collect())
+            (
+                common::hash_inputs(n),
+                (0..n as u64).map(|i| 1000 + 7 * i).collect(),
+            )
         }
         b if b.starts_with("batch-") => {
             let g: usize = b[6..].parse().ok()?;
-            (common::hash_batch(g, 8), (0..8 * g as u64).map(|i| 3 + 11 * i).collect())
+            (
+                common::hash_batch(g, 8),
+                (0..8 * g as u64).map(|i| 3 + 11 * i).collect(),
+            )
         }
         c if c.starts_with("chain-") => (common::hash_chain(c[6..].parse().ok()?), vec![7]),
         m if m.starts_with("merkle-") => {
             let levels: usize = m[7..].parse().ok()?;
-            let root = machine::execute(&common::merkle_program(levels, None), &[5], BUDGET).ok()?;
+            let root =
+                machine::execute(&common::merkle_program(levels, None), &[5], BUDGET).ok()?;
             let r = machine::statement::parse(&root.statement.output).ok()?;
             (common::merkle_program(levels, Some(&r)), vec![5])
         }
@@ -116,7 +123,10 @@ fn label(p: &WhirParams) -> String {
 
 fn main() {
     let backend = common::backend();
-    let reps = std::env::var("FAST_REPS").ok().and_then(|s| s.parse().ok()).unwrap_or(3usize);
+    let reps = std::env::var("FAST_REPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3usize);
     let names: Vec<String> = std::env::args().skip(1).collect();
     println!(
         "| fixture | backend | params | vars | rows | prove ms | verify ms | envelope B | bits | bare bits | grind log2 |"
@@ -142,7 +152,8 @@ fn main() {
             let verify: Vec<f64> = (0..reps)
                 .map(|_| {
                     let t = Instant::now();
-                    succinct::verify_relation(&s.instance, &s.pins, &s.statement, &proof).expect("verify");
+                    succinct::verify_relation(&s.instance, &s.pins, &s.statement, &proof)
+                        .expect("verify");
                     ms(t)
                 })
                 .collect();
@@ -197,7 +208,9 @@ fn main() {
                 }
                 prove.push(ms(t));
             }
-            let Some((statement, proof)) = last else { continue };
+            let Some((statement, proof)) = last else {
+                continue;
+            };
             if std::env::var_os("FAST_KEY").is_some() {
                 // warm: the veil proving key held across proofs
                 let t = Instant::now();
@@ -206,15 +219,24 @@ fn main() {
                 let warm: Vec<f64> = (0..reps)
                     .map(|_| {
                         let t = Instant::now();
-                        let (s, p) = zheng::execution::veil::prove_with_key(&key, &prog, &[], &input[..1], BUDGET)
-                            .expect("prove");
+                        let (s, p) = zheng::execution::veil::prove_with_key(
+                            &key,
+                            &prog,
+                            &[],
+                            &input[..1],
+                            BUDGET,
+                        )
+                        .expect("prove");
                         let took = ms(t);
                         assert_eq!(s, statement);
                         zheng::execution::veil::verify(&s, &p).expect("keyed proof verifies");
                         took
                     })
                     .collect();
-                eprintln!("  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms (median of {reps})", median(warm));
+                eprintln!(
+                    "  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms (median of {reps})",
+                    median(warm)
+                );
             }
             let verify: Vec<f64> = (0..reps)
                 .map(|_| {
@@ -260,7 +282,9 @@ fn main() {
             }
             prove.push(ms(t));
         }
-        let Some((statement, proof)) = last else { continue };
+        let Some((statement, proof)) = last else {
+            continue;
+        };
         let cold_bytes = Envelope::Succinct {
             statement: SuccinctStatement::Execution(statement.clone()),
             proof: proof.clone(),
@@ -274,23 +298,38 @@ fn main() {
             let warm: Vec<f64> = (0..reps)
                 .map(|_| {
                     let t = Instant::now();
-                    let (s, p) = succinct::prove_with_key(&key, &prog, &input, BUDGET, params).expect("prove");
+                    let (s, p) = succinct::prove_with_key(&key, &prog, &input, BUDGET, params)
+                        .expect("prove");
                     let took = ms(t);
                     assert_eq!(
-                        Envelope::Succinct { statement: SuccinctStatement::Execution(s), proof: p }.to_bytes(),
+                        Envelope::Succinct {
+                            statement: SuccinctStatement::Execution(s),
+                            proof: p
+                        }
+                        .to_bytes(),
                         cold_bytes,
                         "held-key proof differs"
                     );
                     took
                 })
                 .collect();
-            eprintln!("  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms (median of {reps})", median(warm));
+            eprintln!(
+                "  {name}: key {key_ms:.1} ms once; warm prove {:.1} ms (median of {reps})",
+                median(warm)
+            );
         }
         let (vars, p) = chosen.get();
         let (inst, _) = succinct::relation_and_pins(&statement).unwrap();
         let rows = inst.num_rows;
-        let nnz: usize = inst.matrices.iter().map(|m| m.entries.iter().map(Vec::len).sum::<usize>()).sum();
-        eprintln!("  {name}: {} columns, {} rows (padded), {nnz} nonzeros", inst.num_cols, rows);
+        let nnz: usize = inst
+            .matrices
+            .iter()
+            .map(|m| m.entries.iter().map(Vec::len).sum::<usize>())
+            .sum();
+        eprintln!(
+            "  {name}: {} columns, {} rows (padded), {nnz} nonzeros",
+            inst.num_cols, rows
+        );
         let envelope = Envelope::Succinct {
             statement: SuccinctStatement::Execution(statement),
             proof,

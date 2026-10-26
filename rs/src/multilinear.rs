@@ -22,7 +22,7 @@ pub fn eq_evals<F: ChallengeField>(r: &[F]) -> Vec<F> {
         let one_minus_ri = F::ONE - ri;
         let mut new_table = vec![F::ZERO; 2 * n];
         for m in 0..n {
-            new_table[m]     = table[m] * one_minus_ri;
+            new_table[m] = table[m] * one_minus_ri;
             new_table[m + n] = table[m] * ri;
         }
         table = new_table;
@@ -35,7 +35,10 @@ pub fn eq_evals<F: ChallengeField>(r: &[F]) -> Vec<F> {
 /// table[m] ← (1-r)·table[m] + r·table[m+half], then truncate to half.
 pub fn fold_inplace<F: ChallengeField>(table: &mut Vec<F>, r: F) {
     let sz = table.len();
-    assert!(sz >= 2 && sz.is_power_of_two(), "table must be power-of-2 size ≥ 2");
+    assert!(
+        sz >= 2 && sz.is_power_of_two(),
+        "table must be power-of-2 size ≥ 2"
+    );
     let half = sz / 2;
     let one_minus_r = F::ONE - r;
     for m in 0..half {
@@ -130,11 +133,7 @@ mod tests {
 
     #[test]
     fn eq_evals_sums_to_one() {
-        let r = vec![
-            Goldilocks::new(3),
-            Goldilocks::new(7),
-            Goldilocks::new(11),
-        ];
+        let r = vec![Goldilocks::new(3), Goldilocks::new(7), Goldilocks::new(11)];
         let evals = eq_evals(&r);
         let sum = evals.iter().copied().fold(Goldilocks::ZERO, |a, b| a + b);
         assert_eq!(sum, Goldilocks::ONE);
@@ -176,10 +175,7 @@ mod tests {
             Goldilocks::new(40),
         ];
         // evaluate at (0, 1) should give evals[0*2+1] = 20
-        let v = evaluate_multilinear(
-            &evals,
-            &[Goldilocks::ZERO, Goldilocks::ONE],
-        );
+        let v = evaluate_multilinear(&evals, &[Goldilocks::ZERO, Goldilocks::ONE]);
         assert_eq!(v, Goldilocks::new(20));
     }
 

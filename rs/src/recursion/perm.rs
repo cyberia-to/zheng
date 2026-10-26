@@ -49,7 +49,10 @@ fn from_h(x: HG) -> Goldilocks {
 
 /// Permutations computed natively so far (one at a time, batched) — a
 /// counter for verifier profiles.
-pub static COUNT: [core::sync::atomic::AtomicU64; 2] = [core::sync::atomic::AtomicU64::new(0), core::sync::atomic::AtomicU64::new(0)];
+pub static COUNT: [core::sync::atomic::AtomicU64; 2] = [
+    core::sync::atomic::AtomicU64::new(0),
+    core::sync::atomic::AtomicU64::new(0),
+];
 
 /// `(single, batched)` permutations computed so far.
 pub fn count() -> (u64, u64) {
@@ -103,7 +106,9 @@ pub fn permute_many_local(states: &mut [[Goldilocks; WIDTH]]) {
 /// recomputing: a cache of a pure function — a hit is the permutation's
 /// output whatever proof put it there. Bounded: cleared past
 /// [`MEMO_CAP`] entries.
-static MEMO: std::sync::Mutex<Option<std::collections::HashMap<[u64; WIDTH], [Goldilocks; WIDTH], MemoHash>>> = std::sync::Mutex::new(None);
+static MEMO: std::sync::Mutex<
+    Option<std::collections::HashMap<[u64; WIDTH], [Goldilocks; WIDTH], MemoHash>>,
+> = std::sync::Mutex::new(None);
 
 /// Entries the cache holds at most (a final proof's parse adds ≈ 3,000).
 pub const MEMO_CAP: usize = 1 << 16;
@@ -209,11 +214,19 @@ pub fn node4_input(c: [[Goldilocks; 4]; 4]) -> [Goldilocks; WIDTH] {
 
 /// The children of a 4-ary node whose digest `cur` sits at `pos`, the
 /// siblings filling the other positions in order.
-pub fn children4(cur: [Goldilocks; 4], pos: usize, sibs: [[Goldilocks; 4]; 3]) -> [[Goldilocks; 4]; 4] {
+pub fn children4(
+    cur: [Goldilocks; 4],
+    pos: usize,
+    sibs: [[Goldilocks; 4]; 3],
+) -> [[Goldilocks; 4]; 4] {
     let mut out = [[Goldilocks::ZERO; 4]; 4];
     let mut it = sibs.iter();
     for (i, o) in out.iter_mut().enumerate() {
-        *o = if i == pos { cur } else { *it.next().expect("three siblings") };
+        *o = if i == pos {
+            cur
+        } else {
+            *it.next().expect("three siblings")
+        };
     }
     out
 }
@@ -251,7 +264,11 @@ mod tests {
     #[test]
     fn verifier_permutations_never_reach_the_backend() {
         use lens::rspcs::backend::Backend;
-        let many = |k: u64| -> Vec<[Goldilocks; WIDTH]> { (0..BACKEND_MIN as u64 * 2).map(|j| core::array::from_fn(|i| Goldilocks::new(j * 31 + i as u64 + k))).collect() };
+        let many = |k: u64| -> Vec<[Goldilocks; WIDTH]> {
+            (0..BACKEND_MIN as u64 * 2)
+                .map(|j| core::array::from_fn(|i| Goldilocks::new(j * 31 + i as u64 + k)))
+                .collect()
+        };
         let mut want = many(1);
         permute_many_local(&mut want);
         let watch = std::sync::Arc::new(Watch(std::thread::current().id(), Default::default()));
@@ -268,7 +285,11 @@ mod tests {
         lens::rspcs::backend::install(prev);
         assert_eq!(a, want);
         assert_eq!(b, want);
-        assert_eq!(watch.1.load(core::sync::atomic::Ordering::Relaxed), 1, "only the prover's batch");
+        assert_eq!(
+            watch.1.load(core::sync::atomic::Ordering::Relaxed),
+            1,
+            "only the prover's batch"
+        );
         let _ = watch.name();
     }
 

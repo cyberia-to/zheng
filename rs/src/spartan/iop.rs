@@ -148,8 +148,8 @@ pub fn verify<F: ChallengeField>(
         .iter()
         .zip(error_evals.iter())
         .fold(F::ZERO, |acc, (&w, &e)| acc + w * F::from_base(e));
-    let (outer_final, rho_x) =
-        SumcheckVerifier::new(e_claim, log_m).verify_all(&proof.outer_sumcheck_polys, transcript)?;
+    let (outer_final, rho_x) = SumcheckVerifier::new(e_claim, log_m)
+        .verify_all(&proof.outer_sumcheck_polys, transcript)?;
     for &e in &proof.matrix_evals {
         transcript.absorb_eval(e);
     }

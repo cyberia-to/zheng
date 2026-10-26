@@ -13,12 +13,19 @@ fn pair(a: N, b: N) -> N {
 
 /// `[7 [[5 [[0 2] [0 6]]] [0 2]]]`: (a + b) · a over subject [a [b 0]].
 fn relation_and_witness() -> (CCSInstance, Vec<Goldilocks>) {
-    let add = pair(N::Atom(5), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
+    let add = pair(
+        N::Atom(5),
+        pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))),
+    );
     let program = pair(N::Atom(7), pair(add, pair(N::Atom(0), N::Atom(2))));
     let (statement, _) = certify_execution(&program, &[7, 5], 1000).unwrap();
     let relation = statement.relation().unwrap();
     let CCSWitness { z } = relation.witness(&statement.inputs()).unwrap();
-    assert!(relation.instance.is_satisfied_by(&CCSWitness { z: z.clone() }));
+    assert!(
+        relation
+            .instance
+            .is_satisfied_by(&CCSWitness { z: z.clone() })
+    );
     let mut z = z;
     pad_to_power_of_two(&mut z, 64);
     (relation.instance, z)
@@ -51,11 +58,18 @@ fn fp3_iop_accepts_an_honest_witness_and_ends_in_a_true_claim() {
     assert_eq!(verdict.unwrap(), point);
     assert_eq!(proof.eval_value, witness_poly_at(&z, &point));
     assert!(
-        point.iter().any(|r| r.c1 != Goldilocks::ZERO || r.c2 != Goldilocks::ZERO),
+        point
+            .iter()
+            .any(|r| r.c1 != Goldilocks::ZERO || r.c2 != Goldilocks::ZERO),
         "challenges leave the base field"
     );
     let degree = instance.multisets.iter().map(Vec::len).max().unwrap();
-    assert!(proof.outer_sumcheck_polys.iter().all(|p| p.coeffs.len() == degree + 2));
+    assert!(
+        proof
+            .outer_sumcheck_polys
+            .iter()
+            .all(|p| p.coeffs.len() == degree + 2)
+    );
 }
 
 #[test]
@@ -70,7 +84,13 @@ fn goldilocks_iop_agrees_with_the_same_relation() {
 fn fp3_iop_rejects_an_unsatisfying_witness() {
     let (instance, mut z) = relation_and_witness();
     // the product wire of (a + b) · a: change any value the rows read
-    let read = instance.matrices[0].entries.iter().flatten().map(|&(c, _)| c).max().unwrap();
+    let read = instance.matrices[0]
+        .entries
+        .iter()
+        .flatten()
+        .map(|&(c, _)| c)
+        .max()
+        .unwrap();
     z[read] += Goldilocks::ONE;
     assert!(!instance.is_satisfied_by(&CCSWitness { z: z.clone() }));
     let (_, _, verdict) = run::<Fp3>(&instance, &z);

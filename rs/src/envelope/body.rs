@@ -1,11 +1,11 @@
 //! Profile bodies of the envelope.
+use super::ZkProof;
 use super::codec::{Reader, Writer};
 use super::{Envelope, EnvelopeError as E, Profile};
 use crate::execution::private::PrivateStatement;
 use crate::execution::state::{MAX_READS, PublicLookup, StateStatement};
 use crate::execution::veil::{self, VeilProof};
 use crate::execution::zk::{self, PrivateProof};
-use super::ZkProof;
 use crate::execution::{
     Certificate, ExecutionStatement, MAX_INPUTS, MAX_OUTPUTS, MAX_PROGRAM_NODES, NounToken,
 };
@@ -71,7 +71,11 @@ pub(super) fn state(statement: &StateStatement, w: &mut Writer) {
     }
 }
 
-pub(super) fn decode(profile: Profile, r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<Envelope, E> {
+pub(super) fn decode(
+    profile: Profile,
+    r: &mut Reader,
+    expect: Option<&[u8; 32]>,
+) -> Result<Envelope, E> {
     match profile {
         Profile::Public => Ok(Envelope::Public {
             statement: read_execution(r)?,

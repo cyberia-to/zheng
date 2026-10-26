@@ -20,7 +20,11 @@ fn instance_shape() {
     assert_eq!(u.num_rows, NUM_ROWS);
     assert_eq!(u.num_cols, Z_LEN);
     assert_eq!(u.matrices.len(), NUM_MATRICES);
-    assert_eq!(u.multisets.iter().map(|m| m.len()).max(), Some(4), "max degree 4");
+    assert_eq!(
+        u.multisets.iter().map(|m| m.len()).max(),
+        Some(4),
+        "max degree 4"
+    );
 }
 
 // ── selector rules ───────────────────────────────────────────────────────────
@@ -60,7 +64,10 @@ fn wrong_selector_for_r0_fails() {
     // No selector: sum row breaks.
     w.z[sel(5)] = Goldilocks::ZERO;
     w.z[sel(7)] = Goldilocks::ZERO;
-    assert!(!is_satisfied(universal_ccs(), &w), "one selector is mandatory");
+    assert!(
+        !is_satisfied(universal_ccs(), &w),
+        "one selector is mandatory"
+    );
 }
 
 #[test]
@@ -92,7 +99,10 @@ fn hash_round_selector_binds_to_r14() {
     let mut w = honest.clone();
     w.z[round_sel(k)] = Goldilocks::ZERO;
     w.z[round_sel(k + 1)] = Goldilocks::ONE;
-    assert!(!is_satisfied(universal_ccs(), &w), "round selector must match r14");
+    assert!(
+        !is_satisfied(universal_ccs(), &w),
+        "round selector must match r14"
+    );
 
     // Drop the round selector entirely: Σ u = s_15 breaks.
     let mut w = honest.clone();
@@ -100,17 +110,26 @@ fn hash_round_selector_binds_to_r14() {
     w.z[IDX_PI] = Goldilocks::ZERO;
     w.z[IDX_RC] = Goldilocks::ZERO;
     w.z[IDX_KAPPA] = Goldilocks::ZERO;
-    assert!(!is_satisfied(universal_ccs(), &w), "a hash row must select its round");
+    assert!(
+        !is_satisfied(universal_ccs(), &w),
+        "a hash row must select its round"
+    );
 
     // Wrong round constant: rc − Σ RC·u = 0 breaks (and the S-box row).
     let mut w = honest.clone();
     w.z[IDX_RC] += Goldilocks::ONE;
-    assert!(!is_satisfied(universal_ccs(), &w), "rc is bound to the round index");
+    assert!(
+        !is_satisfied(universal_ccs(), &w),
+        "rc is bound to the round index"
+    );
 
     // Clear π to escape the partial-round rows: π − Σ u_j = 0 breaks.
     let mut w = honest.clone();
     w.z[IDX_PI] = Goldilocks::ZERO;
-    assert!(!is_satisfied(universal_ccs(), &w), "π is bound to the round selectors");
+    assert!(
+        !is_satisfied(universal_ccs(), &w),
+        "π is bound to the round selectors"
+    );
 }
 
 #[test]
@@ -128,7 +147,10 @@ fn non_hash_row_cannot_arm_poseidon_gates() {
 #[test]
 fn squeeze_boundary_pair_has_no_counter_constraint() {
     // Squeeze row (k = 60) followed by a quote row: κ = 0, no r14 chain.
-    assert!(ok(&tagged(15, &[(reg_t(14), 60), (reg_t1(0), 1), (reg_t1(14), 0)])));
+    assert!(ok(&tagged(
+        15,
+        &[(reg_t(14), 60), (reg_t1(0), 1), (reg_t1(14), 0)]
+    )));
     // Round row k = 7 followed by k = 9: κ = 1 and the counter breaks.
     assert!(!ok(&tagged(15, &[(reg_t(14), 7), (reg_t1(14), 9)])));
     // Out-of-range round index: no u_k can be set.
@@ -151,12 +173,30 @@ fn pattern_quote_result_equals_body_in_row() {
 
 #[test]
 fn pattern_add_sub_mul() {
-    assert!(ok(&tagged(5, &[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)])));
-    assert!(!ok(&tagged(5, &[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 7)])));
-    assert!(ok(&tagged(6, &[(reg_t(4), 7), (reg_t(5), 2), (reg_t(6), 5)])));
-    assert!(!ok(&tagged(6, &[(reg_t(4), 7), (reg_t(5), 2), (reg_t(6), 6)])));
-    assert!(ok(&tagged(7, &[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)])));
-    assert!(!ok(&tagged(7, &[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 43)])));
+    assert!(ok(&tagged(
+        5,
+        &[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 8)]
+    )));
+    assert!(!ok(&tagged(
+        5,
+        &[(reg_t(4), 5), (reg_t(5), 3), (reg_t(6), 7)]
+    )));
+    assert!(ok(&tagged(
+        6,
+        &[(reg_t(4), 7), (reg_t(5), 2), (reg_t(6), 5)]
+    )));
+    assert!(!ok(&tagged(
+        6,
+        &[(reg_t(4), 7), (reg_t(5), 2), (reg_t(6), 6)]
+    )));
+    assert!(ok(&tagged(
+        7,
+        &[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 42)]
+    )));
+    assert!(!ok(&tagged(
+        7,
+        &[(reg_t(4), 6), (reg_t(5), 7), (reg_t(6), 43)]
+    )));
 }
 
 #[test]
@@ -174,18 +214,32 @@ fn pattern_inv_final_row_holds_the_inverse() {
 fn pattern_eq_gadget() {
     assert!(ok(&tagged(9, &[(reg_t(4), 9), (reg_t(5), 9)])));
     let inv5 = (Goldilocks::new(9) - Goldilocks::new(4)).inv().as_u64();
-    assert!(ok(&tagged(9, &[(reg_t(4), 9), (reg_t(5), 4), (reg_t(6), 1), (reg_t(7), inv5)])));
+    assert!(ok(&tagged(
+        9,
+        &[
+            (reg_t(4), 9),
+            (reg_t(5), 4),
+            (reg_t(6), 1),
+            (reg_t(7), inv5)
+        ]
+    )));
     // unequal operands claimed equal
     assert!(!ok(&tagged(9, &[(reg_t(4), 9), (reg_t(5), 4)])));
     // equal operands claimed unequal
-    assert!(!ok(&tagged(9, &[(reg_t(4), 9), (reg_t(5), 9), (reg_t(6), 1)])));
+    assert!(!ok(&tagged(
+        9,
+        &[(reg_t(4), 9), (reg_t(5), 9), (reg_t(6), 1)]
+    )));
 }
 
 #[test]
 fn pattern_branch_selector_gadget() {
     assert!(ok(&tagged(4, &[])));
     let inv7 = Goldilocks::new(7).inv().as_u64();
-    assert!(ok(&tagged(4, &[(reg_t(4), 7), (reg_t(5), inv7), (reg_t(10), 1)])));
+    assert!(ok(&tagged(
+        4,
+        &[(reg_t(4), 7), (reg_t(5), inv7), (reg_t(10), 1)]
+    )));
     assert!(!ok(&tagged(4, &[(reg_t(4), 7), (reg_t(5), inv7)])));
     assert!(!ok(&tagged(4, &[(reg_t(10), 1)])));
 }
@@ -200,19 +254,43 @@ fn pattern_lt_bits_are_boolean() {
 
 #[test]
 fn pattern_xor_gadget() {
-    assert!(ok(&tagged(11, &[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 1)])));
-    assert!(ok(&tagged(11, &[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 0)])));
-    assert!(!ok(&tagged(11, &[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 0)])));
+    assert!(ok(&tagged(
+        11,
+        &[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 1)]
+    )));
+    assert!(ok(&tagged(
+        11,
+        &[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 0)]
+    )));
+    assert!(!ok(&tagged(
+        11,
+        &[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 0)]
+    )));
     // non-boolean operand bit
-    assert!(!ok(&tagged(11, &[(reg_t(10), 2), (reg_t(11), 0), (reg_t(12), 2)])));
+    assert!(!ok(&tagged(
+        11,
+        &[(reg_t(10), 2), (reg_t(11), 0), (reg_t(12), 2)]
+    )));
 }
 
 #[test]
 fn pattern_and_gadget() {
-    assert!(ok(&tagged(12, &[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 1)])));
-    assert!(ok(&tagged(12, &[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 0)])));
-    assert!(!ok(&tagged(12, &[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 0)])));
-    assert!(!ok(&tagged(12, &[(reg_t(10), 2), (reg_t(11), 1), (reg_t(12), 2)])));
+    assert!(ok(&tagged(
+        12,
+        &[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 1)]
+    )));
+    assert!(ok(&tagged(
+        12,
+        &[(reg_t(10), 1), (reg_t(11), 0), (reg_t(12), 0)]
+    )));
+    assert!(!ok(&tagged(
+        12,
+        &[(reg_t(10), 1), (reg_t(11), 1), (reg_t(12), 0)]
+    )));
+    assert!(!ok(&tagged(
+        12,
+        &[(reg_t(10), 2), (reg_t(11), 1), (reg_t(12), 2)]
+    )));
 }
 
 #[test]
@@ -221,7 +299,10 @@ fn pattern_not_gadget() {
     assert!(ok(&tagged(13, &[(reg_t(10), 1), (reg_t(12), 0)])));
     assert!(!ok(&tagged(13, &[(reg_t(10), 1), (reg_t(12), 1)])));
     // r11 must be zero on unary rows
-    assert!(!ok(&tagged(13, &[(reg_t(10), 0), (reg_t(11), 1), (reg_t(12), 1)])));
+    assert!(!ok(&tagged(
+        13,
+        &[(reg_t(10), 0), (reg_t(11), 1), (reg_t(12), 1)]
+    )));
 }
 
 #[test]

@@ -47,7 +47,11 @@ impl Builder {
             for row in 0..16 {
                 let diag = F::new(hemera::field::MATRIX_DIAG_16[row].as_canonical_u64());
                 let mut terms = sum.clone();
-                terms.extend(self.linear(&state[row])?.into_iter().map(|(i, c)| (i, c * diag)));
+                terms.extend(
+                    self.linear(&state[row])?
+                        .into_iter()
+                        .map(|(i, c)| (i, c * diag)),
+                );
                 out[row] = Value::Linear(normalize(terms));
             }
             return Ok(out);
@@ -118,7 +122,8 @@ impl Builder {
         for round in 0..ROUNDS {
             let partial = !is_full(round);
             if partial {
-                let rc = hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
+                let rc =
+                    hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
                 let value = self.add(&state[0], &Value::Constant(F::new(rc)), false)?;
                 let x = self.linear(&value)?;
                 state[0] = self.pow7(x);

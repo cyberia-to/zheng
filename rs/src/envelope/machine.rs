@@ -45,7 +45,13 @@ fn tokens(ts: &[NounToken], w: &mut Writer) {
 fn read_tokens(r: &mut Reader) -> Result<Vec<NounToken>, E> {
     let n = r.len(MAX_TOKENS, 1)?;
     (0..n)
-        .map(|_| Ok(if r.bool()? { NounToken::Pair } else { NounToken::Atom(r.field()?) }))
+        .map(|_| {
+            Ok(if r.bool()? {
+                NounToken::Pair
+            } else {
+                NounToken::Atom(r.field()?)
+            })
+        })
         .collect()
 }
 
@@ -75,7 +81,10 @@ pub(super) fn statement(st: &MachinePublic, w: &mut Writer) {
 
 /// Read a statement; with `expect`, a program digest other than the
 /// expected one is refused here, before anything after the statement.
-pub(super) fn read_statement(r: &mut Reader, expect: Option<&[u8; 32]>) -> Result<MachinePublic, E> {
+pub(super) fn read_statement(
+    r: &mut Reader,
+    expect: Option<&[u8; 32]>,
+) -> Result<MachinePublic, E> {
     let program: [u8; 32] = r.raw(32)?.try_into().expect("32 bytes");
     if expect.is_some_and(|d| *d != program) {
         return Err(E::ProgramMismatch);
@@ -107,7 +116,12 @@ pub(super) fn read_statement(r: &mut Reader, expect: Option<&[u8; 32]>) -> Resul
     })
 }
 
-pub(super) fn encode(params: &WhirParams, st: &MachinePublic, proof: &MachineProof, w: &mut Writer) {
+pub(super) fn encode(
+    params: &WhirParams,
+    st: &MachinePublic,
+    proof: &MachineProof,
+    w: &mut Writer,
+) {
     w.raw(&[MACHINE_FORMAT]);
     w.raw(&params.header());
     statement(st, w);

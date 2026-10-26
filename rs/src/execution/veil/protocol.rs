@@ -93,7 +93,12 @@ impl Setup {
         Functional {
             scale: a0,
             point: r.to_vec(),
-            explicit: w1.into_iter().chain(w2).enumerate().map(|(i, w)| (start + i, w)).collect(),
+            explicit: w1
+                .into_iter()
+                .chain(w2)
+                .enumerate()
+                .map(|(i, w)| (start + i, w))
+                .collect(),
         }
     }
 }
@@ -119,13 +124,19 @@ fn pcs_transcript(t: &mut Transcript) -> LensTranscript {
 fn eq_tau_rho(tau: &[Fp3], rho_x: &[Fp3]) -> Fp3 {
     tau.iter()
         .zip(rho_x.iter().rev())
-        .fold(Fp3::ONE, |acc, (&t, &r)| acc * (t * r + (Fp3::ONE - t) * (Fp3::ONE - r)))
+        .fold(Fp3::ONE, |acc, (&t, &r)| {
+            acc * (t * r + (Fp3::ONE - t) * (Fp3::ONE - r))
+        })
 }
 
 fn gate(instance: &CCSInstance, v: &[Fp3]) -> Fp3 {
-    instance.multisets.iter().zip(&instance.coeffs).fold(Fp3::ZERO, |acc, (set, &c)| {
-        acc + Fp3::from_base(c) * set.iter().fold(Fp3::ONE, |p, &i| p * v[i])
-    })
+    instance
+        .multisets
+        .iter()
+        .zip(&instance.coeffs)
+        .fold(Fp3::ZERO, |acc, (set, &c)| {
+            acc + Fp3::from_base(c) * set.iter().fold(Fp3::ONE, |p, &i| p * v[i])
+        })
 }
 
 /// `P = Σ_i γ^i Σ_row eq(ρ_x, row) Σ_{pinned c} M_i[row][c]·p(c)`.
@@ -140,7 +151,14 @@ fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
         for (row, entries) in m.entries.iter().enumerate() {
             let mut row_sum = Goldilocks::ZERO;
             for &(c, v) in entries {
-                if let Some(slot) = s.layout.map.get(c).copied().flatten().filter(|&x| x >= half) {
+                if let Some(slot) = s
+                    .layout
+                    .map
+                    .get(c)
+                    .copied()
+                    .flatten()
+                    .filter(|&x| x >= half)
+                {
                     row_sum += v * s.layout.public[slot - half].1;
                 }
             }
@@ -156,7 +174,9 @@ fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
 
 /// `A(0, r) = Σ_i γ^i M̃'_i(ρ_x, (0, r))`.
 fn free_weight(s: &Setup, rho_x: &[Fp3], gamma: Fp3, r: &[Fp3]) -> Fp3 {
-    let point: Vec<Fp3> = core::iter::once(Fp3::ZERO).chain(r.iter().copied()).collect();
+    let point: Vec<Fp3> = core::iter::once(Fp3::ZERO)
+        .chain(r.iter().copied())
+        .collect();
     let red = Reduction {
         point,
         claim: Fp3::ZERO,
@@ -229,12 +249,19 @@ pub(crate) fn prove_prepared(
             m.entries
                 .iter()
                 .map(|row| {
-                    Fp3::from_base(row.iter().fold(Goldilocks::ZERO, |acc, &(c, v)| acc + v * zp[c]))
+                    Fp3::from_base(
+                        row.iter()
+                            .fold(Goldilocks::ZERO, |acc, &(c, v)| acc + v * zp[c]),
+                    )
                 })
                 .collect()
         })
         .collect();
-    let coeffs = relabelled.coeffs.iter().map(|&c| Fp3::from_base(c)).collect();
+    let coeffs = relabelled
+        .coeffs
+        .iter()
+        .map(|&c| Fp3::from_base(c))
+        .collect();
     let mut outer =
         OuterSumcheckProver::new(eq_evals(&tau), row_mv, relabelled.multisets.clone(), coeffs);
     let g1_sum = g1.sum();
@@ -307,17 +334,14 @@ fn rounds(
     for (i, rest) in rounds.rounds.iter().enumerate() {
         let poly = reduce::decompress(v.current_claim(), degree as u8, rest)
             .ok_or_else(|| format!("veil: round {i} shape"))?;
-        v.verify_round(&poly, t).map_err(|e| format!("veil: round {i}: {e:?}"))?;
+        v.verify_round(&poly, t)
+            .map_err(|e| format!("veil: round {i}: {e:?}"))?;
     }
     Ok((v.current_claim(), v.challenges().to_vec()))
 }
 
 /// Verify a parsed proof against the relation and pins the caller derived.
-pub(crate) fn verify(
-    s: &Setup,
-    statement: &[u8],
-    proof: &Parsed,
-) -> Result<(), String> {
+pub(crate) fn verify(s: &Setup, statement: &[u8], proof: &Parsed) -> Result<(), String> {
     let params = &proof.opening.params;
     admit(params, s.entries())?;
     let mut t = Transcript::new();
@@ -338,7 +362,9 @@ pub(crate) fn verify(
     let (batched, _) = proof
         .evals
         .iter()
-        .fold((Fp3::ZERO, Fp3::ONE), |(acc, g), &e| (acc + g * e, g * gamma));
+        .fold((Fp3::ZERO, Fp3::ONE), |(acc, g), &e| {
+            (acc + g * e, g * gamma)
+        });
     let claim2 = batched - pinned_part(s, &rho_x, gamma);
     t.absorb_eval(proof.g2);
     let rho2 = Fp3::squeeze(&mut t);
@@ -347,7 +373,15 @@ pub(crate) fn verify(
     let a0 = free_weight(s, &rho_x, gamma, &r);
     let f = s.functional(a0, &r, lambda, &rho_x, rho2);
     let mut lt = pcs_transcript(&mut t);
-    hiding::verify(params, &proof.root, s.entries(), &f, lambda * g1_at + c2, &proof.opening, &mut lt)
+    hiding::verify(
+        params,
+        &proof.root,
+        s.entries(),
+        &f,
+        lambda * g1_at + c2,
+        &proof.opening,
+        &mut lt,
+    )
 }
 
 /// Bits a zk proof must carry.
@@ -358,7 +392,9 @@ pub(crate) fn admit(params: &HidingParams, entries: usize) -> Result<f64, String
     let cfg = Config::derive(params, entries)?;
     let bits = cfg.security_bits();
     if bits < MIN_SECURITY_BITS {
-        return Err(format!("veil: {bits:.2} proven bits, policy requires {MIN_SECURITY_BITS}"));
+        return Err(format!(
+            "veil: {bits:.2} proven bits, policy requires {MIN_SECURITY_BITS}"
+        ));
     }
     Ok(bits)
 }

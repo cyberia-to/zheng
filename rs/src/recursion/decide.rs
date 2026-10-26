@@ -50,7 +50,11 @@ impl KeyWords {
     pub fn commit(layout: LeafLayout, n: usize, pre: &Pre, arity: Arity) -> (Self, bool) {
         const WORD: usize = 64;
         let rows = 1usize << n;
-        let ext = pre.cols.iter().flatten().any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO);
+        let ext = pre
+            .cols
+            .iter()
+            .flatten()
+            .any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO);
         let words = [0, 1].map(|h| {
             let mut t = vec![Fp3::ZERO; WORD * rows];
             for c in 0..WORD {
@@ -89,22 +93,40 @@ fn absorb<O: Ops>(o: &mut O, t: &mut Sponge<O>, acc: &AccV<O::V>, pv: &ClaimV<O:
 
 /// The batch's inputs: the accumulator with its claims, the key words
 /// with the split key claim.
-fn inputs<V: Copy>(acc: &AccV<V>, key_root: [V; 4], key_ext: bool, z: &[V], v: [V; 2]) -> Vec<InstV<V>> {
+fn inputs<V: Copy>(
+    acc: &AccV<V>,
+    key_root: [V; 4],
+    key_ext: bool,
+    z: &[V],
+    v: [V; 2],
+) -> Vec<InstV<V>> {
     let mut out = vec![acc.instance()];
     for (root, val) in [key_root; 2].into_iter().zip(v) {
-        out.push(InstV { root, ext: key_ext, claims: vec![ClaimRef::Multi(z.to_vec(), val)] });
+        out.push(InstV {
+            root,
+            ext: key_ext,
+            claims: vec![ClaimRef::Multi(z.to_vec(), val)],
+        });
     }
     out
 }
 
 /// Prove the decider for the final state's accumulator (`table`: the
 /// accumulator word) and key claim.
-pub fn prove(cfg: &whir::Config, acc_word: &Word, acc: &AccV<Fp3>, pv: &ClaimV<Fp3>, key: &KeyWords, n: usize) -> Result<Decider, String> {
+pub fn prove(
+    cfg: &whir::Config,
+    acc_word: &Word,
+    acc: &AccV<Fp3>,
+    pv: &ClaimV<Fp3>,
+    key: &KeyWords,
+    n: usize,
+) -> Result<Decider, String> {
     let lap = super::ivc::timer_pub("    decide ");
     let mut t = ProverTranscript::new(tag::DECIDE);
     absorb(&mut t.o, &mut t.sp, acc, pv);
     let zg = &pv.point[..n + 6];
-    let v = [key.group.words[0].table(), key.group.words[1].table()].map(|tb| lens::rspcs::field::ml_eval_ext(&tb, zg));
+    let v = [key.group.words[0].table(), key.group.words[1].table()]
+        .map(|tb| lens::rspcs::field::ml_eval_ext(&tb, zg));
     t.absorb_ext(v[0]);
     t.absorb_ext(v[1]);
     lap("key claim");
@@ -113,9 +135,18 @@ pub fn prove(cfg: &whir::Config, acc_word: &Word, acc: &AccV<Fp3>, pv: &ClaimV<F
     let mut acc_claims = vec![(acc.rho.clone(), acc.v0)];
     acc_claims.extend(acc.ood.iter().map(|&(z, y)| (up(z), y)));
     acc_claims.extend(acc.spot.iter().map(|&(x, y)| (up(x), y)));
-    let claims = vec![acc_claims, vec![(zg.to_vec(), v[0])], vec![(zg.to_vec(), v[1])]];
+    let claims = vec![
+        acc_claims,
+        vec![(zg.to_vec(), v[0])],
+        vec![(zg.to_vec(), v[1])],
+    ];
     lap("claims");
-    let whir = whir::prove(cfg, &mut t, &[acc_word as &dyn whir::Tree, &key.group], &claims)?;
+    let whir = whir::prove(
+        cfg,
+        &mut t,
+        &[acc_word as &dyn whir::Tree, &key.group],
+        &claims,
+    )?;
     lap("opening");
     Ok(Decider { key: v, whir })
 }
@@ -123,10 +154,22 @@ pub fn prove(cfg: &whir::Config, acc_word: &Word, acc: &AccV<Fp3>, pv: &ClaimV<F
 /// Verify the decider of `acc` and the key claim `pv` against the key's
 /// roots.
 #[allow(clippy::too_many_arguments)]
-pub fn verify<O: Ops>(o: &mut O, cfg: &whir::Config, acc: &AccV<O::V>, pv: &ClaimV<O::V>, key_root: Digest, key_ext: bool, n: usize, pf: &Decider) {
+pub fn verify<O: Ops>(
+    o: &mut O,
+    cfg: &whir::Config,
+    acc: &AccV<O::V>,
+    pv: &ClaimV<O::V>,
+    key_root: Digest,
+    key_ext: bool,
+    n: usize,
+    pf: &Decider,
+) {
     let mut t = Sponge::new(o, tag::DECIDE);
     absorb(o, &mut t, acc, pv);
-    let v = [t.absorb_free_ext(o, pf.key[0]), t.absorb_free_ext(o, pf.key[1])];
+    let v = [
+        t.absorb_free_ext(o, pf.key[0]),
+        t.absorb_free_ext(o, pf.key[1]),
+    ];
     let g6 = pv.point[n + 6];
     let line = o.lerp(g6, v[0], v[1]);
     o.assert_eq(line, pv.value, "decider: the key claim");
@@ -137,7 +180,10 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &whir::Config, acc: &AccV<O::V>, pv: &Clai
 
 /// A decider of the right shape (key derivation).
 pub fn dummy(cfg: &whir::Config) -> Decider {
-    Decider { key: [Fp3::ZERO; 2], whir: whir::dummy(cfg) }
+    Decider {
+        key: [Fp3::ZERO; 2],
+        whir: whir::dummy(cfg),
+    }
 }
 
 /// Shape of a decider proof.

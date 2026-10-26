@@ -42,7 +42,9 @@ pub fn read(r: &mut Reader<'_>, k: &WrapKey) -> R<WrapProof> {
     let inner = k.inner();
     let words = k.trace_words();
     let roots = (0..words).map(|_| read_digest(r)).collect::<R<_>>()?;
-    let ood = (0..words).map(|_| read_exts(r, k.fresh)).collect::<R<_>>()?;
+    let ood = (0..words)
+        .map(|_| read_exts(r, k.fresh))
+        .collect::<R<_>>()?;
     let zerocheck = (0..n).map(|_| read_exts(r, DEGREE + 1)).collect::<R<_>>()?;
     let local = read_exts(r, k.cols())?;
     let next = read_exts(r, k.next_cols.len())?;
@@ -51,7 +53,18 @@ pub fn read(r: &mut Reader<'_>, k: &WrapKey) -> R<WrapProof> {
     let vals = read_exts(r, if inner { words } else { 0 })?;
     let kv = read_exts(r, if inner { k.key_words() } else { 0 })?;
     let whir = whir::wire::read(r, &k.cfg, &k.exts())?;
-    Ok(WrapProof { roots, ood, zerocheck, local, next, key, shift, vals, kv, whir })
+    Ok(WrapProof {
+        roots,
+        ood,
+        zerocheck,
+        local,
+        next,
+        key,
+        shift,
+        vals,
+        kv,
+        whir,
+    })
 }
 
 /// The most bytes a wrap proof under `k` can take (over every
@@ -62,7 +75,11 @@ pub fn max_bytes(k: &WrapKey) -> usize {
     let inner = k.inner();
     let words = k.trace_words();
     let ext = 24 * (words * k.fresh + n * (DEGREE + 1) + k.cols() + k.next_cols.len());
-    let inner_msgs = if inner { 24 * (k.key_phys.len() + 2 * n + words + k.key_words()) } else { 0 };
+    let inner_msgs = if inner {
+        24 * (k.key_phys.len() + 2 * n + words + k.key_words())
+    } else {
+        0
+    };
     32 * words + ext + inner_msgs + whir::wire::max_bytes(&k.cfg, &k.exts())
 }
 
@@ -112,7 +129,14 @@ impl FinalProof {
         let value = r.ext().map_err(e)?;
         let wrap = read(&mut r, k).map_err(e)?;
         r.finish().map_err(e)?;
-        Ok(Self { log_rows, start, segments, chain, pn: ClaimV { point, value }, wrap })
+        Ok(Self {
+            log_rows,
+            start,
+            segments,
+            chain,
+            pn: ClaimV { point, value },
+            wrap,
+        })
     }
     /// Bytes of each part: header, the nox-public claim, the AIR
     /// messages, the opening.
@@ -123,6 +147,11 @@ impl FinalProof {
         let all = self.to_bytes(k).len();
         let pn = 24 * (self.pn.point.len() + 1);
         let header = 1 + 8 + 8 + 32;
-        [("header", header), ("nox-public claim", pn), ("air", all - header - pn - opening), ("opening", opening)]
+        [
+            ("header", header),
+            ("nox-public claim", pn),
+            ("air", all - header - pn - opening),
+            ("opening", opening),
+        ]
     }
 }

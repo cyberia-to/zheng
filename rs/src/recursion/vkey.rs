@@ -48,7 +48,11 @@ pub(crate) fn read_fp3(r: &mut Reader) -> Result<Fp3, String> {
     for x in &mut c {
         *x = Goldilocks::new(r.field().map_err(|e| e.to_string())?);
     }
-    Ok(Fp3 { c0: c[0], c1: c[1], c2: c[2] })
+    Ok(Fp3 {
+        c0: c[0],
+        c1: c[1],
+        c2: c[2],
+    })
 }
 
 pub(crate) fn write_digest(w: &mut Writer, d: &[Goldilocks; 4]) {
@@ -67,7 +71,12 @@ pub(crate) fn read_digest(r: &mut Reader) -> Result<[Goldilocks; 4], String> {
 
 pub(crate) fn write_pre(w: &mut Writer, pre: &Pre) {
     for col in &pre.cols {
-        let nz: Vec<(usize, Fp3)> = col.iter().copied().enumerate().filter(|(_, v)| *v != Fp3::ZERO).collect();
+        let nz: Vec<(usize, Fp3)> = col
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, v)| *v != Fp3::ZERO)
+            .collect();
         w.len(nz.len());
         let mut next = 0;
         for (row, v) in nz {
@@ -105,11 +114,20 @@ pub(crate) fn read_pre(r: &mut Reader, rows: usize) -> Result<Pre, String> {
 pub(crate) fn sparse(pre: &Pre) -> Vec<Vec<(u32, Fp3)>> {
     pre.cols
         .iter()
-        .map(|c| c.iter().enumerate().filter(|(_, v)| **v != Fp3::ZERO).map(|(i, &v)| (i as u32, v)).collect())
+        .map(|c| {
+            c.iter()
+                .enumerate()
+                .filter(|(_, v)| **v != Fp3::ZERO)
+                .map(|(i, &v)| (i as u32, v))
+                .collect()
+        })
         .collect()
 }
 
 /// Whether a key entry leaves the base field.
 pub(crate) fn ext(pre: &Pre) -> bool {
-    pre.cols.iter().flatten().any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO)
+    pre.cols
+        .iter()
+        .flatten()
+        .any(|v| v.c1 != Goldilocks::ZERO || v.c2 != Goldilocks::ZERO)
 }

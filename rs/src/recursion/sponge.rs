@@ -110,7 +110,11 @@ impl<O: Ops> Sponge<O> {
         (0..count)
             .map(|_| {
                 let v = self.squeeze(o);
-                o.assert_ne_const(v, Fp3::from_base(Goldilocks::new(nebu::field::P - 1)), "index limb p − 1");
+                o.assert_ne_const(
+                    v,
+                    Fp3::from_base(Goldilocks::new(nebu::field::P - 1)),
+                    "index limb p − 1",
+                );
                 o.bits(v, log_n)
             })
             .collect()

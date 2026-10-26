@@ -71,10 +71,21 @@ fn bundle(profile: Profile, layouts: &[Vec<u8>]) -> Vec<u8> {
 /// process has not (profile 6 without an installed final key derives the
 /// whole chain).
 pub fn export(profile: Profile) -> Result<Vec<u8>, String> {
-    let ikey = |whir: &lens::WhirParams| recursive::pinned_key(whir, ivc::key(whir, recursive::STEP_LOG_ROWS as usize)?);
+    let ikey = |whir: &lens::WhirParams| {
+        recursive::pinned_key(whir, ivc::key(whir, recursive::STEP_LOG_ROWS as usize)?)
+    };
     match profile {
-        Profile::Recursive => Ok(bundle(profile, &[ikey(&recursive::params())?.layout_bytes()])),
-        Profile::Wrapped => Ok(bundle(profile, &[ikey(&wrapped::chain().0)?.layout_bytes(), wrapped::final_key()?.layout_bytes()])),
+        Profile::Recursive => Ok(bundle(
+            profile,
+            &[ikey(&recursive::params())?.layout_bytes()],
+        )),
+        Profile::Wrapped => Ok(bundle(
+            profile,
+            &[
+                ikey(&wrapped::chain().0)?.layout_bytes(),
+                wrapped::final_key()?.layout_bytes(),
+            ],
+        )),
         _ => Err("keys: only profiles 5 and 6 have cached keys".into()),
     }
 }
@@ -110,7 +121,11 @@ pub fn install(bytes: &[u8]) -> Result<Profile, String> {
         r.raw(n).map_err(e)
     };
     let ik = ivc::Key::from_layout(next()?)?;
-    let fk = if profile == Profile::Wrapped { Some(WrapKey::from_layout(next()?)?) } else { None };
+    let fk = if profile == Profile::Wrapped {
+        Some(WrapKey::from_layout(next()?)?)
+    } else {
+        None
+    };
     r.finish().map_err(e)?;
     ivc::install(ik);
     if let Some(k) = fk {

@@ -13,14 +13,19 @@ fn quote(v: u64) -> N {
 }
 /// (a + b) · a over subject [a [b 0]].
 fn add_mul() -> N {
-    let add = pair(N::Atom(5), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
+    let add = pair(
+        N::Atom(5),
+        pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))),
+    );
     pair(N::Atom(7), pair(add, pair(N::Atom(0), N::Atom(2))))
 }
 /// cell(2, 11) = 42.
 fn evidence() -> StateEvidence {
     let mut body = vec![0u64; 9];
     body[8] = 42;
-    StateEvidence::with_tables(vec![crate::execution::state_evidence::StateTable::with_body(2, &body)])
+    StateEvidence::with_tables(vec![
+        crate::execution::state_evidence::StateTable::with_body(2, &body),
+    ])
 }
 
 /// Verify as a deployment does: zheng authenticates the evidence under the
@@ -31,14 +36,23 @@ fn verify_authenticated(e: &Envelope) -> Result<(), String> {
 
 fn public() -> Envelope {
     let (statement, certificate) = certify_execution(&add_mul(), &[7, 5], 1000).unwrap();
-    Envelope::Public { statement, certificate }
+    Envelope::Public {
+        statement,
+        certificate,
+    }
 }
 
 fn state() -> Envelope {
-    let program = pair(N::Atom(7), pair(pair(N::Atom(17), pair(quote(2), quote(11))), quote(3)));
+    let program = pair(
+        N::Atom(7),
+        pair(pair(N::Atom(17), pair(quote(2), quote(11))), quote(3)),
+    );
     let (statement, certificate) =
         certify_state_execution(&program, &[], 1000, true, &evidence()).unwrap();
-    Envelope::StatePublic { statement, certificate }
+    Envelope::StatePublic {
+        statement,
+        certificate,
+    }
 }
 
 fn zk_envelope() -> Envelope {
@@ -59,7 +73,11 @@ fn zk_envelope() -> Envelope {
         &public,
     )
     .unwrap();
-    Envelope::Zk { statement, context, proof: ZkProof::Mith(proof) }
+    Envelope::Zk {
+        statement,
+        context,
+        proof: ZkProof::Mith(proof),
+    }
 }
 
 #[test]
@@ -85,19 +103,26 @@ fn wrong_magic_version_and_profile_are_rejected() {
     for version in [0u16, 2, u16::MAX] {
         let mut bad = bytes.clone();
         bad[8..10].copy_from_slice(&version.to_le_bytes());
-        assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnsupportedVersion(version)));
+        assert_eq!(
+            Envelope::from_bytes(&bad),
+            Err(EnvelopeError::UnsupportedVersion(version))
+        );
     }
     for profile in [7u8, 0x80, 0xff] {
         let mut bad = bytes.clone();
         bad[10] = profile;
-        assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
+        assert_eq!(
+            Envelope::from_bytes(&bad),
+            Err(EnvelopeError::UnknownProfile(profile))
+        );
     }
     // a public body under another profile byte does not decode or verify
     for profile in [1u8, 2, 3, 4, 5, 6] {
         let mut bad = bytes.clone();
         bad[10] = profile;
-        let accepted =
-            Envelope::from_bytes(&bad).map(|e| e.verify(Some(&evidence())).is_ok()).unwrap_or(false);
+        let accepted = Envelope::from_bytes(&bad)
+            .map(|e| e.verify(Some(&evidence())).is_ok())
+            .unwrap_or(false);
         assert!(!accepted, "profile {profile}");
     }
 }
@@ -111,11 +136,17 @@ fn truncation_and_trailing_bytes_are_rejected() {
         }
         let mut longer = bytes.clone();
         longer.push(0);
-        assert_eq!(Envelope::from_bytes(&longer), Err(EnvelopeError::TrailingBytes));
+        assert_eq!(
+            Envelope::from_bytes(&longer),
+            Err(EnvelopeError::TrailingBytes)
+        );
     }
     let bytes = zk_envelope().to_bytes();
     for cut in [0, 10, 11, 200, bytes.len() / 2, bytes.len() - 1] {
-        assert!(Envelope::from_bytes(&bytes[..cut]).is_err(), "zk prefix {cut}");
+        assert!(
+            Envelope::from_bytes(&bytes[..cut]).is_err(),
+            "zk prefix {cut}"
+        );
     }
 }
 
@@ -142,12 +173,18 @@ fn bound_ranges(envelope: &Envelope) -> Vec<(usize, usize)> {
                 w.len(statement.reads.len());
                 for r in &statement.reads {
                     w.bool(r.active);
-                    [r.namespace, r.key, r.value].iter().for_each(|&v| w.varint(v));
+                    [r.namespace, r.key, r.value]
+                        .iter()
+                        .for_each(|&v| w.varint(v));
                 }
             });
             vec![(0, HEADER_BYTES + roots + reads)]
         }
-        Envelope::Zk { .. } | Envelope::Succinct { .. } | Envelope::Machine { .. } | Envelope::Recursive { .. } | Envelope::Wrapped { .. } => unreachable!(),
+        Envelope::Zk { .. }
+        | Envelope::Succinct { .. }
+        | Envelope::Machine { .. }
+        | Envelope::Recursive { .. }
+        | Envelope::Wrapped { .. } => unreachable!(),
     }
 }
 
@@ -159,7 +196,10 @@ fn facts(e: &Envelope) -> Envelope {
         Envelope::Public { statement, .. } => statement.budget = 0,
         Envelope::StatePublic { statement, .. } => statement.execution.budget = 0,
         Envelope::Zk { statement, .. } => statement.execution.budget = 0,
-        Envelope::Succinct { .. } | Envelope::Machine { .. } | Envelope::Recursive { .. } | Envelope::Wrapped { .. } => unreachable!(),
+        Envelope::Succinct { .. }
+        | Envelope::Machine { .. }
+        | Envelope::Recursive { .. }
+        | Envelope::Wrapped { .. } => unreachable!(),
     }
     e
 }
@@ -174,7 +214,9 @@ fn every_single_byte_change_of_header_and_statement_is_rejected() {
                 for delta in [1u8, 0x80, 0xff] {
                     let mut bad = bytes.clone();
                     bad[i] ^= delta;
-                    let Ok(decoded) = Envelope::from_bytes(&bad) else { continue };
+                    let Ok(decoded) = Envelope::from_bytes(&bad) else {
+                        continue;
+                    };
                     if verify_authenticated(&decoded).is_err() {
                         continue;
                     }
@@ -195,14 +237,33 @@ fn every_single_byte_change_of_header_and_statement_is_rejected() {
 
 #[test]
 fn zk_context_and_proof_bytes_are_bound() {
-    let Envelope::Zk { statement, context, proof } = zk_envelope() else { unreachable!() };
+    let Envelope::Zk {
+        statement,
+        context,
+        proof,
+    } = zk_envelope()
+    else {
+        unreachable!()
+    };
     let mut other = context;
     other[0] ^= 1;
-    let moved = Envelope::Zk { statement: statement.clone(), context: other, proof: proof.clone() };
+    let moved = Envelope::Zk {
+        statement: statement.clone(),
+        context: other,
+        proof: proof.clone(),
+    };
     assert!(moved.verify(Some(&evidence())).is_err());
     let mut forged = statement.clone();
     forged.execution.public_output[0] += 1;
-    assert!(Envelope::Zk { statement: forged, context, proof }.verify(Some(&evidence())).is_err());
+    assert!(
+        Envelope::Zk {
+            statement: forged,
+            context,
+            proof
+        }
+        .verify(Some(&evidence()))
+        .is_err()
+    );
 }
 
 #[test]
@@ -218,20 +279,39 @@ fn hostile_lengths_fail_before_allocation() {
     w.raw(&VERSION.to_le_bytes());
     w.raw(&[0]);
     w.varint(4096); // within the bound, but no bytes follow
-    assert_eq!(Envelope::from_bytes(&w.bytes), Err(EnvelopeError::Truncated));
+    assert_eq!(
+        Envelope::from_bytes(&w.bytes),
+        Err(EnvelopeError::Truncated)
+    );
     let oversized = vec![0u8; MAX_BYTES + 1];
-    assert_eq!(Envelope::from_bytes(&oversized), Err(EnvelopeError::TooLarge));
+    assert_eq!(
+        Envelope::from_bytes(&oversized),
+        Err(EnvelopeError::TooLarge)
+    );
 }
 
 #[test]
 fn noncanonical_body_values_are_rejected() {
-    let Envelope::Public { statement, certificate } = public() else { unreachable!() };
+    let Envelope::Public {
+        statement,
+        certificate,
+    } = public()
+    else {
+        unreachable!()
+    };
     let encode = |s: &ExecutionStatement, c: &Certificate| {
-        Envelope::Public { statement: s.clone(), certificate: c.clone() }.to_bytes()
+        Envelope::Public {
+            statement: s.clone(),
+            certificate: c.clone(),
+        }
+        .to_bytes()
     };
     let mut big = statement.clone();
     big.public_output[0] = nebu::field::P;
-    assert_eq!(Envelope::from_bytes(&encode(&big, &certificate)), Err(EnvelopeError::NonCanonical));
+    assert_eq!(
+        Envelope::from_bytes(&encode(&big, &certificate)),
+        Err(EnvelopeError::NonCanonical)
+    );
     let mut zero_tail = certificate.clone();
     zero_tail.free.push(0);
     assert_eq!(
@@ -252,5 +332,8 @@ fn noncanonical_body_values_are_rejected() {
     assert_eq!(s, statement);
     let mut overlong = bytes[..HEADER_BYTES].to_vec();
     overlong.extend_from_slice(&[1, 0, 0x81, 0x00]); // one token: Atom(1) in two bytes
-    assert_eq!(Envelope::from_bytes(&overlong), Err(EnvelopeError::NonCanonical));
+    assert_eq!(
+        Envelope::from_bytes(&overlong),
+        Err(EnvelopeError::NonCanonical)
+    );
 }

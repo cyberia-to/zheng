@@ -41,7 +41,7 @@ pub fn replay_states(rate: &[Goldilocks; 8]) -> Vec<[Goldilocks; 16]> {
 mod tests {
     use super::*;
     use crate::ccs::selector::is_satisfied;
-    use crate::ccs::universal::{poseidon_witness, universal_ccs, NUM_PARTIAL, PARTIAL_FIRST};
+    use crate::ccs::universal::{NUM_PARTIAL, PARTIAL_FIRST, poseidon_witness, universal_ccs};
 
     fn zero_rate_states() -> Vec<[Goldilocks; 16]> {
         replay_states(&[Goldilocks::ZERO; 8])
@@ -77,7 +77,10 @@ mod tests {
         let states = zero_rate_states();
         let k = 5usize;
         let w = poseidon_witness(&states[k], &states[k + 3], k);
-        assert!(!is_satisfied(universal_ccs(), &w), "skipping 3 rounds must not satisfy round {k}");
+        assert!(
+            !is_satisfied(universal_ccs(), &w),
+            "skipping 3 rounds must not satisfy round {k}"
+        );
     }
 
     /// Relaxed completeness at m=64: a witness that does NOT satisfy the
@@ -97,13 +100,19 @@ mod tests {
         let witness = poseidon_witness(&states[k], &states[k + 3], k);
         let ccs = universal_ccs();
         let error_evals = constraint_eval(ccs, &witness);
-        assert!(error_evals.iter().any(|&e| e != Goldilocks::ZERO), "precondition: unsatisfied");
+        assert!(
+            error_evals.iter().any(|&e| e != Goldilocks::ZERO),
+            "precondition: unsatisfied"
+        );
 
         let mut pt = Transcript::new_v1();
         let proof = SpartanProver::prove(ccs, &witness, &mut pt);
         let mut vt = Transcript::new_v1();
         let r = SpartanVerifier::verify(ccs, &proof, &error_evals, &mut vt);
-        assert!(r.is_ok(), "relaxed proof with honest nonzero error must verify: {r:?}");
+        assert!(
+            r.is_ok(),
+            "relaxed proof with honest nonzero error must verify: {r:?}"
+        );
     }
 
     #[test]
@@ -116,7 +125,10 @@ mod tests {
         let k = 7usize;
         let witness = poseidon_witness(&states[k], &states[k + 1], k);
         let ccs = universal_ccs();
-        assert!(is_satisfied(ccs, &witness), "precondition: witness must satisfy");
+        assert!(
+            is_satisfied(ccs, &witness),
+            "precondition: witness must satisfy"
+        );
 
         let mut pt = Transcript::new_v1();
         let proof = SpartanProver::prove(ccs, &witness, &mut pt);

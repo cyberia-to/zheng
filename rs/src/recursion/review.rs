@@ -139,10 +139,25 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     // the last step's circuit is a base step: it verifies nothing
     let mut b = Builder::new(false);
     let live = b.live_var();
-    let (init_v, h) = program::run(&mut b, p, live, &program::dummy_state(p), &program::dummy_proof(p), &parts, |b, c| b.set_output(c));
+    let (init_v, h) = program::run(
+        &mut b,
+        p,
+        live,
+        &program::dummy_state(p),
+        &program::dummy_proof(p),
+        &parts,
+        |b, c| b.set_output(c),
+    );
     b.finish().unwrap();
     let d: Digest = h.map(|v| b.value(v).c0);
-    let honest_prev: State = state::StateV::from_items(&p.dims, &init_v.items().iter().map(|&(v, _)| b.value(v)).collect::<Vec<_>>());
+    let honest_prev: State = state::StateV::from_items(
+        &p.dims,
+        &init_v
+            .items()
+            .iter()
+            .map(|&(v, _)| b.value(v))
+            .collect::<Vec<_>>(),
+    );
     let (v1, _, _) = trace::generate(&b, &CircuitAir::default(), n).unwrap();
     let word_a = Word::commit_base_a(layout, &segs[1].column_major(WORD), p.arity);
     let b_out = row0(&run.segment(0), &n2_0);
@@ -159,13 +174,30 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
         sparse: &k.sparse,
     };
     let forge = |s: &State, x: Digest| -> IvcProof {
-        let (pf, data, _) = prove::prove(p, &input, s, x, &AccData::Zero(ZeroWord::new(&layout, p.arity))).unwrap();
+        let (pf, data, _) = prove::prove(
+            p,
+            &input,
+            s,
+            x,
+            &AccData::Zero(ZeroWord::new(&layout, p.arity)),
+        )
+        .unwrap();
         let mut o = Native::batched();
         let fin = step::verify(&mut o, p, s, base_lift(x), &pf);
         o.finish().unwrap();
-        let AccData::Word(word) = data else { panic!("last accumulator") };
+        let AccData::Word(word) = data else {
+            panic!("last accumulator")
+        };
         let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, k.words(), n).unwrap();
-        IvcProof { log_rows: N, start: run.start as u64, segments: 2, chain, state: s.clone(), step: pf, decider }
+        IvcProof {
+            log_rows: N,
+            start: run.start as u64,
+            segments: 2,
+            chain,
+            state: s.clone(),
+            step: pf,
+            decider,
+        }
     };
 
     // the forged state: "one step verified", every carried value chosen
@@ -173,7 +205,10 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     s.step = Fp3::ONE;
     s.chain = base_lift(prefix[1]);
     s.b_first = b_out.iter().map(|&x| Fp3::from_base(x)).collect();
-    s.b_last = row0(&segs[1], &n2_1).iter().map(|&x| Fp3::from_base(x)).collect();
+    s.b_last = row0(&segs[1], &n2_1)
+        .iter()
+        .map(|&x| Fp3::from_base(x))
+        .collect();
     s.acc.spot[0].0 = Fp3::new(Goldilocks::ONE, Goldilocks::ONE, Goldilocks::ZERO);
     // the last block of the state sponge: pv.point[20], pv.point[21],
     // pv.value — its first four lanes are the forged "digest"
@@ -188,7 +223,11 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
         s.pv.point[pv - 2] = Fp3::new(d[0], d[1], d[2]);
         s.pv.point[pv - 1] = Fp3::new(d[3], Goldilocks::ZERO, Goldilocks::ZERO);
         s.pv.value = pbar_v(&k.sparse, &s.pv.point, n);
-        assert_eq!(unchecked_digest(&s), d, "the unchecked digest is the raw lanes");
+        assert_eq!(
+            unchecked_digest(&s),
+            d,
+            "the unchecked digest is the raw lanes"
+        );
         d
     } else {
         s.pv.value = pbar_v(&k.sparse, &s.pv.point, n);
@@ -197,7 +236,10 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
     assert!(!state::is_canonical(&s));
     let forged = forge(&s, d);
     let r = ivc::verify(&run.statement, &forged, &w);
-    assert!(r.is_err(), "a state unbound from the step's public input was accepted");
+    assert!(
+        r.is_err(),
+        "a state unbound from the step's public input was accepted"
+    );
 
     // the honest state of a base step in last position: refused by the
     // step count (the chain restarted at the base step)
@@ -215,7 +257,12 @@ fn a_state_unbound_from_the_last_public_input_is_refused() {
 fn the_base_step_outputs_the_initial_state_whatever_it_is_given() {
     let p = Params::new(&whir(), N as usize).unwrap();
     let parts = CtxParts {
-        statement: [Goldilocks::new(1), Goldilocks::new(2), Goldilocks::new(3), Goldilocks::new(4)],
+        statement: [
+            Goldilocks::new(1),
+            Goldilocks::new(2),
+            Goldilocks::new(3),
+            Goldilocks::new(4),
+        ],
         chain: [Goldilocks::new(5); 4],
         g0: Fp3::from_base(Goldilocks::new(6)),
         pn0: Fp3::from_base(Goldilocks::new(7)),
@@ -226,11 +273,27 @@ fn the_base_step_outputs_the_initial_state_whatever_it_is_given() {
     prev.g.value = Fp3::from_base(Goldilocks::new(99));
     let mut b = Builder::new(false);
     let live = b.live_var();
-    let (out, _) = program::run(&mut b, &p, live, &prev, &program::dummy_proof(&p), &parts, |_, _| {});
+    let (out, _) = program::run(
+        &mut b,
+        &p,
+        live,
+        &prev,
+        &program::dummy_proof(&p),
+        &parts,
+        |_, _| {},
+    );
     b.finish().unwrap();
     let got: Vec<Fp3> = out.items().iter().map(|&(v, _)| b.value(v)).collect();
     let mut o = Native::new();
-    let want = state::init(&mut o, &p.dims, base_lift(state::ctx_native(&parts)), p.zero_root, parts.g0, parts.pn0, parts.pv0);
+    let want = state::init(
+        &mut o,
+        &p.dims,
+        base_lift(state::ctx_native(&parts)),
+        p.zero_root,
+        parts.g0,
+        parts.pn0,
+        parts.pv0,
+    );
     let want: Vec<Fp3> = want.items().iter().map(|&(v, _)| v).collect();
     assert_eq!(got, want);
     assert_eq!(got[4], Fp3::ZERO, "step count");
@@ -245,7 +308,11 @@ fn a_non_canonical_grinding_nonce_is_refused() {
     assert!(step::check_shape(&p, &pf).is_ok());
     for k in 0..2 {
         let mut bad = pf.clone();
-        let nonce = if k == 0 { &mut bad.acc.comb_nonce } else { &mut bad.acc.query_nonce };
+        let nonce = if k == 0 {
+            &mut bad.acc.comb_nonce
+        } else {
+            &mut bad.acc.query_nonce
+        };
         *nonce = nebu::field::P;
         assert!(step::check_shape(&p, &bad).is_err());
     }

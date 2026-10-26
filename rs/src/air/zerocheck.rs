@@ -60,7 +60,9 @@ pub(crate) fn interpolate(values: &[Fp3], x: Fp3) -> Fp3 {
 }
 
 fn threads() -> usize {
-    std::thread::available_parallelism().map_or(1, |n| n.get()).min(16)
+    std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16)
 }
 
 /// One round: `h(X)` at `X = 0..=deg` from the current tables.
@@ -128,7 +130,10 @@ fn round<A: Air>(
                 })
             })
             .collect();
-        handles.into_iter().map(|h| h.join().expect("zerocheck worker")).collect()
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("zerocheck worker"))
+            .collect()
     });
     let mut h = vec![Fp3::ZERO; deg + 1];
     for p in parts {
@@ -143,7 +148,16 @@ fn round<A: Air>(
 /// are base-field): the same `h` as [`round`], `None` when the AIR has no
 /// mixed evaluation.
 #[allow(clippy::too_many_arguments)]
-fn round_mix<A: Air>(air: &A, w: usize, cols: &[Vec<Fp3>], eq: &[Fp3], ch: &[Fp3], mu: &[Fp3], deg: usize, first: usize) -> Option<Vec<Fp3>> {
+fn round_mix<A: Air>(
+    air: &A,
+    w: usize,
+    cols: &[Vec<Fp3>],
+    eq: &[Fp3],
+    ch: &[Fp3],
+    mu: &[Fp3],
+    deg: usize,
+    first: usize,
+) -> Option<Vec<Fp3>> {
     use super::mix::Mix;
     let pairs = eq.len() / 2;
     let k = air.shape().constraints;
@@ -151,7 +165,11 @@ fn round_mix<A: Air>(air: &A, w: usize, cols: &[Vec<Fp3>], eq: &[Fp3], ch: &[Fp3
         // probe: does the AIR evaluate in mixed arithmetic?
         let z = vec![Mix::B(Goldilocks::ZERO); cols.len()];
         let mut out = vec![Mix::B(Goldilocks::ZERO); k];
-        let v = Vals { local: &z[..w], next: &z[w..2 * w], publics: &z[2 * w..] };
+        let v = Vals {
+            local: &z[..w],
+            next: &z[w..2 * w],
+            publics: &z[2 * w..],
+        };
         if !air.eval_mix(&v, ch, &mut out) {
             return None;
         }
@@ -187,9 +205,16 @@ fn round_mix<A: Air>(air: &A, w: usize, cols: &[Vec<Fp3>], eq: &[Fp3], ch: &[Fp3
                             for sc in scratch.iter_mut() {
                                 *sc = Mix::B(Goldilocks::ZERO);
                             }
-                            let v = Vals { local: &vals[..w], next: &vals[w..2 * w], publics: &vals[2 * w..] };
+                            let v = Vals {
+                                local: &vals[..w],
+                                next: &vals[w..2 * w],
+                                publics: &vals[2 * w..],
+                            };
                             air.eval_mix(&v, ch, &mut scratch);
-                            let c = scratch.iter().zip(mu).fold(Fp3::ZERO, |acc, (&c, &m)| acc + c.scale(m));
+                            let c = scratch
+                                .iter()
+                                .zip(mu)
+                                .fold(Fp3::ZERO, |acc, (&c, &m)| acc + c.scale(m));
                             *hx += g * c;
                         }
                     }
@@ -197,7 +222,10 @@ fn round_mix<A: Air>(air: &A, w: usize, cols: &[Vec<Fp3>], eq: &[Fp3], ch: &[Fp3
                 })
             })
             .collect();
-        handles.into_iter().map(|h| h.join().expect("zerocheck worker")).collect()
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("zerocheck worker"))
+            .collect()
     });
     let mut h = vec![Fp3::ZERO; deg + 1];
     for p in parts {
@@ -217,7 +245,10 @@ const CPU_TAIL: usize = 1 << 8;
 fn program(g: &super::num::Graph) -> lens::rspcs::program::Program {
     let c = g.compile();
     let (ops, consts, inputs, outputs) = c.parts();
-    let consts = consts.iter().map(|&x| lens::rspcs::program::from_fp3(x)).collect();
+    let consts = consts
+        .iter()
+        .map(|&x| lens::rspcs::program::from_fp3(x))
+        .collect();
     lens::rspcs::program::Program::from_slots(ops, consts, inputs, outputs[0])
 }
 
@@ -244,11 +275,21 @@ fn pack_flat(cols: &[Vec<Fp3>]) -> Vec<[u64; 3]> {
 /// The points a round evaluates and the `q` they fill.
 fn round_points(deg: usize, on_cube: bool, skip_one: bool) -> Vec<u64> {
     let first = if on_cube { 2 } else { 0 };
-    (first..deg).filter(|&x| !(x == 1 && skip_one)).map(|x| x as u64).collect()
+    (first..deg)
+        .filter(|&x| !(x == 1 && skip_one))
+        .map(|x| x as u64)
+        .collect()
 }
 
 /// [`round`] on the prover backend: the same `q` at the same points.
-fn device_round(p: &lens::rspcs::program::Program, cols: &[Vec<Fp3>], eq: &[Fp3], deg: usize, on_cube: bool, skip_one: bool) -> Vec<Fp3> {
+fn device_round(
+    p: &lens::rspcs::program::Program,
+    cols: &[Vec<Fp3>],
+    eq: &[Fp3],
+    deg: usize,
+    on_cube: bool,
+    skip_one: bool,
+) -> Vec<Fp3> {
     use lens::rspcs::program::{from_fp3, to_fp3};
     let xs = round_points(deg, on_cube, skip_one);
     let flat = pack_flat(cols);
@@ -321,7 +362,9 @@ pub(crate) fn prove_packed<A: Air>(
         .flatten()
         .map(|g| program(&g));
     // the columns resident on the device across rounds (folded there)
-    let mut session = device.as_ref().and_then(|p| backend.line_session(p, &flat.unwrap_or_else(|| pack_flat(&cols)), eq.len()));
+    let mut session = device
+        .as_ref()
+        .and_then(|p| backend.line_session(p, &flat.unwrap_or_else(|| pack_flat(&cols)), eq.len()));
     if session.is_some() {
         cols = Vec::new();
     }
@@ -333,7 +376,10 @@ pub(crate) fn prove_packed<A: Air>(
         {
             let len = eq.len();
             let flat = sess.columns();
-            cols = flat.chunks_exact(len).map(|c| c.iter().map(|&v| lens::rspcs::program::to_fp3(v)).collect()).collect();
+            cols = flat
+                .chunks_exact(len)
+                .map(|c| c.iter().map(|&v| lens::rspcs::program::to_fp3(v)).collect())
+                .collect();
         }
         let (l0, l1) = eq
             .chunks_exact(2)
@@ -346,14 +392,19 @@ pub(crate) fn prove_packed<A: Air>(
         let mut q = match (&mut session, &device) {
             (Some(sess), _) => {
                 let xs = round_points(deg, r == 0, skip_one);
-                let weights: Vec<[u64; 3]> = eq.chunks_exact(2).map(|e| lens::rspcs::program::from_fp3(e[0] + e[1])).collect();
+                let weights: Vec<[u64; 3]> = eq
+                    .chunks_exact(2)
+                    .map(|e| lens::rspcs::program::from_fp3(e[0] + e[1]))
+                    .collect();
                 let mut q = vec![Fp3::ZERO; deg + 1];
                 for (&x, v) in xs.iter().zip(sess.sums(&weights, &xs)) {
                     q[x as usize] = lens::rspcs::program::to_fp3(v);
                 }
                 q
             }
-            (None, Some(p)) if eq.len() >= DEVICE_MIN && eq.len() / 2 > CPU_TAIL => device_round(p, &cols, &eq, deg, r == 0, skip_one),
+            (None, Some(p)) if eq.len() >= DEVICE_MIN && eq.len() / 2 > CPU_TAIL => {
+                device_round(p, &cols, &eq, deg, r == 0, skip_one)
+            }
             _ => round(air, w, &cols, &eq, ch, mu, deg, r == 0, skip_one),
         };
         if skip_one {
@@ -368,7 +419,9 @@ pub(crate) fn prove_packed<A: Air>(
                 (l0 + xf * (l1 - l0)) * qx
             })
             .collect();
-        let msg: Vec<Fp3> = core::iter::once(h[0]).chain(h[2..].iter().copied()).collect();
+        let msg: Vec<Fp3> = core::iter::once(h[0])
+            .chain(h[2..].iter().copied())
+            .collect();
         t.absorb_fp3_slice(&msg);
         msgs.push(msg);
         let alpha = t.squeeze_fp3();
@@ -385,7 +438,11 @@ pub(crate) fn prove_packed<A: Air>(
         point.push(alpha);
     }
     let evals = match &mut session {
-        Some(sess) => sess.firsts().into_iter().map(lens::rspcs::program::to_fp3).collect(),
+        Some(sess) => sess
+            .firsts()
+            .into_iter()
+            .map(lens::rspcs::program::to_fp3)
+            .collect(),
         None => cols.iter().map(|c| c[0]).collect(),
     };
     (msgs, point, evals)
@@ -425,7 +482,11 @@ mod device_tests {
     use crate::recursion::relation::{COLS, PUBS, Relation, View};
 
     fn e(k: u64) -> Fp3 {
-        Fp3::new(Goldilocks::new(k * 31 + 7), Goldilocks::new(k ^ 0x55), Goldilocks::new(k * k + 1))
+        Fp3::new(
+            Goldilocks::new(k * 31 + 7),
+            Goldilocks::new(k ^ 0x55),
+            Goldilocks::new(k * k + 1),
+        )
     }
 
     /// The device round (the recorded combination as a backend program,
@@ -438,8 +499,15 @@ mod device_tests {
         fn name(&self) -> &'static str {
             "device-test"
         }
-        fn line_session<'a>(&'a self, p: &'a lens::rspcs::program::Program, cols: &[[u64; 3]], len: usize) -> Option<Box<dyn lens::rspcs::backend::LineSession + 'a>> {
-            Some(Box::new(lens::rspcs::backend::CpuSession::new(p, cols, len)))
+        fn line_session<'a>(
+            &'a self,
+            p: &'a lens::rspcs::program::Program,
+            cols: &[[u64; 3]],
+            len: usize,
+        ) -> Option<Box<dyn lens::rspcs::backend::LineSession + 'a>> {
+            Some(Box::new(lens::rspcs::backend::CpuSession::new(
+                p, cols, len,
+            )))
         }
     }
 
@@ -447,11 +515,23 @@ mod device_tests {
     fn a_resident_session_proves_as_the_air() {
         use crate::recursion::sponge::ProverTranscript;
         let n = 10;
-        let constants = Constants { fml0: 3, obj0: 4, p: 9, output: [Goldilocks::new(5); 4], cycles: 77, root: [Goldilocks::ZERO; 4] };
-        let rel = Relation::new(Machine::new(constants, &[], 1 << n, 0, 1 << n), [e(1), e(2)]);
+        let constants = Constants {
+            fml0: 3,
+            obj0: 4,
+            p: 9,
+            output: [Goldilocks::new(5); 4],
+            cycles: 77,
+            root: [Goldilocks::ZERO; 4],
+        };
+        let rel = Relation::new(
+            Machine::new(constants, &[], 1 << n, 0, 1 << n),
+            [e(1), e(2)],
+        );
         let view = View(&rel);
         let inputs = 2 * COLS + PUBS;
-        let cols: Vec<Vec<Fp3>> = (0..inputs as u64).map(|c| (0..1u64 << n).map(|r| e(c * 97 + r)).collect()).collect();
+        let cols: Vec<Vec<Fp3>> = (0..inputs as u64)
+            .map(|c| (0..1u64 << n).map(|r| e(c * 97 + r)).collect())
+            .collect();
         let eq: Vec<Fp3> = (0..1u64 << n).map(|r| e(r + 5000)).collect();
         let ch = [e(11), e(12)];
         let mu: Vec<Fp3> = (0..rel.constraints() as u64).map(|k| e(k + 9000)).collect();
@@ -467,11 +547,23 @@ mod device_tests {
     #[test]
     fn device_rounds_equal_the_air_rounds() {
         let n = 10;
-        let constants = Constants { fml0: 3, obj0: 4, p: 9, output: [Goldilocks::new(5); 4], cycles: 77, root: [Goldilocks::ZERO; 4] };
-        let rel = Relation::new(Machine::new(constants, &[], 1 << n, 0, 1 << n), [e(1), e(2)]);
+        let constants = Constants {
+            fml0: 3,
+            obj0: 4,
+            p: 9,
+            output: [Goldilocks::new(5); 4],
+            cycles: 77,
+            root: [Goldilocks::ZERO; 4],
+        };
+        let rel = Relation::new(
+            Machine::new(constants, &[], 1 << n, 0, 1 << n),
+            [e(1), e(2)],
+        );
         let view = View(&rel);
         let inputs = 2 * COLS + PUBS;
-        let cols: Vec<Vec<Fp3>> = (0..inputs as u64).map(|c| (0..1u64 << n).map(|r| e(c * 97 + r)).collect()).collect();
+        let cols: Vec<Vec<Fp3>> = (0..inputs as u64)
+            .map(|c| (0..1u64 << n).map(|r| e(c * 97 + r)).collect())
+            .collect();
         let eq: Vec<Fp3> = (0..1u64 << n).map(|r| e(r + 5000)).collect();
         let ch = [e(11), e(12)];
         let mu: Vec<Fp3> = (0..rel.constraints() as u64).map(|k| e(k + 9000)).collect();

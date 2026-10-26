@@ -107,7 +107,10 @@ mod tests {
             let cfg = lens::rspcs::WhirConfig::derive(&p, vars).unwrap();
             let bare = cfg.security_bits_without_grinding();
             assert!(bits >= 128.0, "2^{vars}: {bits}");
-            assert!(bare >= 128.0 - f64::from(p.pow_bits) - 1e-9, "2^{vars}: bare {bare}");
+            assert!(
+                bare >= 128.0 - f64::from(p.pow_bits) - 1e-9,
+                "2^{vars}: bare {bare}"
+            );
         }
     }
 }

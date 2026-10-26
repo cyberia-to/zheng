@@ -71,7 +71,11 @@ fn five_hundred_twelve_statements_decide_in_one_proof() {
         "512 × hash.tri folded: {} B total (claim {} B each, steps {} B, decider {} B), verify {:.0} ms",
         folded.to_bytes().len(),
         w.buf.len(),
-        folded.steps.iter().map(|s| s.to_bytes().len()).sum::<usize>(),
+        folded
+            .steps
+            .iter()
+            .map(|s| s.to_bytes().len())
+            .sum::<usize>(),
         d.buf.len(),
         t.elapsed().as_secs_f64() * 1e3
     );

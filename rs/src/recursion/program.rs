@@ -7,9 +7,9 @@ use nebu::{Fp3, Goldilocks};
 use super::acc::AccProof;
 use super::ops::Ops;
 use super::params::{BV, Params};
+use super::perm::tag;
 use super::relation::{COLS, PUB_NOX, PUB_V};
 use super::sponge::Sponge;
-use super::perm::tag;
 use super::state::{self, CtxParts, State, StateV};
 use super::step::{self, StepProof};
 use super::word::LeafOpening;
@@ -29,7 +29,9 @@ pub fn run<O: Ops>(
 ) -> (StateV<O::V>, [O::V; 4]) {
     let (st, x) = state::absorb_free(o, &p.dims, prev);
     let verified = step::verify(o, p, &st, x, proof);
-    let w4 = |o: &mut O, d: [Goldilocks; 4]| -> [O::V; 4] { core::array::from_fn(|i| o.witness(Fp3::from_base(d[i]))) };
+    let w4 = |o: &mut O, d: [Goldilocks; 4]| -> [O::V; 4] {
+        core::array::from_fn(|i| o.witness(Fp3::from_base(d[i])))
+    };
     let sd = w4(o, parts.statement);
     let ch = w4(o, parts.chain);
     let g0 = o.witness(parts.g0);
@@ -69,7 +71,11 @@ pub fn dummy_proof(p: &Params) -> StepProof {
     let g = Goldilocks::ZERO;
     let width = 1usize << p.cfg.layout.log_width;
     let depth = p.cfg.layout.log_leaves() as usize;
-    let leaf = LeafOpening { symbols: vec![z; width], path: vec![[g; 4]; p.arity.path_len(depth)], leaf: None };
+    let leaf = LeafOpening {
+        symbols: vec![z; width],
+        path: vec![[g; 4]; p.arity.path_len(depth)],
+        leaf: None,
+    };
     StepProof {
         roots: [[g; 4]; 3],
         ood: core::array::from_fn(|_| vec![z; p.fresh]),
@@ -113,13 +119,35 @@ mod tests {
             let p = Params::new(&w, n).unwrap();
             let mut b = Builder::new(false);
             let live = b.live_var();
-            let parts = CtxParts { statement: [Goldilocks::ZERO; 4], chain: [Goldilocks::ZERO; 4], g0: Fp3::ZERO, pn0: Fp3::ZERO, pv0: Fp3::ZERO };
-            run(&mut b, &p, live, &dummy_state(&p), &dummy_proof(&p), &parts, |b, c| b.set_output(c));
+            let parts = CtxParts {
+                statement: [Goldilocks::ZERO; 4],
+                chain: [Goldilocks::ZERO; 4],
+                g0: Fp3::ZERO,
+                pn0: Fp3::ZERO,
+                pv0: Fp3::ZERO,
+            };
+            run(
+                &mut b,
+                &p,
+                live,
+                &dummy_state(&p),
+                &dummy_proof(&p),
+                &parts,
+                |b, c| b.set_output(c),
+            );
             let blocks: usize = b.chains.iter().map(|c| c.blocks.len()).sum();
             eprintln!(
                 "rate 1/{} n {n}: t {} s {} depth {} · gates {} ({} rows) · bits {} · blocks {} · rows {} of {}",
-                1 << rate, p.cfg.queries, p.cfg.ood, p.cfg.layout.log_leaves(),
-                b.gates.len(), b.gates.len().div_ceil(4), b.bits.len(), blocks, b.rows(), 1usize << n
+                1 << rate,
+                p.cfg.queries,
+                p.cfg.ood,
+                p.cfg.layout.log_leaves(),
+                b.gates.len(),
+                b.gates.len().div_ceil(4),
+                b.bits.len(),
+                blocks,
+                b.rows(),
+                1usize << n
             );
         }
     }

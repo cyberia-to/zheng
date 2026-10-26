@@ -108,7 +108,8 @@ impl<V: Copy> StateV<V> {
     /// Rebuild from items in [`Self::items`] order.
     pub fn from_items(d: &Dims, items: &[V]) -> Self {
         let mut it = items.iter().copied();
-        let mut take = |k: usize| -> Vec<V> { (0..k).map(|_| it.next().expect("state item")).collect() };
+        let mut take =
+            |k: usize| -> Vec<V> { (0..k).map(|_| it.next().expect("state item")).collect() };
         let four = |v: Vec<V>| -> [V; 4] { [v[0], v[1], v[2], v[3]] };
         let ctx = four(take(4));
         let step = take(1)[0];
@@ -118,8 +119,18 @@ impl<V: Copy> StateV<V> {
         let root = four(take(4));
         let rho = take(d.vars);
         let v0 = take(1)[0];
-        let ood = (0..d.ood).map(|_| { let v = take(2); (v[0], v[1]) }).collect();
-        let spot = (0..d.spot).map(|_| { let v = take(2); (v[0], v[1]) }).collect();
+        let ood = (0..d.ood)
+            .map(|_| {
+                let v = take(2);
+                (v[0], v[1])
+            })
+            .collect();
+        let spot = (0..d.spot)
+            .map(|_| {
+                let v = take(2);
+                (v[0], v[1])
+            })
+            .collect();
         let mut claim = |k: usize| {
             let point = take(k);
             let value = take(1)[0];
@@ -128,7 +139,23 @@ impl<V: Copy> StateV<V> {
         let g = claim(d.g);
         let pn = claim(d.pn);
         let pv = claim(d.pv);
-        Self { ctx, step, chain, b_first, b_last, acc: AccV { root, rho, v0, ood, spot }, g, pn, pv }
+        Self {
+            ctx,
+            step,
+            chain,
+            b_first,
+            b_last,
+            acc: AccV {
+                root,
+                rho,
+                v0,
+                ood,
+                spot,
+            },
+            g,
+            pn,
+            pv,
+        }
     }
 }
 
@@ -153,7 +180,13 @@ pub fn absorb_free<O: Ops>(o: &mut O, d: &Dims, st: &State) -> (StateV<O::V>, [O
     let vars: Vec<O::V> = st
         .items()
         .into_iter()
-        .map(|(v, ext)| if ext { sp.absorb_free_ext(o, v) } else { sp.absorb_free(o, v.c0) })
+        .map(|(v, ext)| {
+            if ext {
+                sp.absorb_free_ext(o, v)
+            } else {
+                sp.absorb_free(o, v.c0)
+            }
+        })
         .collect();
     let dg: Vec<O::V> = (0..4).map(|_| sp.squeeze(o)).collect();
     (StateV::from_items(d, &vars), [dg[0], dg[1], dg[2], dg[3]])
@@ -163,7 +196,9 @@ pub fn absorb_free<O: Ops>(o: &mut O, d: &Dims, st: &State) -> (StateV<O::V>, [O
 /// coefficients). The circuit absorbs a base item as one lane, so a state
 /// that fails this has no circuit counterpart.
 pub fn is_canonical(st: &State) -> bool {
-    st.items().iter().all(|&(v, ext)| ext || (v.c1 == nebu::Goldilocks::ZERO && v.c2 == nebu::Goldilocks::ZERO))
+    st.items()
+        .iter()
+        .all(|&(v, ext)| ext || (v.c1 == nebu::Goldilocks::ZERO && v.c2 == nebu::Goldilocks::ZERO))
 }
 
 /// The native digest; `Err` when a base item holds an extension value (the
@@ -200,7 +235,14 @@ impl ZeroWord {
                 perm::head(&perm::node_state(d, d))
             };
         }
-        Self { root: d, opening: LeafOpening { symbols, path, leaf: None } }
+        Self {
+            root: d,
+            opening: LeafOpening {
+                symbols,
+                path,
+                leaf: None,
+            },
+        }
     }
 }
 
@@ -218,7 +260,14 @@ pub struct CtxParts {
 }
 
 /// The context digest, generically (the base step recomputes it).
-pub fn ctx_digest<O: Ops>(o: &mut O, statement: [O::V; 4], chain: [O::V; 4], g0: O::V, pn0: O::V, pv0: O::V) -> [O::V; 4] {
+pub fn ctx_digest<O: Ops>(
+    o: &mut O,
+    statement: [O::V; 4],
+    chain: [O::V; 4],
+    g0: O::V,
+    pn0: O::V,
+    pv0: O::V,
+) -> [O::V; 4] {
     let mut sp = Sponge::new(o, tag::CTX);
     sp.absorb_all(o, &statement);
     sp.absorb_all(o, &chain);
@@ -236,7 +285,15 @@ pub fn ctx_native(p: &CtxParts) -> Digest {
 
 /// The initial state of a context: no step verified, the zero
 /// accumulator, deferred claims at the zero point.
-pub fn init<O: Ops>(o: &mut O, d: &Dims, ctx: [O::V; 4], zero_root: Digest, g0: O::V, pn0: O::V, pv0: O::V) -> StateV<O::V> {
+pub fn init<O: Ops>(
+    o: &mut O,
+    d: &Dims,
+    ctx: [O::V; 4],
+    zero_root: Digest,
+    g0: O::V,
+    pn0: O::V,
+    pv0: O::V,
+) -> StateV<O::V> {
     let z = o.zero();
     let one = o.one();
     let root = zero_root.map(|x| o.constant(Fp3::from_base(x)));
@@ -253,17 +310,35 @@ pub fn init<O: Ops>(o: &mut O, d: &Dims, ctx: [O::V; 4], zero_root: Digest, g0: 
             ood: vec![(z, z); d.ood],
             spot: vec![(one, z); d.spot],
         },
-        g: ClaimV { point: vec![z; d.g], value: g0 },
-        pn: ClaimV { point: vec![z; d.pn], value: pn0 },
-        pv: ClaimV { point: vec![z; d.pv], value: pv0 },
+        g: ClaimV {
+            point: vec![z; d.g],
+            value: g0,
+        },
+        pn: ClaimV {
+            point: vec![z; d.pn],
+            value: pn0,
+        },
+        pv: ClaimV {
+            point: vec![z; d.pv],
+            value: pv0,
+        },
     }
 }
 
 /// `live ? verified : init`, element by element (`live` boolean).
-pub fn select<O: Ops>(o: &mut O, live: O::V, init: &StateV<O::V>, verified: &StateV<O::V>) -> StateV<O::V> {
+pub fn select<O: Ops>(
+    o: &mut O,
+    live: O::V,
+    init: &StateV<O::V>,
+    verified: &StateV<O::V>,
+) -> StateV<O::V> {
     let a = init.items();
     let b = verified.items();
-    let vars: Vec<O::V> = a.iter().zip(&b).map(|(&(x, _), &(y, _))| o.lerp(live, x, y)).collect();
+    let vars: Vec<O::V> = a
+        .iter()
+        .zip(&b)
+        .map(|(&(x, _), &(y, _))| o.lerp(live, x, y))
+        .collect();
     let d = Dims {
         boundary: init.b_first.len(),
         vars: init.acc.rho.len(),

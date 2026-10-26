@@ -21,18 +21,30 @@ struct Lin<V> {
 
 impl<V: Copy> Lin<V> {
     fn var(v: V) -> Self {
-        Self { terms: vec![(Fp3::ONE, v)], k: Fp3::ZERO }
+        Self {
+            terms: vec![(Fp3::ONE, v)],
+            k: Fp3::ZERO,
+        }
     }
     fn constant(k: Fp3) -> Self {
-        Self { terms: Vec::new(), k }
+        Self {
+            terms: Vec::new(),
+            k,
+        }
     }
     fn scaled(&self, c: Fp3) -> Self {
-        Self { terms: self.terms.iter().map(|&(a, v)| (a * c, v)).collect(), k: self.k * c }
+        Self {
+            terms: self.terms.iter().map(|&(a, v)| (a * c, v)).collect(),
+            k: self.k * c,
+        }
     }
     fn plus(&self, o: &Self, sign: Fp3) -> Self {
         let mut terms = self.terms.clone();
         terms.extend(o.terms.iter().map(|&(a, v)| (a * sign, v)));
-        Self { terms, k: self.k + sign * o.k }
+        Self {
+            terms,
+            k: self.k + sign * o.k,
+        }
     }
 }
 
@@ -61,12 +73,33 @@ impl<O: Ops> Compiler<'_, O> {
         let (ca, a) = *it.next().expect("a term");
         let (cb, b) = it.next().copied().unwrap_or((Fp3::ZERO, a));
         let (cc, c) = it.next().copied().unwrap_or((Fp3::ZERO, a));
-        let mut acc = o.gate(Gate { qa: ca, qb: cb, qc: cc, qk: l.k, ..Gate::default() }, a, b, c);
+        let mut acc = o.gate(
+            Gate {
+                qa: ca,
+                qb: cb,
+                qc: cc,
+                qk: l.k,
+                ..Gate::default()
+            },
+            a,
+            b,
+            c,
+        );
         let rest: Vec<(Fp3, O::V)> = it.copied().collect();
         for pair in rest.chunks(2) {
             let (cb, b) = pair[0];
             let (cc, c) = pair.get(1).copied().unwrap_or((Fp3::ZERO, b));
-            acc = o.gate(Gate { qa: Fp3::ONE, qb: cb, qc: cc, ..Gate::default() }, acc, b, c);
+            acc = o.gate(
+                Gate {
+                    qa: Fp3::ONE,
+                    qb: cb,
+                    qc: cc,
+                    ..Gate::default()
+                },
+                acc,
+                b,
+                c,
+            );
         }
         acc
     }
@@ -91,7 +124,12 @@ impl<O: Ops> Compiler<'_, O> {
     fn product(o: &mut O, x: O::V, b: &Lin<O::V>) -> O::V {
         let (cy, y) = b.terms[0];
         let (cz, z) = b.terms.get(1).copied().unwrap_or((Fp3::ZERO, y));
-        let g = Gate { qm: cy, qs: cz * cy.inv(), qa: b.k, ..Gate::default() };
+        let g = Gate {
+            qm: cy,
+            qs: cz * cy.inv(),
+            qa: b.k,
+            ..Gate::default()
+        };
         o.gate(g, x, y, z)
     }
 
@@ -112,7 +150,15 @@ impl<O: Ops> Compiler<'_, O> {
         } else {
             let x = self.materialize(o, a);
             let y = self.materialize(o, b);
-            o.gate(Gate { qm: Fp3::ONE, ..Gate::default() }, x, y, y)
+            o.gate(
+                Gate {
+                    qm: Fp3::ONE,
+                    ..Gate::default()
+                },
+                x,
+                y,
+                y,
+            )
         };
         Lin::var(out)
     }
@@ -147,7 +193,11 @@ pub fn compile<O: Ops>(o: &mut O, g: &Graph, inputs: &[O::V]) -> Vec<O::V> {
             Node::Neg(a) => mark(a),
         }
     }
-    let mut c: Compiler<'_, O> = Compiler { g, lin: vec![None; n], mat: vec![None; n] };
+    let mut c: Compiler<'_, O> = Compiler {
+        g,
+        lin: vec![None; n],
+        mat: vec![None; n],
+    };
     for (i, &needed) in need.iter().enumerate() {
         if !needed {
             continue;
@@ -164,7 +214,11 @@ pub fn compile<O: Ops>(o: &mut O, g: &Graph, inputs: &[O::V]) -> Vec<O::V> {
         };
         c.lin[i] = Some(l);
     }
-    g.outputs.clone().into_iter().map(|s| c.materialize(o, s)).collect()
+    g.outputs
+        .clone()
+        .into_iter()
+        .map(|s| c.materialize(o, s))
+        .collect()
 }
 
 #[cfg(test)]
@@ -176,7 +230,11 @@ mod tests {
     use nebu::Goldilocks;
 
     fn e(i: u64) -> Fp3 {
-        Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i * i + 11), Goldilocks::new(3 * i + 2))
+        Fp3::new(
+            Goldilocks::new(i * 7 + 1),
+            Goldilocks::new(i * i + 11),
+            Goldilocks::new(3 * i + 2),
+        )
     }
 
     fn poly<T: Num>(x: &[T]) -> Vec<T> {
@@ -207,11 +265,21 @@ mod tests {
 
     #[test]
     fn the_step_relation_compiles_to_its_constraint_polynomial() {
-        use crate::machine::air::{Constants, KConst, KCONSTS, Machine};
+        use crate::machine::air::{Constants, KCONSTS, KConst, Machine};
         use crate::recursion::relation::{G_POINT, Relation};
         let n = 10;
-        let constants = Constants { fml0: 3, obj0: 4, p: 9, output: [Goldilocks::new(5); 4], cycles: 77, root: [Goldilocks::ZERO; 4] };
-        let rel = Relation::new(Machine::new(constants, &[], 1 << n, 0, 1 << n), [e(1), e(2)]);
+        let constants = Constants {
+            fml0: 3,
+            obj0: 4,
+            p: 9,
+            output: [Goldilocks::new(5); 4],
+            cycles: 77,
+            root: [Goldilocks::ZERO; 4],
+        };
+        let rel = Relation::new(
+            Machine::new(constants, &[], 1 << n, 0, 1 << n),
+            [e(1), e(2)],
+        );
         let g = record(G_POINT + 2 + KCONSTS, |i| {
             let (pt, rest) = i.split_at(G_POINT);
             vec![rel.g_with(pt, &[rest[0], rest[1]], &KConst::from_slice(&rest[2..]))]
@@ -222,17 +290,37 @@ mod tests {
             let gc = record(cols, |i| {
                 let mut pt: Vec<Sym> = i.to_vec();
                 pt.extend((0..(G_POINT - cols) as u64).map(|k| Sym::C(e(k + 900))));
-                vec![rel.g_with(&pt, &[Sym::C(e(1)), Sym::C(e(2))], &KConst::from_slice(&(0..KCONSTS as u64).map(|k| Sym::C(e(k + 7))).collect::<Vec<_>>()))]
+                vec![
+                    rel.g_with(
+                        &pt,
+                        &[Sym::C(e(1)), Sym::C(e(2))],
+                        &KConst::from_slice(
+                            &(0..KCONSTS as u64)
+                                .map(|k| Sym::C(e(k + 7)))
+                                .collect::<Vec<_>>(),
+                        ),
+                    ),
+                ]
             });
             let c = gc.compile();
             let (ops, consts, inputs, outputs) = c.parts();
-            let p = lens::rspcs::program::Program::from_slots(ops, consts.iter().map(|&x| lens::rspcs::program::from_fp3(x)).collect(), inputs, outputs[0]);
+            let p = lens::rspcs::program::Program::from_slots(
+                ops,
+                consts
+                    .iter()
+                    .map(|&x| lens::rspcs::program::from_fp3(x))
+                    .collect(),
+                inputs,
+                outputs[0],
+            );
             // the backend program: few registers (depth-first schedule), same value
             assert!(p.regs <= 160, "registers {}", p.regs);
             let x: Vec<Fp3> = (0..inputs as u64).map(|i| e(i + 3)).collect();
             assert_eq!(p.eval(&x, &mut Vec::new()), gc.eval(&x)[0]);
         }
-        let x: Vec<Fp3> = (0..(G_POINT + 2 + KCONSTS) as u64).map(|i| e(i + 40)).collect();
+        let x: Vec<Fp3> = (0..(G_POINT + 2 + KCONSTS) as u64)
+            .map(|i| e(i + 40))
+            .collect();
         let (pt, rest) = x.split_at(G_POINT);
         let want = rel.g_with(pt, &[rest[0], rest[1]], &KConst::from_slice(&rest[2..]));
         assert_eq!(g.eval(&x), vec![want]);
@@ -240,6 +328,11 @@ mod tests {
         let ins: Vec<_> = x.iter().map(|&v| b.witness(v)).collect();
         let outs = compile(&mut b, &g, &ins);
         assert_eq!(b.value(outs[0]), want);
-        eprintln!("G: {} constraints, {} graph nodes, {} gates", rel.constraints(), g.nodes.len(), b.gates.len());
+        eprintln!(
+            "G: {} constraints, {} graph nodes, {} gates",
+            rel.constraints(),
+            g.nodes.len(),
+            b.gates.len()
+        );
     }
 }

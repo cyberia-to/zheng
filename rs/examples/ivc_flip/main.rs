@@ -41,13 +41,30 @@ fn main() {
     let parse = |b: &[u8]| ivc::IvcProof::from_bytes(b, |lr| ivc::key(&whir, lr as usize));
     let p = parse(&bytes).expect("honest proof parses");
     ivc::verify(&run.statement, &p, &whir).expect("honest proof verifies");
-    let prep = ivc::prepare(&run.statement, &whir, p.log_rows, p.start, p.segments, p.chain).expect("prepare");
-    let stride: usize = std::env::var("ZHENG_STRIDE").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    let prep = ivc::prepare(
+        &run.statement,
+        &whir,
+        p.log_rows,
+        p.start,
+        p.segments,
+        p.chain,
+    )
+    .expect("prepare");
+    let stride: usize = std::env::var("ZHENG_STRIDE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
     let bits = bytes.len() * 8;
     let next = AtomicUsize::new(0);
-    let (flips, decoded, accepted) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
+    let (flips, decoded, accepted) = (
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+    );
     let t0 = Instant::now();
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16);
     std::thread::scope(|s| {
         for _ in 0..threads {
             s.spawn(|| {
@@ -62,7 +79,11 @@ fn main() {
                     if let Ok(q) = parse(&buf) {
                         decoded.fetch_add(1, Ordering::Relaxed);
                         let same = (q.log_rows, q.start, q.segments, q.chain) == prep.header;
-                        let ok = if same { ivc::verify_prepared(&prep, &q).is_ok() } else { ivc::verify(&run.statement, &q, &whir).is_ok() };
+                        let ok = if same {
+                            ivc::verify_prepared(&prep, &q).is_ok()
+                        } else {
+                            ivc::verify(&run.statement, &q, &whir).is_ok()
+                        };
                         if ok {
                             accepted.fetch_add(1, Ordering::Relaxed);
                             eprintln!("ACCEPTED flip of bit {k}");

@@ -19,8 +19,14 @@ fn hash_setup(val: u64) -> (VecTrace, crate::ccs::HashAux) {
     assert_eq!(trace.0.len(), 26);
     let d = *order.digest(s).unwrap();
     let rate = [
-        d[0], d[1], d[2], d[3],
-        Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO,
+        d[0],
+        d[1],
+        d[2],
+        d[3],
+        Goldilocks::ZERO,
+        Goldilocks::ZERO,
+        Goldilocks::ZERO,
+        Goldilocks::ZERO,
     ];
     (trace, crate::ccs::HashAux { rate })
 }
@@ -68,7 +74,10 @@ fn group_count_independent_of_trace_length() {
         "groups are structures, not runs: 2 vs 3 hash blocks"
     );
     let steps = |p: &TraceProof| -> u64 { p.groups().map(|g| g.accumulator.step_count).sum() };
-    assert!(steps(&p3) > steps(&p1), "the extra block folds into existing groups");
+    assert!(
+        steps(&p3) > steps(&p1),
+        "the extra block folds into existing groups"
+    );
 }
 
 /// Negative: a tampered rate (not any digest) diverges from the trace at
@@ -76,8 +85,17 @@ fn group_count_independent_of_trace_length() {
 #[test]
 fn commit_rejects_tampered_hash_rate() {
     let (trace, _) = hash_setup(42);
-    let forged = crate::ccs::HashAux { rate: [Goldilocks::new(3); 8] };
-    let err = commit(&trace, &[forged], &[], &[], &zero_statement(), &ProofParams::default());
+    let forged = crate::ccs::HashAux {
+        rate: [Goldilocks::new(3); 8],
+    };
+    let err = commit(
+        &trace,
+        &[forged],
+        &[],
+        &[],
+        &zero_statement(),
+        &ProofParams::default(),
+    );
     assert!(matches!(err, Err(CommitError::HashBinding)));
 }
 
@@ -87,7 +105,14 @@ fn commit_rejects_tampered_hash_rate() {
 fn commit_rejects_swapped_hash_rate() {
     let (trace, _) = hash_setup(42);
     let (_, aux_other) = hash_setup(43);
-    let err = commit(&trace, &[aux_other], &[], &[], &zero_statement(), &ProofParams::default());
+    let err = commit(
+        &trace,
+        &[aux_other],
+        &[],
+        &[],
+        &zero_statement(),
+        &ProofParams::default(),
+    );
     assert!(matches!(err, Err(CommitError::HashBinding)));
 }
 
@@ -99,8 +124,7 @@ fn verify_rejects_folded_forged_hash_digest() {
     use crate::ccs::eq_step;
 
     let (trace, aux) = hash_setup(42);
-    let mut steps =
-        crate::ccs::build_hash_binding_steps_from_trace(&trace.0, &[aux]).unwrap();
+    let mut steps = crate::ccs::build_hash_binding_steps_from_trace(&trace.0, &[aux]).unwrap();
     // The squeeze row's recorded digest limb vs a forged replay value.
     let digest0 = Goldilocks::new(trace.0[25].r()[4]).canonicalize();
     steps.push(eq_step(digest0 + Goldilocks::ONE, digest0));

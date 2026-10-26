@@ -59,7 +59,15 @@ fn powers(x: Fp3, k: usize) -> Vec<Fp3> {
 
 fn prologue(s: super::Shape, n: usize, segments: usize, t: &mut Transcript) {
     t.absorb(b"zheng-air-v2");
-    for v in [s.w1, s.w2, s.challenges, s.constraints, s.degree, n, segments] {
+    for v in [
+        s.w1,
+        s.w2,
+        s.challenges,
+        s.constraints,
+        s.degree,
+        n,
+        segments,
+    ] {
         t.absorb_u64(v as u64);
     }
 }
@@ -157,7 +165,10 @@ pub fn prove<A: Air>(
     }
     let s = airs[0].shape();
     let rows = w1s[0].rows();
-    if !rows.is_power_of_two() || rows < 2 || w1s.iter().any(|w| w.rows() != rows || w.width != s.w1) {
+    if !rows.is_power_of_two()
+        || rows < 2
+        || w1s.iter().any(|w| w.rows() != rows || w.width != s.w1)
+    {
         return Err("air: trace shape".into());
     }
     if s.w2 == 0 {
@@ -167,17 +178,23 @@ pub fn prove<A: Air>(
     let wp = s.padded_width();
     let nood = crate::accumulate::fresh_ood(whir, word_vars(n, wp))?;
     prologue(s, n, segs, t);
-    let (roots1, bound1): (Vec<Commitment>, Vec<Vec<Claim>>) =
-        w1s.iter().map(|w| commit_bound(whir, w, wp, nood, t)).unzip();
+    let (roots1, bound1): (Vec<Commitment>, Vec<Vec<Claim>>) = w1s
+        .iter()
+        .map(|w| commit_bound(whir, w, wp, nood, t))
+        .unzip();
     let ch = squeeze_vec(t, s.challenges);
     let w2s: Vec<Trace> = (0..segs).map(|i| phase2(i, &ch)).collect();
     if w2s.iter().any(|w| w.width != s.w2 || w.rows() != rows) {
         return Err("air: phase-2 trace shape".into());
     }
-    let (roots2, bound2): (Vec<Commitment>, Vec<Vec<Claim>>) =
-        w2s.iter().map(|w| commit_bound(whir, w, wp, nood, t)).unzip();
+    let (roots2, bound2): (Vec<Commitment>, Vec<Vec<Claim>>) = w2s
+        .iter()
+        .map(|w| commit_bound(whir, w, wp, nood, t))
+        .unzip();
     let answers = |b: &[Vec<Claim>]| -> Vec<Vec<Fp3>> {
-        b.iter().map(|cs| cs.iter().map(|c| c.value).collect()).collect()
+        b.iter()
+            .map(|cs| cs.iter().map(|c| c.value).collect())
+            .collect()
     };
     let (ood1, ood2) = (answers(&bound1), answers(&bound2));
     let mut segments = Vec::with_capacity(segs);
@@ -185,8 +202,10 @@ pub fn prove<A: Air>(
     let mut bound = Vec::with_capacity(segs);
     for i in 0..segs {
         let j = (i + 1) % segs;
-        let boundary: Vec<Goldilocks> = w1s[j].row(0).iter().chain(w2s[j].row(0)).copied().collect();
-        let (proof, claims, bclaims) = prove_segment(&airs[i], &w1s[i], &w2s[i], boundary, &ch, wp, t);
+        let boundary: Vec<Goldilocks> =
+            w1s[j].row(0).iter().chain(w2s[j].row(0)).copied().collect();
+        let (proof, claims, bclaims) =
+            prove_segment(&airs[i], &w1s[i], &w2s[i], boundary, &ch, wp, t);
         segments.push(proof);
         own.push(claims);
         bound.push(bclaims);
@@ -224,7 +243,13 @@ fn prove_segment<A: Air>(
     }
     let tau = squeeze_vec(t, n);
     let mu = powers(t.squeeze_fp3(), s.constraints);
-    let cell = |r: usize, c: usize| if c < s.w1 { w1.row(r)[c] } else { w2.row(r)[c - s.w1] };
+    let cell = |r: usize, c: usize| {
+        if c < s.w1 {
+            w1.row(r)[c]
+        } else {
+            w2.row(r)[c - s.w1]
+        }
+    };
     let mut cols: Vec<Vec<Fp3>> = Vec::with_capacity(2 * w + air.publics().len());
     for c in 0..w {
         cols.push((0..rows).map(|r| Fp3::from_base(cell(r, c))).collect());
@@ -249,7 +274,9 @@ fn prove_segment<A: Air>(
     let (beta, zeta) = (t.squeeze_fp3(), t.squeeze_fp3());
     let (e1, e2) = (eq_table(&g1), eq_table(&g2));
     let mix = |row: &[Goldilocks], e: &[Fp3]| {
-        row.iter().zip(e).fold(Fp3::ZERO, |a, (&x, &q)| a + q * Fp3::from_base(x))
+        row.iter()
+            .zip(e)
+            .fold(Fp3::ZERO, |a, (&x, &q)| a + q * Fp3::from_base(x))
     };
     let p1: Vec<Fp3> = (0..rows).map(|r| mix(w1.row(r), &e1)).collect();
     let p2: Vec<Fp3> = (0..rows).map(|r| mix(w2.row(r), &e2)).collect();
@@ -266,8 +293,14 @@ fn prove_segment<A: Air>(
     t.absorb_fp3(v2);
     let at = |g: &[Fp3]| -> Vec<Fp3> { rho2.iter().chain(g).copied().collect() };
     let own = [
-        Claim { point: at(&g1), value: v1 },
-        Claim { point: at(&g2), value: v2 },
+        Claim {
+            point: at(&g1),
+            value: v1,
+        },
+        Claim {
+            point: at(&g2),
+            value: v2,
+        },
     ];
     let bclaims = boundary_claims(&boundary, s.w1, n, cbits, t);
     let proof = SegmentProof {
@@ -283,7 +316,13 @@ fn prove_segment<A: Air>(
 }
 
 /// The claims tying a boundary row to the next segment's words at row 0.
-fn boundary_claims(b: &[Goldilocks], w1: usize, n: usize, cbits: usize, t: &mut Transcript) -> [Claim; 2] {
+fn boundary_claims(
+    b: &[Goldilocks],
+    w1: usize,
+    n: usize,
+    cbits: usize,
+    t: &mut Transcript,
+) -> [Claim; 2] {
     let (g1, g2) = (squeeze_vec(t, cbits), squeeze_vec(t, cbits));
     let lift = |xs: &[Goldilocks]| xs.iter().map(|&x| Fp3::from_base(x)).collect::<Vec<_>>();
     let zero = vec![Fp3::ZERO; n];
@@ -312,9 +351,14 @@ pub fn verify<A: Air>(
     let segs = proof.segments.len();
     if segs == 0
         || airs.len() != segs
-        || [proof.roots1.len(), proof.roots2.len(), proof.ood1.len(), proof.ood2.len()]
-            .iter()
-            .any(|&l| l != segs)
+        || [
+            proof.roots1.len(),
+            proof.roots2.len(),
+            proof.ood1.len(),
+            proof.ood2.len(),
+        ]
+        .iter()
+        .any(|&l| l != segs)
     {
         return Err("air: segment count".into());
     }
@@ -324,7 +368,12 @@ pub fn verify<A: Air>(
     let cbits = wp.trailing_zeros() as usize;
     let vars = word_vars(n, wp);
     let nood = crate::accumulate::fresh_ood(whir, vars)?;
-    if proof.ood1.iter().chain(&proof.ood2).any(|a| a.len() != nood) {
+    if proof
+        .ood1
+        .iter()
+        .chain(&proof.ood2)
+        .any(|a| a.len() != nood)
+    {
         return Err("air: OOD answers".into());
     }
     prologue(s, n, segs, t);
@@ -355,7 +404,13 @@ pub fn verify<A: Air>(
         let (rho, claim) =
             zerocheck::verify(t, &sp.zerocheck, n, s.degree).ok_or("air: zerocheck shape")?;
         let publics: Vec<Fp3> = air.publics().iter().map(|p| p.eval(&rho)).collect();
-        let vals: Vec<Fp3> = sp.local.iter().chain(&sp.next).chain(&publics).copied().collect();
+        let vals: Vec<Fp3> = sp
+            .local
+            .iter()
+            .chain(&sp.next)
+            .chain(&publics)
+            .copied()
+            .collect();
         let mut scratch = vec![Fp3::ZERO; s.constraints];
         let c = zerocheck::combine(air, w, &vals, &ch, &mu, &mut scratch);
         if eq_eval(&tau, &rho) * c != claim {
@@ -376,7 +431,10 @@ pub fn verify<A: Air>(
         let n2 = fold_cols(&g2, sp.next[s.w1..].iter().copied()) - last * b2;
         let sigma = a1 + beta * n1 + zeta * (a2 + beta * n2);
         let (rho2, fin) = shift::verify(t, sigma, &sp.shift, n).ok_or("air: shift shape")?;
-        let wrap = rho.iter().zip(&rho2).fold(Fp3::ONE, |a, (&x, &y)| a * x * (Fp3::ONE - y));
+        let wrap = rho
+            .iter()
+            .zip(&rho2)
+            .fold(Fp3::ONE, |a, (&x, &y)| a * x * (Fp3::ONE - y));
         let k = eq_eval(&rho, &rho2) + beta * (next_eval(&rho, &rho2) - wrap);
         if k * (sp.v1 + zeta * sp.v2) != fin {
             return Err("air: shift reduction".into());
@@ -385,10 +443,21 @@ pub fn verify<A: Air>(
         t.absorb_fp3(sp.v2);
         let at = |g: &[Fp3]| -> Vec<Fp3> { rho2.iter().chain(g).copied().collect() };
         own.push([
-            Claim { point: at(&g1), value: sp.v1 },
-            Claim { point: at(&g2), value: sp.v2 },
+            Claim {
+                point: at(&g1),
+                value: sp.v1,
+            },
+            Claim {
+                point: at(&g2),
+                value: sp.v2,
+            },
         ]);
         bound.push(boundary_claims(&sp.boundary, s.w1, n, cbits, t));
     }
-    Ok(instances([&proof.roots1, &proof.roots2], [bound1, bound2], own, bound))
+    Ok(instances(
+        [&proof.roots1, &proof.roots2],
+        [bound1, bound2],
+        own,
+        bound,
+    ))
 }

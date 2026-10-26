@@ -87,8 +87,11 @@ pub struct Report {
 /// The report for a private statement under `params`.
 pub fn report(statement: &PrivateStatement, params: &HidingParams) -> Result<Report, String> {
     let prepared = statement.prepare()?;
-    let public: Vec<(usize, Goldilocks)> =
-        prepared.public_coordinates.iter().map(|&(i, v)| (i, Goldilocks::new(v))).collect();
+    let public: Vec<(usize, Goldilocks)> = prepared
+        .public_coordinates
+        .iter()
+        .map(|&(i, v)| (i, Goldilocks::new(v)))
+        .collect();
     let s = Setup::new(&prepared.relation.instance, &with_constant(&public))?;
     let cfg = hiding::Config::derive(params, s.entries())?;
     let t = s.instance.matrices.len();
@@ -137,7 +140,9 @@ impl VeilProof {
 }
 
 fn with_constant(public: &[(usize, Goldilocks)]) -> Vec<(usize, Goldilocks)> {
-    core::iter::once((0, Goldilocks::ONE)).chain(public.iter().copied()).collect()
+    core::iter::once((0, Goldilocks::ONE))
+        .chain(public.iter().copied())
+        .collect()
 }
 
 /// Prove the exact supplied relation and public coordinates (`(0, 1)` is
@@ -148,7 +153,14 @@ pub fn prove_relation(
     statement: &[u8],
     public: &[(usize, Goldilocks)],
 ) -> Result<VeilProof, String> {
-    prove_relation_with(&HidingParams::default(), instance, witness, statement, public, &Coins::os()?)
+    prove_relation_with(
+        &HidingParams::default(),
+        instance,
+        witness,
+        statement,
+        public,
+        &Coins::os()?,
+    )
 }
 
 pub(crate) fn prove_relation_with(
@@ -162,7 +174,14 @@ pub(crate) fn prove_relation_with(
     if !instance.is_satisfied_by(witness) {
         return Err("veil: witness does not satisfy the relation".into());
     }
-    let parsed = protocol::prove(params, instance, &witness.z, &with_constant(public), statement, coins)?;
+    let parsed = protocol::prove(
+        params,
+        instance,
+        &witness.z,
+        &with_constant(public),
+        statement,
+        coins,
+    )?;
     Ok(VeilProof {
         bytes: parsed.to_bytes(),
     })
@@ -190,7 +209,13 @@ pub fn prove(
     secret: &[u64],
     budget: u64,
 ) -> Result<(PrivateStatement, VeilProof), String> {
-    prove_bound(program, input, secret, budget, &PrivateStatement::transcript_bytes)
+    prove_bound(
+        program,
+        input,
+        secret,
+        budget,
+        &PrivateStatement::transcript_bytes,
+    )
 }
 
 /// [`prove`] with the statement bytes chosen by the caller (`bind`), e.g.
@@ -205,8 +230,11 @@ pub fn prove_bound(
     let (statement, prepared, witness) =
         super::private::prepare_execution(program, input, secret, budget)?;
     let vk = VerifyingKey::new(statement.execution.program_key(), prepared.relation);
-    let public: Vec<(usize, Goldilocks)> =
-        prepared.public_coordinates.iter().map(|&(i, v)| (i, Goldilocks::new(v))).collect();
+    let public: Vec<(usize, Goldilocks)> = prepared
+        .public_coordinates
+        .iter()
+        .map(|&(i, v)| (i, Goldilocks::new(v)))
+        .collect();
     let witness = CCSWitness {
         z: witness.into_iter().map(Goldilocks::new).collect(),
     };

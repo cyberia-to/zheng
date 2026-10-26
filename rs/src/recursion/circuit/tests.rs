@@ -11,7 +11,11 @@ use crate::recursion::sponge::Sponge;
 use crate::recursion::word::{Word, verify_leaf};
 
 fn e(i: u64) -> Fp3 {
-    Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i + 11), Goldilocks::new(3 * i))
+    Fp3::new(
+        Goldilocks::new(i * 7 + 1),
+        Goldilocks::new(i + 11),
+        Goldilocks::new(3 * i),
+    )
 }
 
 /// A little verifier: arithmetic, a transcript, bits, a Merkle opening.
@@ -46,16 +50,39 @@ fn program<O: Ops>(o: &mut O, word: &Word, leaf: usize) -> Vec<Fp3> {
     vec![o.value(h), o.value(s), o.value(t)]
 }
 
-fn check_rows(air: &CircuitAir, t1: &Trace, t2: &Trace, p: &Pre, alpha: Fp3, beta: Fp3) -> Option<(usize, usize)> {
+fn check_rows(
+    air: &CircuitAir,
+    t1: &Trace,
+    t2: &Trace,
+    p: &Pre,
+    alpha: Fp3,
+    beta: Fp3,
+) -> Option<(usize, usize)> {
     let rows = t1.rows();
-    let lift = |t: &Trace, r: usize| -> Vec<Fp3> { t.row(r).iter().map(|&x| Fp3::from_base(x)).collect() };
+    let lift =
+        |t: &Trace, r: usize| -> Vec<Fp3> { t.row(r).iter().map(|&x| Fp3::from_base(x)).collect() };
     let mut buf = vec![Fp3::ZERO; air.constraints()];
     for r in 0..rows {
         let nx = (r + 1) % rows;
         let (l1, l2, n1, n2) = (lift(t1, r), lift(t2, r), lift(t1, nx), lift(t2, nx));
         let pr = p.row(r);
-        let mut s = Sink { buf: &mut buf, i: 0 };
-        air.eval(&Row { l1: &l1, l2: &l2, n1: &n1, n2: &n2, p: &pr, pin: &[Fp3::ZERO; PIN], alpha, beta }, &mut s);
+        let mut s = Sink {
+            buf: &mut buf,
+            i: 0,
+        };
+        air.eval(
+            &Row {
+                l1: &l1,
+                l2: &l2,
+                n1: &n1,
+                n2: &n2,
+                p: &pr,
+                pin: &[Fp3::ZERO; PIN],
+                alpha,
+                beta,
+            },
+            &mut s,
+        );
         if let Some(c) = buf.iter().position(|&v| v != Fp3::ZERO) {
             return Some((r, c));
         }
@@ -72,7 +99,10 @@ fn a_recorded_run_satisfies_the_circuit_and_agrees_with_native() {
 }
 
 fn recorded_run(log_domain: u32, arity: crate::recursion::word::Arity) {
-    let layout = lens::rspcs::whir::LeafLayout { log_domain, log_width: 2 };
+    let layout = lens::rspcs::whir::LeafLayout {
+        log_domain,
+        log_width: 2,
+    };
     let evals: Vec<Goldilocks> = (0..64u64).map(|i| Goldilocks::new(i * 5 + 2)).collect();
     let word = Word::commit_base_a(layout, &evals, arity);
     let mut nat = Native::new();
@@ -95,18 +125,26 @@ fn recorded_run(log_domain: u32, arity: crate::recursion::word::Arity) {
     let (_, p2, _) = generate(&b2, &air, n).unwrap();
     assert_eq!(p.digest(), p2.digest());
     // a tampered cell violates the circuit (or the memory)
-    for (r, c) in [(0usize, gate_out(0)), (b.gates.len() / 4 + 1, BACC), (b.rows() - 1, PY12), (b.rows() - 4, PW + 2)] {
+    for (r, c) in [
+        (0usize, gate_out(0)),
+        (b.gates.len() / 4 + 1, BACC),
+        (b.rows() - 1, PY12),
+        (b.rows() - 4, PW + 2),
+    ] {
         let mut bad = t1.clone();
         bad.row_mut(r)[c] += Goldilocks::ONE;
         let t2b = phase2(&bad, &p, alpha, beta);
-        let broken = check_rows(&air, &bad, &t2b, &p, alpha, beta).is_some() || closing_sum(&t2b, &p) != Fp3::ZERO;
+        let broken = check_rows(&air, &bad, &t2b, &p, alpha, beta).is_some()
+            || closing_sum(&t2b, &p) != Fp3::ZERO;
         assert!(broken, "tamper at row {r} col {c}");
     }
     // a 4-ary path: a wrong direction bit or sibling fails natively
     if arity == crate::recursion::word::Arity::Four {
         let op = word.open(11);
         let mut nat = Native::new();
-        let bits: Vec<Fp3> = (0..layout.log_leaves()).map(|k| Fp3::from_base(Goldilocks::new((11 >> k) & 1))).collect();
+        let bits: Vec<Fp3> = (0..layout.log_leaves())
+            .map(|k| Fp3::from_base(Goldilocks::new((11 >> k) & 1)))
+            .collect();
         let root = word.root().map(Fp3::from_base);
         verify_leaf(&mut nat, false, arity, &op, &bits, root, "root");
         assert!(nat.error.is_none());
@@ -142,16 +180,40 @@ fn a_failed_assertion_is_caught_unless_the_step_is_the_base() {
 
 /// Constraint violations on rows `rows` only (the rows a cell of row `r`
 /// enters: `r − 1` through `next`, `r` through `local`).
-fn breaks_at(air: &CircuitAir, t1: &Trace, t2: &Trace, p: &Pre, alpha: Fp3, beta: Fp3, rows: &[usize]) -> bool {
+fn breaks_at(
+    air: &CircuitAir,
+    t1: &Trace,
+    t2: &Trace,
+    p: &Pre,
+    alpha: Fp3,
+    beta: Fp3,
+    rows: &[usize],
+) -> bool {
     let n = t1.rows();
-    let lift = |t: &Trace, r: usize| -> Vec<Fp3> { t.row(r).iter().map(|&x| Fp3::from_base(x)).collect() };
+    let lift =
+        |t: &Trace, r: usize| -> Vec<Fp3> { t.row(r).iter().map(|&x| Fp3::from_base(x)).collect() };
     let mut buf = vec![Fp3::ZERO; air.constraints()];
     rows.iter().any(|&r| {
         let nx = (r + 1) % n;
         let (l1, l2, n1, n2) = (lift(t1, r), lift(t2, r), lift(t1, nx), lift(t2, nx));
         let pr = p.row(r);
-        let mut s = Sink { buf: &mut buf, i: 0 };
-        air.eval(&Row { l1: &l1, l2: &l2, n1: &n1, n2: &n2, p: &pr, pin: &[Fp3::ZERO; PIN], alpha, beta }, &mut s);
+        let mut s = Sink {
+            buf: &mut buf,
+            i: 0,
+        };
+        air.eval(
+            &Row {
+                l1: &l1,
+                l2: &l2,
+                n1: &n1,
+                n2: &n2,
+                p: &pr,
+                pin: &[Fp3::ZERO; PIN],
+                alpha,
+                beta,
+            },
+            &mut s,
+        );
         buf.iter().any(|&v| v != Fp3::ZERO)
     })
 }
@@ -170,7 +232,11 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
     if on(pre::ARITH) {
         let (g, k) = (c / 12, (c % 12) / 3);
         let unused = pr[pre::E + 4 * g + k] == Fp3::ZERO;
-        return if k < 3 { unused } else { unused && pr[pre::gate(g, pre::QCOMP)] == Fp3::ZERO };
+        return if k < 3 {
+            unused
+        } else {
+            unused && pr[pre::gate(g, pre::QCOMP)] == Fp3::ZERO
+        };
     }
     if let Some(ph) = (0..4).find(|&k| on(pre::BITS + k)) {
         return match c {
@@ -203,7 +269,10 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
 /// the prover sets at will under the native verifier's check.
 #[test]
 fn every_cell_the_circuit_reads_is_constrained() {
-    let layout = lens::rspcs::whir::LeafLayout { log_domain: 8, log_width: 2 };
+    let layout = lens::rspcs::whir::LeafLayout {
+        log_domain: 8,
+        log_width: 2,
+    };
     let evals: Vec<Goldilocks> = (0..64u64).map(|i| Goldilocks::new(i * 5 + 2)).collect();
     let word = Word::commit_base(layout, &evals);
     let mut b = Builder::new(true);
@@ -223,7 +292,9 @@ fn every_cell_the_circuit_reads_is_constrained() {
             let mut bad = t1.clone();
             bad.row_mut(r)[c] += Goldilocks::ONE;
             let t2b = phase2(&bad, &p, alpha, beta);
-            if closing_sum(&t2b, &p) != Fp3::ZERO || breaks_at(&air, &bad, &t2b, &p, alpha, beta, &around) {
+            if closing_sum(&t2b, &p) != Fp3::ZERO
+                || breaks_at(&air, &bad, &t2b, &p, alpha, beta, &around)
+            {
                 pinned += 1;
             } else if !free_by_design(&p, r, c) {
                 free.push((r, c));
@@ -257,7 +328,9 @@ fn the_decomposition_refuses_non_canonical_and_non_boolean_digits() {
     let air = CircuitAir::default();
     let (t1, p, _) = generate(&b, &air, 4).unwrap();
     let (alpha, beta) = (e(5), e(6));
-    let r0 = (0..t1.rows()).find(|&r| p.row(r)[pre::BITS] == Fp3::ONE).unwrap();
+    let r0 = (0..t1.rows())
+        .find(|&r| p.row(r)[pre::BITS] == Fp3::ONE)
+        .unwrap();
     let all: Vec<usize> = (0..t1.rows()).collect();
     let t2 = phase2(&t1, &p, alpha, beta);
     assert!(!breaks_at(&air, &t1, &t2, &p, alpha, beta, &all));
@@ -282,18 +355,34 @@ fn the_decomposition_refuses_non_canonical_and_non_boolean_digits() {
             if ph == 3 {
                 let hi = (acc - lo) * Goldilocks::new(1 << 32).inv();
                 let d = hi - Goldilocks::new(0xFFFF_FFFF);
-                row[BMAX] = if d == Goldilocks::ZERO { Goldilocks::ONE } else { Goldilocks::ZERO };
-                row[BMINV] = if d == Goldilocks::ZERO { Goldilocks::ZERO } else { d.inv() };
+                row[BMAX] = if d == Goldilocks::ZERO {
+                    Goldilocks::ONE
+                } else {
+                    Goldilocks::ZERO
+                };
+                row[BMINV] = if d == Goldilocks::ZERO {
+                    Goldilocks::ZERO
+                } else {
+                    d.inv()
+                };
             }
         }
     };
-    let digits = |x: u64| -> [[u64; 16]; 4] { core::array::from_fn(|ph| core::array::from_fn(|j| (x >> (16 * ph + j)) & 1)) };
+    let digits = |x: u64| -> [[u64; 16]; 4] {
+        core::array::from_fn(|ph| core::array::from_fn(|j| (x >> (16 * ph + j)) & 1))
+    };
     // v + p = 2^64 − 2^32 + 6
     let mut t = t1.clone();
     write(&mut t, digits(5u64.wrapping_add(0xFFFF_FFFF_0000_0001)));
     let t2 = phase2(&t, &p, alpha, beta);
-    assert!(!breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0, r0 + 1]), "the accumulation rows hold");
-    assert!(breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0 + 2, r0 + 3]), "canonicity refuses v + p");
+    assert!(
+        !breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0, r0 + 1]),
+        "the accumulation rows hold"
+    );
+    assert!(
+        breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0 + 2, r0 + 3]),
+        "canonicity refuses v + p"
+    );
     // 5 = 3·1 + 1·2
     let mut t = t1.clone();
     let mut d = digits(5);
@@ -302,7 +391,17 @@ fn the_decomposition_refuses_non_canonical_and_non_boolean_digits() {
     d[0][2] = 0;
     write(&mut t, d);
     let t2 = phase2(&t, &p, alpha, beta);
-    assert!(breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0]), "booleanity refuses a digit 3");
-    assert!(!breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0 + 1, r0 + 2, r0 + 3]));
+    assert!(
+        breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0]),
+        "booleanity refuses a digit 3"
+    );
+    assert!(!breaks_at(
+        &air,
+        &t,
+        &t2,
+        &p,
+        alpha,
+        beta,
+        &[r0 + 1, r0 + 2, r0 + 3]
+    ));
 }
-

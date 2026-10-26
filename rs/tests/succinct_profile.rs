@@ -45,7 +45,10 @@ where
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         let (_, cert) = certify_execution(&program, &input, 1_000_000).unwrap();
         // the same statement public v3 proves
-        assert_eq!(statement, certify_execution(&program, &input, 1_000_000).unwrap().0);
+        assert_eq!(
+            statement,
+            certify_execution(&program, &input, 1_000_000).unwrap().0
+        );
         succinct::verify(&statement, &proof).unwrap_or_else(|e| panic!("{name}: {e}"));
         let e = envelope_of(&statement, &proof);
         assert!(accepted(&e), "{name} envelope");
@@ -128,8 +131,14 @@ fn forged_statements_are_rejected() {
             edit(&mut s);
             !accepted(&envelope_of(&s, &proof))
         };
-        assert!(forge(&|s| s.public_input[0] = (s.public_input[0] + 1) % P), "input");
-        assert!(forge(&|s| s.public_output[0] = (s.public_output[0] + 1) % P), "output");
+        assert!(
+            forge(&|s| s.public_input[0] = (s.public_input[0] + 1) % P),
+            "input"
+        );
+        assert!(
+            forge(&|s| s.public_output[0] = (s.public_output[0] + 1) % P),
+            "output"
+        );
         assert!(forge(&|s| s.public_output.push(0)), "extra output");
         assert!(forge(&|s| s.cycles += 1), "cycles");
         assert!(forge(&|s| s.cycles -= 1), "fewer cycles");
@@ -230,6 +239,9 @@ fn proofs_are_deterministic() {
         let pt = TensorRsParams::default();
         let t1 = succinct::prove::<TensorRs>(&pt, &parse(program), &input, 1_000_000).unwrap();
         let t2 = succinct::prove::<TensorRs>(&pt, &parse(program), &input, 1_000_000).unwrap();
-        assert_eq!(envelope_of(&t1.0, &t1.1).to_bytes(), envelope_of(&t2.0, &t2.1).to_bytes());
+        assert_eq!(
+            envelope_of(&t1.0, &t1.1).to_bytes(),
+            envelope_of(&t2.0, &t2.1).to_bytes()
+        );
     }
 }

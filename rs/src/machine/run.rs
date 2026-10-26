@@ -53,7 +53,11 @@ pub(crate) fn u(x: Goldilocks) -> u64 {
 }
 
 pub(crate) fn inv_or_zero(x: Goldilocks) -> Goldilocks {
-    if x == Goldilocks::ZERO { Goldilocks::ZERO } else { x.inv() }
+    if x == Goldilocks::ZERO {
+        Goldilocks::ZERO
+    } else {
+        x.inv()
+    }
 }
 
 pub(crate) fn state(b: &mut Builder, r: usize, obj: u64, x: u64, k: u64, d: u64, cyc: u64) {
@@ -77,7 +81,10 @@ pub(crate) fn hash_data(b: &mut Builder, h: [Goldilocks; 4], k: u64, cyc: u64) -
     }
     let rb = b.row(K_HDB);
     state(b, rb, 0, 0, k, 0, cyc);
-    for (s, (l, r)) in [(a0, a0 + 1), (a0 + 2, a0 + 3), (a0 + 4, a0 + 5)].into_iter().enumerate() {
+    for (s, (l, r)) in [(a0, a0 + 1), (a0 + 2, a0 + 3), (a0 + 4, a0 + 5)]
+        .into_iter()
+        .enumerate()
+    {
         let id = b.fresh();
         b.alloc_noun(rb, s, id, Entry::Pair(l, r));
     }
@@ -138,7 +145,12 @@ pub(crate) fn run(
     obj: u64,
     budget: u64,
 ) -> Result<(u64, u64), MachineError> {
-    let mut st = State::Eval { obj, fml, k: 0, d: 0 };
+    let mut st = State::Eval {
+        obj,
+        fml,
+        k: 0,
+        d: 0,
+    };
     let mut cyc = 0u64;
     loop {
         if cyc > budget {
@@ -224,21 +236,37 @@ fn eval(
                     let h = dg.digest(b, obj);
                     b.need_dig.push(obj);
                     b.read(r, 3, TAG_DIG, obj, h.map(u));
-                    State::Ret { val: hash_data(b, h, k, cyc), k }
+                    State::Ret {
+                        val: hash_data(b, h, k, cyc),
+                        k,
+                    }
                 }
-                _ => State::Ret { val: axis(b, obj, a, k, cyc)?, k },
+                _ => State::Ret {
+                    val: axis(b, obj, a, k, cyc)?,
+                    k,
+                },
             }
         }
         OP_HASH | OP_INV => {
             let fid = b.fresh();
             let tag = if op == OP_HASH { TAG_UHASH } else { TAG_UINV };
             b.alloc_frame(r, 3, fid, tag, [0, 0, 0, k]);
-            State::Eval { obj, fml: body, k: fid, d: d + 1 }
+            State::Eval {
+                obj,
+                fml: body,
+                k: fid,
+                d: d + 1,
+            }
         }
         OP_NOT => {
             let fid = b.fresh();
             b.alloc_frame(r, 3, fid, TAG_B2 + T_NOT, [tid, obj, 0, k]);
-            State::Eval { obj, fml: body, k: fid, d: d + 1 }
+            State::Eval {
+                obj,
+                fml: body,
+                k: fid,
+                d: d + 1,
+            }
         }
         _ => {
             let (f, gg) = match b.entry(body) {
@@ -255,7 +283,12 @@ fn eval(
             };
             let fid = b.fresh();
             b.alloc_frame(r, 3, fid, ftag, [gg, obj, d, k]);
-            State::Eval { obj, fml: f, k: fid, d: d + 1 }
+            State::Eval {
+                obj,
+                fml: f,
+                k: fid,
+                d: d + 1,
+            }
         }
     })
 }
@@ -283,29 +316,48 @@ fn ret(
                 _ => {
                     let op = tag - TAG_B1;
                     b.set(r, R_OP, op);
-                    let y = B1_OPS[..5].iter().fold(Goldilocks::ONE, |a, &o| a * (g(op) - g(o)));
+                    let y = B1_OPS[..5]
+                        .iter()
+                        .fold(Goldilocks::ONE, |a, &o| a * (g(op) - g(o)));
                     b.setf(r, R_OPY, y);
                     (tag - TAG_B1 + TAG_B2, [val, fobj, 0, parent])
                 }
             };
             b.alloc_frame(r, 1, fid, ntag, pay);
-            State::Eval { obj: fobj, fml: x, k: fid, d: fd + 1 }
+            State::Eval {
+                obj: fobj,
+                fml: x,
+                k: fid,
+                d: fd + 1,
+            }
         }
         F_CONS2 => {
             let id = b.fresh();
             b.alloc_noun(r, 1, id, Entry::Pair(x, val));
             State::Ret { val: id, k: parent }
         }
-        F_COMP2 => State::Eval { obj: x, fml: val, k: parent, d: fd + 1 },
+        F_COMP2 => State::Eval {
+            obj: x,
+            fml: val,
+            k: parent,
+            d: fd + 1,
+        },
         F_BR => {
             let tv = b.atom(val)?;
             b.read(r, 1, TAG_ATOM, val, [tv, 0, 0, 0]);
             let z = tv == 0;
             b.setf(r, R_TINV, inv_or_zero(g(tv)));
             b.set(r, R_Z, u64::from(z));
-            let (yes, no) = b.pair(x).map_err(|_| MachineError::Native("malformed branch"))?;
+            let (yes, no) = b
+                .pair(x)
+                .map_err(|_| MachineError::Native("malformed branch"))?;
             b.read(r, 2, TAG_PAIR, x, [yes, no, 0, 0]);
-            State::Eval { obj: fobj, fml: if z { yes } else { no }, k: parent, d: fd + 1 }
+            State::Eval {
+                obj: fobj,
+                fml: if z { yes } else { no },
+                k: parent,
+                d: fd + 1,
+            }
         }
         F_B2AR => {
             let ua = b.atom(x)?;
@@ -342,7 +394,10 @@ fn ret(
             let h = dg.hop(b, t, val);
             b.need_hop.push(val);
             b.read(r, 1, TAG_HOP, val, h.map(u));
-            State::Ret { val: hash_data(b, h, parent, cyc), k: parent }
+            State::Ret {
+                val: hash_data(b, h, parent, cyc),
+                k: parent,
+            }
         }
         F_UINV => {
             let ua = b.atom(val)?;

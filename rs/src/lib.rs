@@ -31,20 +31,20 @@
 
 pub mod accumulate;
 pub mod air;
-pub mod machine;
 pub mod envelope;
 pub mod execution;
 pub mod field;
 pub mod fs;
+pub(crate) mod laps;
+pub mod machine;
 pub mod multilinear;
+pub(crate) mod par;
 pub mod recursion;
 pub mod spartan;
 pub mod sumcheck;
 pub mod transcript;
 pub mod types;
 pub mod wire;
-pub(crate) mod laps;
-pub(crate) mod par;
 
 #[cfg(feature = "legacy")]
 pub mod ccs;

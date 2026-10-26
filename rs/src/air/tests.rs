@@ -27,7 +27,9 @@ struct Toy {
 impl Toy {
     fn new(n: usize) -> Self {
         let rows = 1usize << n;
-        let idx: Vec<Fp3> = (0..rows as u64).map(|i| Fp3::from_base(Goldilocks::new(i))).collect();
+        let idx: Vec<Fp3> = (0..rows as u64)
+            .map(|i| Fp3::from_base(Goldilocks::new(i)))
+            .collect();
         Self {
             publics: vec![
                 Public::Sparse(vec![(0, Fp3::ONE)]),
@@ -78,7 +80,8 @@ fn toy_trace(n: usize, xs: &[u64]) -> Trace {
     let mut y = Goldilocks::ZERO;
     for r in 0..rows {
         let x = Goldilocks::new(xs[r]);
-        w1.row_mut(r).copy_from_slice(&[x, y, Goldilocks::new(counts[r])]);
+        w1.row_mut(r)
+            .copy_from_slice(&[x, y, Goldilocks::new(counts[r])]);
         y += x;
     }
     w1
@@ -118,7 +121,11 @@ fn toy_constraints_hold_exactly_on_valid_traces() {
     let air = Toy::new(n);
     let xs: Vec<u64> = (0..32u64).map(|i| (i * 7 + 3) % 30).collect();
     let w1 = toy_trace(n, &xs);
-    let ch = [Fp3::new(Goldilocks::new(5), Goldilocks::new(9), Goldilocks::new(2))];
+    let ch = [Fp3::new(
+        Goldilocks::new(5),
+        Goldilocks::new(9),
+        Goldilocks::new(2),
+    )];
     let w2 = toy_phase2(&w1, &ch);
     assert_eq!(first_violation(&air, &w1, &w2, &ch), None);
     let mut bad = w1.clone();
@@ -134,19 +141,34 @@ fn toy_air_with_a_valid_trace_verifies_and_decides() {
     let w1 = toy_trace(n, &xs);
     let whir = params();
     let mut tp = lens::Transcript::new(b"toy");
-    let (proof, w2s, words) =
-        prove(std::slice::from_ref(&air), &whir, std::slice::from_ref(&w1), |_, ch| toy_phase2(&w1, ch), &mut tp)
-            .unwrap();
+    let (proof, w2s, words) = prove(
+        std::slice::from_ref(&air),
+        &whir,
+        std::slice::from_ref(&w1),
+        |_, ch| toy_phase2(&w1, ch),
+        &mut tp,
+    )
+    .unwrap();
     let mut tv = lens::Transcript::new(b"toy");
     let insts = verify(std::slice::from_ref(&air), &whir, n, &proof, &mut tv).unwrap();
     assert_eq!(insts, words);
     let wp = air.shape().padded_width();
-    let data = |t: &Trace| <lens::Whir as lens::MultilinearPcs>::commit(&whir, &t.column_major(wp)).1;
+    let data =
+        |t: &Trace| <lens::Whir as lens::MultilinearPcs>::commit(&whir, &t.column_major(wp)).1;
     let [a, b] = words[0].clone();
-    let x1 = crate::accumulate::Witnessed { instance: a, data: data(&w1) };
-    let x2 = crate::accumulate::Witnessed { instance: b, data: data(&w2s[0]) };
+    let x1 = crate::accumulate::Witnessed {
+        instance: a,
+        data: data(&w1),
+    };
+    let x2 = crate::accumulate::Witnessed {
+        instance: b,
+        data: data(&w2s[0]),
+    };
     let cfg = AccConfig::derive(&whir, x1.data.num_vars(), 4, 256).unwrap();
-    assert!(insts[0][0].claims.len() > 2, "fresh-word OOD claims ride along");
+    assert!(
+        insts[0][0].claims.len() > 2,
+        "fresh-word OOD claims ride along"
+    );
     let mut ap = transcript(b"toy-acc", b"", &cfg);
     let (acc, aproof) = accumulate(&cfg, &[&x1, &x2], &mut ap).unwrap();
     let dproof = decide(&cfg, &acc, &mut ap).unwrap();
@@ -157,9 +179,14 @@ fn toy_air_with_a_valid_trace_verifies_and_decides() {
     let mut bad = w1.clone();
     bad.row_mut(9)[1] += Goldilocks::ONE;
     let mut tb = lens::Transcript::new(b"toy");
-    let (bp, _, _) =
-        prove(std::slice::from_ref(&air), &whir, std::slice::from_ref(&bad), |_, ch| toy_phase2(&bad, ch), &mut tb)
-            .unwrap();
+    let (bp, _, _) = prove(
+        std::slice::from_ref(&air),
+        &whir,
+        std::slice::from_ref(&bad),
+        |_, ch| toy_phase2(&bad, ch),
+        &mut tb,
+    )
+    .unwrap();
     let mut tbv = lens::Transcript::new(b"toy");
     assert!(verify(std::slice::from_ref(&air), &whir, n, &bp, &mut tbv).is_err());
     // a forged column value at ρ, a forged boundary

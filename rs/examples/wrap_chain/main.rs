@@ -11,7 +11,10 @@ use zheng::recursion::ivc;
 use zheng::recursion::wrap::{self, Mode, WrapParams};
 
 fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
-    std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+    std::env::var(k)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
 }
 
 fn main() {
@@ -37,7 +40,15 @@ fn main() {
             if let Some(k) = parts.next() {
                 w.folding_factor = k.parse().expect("fold");
             }
-            let params = WrapParams { whir: w, n: 0, mode: if mode == "f" { Mode::Final } else { Mode::Inner } };
+            let params = WrapParams {
+                whir: w,
+                n: 0,
+                mode: if mode == "f" {
+                    Mode::Final
+                } else {
+                    Mode::Inner
+                },
+            };
             let k = match keys.last() {
                 None => wrap::derive_shape_ivc(params, &ikey),
                 Some(prev) => wrap::derive_shape(params, prev),
@@ -53,13 +64,30 @@ fn main() {
             let rows = wrap::ledger(&k.params, &k.cfg, k.constraints, reads);
             let weak = rows.iter().map(|r| r.1).fold(f64::INFINITY, f64::min);
             let q: Vec<usize> = k.cfg.wc.rounds.iter().map(|r| r.queries).collect();
-            let ext_cols: Vec<usize> = k.pre.cols.iter().enumerate().filter(|(_, c)| c.iter().any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO)).map(|(i, _)| i).collect();
+            let ext_cols: Vec<usize> = k
+                .pre
+                .cols
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    c.iter()
+                        .any(|v| v.c1 != nebu::Goldilocks::ZERO || v.c2 != nebu::Goldilocks::ZERO)
+                })
+                .map(|(i, _)| i)
+                .collect();
             line.push(format!("{l}: {} rows (perm blocks {}) → 2^{} · q {q:?} · {weak:.2} bits · key columns with Fp3 entries {ext_cols:?}", k.rows, k.census[2], k.params.n));
             if !k.inner() {
-                line.push(format!("final proof ≤ {} B over every transcript", wrap::FinalProof::max_bytes(&k)));
+                line.push(format!(
+                    "final proof ≤ {} B over every transcript",
+                    wrap::FinalProof::max_bytes(&k)
+                ));
             }
             keys.push(k);
         }
-        println!("{spec} ({:.1} s)\n  {}", t.elapsed().as_secs_f64(), line.join("\n  "));
+        println!(
+            "{spec} ({:.1} s)\n  {}",
+            t.elapsed().as_secs_f64(),
+            line.join("\n  ")
+        );
     }
 }

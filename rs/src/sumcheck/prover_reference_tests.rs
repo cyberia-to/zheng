@@ -35,8 +35,13 @@ fn base_and_threaded_rounds_equal_the_textbook_rounds() {
         let m = 1 << log_m;
         let base: Vec<Vec<Goldilocks>> = (0..5).map(|_| (0..m).map(|_| next()).collect()).collect();
         let coeffs = vec![Goldilocks::ONE, -Goldilocks::ONE, next(), -Goldilocks::ONE];
-        let tau: Vec<Fp3> = (0..log_m).map(|_| Fp3::new(next(), next(), next())).collect();
-        let mut f: Vec<Vec<Fp3>> = base.iter().map(|t| t.iter().map(|&v| Fp3::from_base(v)).collect()).collect();
+        let tau: Vec<Fp3> = (0..log_m)
+            .map(|_| Fp3::new(next(), next(), next()))
+            .collect();
+        let mut f: Vec<Vec<Fp3>> = base
+            .iter()
+            .map(|t| t.iter().map(|&v| Fp3::from_base(v)).collect())
+            .collect();
         let c: Vec<Fp3> = coeffs.iter().map(|&v| Fp3::from_base(v)).collect();
         let mut eq = eq_evals(&tau);
         let mut p = OuterSumcheckProver::new_base(eq.clone(), base, ms.clone(), coeffs);

@@ -50,7 +50,14 @@ pub(crate) fn native(program: &N, input: &[u64], budget: u64) -> Option<(N, u64)
     let mut r = Box::new(nox::Reduction::<8192>::new());
     let subject = arena(&mut r, &statement::subject(input));
     let formula = arena(&mut r, program);
-    match nox::reduce(&mut r, subject, formula, budget, &nox::NullCalls, &mut nox::NoTrace) {
+    match nox::reduce(
+        &mut r,
+        subject,
+        formula,
+        budget,
+        &nox::NullCalls,
+        &mut nox::NoTrace,
+    ) {
         nox::Outcome::Ok(o, rem) => Some((read_back(&r, o), budget - rem)),
         _ => None,
     }
@@ -66,7 +73,11 @@ pub(crate) fn check(program: &N, input: &[u64]) -> Run {
     let budget = 1 << 40;
     let run = execute(program, input, budget).expect("machine run");
     let (out, cycles) = native(program, input, budget).expect("native run");
-    assert_eq!(statement::parse(&run.statement.output).unwrap(), out, "output");
+    assert_eq!(
+        statement::parse(&run.statement.output).unwrap(),
+        out,
+        "output"
+    );
     assert_eq!(run.statement.cycles, cycles, "cycles");
     assert_eq!(run.segments(), 1);
     let ch = challenges();
@@ -89,17 +100,29 @@ pub(crate) fn programs() -> Vec<(&'static str, N, Vec<u64>)> {
         ("branch-yes", p(a(4), p(q(0), p(q(10), q(20)))), vec![]),
         ("branch-no", p(a(4), p(ax(2), p(q(10), q(20)))), vec![3]),
         ("compose", op2(2, ax(1), p(a(1), q(5))), vec![]),
-        ("compose-computed", op2(2, ax(2), op2(3, q(0), q(1))), vec![6]),
+        (
+            "compose-computed",
+            op2(2, ax(2), op2(3, q(0), q(1))),
+            vec![6],
+        ),
         ("inv", op1(8, ax(2)), vec![5]),
         ("eq-atoms", op2(9, ax(2), ax(6)), vec![4, 4]),
         ("eq-atoms-ne", op2(9, ax(2), ax(6)), vec![4, 3]),
         ("eq-mixed", op2(9, ax(1), ax(2)), vec![4]),
         ("eq-pairs", op2(9, ax(1), ax(1)), vec![4, 5]),
-        ("eq-pairs-ne", op2(9, ax(1), op2(3, ax(2), ax(2))), vec![4, 5]),
+        (
+            "eq-pairs-ne",
+            op2(9, ax(1), op2(3, ax(2), ax(2))),
+            vec![4, 5],
+        ),
         ("hash", op1(15, ax(2)), vec![7]),
         ("hash-pair", op1(15, ax(1)), vec![7, 8]),
         ("axis0", ax(0), vec![2]),
-        ("nested", op2(5, op2(7, ax(2), ax(2)), op2(5, ax(6), q(1))), vec![3, 4]),
+        (
+            "nested",
+            op2(5, op2(7, ax(2), ax(2)), op2(5, ax(6), q(1))),
+            vec![3, 4],
+        ),
     ]
 }
 
@@ -115,11 +138,11 @@ fn every_opcode_matches_native_nox_and_satisfies_the_relation() {
 fn native_failures_are_machine_failures() {
     let budget = 1 << 20;
     for (prog, input) in [
-        (a(5), vec![]),                          // formula atom
-        (p(a(77), a(0)), vec![]),               // unknown opcode
-        (op2(5, ax(1), q(1)), vec![1]),          // add on a pair
-        (ax(4), vec![1]),                        // axis through an atom
-        (op1(8, q(0)), vec![]),                  // inverse of zero
+        (a(5), vec![]),                              // formula atom
+        (p(a(77), a(0)), vec![]),                    // unknown opcode
+        (op2(5, ax(1), q(1)), vec![1]),              // add on a pair
+        (ax(4), vec![1]),                            // axis through an atom
+        (op1(8, q(0)), vec![]),                      // inverse of zero
         (p(a(4), p(ax(1), p(q(1), q(2)))), vec![3]), // branch on a pair
     ] {
         assert!(native(&prog, &input, budget).is_none());
@@ -157,7 +180,10 @@ fn tampered_traces_violate_the_relation() {
         t.row_mut(row)[col] += one;
         let m = run.machine(0);
         let (w2, _) = phase2::build(&m, &t, &ch, Fp3::ZERO);
-        assert!(first_violation(&m, &t, &w2, &ch).is_some(), "({row}, {col})");
+        assert!(
+            first_violation(&m, &t, &w2, &ch).is_some(),
+            "({row}, {col})"
+        );
     }
 }
 
@@ -186,4 +212,3 @@ fn a_run_proves_and_verifies_and_a_forged_statement_does_not() {
     bad.output = statement::tokens(&a(1));
     assert!(verify(&bad, &proof, &whir).is_err());
 }
-

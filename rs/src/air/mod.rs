@@ -23,8 +23,8 @@
 //! The output is two evaluation claims on the committed words — instances
 //! for [`crate::accumulate`] (or a direct decider).
 
-pub mod num;
 pub mod mix;
+pub mod num;
 mod prove;
 pub mod public;
 mod shift;
@@ -37,10 +37,10 @@ mod tests;
 pub use prove::{AirProof, SegmentProof, SegmentWords, commit_bound, prove, verify};
 pub use public::Public;
 pub(crate) use shift::prove as shift_prove;
-pub(crate) use zerocheck::prove as zerocheck_prove;
-pub(crate) use zerocheck::{packed as zerocheck_packed, prove_packed as zerocheck_prove_packed};
 #[cfg(test)]
 pub(crate) use zerocheck::interpolate as zerocheck_interpolate;
+pub(crate) use zerocheck::prove as zerocheck_prove;
+pub(crate) use zerocheck::{packed as zerocheck_packed, prove_packed as zerocheck_prove_packed};
 
 use nebu::{Fp3, Goldilocks};
 
@@ -82,14 +82,24 @@ pub trait Air: Sync {
     /// [`Self::eval`] in mixed arithmetic (`mix::Mix`: base-field values
     /// stay base until they meet an Fp3 one); `false` when the AIR does
     /// not provide it (the zerocheck then evaluates in Fp3).
-    fn eval_mix(&self, _v: &Vals<'_, mix::Mix>, _challenges: &[Fp3], _out: &mut [mix::Mix]) -> bool {
+    fn eval_mix(
+        &self,
+        _v: &Vals<'_, mix::Mix>,
+        _challenges: &[Fp3],
+        _out: &mut [mix::Mix],
+    ) -> bool {
         false
     }
     /// `Σ_k μ^k C_k` as a recorded graph over the zerocheck's `inputs`
     /// column values (local, next, publics), challenges and `mu` folded
     /// in as constants — for evaluation on a prover backend's device;
     /// `None` when the AIR does not provide it.
-    fn combine_graph(&self, _inputs: usize, _challenges: &[Fp3], _mu: &[Fp3]) -> Option<num::Graph> {
+    fn combine_graph(
+        &self,
+        _inputs: usize,
+        _challenges: &[Fp3],
+        _mu: &[Fp3],
+    ) -> Option<num::Graph> {
         None
     }
 }
@@ -122,10 +132,16 @@ impl Trace {
         let rows = self.rows();
         let mut out = vec![Goldilocks::ZERO; rows * padded];
         // one column (or a run of them) per thread: writes contiguous
-        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(16);
         let per = self.width.div_ceil(threads).max(1);
         std::thread::scope(|s| {
-            for (ci, chunk) in out.chunks_mut(rows * per).take(self.width.div_ceil(per)).enumerate() {
+            for (ci, chunk) in out
+                .chunks_mut(rows * per)
+                .take(self.width.div_ceil(per))
+                .enumerate()
+            {
                 s.spawn(move || {
                     for (k, col) in chunk.chunks_mut(rows).enumerate() {
                         let c = ci * per + k;

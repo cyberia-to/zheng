@@ -39,12 +39,19 @@ fn prove(profile: u8, prog: &N, input: &[u64]) -> Result<Envelope, String> {
     match profile {
         1 => {
             let (st, proof) = zheng::execution::succinct::prove_default(prog, input, BUDGET)?;
-            Ok(Envelope::Succinct { statement: SuccinctStatement::Execution(st), proof })
+            Ok(Envelope::Succinct {
+                statement: SuccinctStatement::Execution(st),
+                proof,
+            })
         }
         4 => {
             let params = zheng::execution::succinct::params_for(20);
             let (statement, proof) = machine::prove(prog, input, BUDGET, &params)?;
-            Ok(Envelope::Machine { params, statement: statement.public(), proof: Box::new(proof) })
+            Ok(Envelope::Machine {
+                params,
+                statement: statement.public(),
+                proof: Box::new(proof),
+            })
         }
         5 => recursive::prove(prog, input, BUDGET, &recursive::params()),
         6 => zheng::envelope::wrapped::prove(prog, input, BUDGET),
@@ -54,7 +61,10 @@ fn prove(profile: u8, prog: &N, input: &[u64]) -> Result<Envelope, String> {
 
 fn check(bytes: &[u8], program: &[zheng::execution::NounToken]) -> f64 {
     let t = Instant::now();
-    Envelope::from_bytes_for(bytes, program).expect("decode").verify_program(program, None).expect("verify");
+    Envelope::from_bytes_for(bytes, program)
+        .expect("decode")
+        .verify_program(program, None)
+        .expect("verify");
     t.elapsed().as_secs_f64() * 1e3
 }
 
@@ -66,11 +76,20 @@ fn main() {
         let first = check(&bytes, &program);
         let mut v: Vec<f64> = (0..5).map(|_| check(&bytes, &program)).collect();
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        println!("{file}: {} B · profile {} · decode+verify cold {first:.2} ms, warm median {:.2} ms", bytes.len(), bytes[10], v[2]);
+        println!(
+            "{file}: {} B · profile {} · decode+verify cold {first:.2} ms, warm median {:.2} ms",
+            bytes.len(),
+            bytes[10],
+            v[2]
+        );
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let names = if args.is_empty() { vec!["hash.tri".into(), "merkle-32".into()] } else { args };
+    let names = if args.is_empty() {
+        vec!["hash.tri".into(), "merkle-32".into()]
+    } else {
+        args
+    };
     let profiles: Vec<u8> = std::env::var("ZHENG_PROFILES")
         .ok()
         .map(|v| v.split(',').filter_map(|p| p.parse().ok()).collect())
@@ -89,7 +108,8 @@ fn main() {
             let t_prove = t0.elapsed().as_secs_f64();
             let bytes = envelope.to_bytes();
             if let Ok(dir) = std::env::var("ZHENG_ENVELOPE_DIR") {
-                std::fs::write(format!("{dir}/{name}.p{profile}.zheng"), &bytes).expect("write envelope");
+                std::fs::write(format!("{dir}/{name}.p{profile}.zheng"), &bytes)
+                    .expect("write envelope");
             }
             let program = machine::statement::tokens(&prog);
             let first = check(&bytes, &program);

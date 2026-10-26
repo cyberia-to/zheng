@@ -9,12 +9,18 @@ fn pair(a: N, b: N) -> N {
 }
 /// (a + b) · a over subject [a [b 0]].
 fn add_mul() -> N {
-    let add = pair(N::Atom(5), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
+    let add = pair(
+        N::Atom(5),
+        pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))),
+    );
     pair(N::Atom(7), pair(add, pair(N::Atom(0), N::Atom(2))))
 }
 /// a · a over subject [a [b 0]].
 fn square() -> N {
-    pair(N::Atom(7), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(2))))
+    pair(
+        N::Atom(7),
+        pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(2))),
+    )
 }
 
 #[test]
@@ -66,6 +72,12 @@ fn digests_are_deterministic_and_separate_kinds() {
     let a = VerifyingKey::for_execution(&statement).unwrap();
     let b = VerifyingKey::for_execution(&statement).unwrap();
     assert_eq!(a.digest(), b.digest());
-    let state = program_key(&statement.program, 2, StatementKind::State { root_in_subject: false });
+    let state = program_key(
+        &statement.program,
+        2,
+        StatementKind::State {
+            root_in_subject: false,
+        },
+    );
     assert_ne!(state, a.program_key());
 }

@@ -290,8 +290,12 @@ pub(crate) mod malleability {
         public: &[(usize, Goldilocks)],
     ) -> usize {
         let z = super::assemble(instance, cert, public).unwrap().z;
-        let pins: Vec<usize> = core::iter::once(0).chain(public.iter().map(|p| p.0)).collect();
-        let free_index: Vec<usize> = (0..instance.num_cols).filter(|i| !pins.contains(i)).collect();
+        let pins: Vec<usize> = core::iter::once(0)
+            .chain(public.iter().map(|p| p.0))
+            .collect();
+        let free_index: Vec<usize> = (0..instance.num_cols)
+            .filter(|i| !pins.contains(i))
+            .collect();
         let mut movable = 0;
         for (k, &idx) in free_index.iter().enumerate().take(cert.free.len()) {
             let mut bad = cert.clone();
@@ -311,7 +315,9 @@ pub(crate) mod malleability {
                         continue;
                     }
                     let zero_partner = set.iter().any(|&mi| {
-                        !instance.matrices[mi].entries[r].iter().any(|&(c, _)| c == idx)
+                        !instance.matrices[mi].entries[r]
+                            .iter()
+                            .any(|&(c, _)| c == idx)
                             && row_value(&instance.matrices[mi], r, &z) == Goldilocks::ZERO
                     });
                     assert!(
@@ -346,7 +352,10 @@ pub(crate) mod malleability {
                 let public = statement.bindings(&relation).unwrap();
                 let movable =
                     movable_wires_only_multiply_zero(name, &relation.instance, &cert, &public);
-                println!("{name} {input:?}: free {} movable {movable}", cert.free.len());
+                println!(
+                    "{name} {input:?}: free {} movable {movable}",
+                    cert.free.len()
+                );
             }
         }
     }

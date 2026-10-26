@@ -62,10 +62,15 @@ fn main() {
     let folds = list(a.get(3).map_or("4", |s| s));
     let fin: u8 = a.get(4).map_or(8, |x| x.parse().expect("final vars"));
     let arity: usize = a.get(5).map_or(2, |x| x.parse().expect("arity"));
-    let inputs: usize = std::env::var("ZHENG_INPUTS").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    let inputs: usize = std::env::var("ZHENG_INPUTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
     let ell = n + wrap::CBITS;
     println!("n {n} · ℓ {ell} · final vars ≤ {fin} · arity {arity} · inputs {inputs}");
-    println!("rate pow k | queries per round | opening B | leaf+path perms | ROM min | interactive min | grind 2^x total | round-0 code (2^)");
+    println!(
+        "rate pow k | queries per round | opening B | leaf+path perms | ROM min | interactive min | grind 2^x total | round-0 code (2^)"
+    );
     for &r in &rates {
         for &k in &folds {
             for &p in &pows {
@@ -74,18 +79,29 @@ fn main() {
                 whir.pow_bits = p as u8;
                 whir.folding_factor = k as u8;
                 whir.max_final_vars = fin;
-                let mode = if inputs == 1 { Mode::Final } else { Mode::Inner };
+                let mode = if inputs == 1 {
+                    Mode::Final
+                } else {
+                    Mode::Inner
+                };
                 let params = WrapParams { whir, n, mode };
                 let groups: Vec<usize> = vec![1; inputs];
-                let cfg = match zheng::recursion::whir::Config::derive(&whir, ell, &groups, inputs + 3) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let wc = lens::rspcs::whir::WhirConfig::derive(&whir, ell).expect("schedule");
-                        let weak: Vec<String> = wc.terms().into_iter().filter(|t| t.1 < 128.0).map(|(a, b)| format!("{a} {b:.1}")).collect();
-                        println!("1/{} {p} {k} | {e} ({})", 1u64 << r, weak.join(", "));
-                        continue;
-                    }
-                };
+                let cfg =
+                    match zheng::recursion::whir::Config::derive(&whir, ell, &groups, inputs + 3) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let wc = lens::rspcs::whir::WhirConfig::derive(&whir, ell)
+                                .expect("schedule");
+                            let weak: Vec<String> = wc
+                                .terms()
+                                .into_iter()
+                                .filter(|t| t.1 < 128.0)
+                                .map(|(a, b)| format!("{a} {b:.1}"))
+                                .collect();
+                            println!("1/{} {p} {k} | {e} ({})", 1u64 << r, weak.join(", "));
+                            continue;
+                        }
+                    };
                 let wc = &cfg.wc;
                 let mut bytes = 0.0;
                 let mut perms = 0.0;
@@ -125,11 +141,22 @@ fn main() {
                     qs.push(q);
                     let words = if i == 0 { inputs } else { 1 };
                     let sym = if i == 0 { 8.0 } else { 24.0 };
-                    let lanes = if i == 0 { 1usize << s.fold } else { 3usize << s.fold };
+                    let lanes = if i == 0 {
+                        1usize << s.fold
+                    } else {
+                        3usize << s.fold
+                    };
                     let leaf_perms = (lanes as f64 / 9.0).ceil();
                     bytes += 4.0 * q as f64;
-                    bytes += words as f64 * (distinct(q, depth) * sym * (1u64 << s.fold) as f64 + 4.0 + 32.0 * siblings(q, depth, arity));
-                    let path = if arity == 4 { (depth / 2 + depth % 2) as f64 } else { depth as f64 };
+                    bytes += words as f64
+                        * (distinct(q, depth) * sym * (1u64 << s.fold) as f64
+                            + 4.0
+                            + 32.0 * siblings(q, depth, arity));
+                    let path = if arity == 4 {
+                        (depth / 2 + depth % 2) as f64
+                    } else {
+                        depth as f64
+                    };
                     perms += words as f64 * q as f64 * (leaf_perms + path);
                 }
                 bytes += 24.0 * (1u64 << wc.final_vars) as f64;

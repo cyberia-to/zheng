@@ -20,7 +20,11 @@ pub enum Mix {
 
 impl Mix {
     pub fn of(x: Fp3) -> Self {
-        if x.c1 == Goldilocks::ZERO && x.c2 == Goldilocks::ZERO { Mix::B(x.c0) } else { Mix::E(x) }
+        if x.c1 == Goldilocks::ZERO && x.c2 == Goldilocks::ZERO {
+            Mix::B(x.c0)
+        } else {
+            Mix::E(x)
+        }
     }
     pub fn fp3(self) -> Fp3 {
         match self {
@@ -43,7 +47,9 @@ impl Add for Mix {
     fn add(self, o: Mix) -> Mix {
         match (self, o) {
             (Mix::B(a), Mix::B(b)) => Mix::B(a + b),
-            (Mix::B(a), Mix::E(e)) | (Mix::E(e), Mix::B(a)) => Mix::E(Fp3::new(e.c0 + a, e.c1, e.c2)),
+            (Mix::B(a), Mix::E(e)) | (Mix::E(e), Mix::B(a)) => {
+                Mix::E(Fp3::new(e.c0 + a, e.c1, e.c2))
+            }
             (Mix::E(a), Mix::E(b)) => Mix::E(a + b),
         }
     }

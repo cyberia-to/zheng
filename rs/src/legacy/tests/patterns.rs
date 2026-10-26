@@ -36,7 +36,10 @@ fn real_traces_satisfy_pattern_family() {
             let mut trace = VecTrace::default();
             nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
             nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
-            assert!(trace.0.iter().any(|r| r.r()[0] == tag), "{name}: no tag row");
+            assert!(
+                trace.0.iter().any(|r| r.r()[0] == tag),
+                "{name}: no tag row"
+            );
             let r = build_universal_steps_from_trace(&trace.0, &[]);
             assert!(r.is_ok(), "{name}({a},{b}): {r:?}");
         }
@@ -54,7 +57,10 @@ fn real_traces_satisfy_pattern_family() {
         let mut trace = VecTrace::default();
         nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
         nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
-        assert!(trace.0.iter().any(|r| r.r()[0] == tag), "{name}: no tag row");
+        assert!(
+            trace.0.iter().any(|r| r.r()[0] == tag),
+            "{name}: no tag row"
+        );
         let r = build_universal_steps_from_trace(&trace.0, &[]);
         assert!(r.is_ok(), "{name}({a}): {r:?}");
     }
@@ -152,5 +158,8 @@ fn verify_rejects_foreign_group_layout() {
     let params = ProofParams::default();
     let mut tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
     tp.universal.accumulator.error_evals.truncate(1);
-    assert!(matches!(verify(&tp, &stmt, &params), Err(VerifyError::GroupLayout)));
+    assert!(matches!(
+        verify(&tp, &stmt, &params),
+        Err(VerifyError::GroupLayout)
+    ));
 }

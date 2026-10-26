@@ -52,10 +52,18 @@ impl Parsed {
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(self.root.as_bytes());
         write_ext(&mut out, self.g1);
-        self.outer.rounds.iter().flatten().for_each(|&x| write_ext(&mut out, x));
+        self.outer
+            .rounds
+            .iter()
+            .flatten()
+            .for_each(|&x| write_ext(&mut out, x));
         self.evals.iter().for_each(|&x| write_ext(&mut out, x));
         write_ext(&mut out, self.g2);
-        self.inner.rounds.iter().flatten().for_each(|&x| write_ext(&mut out, x));
+        self.inner
+            .rounds
+            .iter()
+            .flatten()
+            .for_each(|&x| write_ext(&mut out, x));
         self.opening.write(&mut out);
         out
     }
@@ -68,7 +76,9 @@ impl Parsed {
         if r.take(8)? != MAGIC {
             return Err("veil: magic".into());
         }
-        let root = Commitment(hemera::Hash::from_bytes(r.take(32)?.try_into().expect("32")));
+        let root = Commitment(hemera::Hash::from_bytes(
+            r.take(32)?.try_into().expect("32"),
+        ));
         let g1 = r.ext()?;
         let outer = CompressedRounds {
             rounds: (0..shape.log_m)
@@ -78,7 +88,9 @@ impl Parsed {
         let evals = r.exts(shape.matrices)?;
         let g2 = r.ext()?;
         let inner = CompressedRounds {
-            rounds: (0..shape.vars).map(|_| r.exts(2)).collect::<Result<_, _>>()?,
+            rounds: (0..shape.vars)
+                .map(|_| r.exts(2))
+                .collect::<Result<_, _>>()?,
         };
         let opening = HidingProof::read(&mut r, shape.entries)?;
         if !r.bytes.is_empty() {

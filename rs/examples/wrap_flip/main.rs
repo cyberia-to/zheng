@@ -17,7 +17,10 @@ use zheng::recursion::ivc;
 use zheng::recursion::wrap::{self, FinalProof, Mode, WrapParams};
 
 fn env<T: std::str::FromStr>(k: &str, d: T) -> T {
-    std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d)
+    std::env::var(k)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(d)
 }
 
 fn main() {
@@ -26,7 +29,8 @@ fn main() {
         "add.tri" => (common::parse(common::ADD), vec![7u64, 5]),
         "hash.tri" => (common::parse(common::HASH), vec![7]),
         "merkle-32" => {
-            let root = machine::execute(&common::merkle_program(32, None), &[5], 1 << 40).expect("run");
+            let root =
+                machine::execute(&common::merkle_program(32, None), &[5], 1 << 40).expect("run");
             let r = machine::statement::parse(&root.statement.output).expect("root");
             (common::merkle_program(32, Some(&r)), vec![5])
         }
@@ -57,7 +61,15 @@ fn main() {
         if let Some(p) = parts.next() {
             w.pow_bits = p.parse().expect("pow");
         }
-        let params = WrapParams { whir: w, n: 0, mode: if mode == "f" { Mode::Final } else { Mode::Inner } };
+        let params = WrapParams {
+            whir: w,
+            n: 0,
+            mode: if mode == "f" {
+                Mode::Final
+            } else {
+                Mode::Inner
+            },
+        };
         let k = match keys.last() {
             None => wrap::derive_key_ivc(params, &ikey),
             Some(prev) => wrap::derive_key_wrap(params, prev),
@@ -68,16 +80,38 @@ fn main() {
     eprintln!("keys {:.0} s", t.elapsed().as_secs_f64());
     let last = keys.last().expect("a level");
     let ivc_bytes = std::fs::read(format!("{dir}/{name}.ivc")).expect("stored IVC proof");
-    let proof = ivc::IvcProof::from_bytes(&ivc_bytes, |lr| ivc::key(&whir, lr as usize)).expect("parse");
-    let prep = ivc::prepare(&run.statement, &whir, proof.log_rows, proof.start, proof.segments, proof.chain).expect("prepare");
+    let proof =
+        ivc::IvcProof::from_bytes(&ivc_bytes, |lr| ivc::key(&whir, lr as usize)).expect("parse");
+    let prep = ivc::prepare(
+        &run.statement,
+        &whir,
+        proof.log_rows,
+        proof.start,
+        proof.segments,
+        proof.chain,
+    )
+    .expect("prepare");
     let pn = ivc::verify_claim(&prep, &proof).expect("ivc");
-    let wb = std::fs::read(format!("{dir}/{name}.w{}-{}", specs.len() - 1, specs.join("_"))).expect("stored final wrap");
+    let wb = std::fs::read(format!(
+        "{dir}/{name}.w{}-{}",
+        specs.len() - 1,
+        specs.join("_")
+    ))
+    .expect("stored final wrap");
     let wp = wrap::WrapProof::from_bytes(&wb, last).expect("parse wrap");
-    let fp = FinalProof { log_rows: proof.log_rows, start: proof.start, segments: proof.segments, chain: proof.chain, pn, wrap: wp };
+    let fp = FinalProof {
+        log_rows: proof.log_rows,
+        start: proof.start,
+        segments: proof.segments,
+        chain: proof.chain,
+        pn,
+        wrap: wp,
+    };
     let bytes = fp.to_bytes(last);
     std::fs::write(format!("{dir}/{name}.final-{}", specs.join("_")), &bytes).expect("store final");
     let parse = |b: &[u8]| FinalProof::from_bytes(b, last);
-    wrap::verify_statement(&run.statement, &whir, last, &parse(&bytes).expect("parses")).expect("verifies");
+    wrap::verify_statement(&run.statement, &whir, last, &parse(&bytes).expect("parses"))
+        .expect("verifies");
     // verify time: the statement prepared once, and from the statement
     let mut v = Vec::new();
     let mut vs = Vec::new();
@@ -92,7 +126,11 @@ fn main() {
     }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     vs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let parts: Vec<String> = fp.sizes(last).iter().map(|(k, v)| format!("{k} {v}")).collect();
+    let parts: Vec<String> = fp
+        .sizes(last)
+        .iter()
+        .map(|(k, v)| format!("{k} {v}"))
+        .collect();
     println!(
         "{name}: final proof {} B ({}) · verify median {:.2} ms (statement prepared), {:.2} ms (from the statement)",
         bytes.len(),
@@ -106,9 +144,15 @@ fn main() {
     let stride: usize = env("ZHENG_STRIDE", 1);
     let bits = bytes.len() * 8;
     let next = AtomicUsize::new(0);
-    let (flips, decoded, accepted) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
+    let (flips, decoded, accepted) = (
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+    );
     let t0 = Instant::now();
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16);
     std::thread::scope(|s| {
         for _ in 0..threads {
             s.spawn(|| {
@@ -124,7 +168,11 @@ fn main() {
                         decoded.fetch_add(1, Ordering::Relaxed);
                         let ok = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let same = prep.header == (q.log_rows, q.start, q.segments, q.chain);
-                            if same { wrap::verify_final(&prep, last, &q).is_ok() } else { wrap::verify_statement(&run.statement, &whir, last, &q).is_ok() }
+                            if same {
+                                wrap::verify_final(&prep, last, &q).is_ok()
+                            } else {
+                                wrap::verify_statement(&run.statement, &whir, last, &q).is_ok()
+                            }
                         }));
                         match ok {
                             Ok(false) => {}

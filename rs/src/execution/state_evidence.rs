@@ -136,7 +136,10 @@ impl StateEvidence {
             return Err("state evidence: noncanonical root leaf".into());
         }
         if self.tables.len() > (MAX_NAMESPACE + 1) as usize
-            || self.tables.windows(2).any(|t| t[0].namespace >= t[1].namespace)
+            || self
+                .tables
+                .windows(2)
+                .any(|t| t[0].namespace >= t[1].namespace)
         {
             return Err("state evidence: namespaces must be unique and increasing".into());
         }

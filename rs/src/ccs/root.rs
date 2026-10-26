@@ -21,7 +21,7 @@ use nebu::Goldilocks;
 use hemera::field::Goldilocks as HGold;
 use hemera::permutation::{permute, permute_traced};
 
-use super::transcript::{squeeze_rows, SqueezeVisitor};
+use super::transcript::{SqueezeVisitor, squeeze_rows};
 use crate::types::CCSWitness;
 
 /// The 14 leaves of the BBG root preimage, each a 4-limb digest.
@@ -70,7 +70,12 @@ pub const ROOT_TAG: u64 = u64::from_le_bytes(*b"bbg-root");
 
 /// The chain IV: `[ROOT_TAG, 0, 0, 0]`.
 pub fn root_iv() -> [Goldilocks; 4] {
-    [Goldilocks::new(ROOT_TAG), Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO]
+    [
+        Goldilocks::new(ROOT_TAG),
+        Goldilocks::ZERO,
+        Goldilocks::ZERO,
+        Goldilocks::ZERO,
+    ]
 }
 
 fn to_hstate(a: &[Goldilocks; 4], b: &[Goldilocks; 4]) -> [HGold; 16] {
@@ -95,7 +100,10 @@ pub fn compress4(a: &[Goldilocks; 4], b: &[Goldilocks; 4]) -> [Goldilocks; 4] {
 
 /// The BBG root: left fold of [`compress4`] over the ordered leaves from the IV.
 pub fn root_from_leaves(leaves: &RootLeaves) -> [Goldilocks; 4] {
-    leaves.ordered().iter().fold(root_iv(), |acc, leaf| compress4(&acc, leaf))
+    leaves
+        .ordered()
+        .iter()
+        .fold(root_iv(), |acc, leaf| compress4(&acc, leaf))
 }
 
 /// Pack root limbs as `Statement.bbg_root` bytes: limb i little-endian at
@@ -148,7 +156,10 @@ mod tests {
 
     #[test]
     fn root_is_deterministic() {
-        assert_eq!(root_from_leaves(&sample_leaves()), root_from_leaves(&sample_leaves()));
+        assert_eq!(
+            root_from_leaves(&sample_leaves()),
+            root_from_leaves(&sample_leaves())
+        );
     }
 
     #[test]
@@ -180,10 +191,21 @@ mod tests {
     fn root_steps_match_native_and_satisfy() {
         let leaves = sample_leaves();
         let (steps, computed) = build_root_steps(&leaves);
-        assert_eq!(computed, root_from_leaves(&leaves), "replay matches native fold");
-        assert_eq!(steps.len(), 14 * hemera::ROUNDS_TOTAL, "60 round pairs per compression");
+        assert_eq!(
+            computed,
+            root_from_leaves(&leaves),
+            "replay matches native fold"
+        );
+        assert_eq!(
+            steps.len(),
+            14 * hemera::ROUNDS_TOTAL,
+            "60 round pairs per compression"
+        );
         for (i, witness) in steps.iter().enumerate() {
-            assert!(is_satisfied(universal_ccs(), witness), "root step {i} unsatisfied");
+            assert!(
+                is_satisfied(universal_ccs(), witness),
+                "root step {i} unsatisfied"
+            );
         }
     }
 }

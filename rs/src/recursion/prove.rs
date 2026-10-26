@@ -34,7 +34,10 @@ impl AccData {
     }
     fn open(&self, leaf: usize) -> LeafOpening {
         match self {
-            AccData::Zero(z) => LeafOpening { leaf: Some(leaf), ..z.opening.clone() },
+            AccData::Zero(z) => LeafOpening {
+                leaf: Some(leaf),
+                ..z.opening.clone()
+            },
             AccData::Word(w) => w.open(leaf),
         }
     }
@@ -78,7 +81,10 @@ fn line(a: &[Fp3], b: &[Fp3], x: u64) -> Vec<Fp3> {
 pub fn pbar_nox(global: &[Public], point: &[Fp3], n: usize) -> Fp3 {
     let (z, g) = point.split_at(n + STEP_BITS);
     let e = eq_table(g);
-    global.iter().zip(&e).fold(Fp3::ZERO, |a, (col, &w)| a + w * col.eval(z))
+    global
+        .iter()
+        .zip(&e)
+        .fold(Fp3::ZERO, |a, (col, &w)| a + w * col.eval(z))
 }
 
 /// `P̄_V(z, γ) = Σ_x eq(z, x) Σ_j eq(γ, j)·K_j(x)` over the circuit key.
@@ -88,7 +94,9 @@ pub fn pbar_v(key: &[Vec<(u32, Fp3)>], point: &[Fp3], n: usize) -> Fp3 {
     let eg = eq_table(g);
     let mut acc = Fp3::ZERO;
     for (col, &w) in key.iter().zip(&eg) {
-        let s = col.iter().fold(Fp3::ZERO, |a, &(x, k)| a + k * ez[x as usize]);
+        let s = col
+            .iter()
+            .fold(Fp3::ZERO, |a, &(x, k)| a + k * ez[x as usize]);
         acc += w * s;
     }
     acc
@@ -99,7 +107,15 @@ fn pack(t: &Trace, cols: usize, rows: usize) -> Vec<Vec<Fp3>> {
     std::thread::scope(|sc| {
         for (c, o) in out.iter_mut().enumerate() {
             sc.spawn(move || {
-                *o = (0..rows).map(|r| if c < t.width { Fp3::from_base(t.row(r)[c]) } else { Fp3::ZERO }).collect();
+                *o = (0..rows)
+                    .map(|r| {
+                        if c < t.width {
+                            Fp3::from_base(t.row(r)[c])
+                        } else {
+                            Fp3::ZERO
+                        }
+                    })
+                    .collect();
             });
         }
     });
@@ -107,11 +123,20 @@ fn pack(t: &Trace, cols: usize, rows: usize) -> Vec<Vec<Fp3>> {
 }
 
 fn mle_ext(vals: &[Fp3], point: &[Fp3]) -> Fp3 {
-    eq_table(point).iter().zip(vals).fold(Fp3::ZERO, |a, (&e, &v)| a + e * v)
+    eq_table(point)
+        .iter()
+        .zip(vals)
+        .fold(Fp3::ZERO, |a, (&e, &v)| a + e * v)
 }
 
 /// Prove one step. `acc_in` is the accumulator the state carries.
-pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccData) -> Result<(StepProof, AccData, AccV<Fp3>), String> {
+pub fn prove(
+    p: &Params,
+    w: &StepInput<'_>,
+    st: &State,
+    x: Digest,
+    acc_in: &AccData,
+) -> Result<(StepProof, AccData, AccV<Fp3>), String> {
     let n = p.n;
     let rows = 1usize << n;
     let layout = p.cfg.layout;
@@ -143,7 +168,9 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
         let mut cols = pack(w.n1, WORD, rows);
         cols.extend(pack(&wb, WORD, rows));
         cols.extend(pack(&v2, WORD, rows));
-        let bout: Vec<Goldilocks> = (0..3).flat_map(|k| word_row(k, w.b_out, &b_v, Goldilocks::ZERO)).collect();
+        let bout: Vec<Goldilocks> = (0..3)
+            .flat_map(|k| word_row(k, w.b_out, &b_v, Goldilocks::ZERO))
+            .collect();
         let mut succ: Vec<Vec<Fp3>> = vec![Vec::new(); COLS];
         std::thread::scope(|sc| {
             for (c, o) in succ.iter_mut().enumerate() {
@@ -182,7 +209,16 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let tau = t.squeeze_exts(n);
     let seeds = t.squeeze_exts(p.seeds());
     let mu = w.rel.mu(&seeds);
-    let (zc, rho, evals) = zerocheck_prove_packed(&View(w.rel), COLS, cols, flat, eq_table(&tau), &ch_v, &mu, &mut t);
+    let (zc, rho, evals) = zerocheck_prove_packed(
+        &View(w.rel),
+        COLS,
+        cols,
+        flat,
+        eq_table(&tau),
+        &ch_v,
+        &mu,
+        &mut t,
+    );
     lap("zerocheck");
     let local = evals[..COLS].to_vec();
     let next = evals[COLS..2 * COLS].to_vec();
@@ -196,24 +232,40 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let gamma_n = t.squeeze_exts(PN_COLS);
     let gamma_v = t.squeeze_exts(super::circuit::layout::pre::LOG);
     let mut point_g: Vec<Fp3> = Vec::with_capacity(p.dims.g);
-    for v in [&local[..], &next[..], pub_nox, pub_v, pin, &ch_v[..], &seeds[..]] {
+    for v in [
+        &local[..],
+        &next[..],
+        pub_nox,
+        pub_v,
+        pin,
+        &ch_v[..],
+        &seeds[..],
+    ] {
         point_g.extend_from_slice(v);
     }
-    let fold_g: Vec<Fp3> = par_range(2, p.g_deg as u64, |j| w.rel.g(&line(&st.g.point, &point_g, j)));
+    let fold_g: Vec<Fp3> = par_range(2, p.g_deg as u64, |j| {
+        w.rel.g(&line(&st.g.point, &point_g, j))
+    });
     for &v in &fold_g {
         t.absorb_ext(v);
     }
     let _ = t.squeeze_ext();
     let step = st.step.c0.as_u64();
-    let bits: Vec<Fp3> = (0..STEP_BITS).map(|k| Fp3::from_base(Goldilocks::new((step >> k) & 1))).collect();
+    let bits: Vec<Fp3> = (0..STEP_BITS)
+        .map(|k| Fp3::from_base(Goldilocks::new((step >> k) & 1)))
+        .collect();
     let point_n: Vec<Fp3> = rho.iter().chain(&bits).chain(&gamma_n).copied().collect();
-    let fold_pn: Vec<Fp3> = par_range(2, p.pn_deg as u64, |j| pbar_nox(w.global, &line(&st.pn.point, &point_n, j), n));
+    let fold_pn: Vec<Fp3> = par_range(2, p.pn_deg as u64, |j| {
+        pbar_nox(w.global, &line(&st.pn.point, &point_n, j), n)
+    });
     for &v in &fold_pn {
         t.absorb_ext(v);
     }
     let _ = t.squeeze_ext();
     let point_v: Vec<Fp3> = rho.iter().chain(&gamma_v).copied().collect();
-    let fold_pv: Vec<Fp3> = par_range(2, p.pv_deg as u64, |j| pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n));
+    let fold_pv: Vec<Fp3> = par_range(2, p.pv_deg as u64, |j| {
+        pbar_v(w.sparse, &line(&st.pv.point, &point_v, j), n)
+    });
     for &v in &fold_pv {
         t.absorb_ext(v);
     }
@@ -230,7 +282,9 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
             let e = eq_table(&gs[k]);
             let tr = [w.n1, &wb, &v2][k];
             let mut out = vec![Fp3::ZERO; rows];
-            let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+            let threads = std::thread::available_parallelism()
+                .map_or(1, |x| x.get())
+                .min(16);
             let chunk = rows.div_ceil(threads).max(1);
             std::thread::scope(|sc| {
                 for (ci, part) in out.chunks_mut(chunk).enumerate() {
@@ -238,7 +292,9 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
                     sc.spawn(move || {
                         for (j, o) in part.iter_mut().enumerate() {
                             let r = ci * chunk + j;
-                            *o = tr.row(r).iter().zip(e).fold(Fp3::ZERO, |a, (&v, &ec)| a + lens::rspcs::field::mul_base(ec, v));
+                            *o = tr.row(r).iter().zip(e).fold(Fp3::ZERO, |a, (&v, &ec)| {
+                                a + lens::rspcs::field::mul_base(ec, v)
+                            });
                         }
                     });
                 }
@@ -248,9 +304,13 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
         .collect();
     let eqr = eq_table(&rho);
     let nx = next_table(&rho);
-    let kt: Vec<Fp3> = (0..rows).map(|y| eqr[y] + if y == 0 { Fp3::ZERO } else { beta * nx[y] }).collect();
+    let kt: Vec<Fp3> = (0..rows)
+        .map(|y| eqr[y] + if y == 0 { Fp3::ZERO } else { beta * nx[y] })
+        .collect();
     let z2 = zeta * zeta;
-    let q: Vec<Fp3> = (0..rows).map(|r| ps[0][r] + zeta * ps[1][r] + z2 * ps[2][r]).collect();
+    let q: Vec<Fp3> = (0..rows)
+        .map(|r| ps[0][r] + zeta * ps[1][r] + z2 * ps[2][r])
+        .collect();
     let (shift, rho2) = shift_prove(&mut t, kt, q, &mut ps);
     let vals = [ps[0][0], ps[1][0], ps[2][0]];
     for &v in &vals {
@@ -262,9 +322,16 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let mut c_acc = vec![(st.acc.rho.clone(), st.acc.v0)];
     c_acc.extend(st.acc.ood.iter().map(|&(z, y)| (upt(z), y)));
     c_acc.extend(st.acc.spot.iter().map(|&(x, y)| (upt(x), y)));
-    let za = super::step::pre_points(&mut super::ops::Native::new(), w.word_a.root().map(Fp3::from_base), p.fresh);
+    let za = super::step::pre_points(
+        &mut super::ops::Native::new(),
+        w.word_a.root().map(Fp3::from_base),
+        p.fresh,
+    );
     let fresh_ood = [
-        za.iter().zip(w.ood_a).map(|(&z, &y)| (z, y)).collect::<Vec<_>>(),
+        za.iter()
+            .zip(w.ood_a)
+            .map(|(&z, &y)| (z, y))
+            .collect::<Vec<_>>(),
         zb.iter().copied().zip(ood_b.iter().copied()).collect(),
         zc_pts.iter().copied().zip(ood_c.iter().copied()).collect(),
     ];
@@ -274,8 +341,13 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     for k in 0..3 {
         let mut cs: Vec<(Vec<Fp3>, Fp3)> = fresh_ood[k].iter().map(|&(z, y)| (upt(z), y)).collect();
         cs.push((rho2.iter().chain(&gs[k]).copied().collect(), vals[k]));
-        let row: Vec<Fp3> = word_row(k, &b_in_l, &b_v_l, Goldilocks::ZERO).into_iter().map(Fp3::from_base).collect();
-        let pt: Vec<Fp3> = core::iter::repeat_n(Fp3::ZERO, n).chain(gb[k].iter().copied()).collect();
+        let row: Vec<Fp3> = word_row(k, &b_in_l, &b_v_l, Goldilocks::ZERO)
+            .into_iter()
+            .map(Fp3::from_base)
+            .collect();
+        let pt: Vec<Fp3> = core::iter::repeat_n(Fp3::ZERO, n)
+            .chain(gb[k].iter().copied())
+            .collect();
         cs.push((pt, mle_ext(&row, &gb[k])));
         claims[k + 1] = cs;
     }
@@ -322,7 +394,14 @@ pub fn prove(p: &Params, w: &StepInput<'_>, st: &State, x: Digest, acc_in: &AccD
     let words: [&dyn Opener; 4] = [acc_in, w.word_a, &word_b, &word_c];
     let (acc, data, inst) = prove_acc(p, &mut t, &tables, &claims, &words)?;
     lap("accumulation");
-    Ok((StepProof { acc, ..proof_partial }, data, inst))
+    Ok((
+        StepProof {
+            acc,
+            ..proof_partial
+        },
+        data,
+        inst,
+    ))
 }
 
 fn bind(t: &mut ProverTranscript, word: &Word, s: usize) -> (Vec<Fp3>, Vec<Fp3>) {
@@ -397,7 +476,9 @@ fn prove_acc(
     let coef = [Fp3::ONE, r, r * r, r * r * r];
     // g = Σ r^i·f_i, in threads (the base words in mixed arithmetic)
     let mut gt = vec![Fp3::ZERO; 1 << p.vars];
-    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |x| x.get())
+        .min(16);
     let chunk = gt.len().div_ceil(threads);
     std::thread::scope(|sc| {
         for (ci, part) in gt.chunks_mut(chunk).enumerate() {
@@ -421,7 +502,10 @@ fn prove_acc(
             });
         }
     });
-    let v0 = evals.iter().zip(&coef).fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
+    let v0 = evals
+        .iter()
+        .zip(&coef)
+        .fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
     let wd = Word::commit_ext_a(cfg.layout, &gt, p.arity);
     let (root, data) = (wd.root(), AccData::Word(wd));
     lap("commit");
@@ -448,7 +532,10 @@ fn prove_acc(
     for &s in &symbols {
         let (leaf, pos) = cfg.layout.locate(s);
         let ops: Vec<LeafOpening> = words.iter().map(|w| w.opening(leaf)).collect();
-        let y = ops.iter().zip(&coef).fold(Fp3::ZERO, |a, (op, &c)| a + c * op.symbols[pos]);
+        let y = ops
+            .iter()
+            .zip(&coef)
+            .fold(Fp3::ZERO, |a, (op, &c)| a + c * op.symbols[pos]);
         openings.push(ops);
         spot.push((Fp3::from_base(omega.exp(s as u64)), y));
     }
@@ -460,7 +547,15 @@ fn prove_acc(
         spot,
     };
     Ok((
-        AccProof { sumcheck: msgs, evals, comb_nonce, root, ood, query_nonce, openings },
+        AccProof {
+            sumcheck: msgs,
+            evals,
+            comb_nonce,
+            root,
+            ood,
+            query_nonce,
+            openings,
+        },
         data,
         inst,
     ))

@@ -29,15 +29,30 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut chars = input.chars().peekable();
     while let Some(&c) = chars.peek() {
         match c {
-            '[' => { tokens.push(Token::Open); chars.next(); }
-            ']' => { tokens.push(Token::Close); chars.next(); }
-            c if c.is_whitespace() => { chars.next(); }
+            '[' => {
+                tokens.push(Token::Open);
+                chars.next();
+            }
+            ']' => {
+                tokens.push(Token::Close);
+                chars.next();
+            }
+            c if c.is_whitespace() => {
+                chars.next();
+            }
             c if c.is_ascii_digit() => {
                 let mut num = String::new();
                 while let Some(&d) = chars.peek() {
-                    if d.is_ascii_digit() { num.push(d); chars.next(); } else { break; }
+                    if d.is_ascii_digit() {
+                        num.push(d);
+                        chars.next();
+                    } else {
+                        break;
+                    }
                 }
-                let v: u64 = num.parse().map_err(|e| format!("bad number '{num}': {e}"))?;
+                let v: u64 = num
+                    .parse()
+                    .map_err(|e| format!("bad number '{num}': {e}"))?;
                 tokens.push(Token::Num(v));
             }
             other => return Err(format!("unexpected character '{other}' in formula")),
@@ -47,10 +62,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
 }
 
 /// Parse `input` into a noun tree allocated in `reduction`; return its root Order.
-pub fn parse<const N: usize>(
-    reduction: &mut Reduction<N>,
-    input: &str,
-) -> Result<Order, String> {
+pub fn parse<const N: usize>(reduction: &mut Reduction<N>, input: &str) -> Result<Order, String> {
     let tokens = tokenize(input)?;
     let mut pos = 0;
     let root = parse_expr(reduction, &tokens, &mut pos, 0)?;
@@ -72,7 +84,9 @@ fn parse_expr<const N: usize>(
     match tokens.get(*pos) {
         Some(Token::Num(v)) => {
             *pos += 1;
-            reduction.atom(Goldilocks::new(*v)).ok_or_else(|| "order arena full".to_string())
+            reduction
+                .atom(Goldilocks::new(*v))
+                .ok_or_else(|| "order arena full".to_string())
         }
         Some(Token::Open) => {
             *pos += 1;
@@ -91,7 +105,9 @@ fn parse_expr<const N: usize>(
             let mut it = elems.into_iter().rev();
             let mut acc = it.next().unwrap();
             for e in it {
-                acc = reduction.pair(e, acc).ok_or_else(|| "order arena full".to_string())?;
+                acc = reduction
+                    .pair(e, acc)
+                    .ok_or_else(|| "order arena full".to_string())?;
             }
             Ok(acc)
         }

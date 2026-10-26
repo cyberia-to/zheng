@@ -23,7 +23,10 @@ pub enum Public {
     Periodic(Vec<Fp3>),
     /// A periodic pattern on rows `≥ start` (`start` a multiple of the
     /// pattern length), zero below.
-    Region { pattern: Vec<Fp3>, start: usize },
+    Region {
+        pattern: Vec<Fp3>,
+        start: usize,
+    },
 }
 
 /// `[y < s]` as a multilinear polynomial in `y` (lens order):
@@ -46,7 +49,13 @@ pub fn less_than(y: &[Fp3], s: usize) -> Fp3 {
 /// The point of row `x` over `n` variables.
 pub fn row_point(x: usize, n: usize) -> Vec<Fp3> {
     (0..n)
-        .map(|k| if (x >> k) & 1 == 1 { Fp3::ONE } else { Fp3::ZERO })
+        .map(|k| {
+            if (x >> k) & 1 == 1 {
+                Fp3::ONE
+            } else {
+                Fp3::ZERO
+            }
+        })
         .collect()
 }
 
@@ -80,9 +89,9 @@ impl Public {
     pub fn eval(&self, point: &[Fp3]) -> Fp3 {
         let n = point.len();
         match self {
-            Public::Sparse(v) => v
-                .iter()
-                .fold(Fp3::ZERO, |acc, &(x, val)| acc + val * eq_eval(&row_point(x, n), point)),
+            Public::Sparse(v) => v.iter().fold(Fp3::ZERO, |acc, &(x, val)| {
+                acc + val * eq_eval(&row_point(x, n), point)
+            }),
             Public::Prefix(v) => {
                 if v.is_empty() {
                     return Fp3::ZERO;
@@ -92,17 +101,25 @@ impl Public {
                 let high = point[bits..]
                     .iter()
                     .fold(Fp3::ONE, |acc, &r| acc * (Fp3::ONE - r));
-                v.iter().zip(&table).fold(Fp3::ZERO, |a, (&x, &e)| a + x * e) * high
+                v.iter()
+                    .zip(&table)
+                    .fold(Fp3::ZERO, |a, (&x, &e)| a + x * e)
+                    * high
             }
             Public::Periodic(v) => {
                 let bits = v.len().trailing_zeros() as usize;
                 let table = eq_table(&point[..bits]);
-                v.iter().zip(&table).fold(Fp3::ZERO, |a, (&x, &e)| a + x * e)
+                v.iter()
+                    .zip(&table)
+                    .fold(Fp3::ZERO, |a, (&x, &e)| a + x * e)
             }
             Public::Region { pattern, start } => {
                 let bits = pattern.len().trailing_zeros() as usize;
                 let table = eq_table(&point[..bits]);
-                let low = pattern.iter().zip(&table).fold(Fp3::ZERO, |a, (&x, &e)| a + x * e);
+                let low = pattern
+                    .iter()
+                    .zip(&table)
+                    .fold(Fp3::ZERO, |a, (&x, &e)| a + x * e);
                 low * (Fp3::ONE - less_than(&point[bits..], start >> bits))
             }
         }
@@ -118,15 +135,23 @@ impl Public {
                     .map(|&(x, val)| (x - offset, val))
                     .collect(),
             ),
-            Public::Prefix(v) => {
-                Public::Prefix(v.get(offset..v.len().min(offset + len)).unwrap_or(&[]).to_vec())
-            }
+            Public::Prefix(v) => Public::Prefix(
+                v.get(offset..v.len().min(offset + len))
+                    .unwrap_or(&[])
+                    .to_vec(),
+            ),
             Public::Periodic(v) => {
-                assert!(offset.is_multiple_of(v.len()) && v.len() <= len, "window of a periodic column");
+                assert!(
+                    offset.is_multiple_of(v.len()) && v.len() <= len,
+                    "window of a periodic column"
+                );
                 Public::Periodic(v.clone())
             }
             Public::Region { pattern, start } => {
-                assert!(offset.is_multiple_of(pattern.len()) && pattern.len() <= len, "window of a region");
+                assert!(
+                    offset.is_multiple_of(pattern.len()) && pattern.len() <= len,
+                    "window of a region"
+                );
                 if *start >= offset + len {
                     Public::Sparse(vec![])
                 } else {
@@ -182,7 +207,11 @@ mod tests {
     use nebu::Goldilocks;
 
     fn e(i: u64) -> Fp3 {
-        Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i + 11), Goldilocks::new(3 * i))
+        Fp3::new(
+            Goldilocks::new(i * 7 + 1),
+            Goldilocks::new(i + 11),
+            Goldilocks::new(3 * i),
+        )
     }
 
     #[test]
@@ -191,7 +220,11 @@ mod tests {
         for x in 0..16 {
             for y in 0..16 {
                 let v = next_eval(&row_point(x, n), &row_point(y, n));
-                let want = if y == (x + 1) % 16 { Fp3::ONE } else { Fp3::ZERO };
+                let want = if y == (x + 1) % 16 {
+                    Fp3::ONE
+                } else {
+                    Fp3::ZERO
+                };
                 assert_eq!(v, want, "{x} {y}");
             }
         }
@@ -216,13 +249,20 @@ mod tests {
         for p in [
             Public::Sparse(vec![(3, e(1)), (40, e(2)), (100, e(3))]),
             Public::Prefix((0..70).map(e).collect()),
-            Public::Region { pattern: (0..8).map(e).collect(), start: 48 },
+            Public::Region {
+                pattern: (0..8).map(e).collect(),
+                start: 48,
+            },
         ] {
             let full = p.table(n);
             for off in [0, 32, 64, 96] {
                 let w = p.window(off, 1 << k);
                 assert_eq!(w.table(k), full[off..off + 32].to_vec(), "{p:?} @ {off}");
-                let mle = w.table(k).iter().zip(eq_table(&z)).fold(Fp3::ZERO, |a, (&x, q)| a + x * q);
+                let mle = w
+                    .table(k)
+                    .iter()
+                    .zip(eq_table(&z))
+                    .fold(Fp3::ZERO, |a, (&x, q)| a + x * q);
                 assert_eq!(w.eval(&z), mle);
             }
         }
@@ -238,12 +278,24 @@ mod tests {
             Public::Prefix((0..11).map(e).collect()),
             Public::Periodic((0..8).map(e).collect()),
             Public::constant(e(9)),
-            Public::Region { pattern: (0..4).map(e).collect(), start: 24 },
-            Public::Region { pattern: vec![e(3)], start: 0 },
-            Public::Region { pattern: (0..8).map(e).collect(), start: 56 },
+            Public::Region {
+                pattern: (0..4).map(e).collect(),
+                start: 24,
+            },
+            Public::Region {
+                pattern: vec![e(3)],
+                start: 0,
+            },
+            Public::Region {
+                pattern: (0..8).map(e).collect(),
+                start: 56,
+            },
         ] {
             let t = p.table(n);
-            let mle = t.iter().zip(&weights).fold(Fp3::ZERO, |a, (&x, &w)| a + x * w);
+            let mle = t
+                .iter()
+                .zip(&weights)
+                .fold(Fp3::ZERO, |a, (&x, &w)| a + x * w);
             assert_eq!(mle, p.eval(&z), "{p:?}");
         }
     }
