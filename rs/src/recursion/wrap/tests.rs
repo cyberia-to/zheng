@@ -115,6 +115,9 @@ fn the_shipped_final_proof_is_at_most_64_kib_over_every_transcript() {
         let mut w = whir;
         w.log_inv_rate = rate.parse().unwrap();
         w.pow_bits = parts.next().unwrap().parse().unwrap();
+        if let Some(k) = parts.next() {
+            w.folding_factor = k.parse().unwrap();
+        }
         let params = WrapParams {
             whir: w,
             n: 0,

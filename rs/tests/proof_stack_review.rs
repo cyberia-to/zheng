@@ -470,7 +470,7 @@ fn a_well_formed_bundle_of_other_keys_is_refused() {
     assert_eq!(keys::install(&p5), Ok(Profile::Recursive));
 }
 
-/// The size gate: the admitted final key's bound is 64,213 B ≤ 64 KiB;
+/// The size gate: the admitted final key's bound is 64,129 B ≤ 64 KiB;
 /// a proof one byte over the key's bound, or a length prefix over the
 /// envelope's cap, is refused before parsing; random bytes of exactly the
 /// bound never parse into a proof (no panic either).
@@ -478,7 +478,7 @@ fn a_well_formed_bundle_of_other_keys_is_refused() {
 fn the_size_gate_refuses_before_parsing() {
     let k = wrapped::final_key().unwrap();
     let max = wrap::max_proof_bytes(&k);
-    assert_eq!(max, 64_213);
+    assert_eq!(max, 64_129);
     assert!(max <= wrapped::MAX_PROOF_BYTES && wrapped::MAX_PROOF_BYTES == 65_536);
     let mut x = 0x2545_f491_4f6c_dd1du64;
     let mut rnd = |n: usize| -> Vec<u8> {

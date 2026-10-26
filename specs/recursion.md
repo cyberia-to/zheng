@@ -254,11 +254,11 @@ evaluates `u_λ` slot by slot: with `ℓ − fv ≤ n` every cell of one slot
 shares its row's `eq(α, ·)` factor, so the term is one product per slot
 and a Horner sum over the reads (`wrap::wiring`).
 
-The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`): the IVC proof
+The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,10f:32:5`): the IVC proof
 (rate 1/16, `ivc::SHIPPED_RATE`, steps of `2^15` rows, 4-ary trees) →
 inner 1/16 grinding 16 bits (the IVC final verifier, 48,453 of 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
-1/512 grinding 26 (2^14 rows). The final level's circuit size (≤ 2^14,
-so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the
+1/1024 grinding 32, folding factor 5 (23,921 rows, so 2^15 and `ℓ = 21`).
+The final level's circuit size fixes the inner level's rate: a lower rate adds queries the
 final circuit verifies; the base-field key (a key leaf of 6 permutations
 instead of 11) makes 1/128 fit — 16,230 of 16,384 rows; the final rate and grinding fix the
 proof's bytes (`examples/wrap_plan`, `examples/wrap_chain` plan a chain
@@ -268,13 +268,17 @@ multi-opening of `q` leaves carries at most `Σ_levels (a·n_{l+1} − n_l)`
 siblings with `n_l = min(q, nodes at level l)` (`whir::wire::max_siblings`,
 exact). The gate: `wrap::max_proof_bytes(final key)` ≤ 64 KiB
 (`wrap::MAX_FINAL_BYTES` = 65,536), hard, by key — the shipped chain
-64,213 B (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`);
+64,129 B, 128.07 bits at the weakest row (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`;
+`audit/wrap-frontier-hemera-0.4-2026-10-26.md`). The price is the prover: the
+final level did not finish within 355 min on 4 threads (≥ 19,417 s, job
+121611993667 of zheng run 40334403053), roughly 10–25× the 2,022 s final
+level of `9f:26:5` or more;
 `FinalProof::from_bytes` refuses longer input and profile 6 refuses a
 final key over the gate. A profile-6 envelope adds its header (11 B), format byte and
 chain (37 B), the statement (program digest 32 B, inputs, output tokens,
 cycles, budget, state) and the proof's length varint (3 B): it is ≤ 64 KiB
-over every transcript whenever the encoded statement takes ≤ 1,272 B
-(65,536 − 64,213 − 51; small programs take ≈ 0.6–0.9 KB); a larger statement
+over every transcript whenever the encoded statement takes ≤ 1,356 B
+(65,536 − 64,129 − 51 = 1,356 B; small programs take ≈ 0.6–0.9 KB); a larger statement
 (many inputs or outputs) can push the envelope past 64 KiB while the
 proof stays under its gate. A verifying key travels as bytes (`WrapKey::vk_bytes`,
 pinned by `vk_digest`): it verifies, it does not prove.
