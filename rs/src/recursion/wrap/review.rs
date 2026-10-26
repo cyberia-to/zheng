@@ -477,12 +477,12 @@ fn the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated(
     }
     // the figures `specs/soundness.md` and the audit state, under the
     // rebalanced schedule (`whir::schedule`; `audit/ivc-speed-2026-10.md`):
-    // weakest 128.09 / 128.24 / 128.40, interactively 110.23 / 104.24 /
-    // 101.89 (final: `fin` after its 27 bits) — five input words at each
+    // weakest 128.09 / 128.24 / 128.07, interactively 110.23 / 104.24 /
+    // 96.07 (final: `shift_2` after round 1's 32-bit query grinding) — five input words at each
     // inner level (`audit/proof-stack-review-2026-10.md` D1)
     for (got, want) in weakest
         .iter()
-        .zip([(128.09, 110.23), (128.24, 104.24), (128.07, 101.89)])
+        .zip([(128.09, 110.23), (128.24, 104.24), (128.07, 96.07)])
     {
         assert!(
             (got.0 - want.0).abs() < 0.01 && (got.1 - want.1).abs() < 0.01,

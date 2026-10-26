@@ -119,12 +119,12 @@ final 1/1024 with 32, folding factor 5 (2^15) — weakest rows 128.09 / 128.24 /
 keeps lens's queries per round and re-chooses per round the Johnson
 regime, OOD count and fold/query grinding for the least grinding work
 (`recursion::whir::schedule`; each term recomputed by lens's ledger,
-`tests/ivc_speed_review.rs`): the final level grinds fold 22/22/22 and
-query 24/24/27 (was 17/20/25 and 26/26/26), level 1's combination 21
+`tests/ivc_speed_review.rs`): the final level grinds fold 27/31/31 and
+query 31/32/32 (under `9f:26`: 22/22/22 and 24/24/27), level 1's combination 21
 (was 26). The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
-challenges) the weakest rounds carry **110.23 / 104.24 / 101.89** bits
-(the final level's `fin` after its 27-bit query grinding — the
+challenges) the weakest rounds carry **110.23 / 104.24 / 96.07** bits
+(the final level's `shift_2` after round 1's 32-bit query grinding; under `9f:26` it was 101.89, `fin` after 27 bits — the
 queries 24/18/14 kept the proof ≤ 64,213 B over every transcript under hemera 0.3 and `9f:26`; `10f:32:5` bounds at 64,129 B now), so
 the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,
