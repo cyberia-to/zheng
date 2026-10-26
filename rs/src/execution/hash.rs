@@ -241,7 +241,7 @@ mod tests {
     fn atom_hash_matches_native_at_byte_and_field_boundaries() {
         let program = pair(atom(15), pair(atom(0), atom(1)));
         let relation = compile_relation(&program, &SubjectShape::Atom).unwrap();
-        assert_eq!(relation.max_cost, 26);
+        assert_eq!(relation.max_cost, crate::execution::HASH_COST + 1);
         for input in [0, 1, (1 << 56) - 1, 1 << 56, nebu::field::P - 1] {
             let input = F::new(input);
             let witness = relation.witness(&[input]).unwrap();

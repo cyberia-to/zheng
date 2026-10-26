@@ -1,4 +1,5 @@
 use super::*;
+use crate::execution::HASH_COST;
 impl Builder {
     pub(super) fn eval(
         &mut self,
@@ -73,8 +74,8 @@ impl Builder {
             15 => {
                 let (v, c, m) = self.eval(obj, body, depth + 1)?;
                 let out = self.hash(&v)?;
-                let cost = self.add(&c, &Value::Constant(F::new(25)), false)?;
-                Ok((out, cost, m + 25))
+                let cost = self.add(&c, &Value::Constant(F::new(HASH_COST)), false)?;
+                Ok((out, cost, m + HASH_COST))
             }
             13 => {
                 let (v, c, m) = self.eval(obj, body, depth + 1)?;

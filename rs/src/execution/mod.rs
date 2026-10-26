@@ -27,6 +27,13 @@ pub mod vk;
 /// Native private CCS proofs over the soft3 field and hash.
 pub mod zk;
 
+/// Cost of the hash pattern (opcode 15), as native nox charges it: one
+/// cycle per Hemera round plus one for the sponge's absorb, so a hemera
+/// round-count change moves it with no edit here. Mirrors `HASH_COST` in
+/// nox `rs/patterns/hash.rs` (nox keeps it `pub(crate)`, so it is derived
+/// again, not imported); every zheng cost table takes it from here.
+pub(crate) const HASH_COST: u64 = hemera::ROUNDS_TOTAL as u64 + 1;
+
 pub use certificate::Certificate;
 pub use proof::DirectProof;
 pub use relation::ExecutionNoun;

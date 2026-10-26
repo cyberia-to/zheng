@@ -3,6 +3,8 @@
 //! are shared between row kinds, every constraint is gated by the kind (or
 //! by a public phase column in the permutation region).
 
+use crate::execution::HASH_COST;
+
 /// Phase-1 columns.
 pub const W1: usize = 64;
 
@@ -51,7 +53,7 @@ pub const OPS: [(usize, u64, u64); 15] = [
     (7, 7, 1),    // mul
     (8, 8, 64),   // inv
     (9, 9, 1),    // eq
-    (10, 15, 25), // hash
+    (10, 15, HASH_COST), // hash
     (11, 10, 64), // lt
     (13, 13, 32), // not
     (14, 16, 1),  // call

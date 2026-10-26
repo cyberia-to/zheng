@@ -1,4 +1,5 @@
 use super::{build::Builder, *};
+use crate::execution::HASH_COST;
 fn pair(n: &Noun) -> Option<(&Noun, &Noun)> {
     if let Noun::Pair(a, b) = n {
         Some((a, b))
@@ -176,8 +177,8 @@ impl Builder {
                 let out = self.permute(state)?;
                 let digest = std::array::from_fn(|i| out[i]);
                 let output = self.digest_noun(digest, active)?;
-                let cost = self.lin(vec![(active, F::new(25)), (cost, F::ONE)])?;
-                Ok((output, cost, 25 + max_cost))
+                let cost = self.lin(vec![(active, F::new(HASH_COST)), (cost, F::ONE)])?;
+                Ok((output, cost, HASH_COST + max_cost))
             }
             16 | 17 => Err(Error::Unsupported(
                 "opcode outside experimental tagged kernel",

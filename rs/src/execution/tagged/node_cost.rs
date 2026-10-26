@@ -1,6 +1,7 @@
 //! Local header/Cost constraints with six unresolved authenticated-read premises.
 //! Contract: specs/noun-cost-component.md. No memory membership or execution API.
 use super::{build::Builder, uint64::U64, *};
+use crate::execution::HASH_COST;
 
 pub(super) const RECORD_FIELDS: usize = 18;
 pub(super) const READ_PORTS: usize = 6;
@@ -222,7 +223,7 @@ impl Builder {
             self.read_port(branch, b.right, n)?,
         ];
         // Fixed metadata costs mirror nox::data::cost::PATTERN_COSTS.
-        let costs = [1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, 25, 1, 1];
+        let costs = [1, 1, 1, 1, 1, 1, 1, 1, 64, 1, 64, 32, 32, 32, 32, HASH_COST, 1, 1];
         let base = self.lin(
             tags.into_iter()
                 .zip(costs)

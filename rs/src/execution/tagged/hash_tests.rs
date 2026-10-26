@@ -177,6 +177,14 @@ fn equality_gadget_checks_fourth_limb_when_first_three_match() {
     }
 }
 #[test]
+fn permutation_gates_is_what_one_permutation_allocates() {
+    let mut b = Builder::new(0);
+    b.permute([ZERO; 16]).unwrap();
+    // The next wire is 2 (one, zero) plus the operation wires so far.
+    let next = b.alloc(Op::Linear(vec![])).unwrap();
+    assert_eq!(next - 2, PERMUTATION_GATES);
+}
+#[test]
 fn canonical_byte_decomposition_rejects_coherent_mod_p_aliases() {
     let mut b = Builder::new(1);
     b.canonical_bits(2).unwrap();
