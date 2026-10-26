@@ -255,7 +255,7 @@ fn seeded_proofs_do_not_depend_on_the_thread_count() {
     let digest = hemera::hash(proof.as_bytes());
     assert_eq!(
         digest.to_hex(),
-        "1b312058d0d41b4735045f8c62bc09a5f8de639b08f268b0c2e102fa33b7bad3",
+        "9489e17fdc2f8cadd3feda849ccfd073ead57d8400a6d299fd9ccb22d8900af7",
         "threads {}",
         crate::par::threads()
     );

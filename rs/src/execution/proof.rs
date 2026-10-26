@@ -235,8 +235,10 @@ mod tests {
     use super::*;
     use crate::types::SparseMatrix;
 
+    /// hemera 0.4 (60 rounds); the 0.3 value was c6745fa9...a5065. The digest
+    /// is over hemera-hashed bytes (zheng run 40271393643).
     const FROZEN_V1_DIGEST: &str =
-        "c6745fa9d65a39309760396d0f614dc78e79cdbb261186c063ab2c1f631a5065";
+        "52ac826cbe86e489822f2c44f9bed45929fe2f4e5c6564be592acd6ab4dd6d5c";
 
     fn relation() -> (CCSInstance, CCSWitness, Vec<(usize, Goldilocks)>) {
         // The public output z[3] must equal public input z[1] times z[2].
