@@ -6,6 +6,8 @@
 # nox, tade and honeycrisp checked out side by side; even fmt loads the workspace.
 # The `lockfile` job resolves that stand and uploads the resulting Cargo.lock as an
 # artifact so it can be committed.
+# The `fmt` and `clippy` jobs upload rustfmt's own diff and clippy's full lint list
+# (`rustfmt.patch`, `clippy.txt`) so fixes can be applied from the build service's output.
 name: CI
 
 on:
@@ -171,6 +173,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: zheng
+      - name: the full lint list
+        run: |
+          cargo clippy --locked --workspace --message-format=short -- -W warnings 2> ../clippy.txt || true
+          grep -cE '^(rs|cli)/.*: (warning|error)' ../clippy.txt || true
+        working-directory: zheng
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clippy.txt
+          path: clippy.txt
       - name: cargo clippy
         run: cargo clippy --locked --workspace -- -D warnings
         working-directory: zheng
@@ -217,6 +229,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: zheng
+      - name: rustfmt's diff
+        run: cargo fmt && git diff > ../rustfmt.patch && git diff --stat | tail -1
+        working-directory: zheng
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rustfmt.patch
+          path: rustfmt.patch
       - name: cargo fmt
-        run: cargo fmt --check
+        run: git diff --exit-code --stat
         working-directory: zheng
