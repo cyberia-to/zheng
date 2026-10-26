@@ -266,7 +266,7 @@ pub const PH_PART0: usize = PH_ROUND0 + super::hemera::RF_HALF; // 9
 pub const PART_ROWS: usize = super::hemera::RP / QUAD; // 12
 pub const PH_FULL1: usize = PH_PART0 + PART_ROWS; // 21
 pub const PH_OUT: usize = PH_FULL1 + super::hemera::RF_HALF; // 27
-const _: () = assert!(super::hemera::RP % QUAD == 0 && PH_OUT < BLOCK);
+const _: () = assert!(super::hemera::RP.is_multiple_of(QUAD) && PH_OUT < BLOCK);
 
 /// The rounds of a block phase: `(first round, count)` — one full round
 /// or `QUAD` partial rounds — or none (bits, MDS, output, idle rows).

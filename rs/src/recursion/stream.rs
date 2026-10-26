@@ -33,6 +33,9 @@ impl Coeffs<'_> {
             Coeffs::Ext(c) => c.len(),
         }
     }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     pub fn is_ext(&self) -> bool {
         matches!(self, Coeffs::Ext(_))
     }
@@ -146,7 +149,7 @@ pub fn commit(
     let w = 1usize << log_width;
     let leaves = n / w;
     let per = leaves / b;
-    assert!(per >= 1 && leaves % b == 0, "a leaf lies in one coset");
+    assert!(per >= 1 && leaves.is_multiple_of(b), "a leaf lies in one coset");
     let lpm = if members[0].is_ext() { 3 } else { 1 };
     let planes = members.len() * lpm;
     let mut vals_out = if keep {

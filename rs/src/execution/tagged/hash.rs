@@ -35,8 +35,10 @@ impl Builder {
     }
     fn linear_layer(&mut self, state: State, internal: bool) -> Result<State, Error> {
         let mut out = [ZERO; 16];
+        #[allow(clippy::needless_range_loop)]
         for row in 0..16 {
             let mut terms = Vec::with_capacity(16);
+            #[allow(clippy::needless_range_loop)]
             for col in 0..16 {
                 let coefficient = if internal {
                     F::ONE

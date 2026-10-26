@@ -66,6 +66,7 @@ fn threads() -> usize {
 }
 
 /// One round: `h(X)` at `X = 0..=deg` from the current tables.
+#[allow(clippy::too_many_arguments)]
 fn round<A: Air>(
     air: &A,
     w: usize,
@@ -81,10 +82,8 @@ fn round<A: Air>(
     // the first round's points 0 and 1 are trace rows, where every
     // constraint of an honest trace vanishes: q(0) = q(1) = 0
     let first = if on_cube { 2 } else { 0 };
-    if on_cube {
-        if let Some(h) = round_mix(air, w, cols, eq, ch, mu, deg, first) {
-            return h;
-        }
+    if on_cube && let Some(h) = round_mix(air, w, cols, eq, ch, mu, deg, first) {
+        return h;
     }
     let k = air.shape().constraints;
     let workers = threads().min(pairs.max(1));
@@ -293,7 +292,12 @@ fn device_round(
     use lens::rspcs::program::{from_fp3, to_fp3};
     let xs = round_points(deg, on_cube, skip_one);
     let flat = pack_flat(cols);
-    let weights: Vec<[u64; 3]> = eq.chunks_exact(2).map(|e| from_fp3(e[0] + e[1])).collect();
+    let weights: Vec<[u64; 3]> = eq
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|e| from_fp3(e[0] + e[1]))
+        .collect();
     let sums = lens::rspcs::backend::current().line_sums(p, &flat, &weights, &xs);
     let mut q = vec![Fp3::ZERO; deg + 1];
     for (&x, v) in xs.iter().zip(sums) {
@@ -382,7 +386,9 @@ pub(crate) fn prove_packed<A: Air>(
                 .collect();
         }
         let (l0, l1) = eq
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .find(|p| p[0] + p[1] != Fp3::ZERO)
             .map_or((Fp3::ZERO, Fp3::ZERO), |p| {
                 let gi = (p[0] + p[1]).inv();
@@ -393,7 +399,9 @@ pub(crate) fn prove_packed<A: Air>(
             (Some(sess), _) => {
                 let xs = round_points(deg, r == 0, skip_one);
                 let weights: Vec<[u64; 3]> = eq
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|e| lens::rspcs::program::from_fp3(e[0] + e[1]))
                     .collect();
                 let mut q = vec![Fp3::ZERO; deg + 1];

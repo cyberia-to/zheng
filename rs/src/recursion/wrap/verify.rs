@@ -304,7 +304,7 @@ pub fn verify<O: Ops>(o: &mut O, k: &WrapKey, x: [O::V; 4], pf: &WrapProof) {
     }
     let mut claim = sigma.expect("a word");
     let mut rho2 = Vec::with_capacity(n);
-    for pair in pf.shift.chunks_exact(2) {
+    for pair in pf.shift.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);

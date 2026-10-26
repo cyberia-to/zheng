@@ -138,8 +138,10 @@ fn proof<Pc: SuccinctPcs>(p: &SuccinctProof<Pc>, w: &mut Writer) {
 fn read_proof<Pc: SuccinctPcs>(params: Pc::Params, r: &mut Reader) -> Result<SuccinctProof<Pc>, E> {
     let root = r.raw(32)?;
     if root
-        .chunks_exact(8)
-        .any(|l| u64::from_le_bytes(l.try_into().expect("8 bytes")) >= P)
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .any(|l| u64::from_le_bytes(*l) >= P)
     {
         return Err(E::NonCanonical);
     }

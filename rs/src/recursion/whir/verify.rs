@@ -46,7 +46,7 @@ pub fn batch<O: Ops>(
     let vals: Vec<O::V> = all.iter().map(|c| c.value()).collect();
     let mut claim = gm::combine(o, &gp, &vals);
     let mut rho = Vec::with_capacity(sumcheck.len() / 2);
-    for pair in sumcheck.chunks_exact(2) {
+    for pair in sumcheck.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);
@@ -91,7 +91,7 @@ fn fold_rounds<O: Ops>(
     pow: u32,
 ) -> Vec<O::V> {
     let mut alphas = Vec::with_capacity(msgs.len() / 2);
-    for (l, pair) in msgs.chunks_exact(2).enumerate() {
+    for (l, pair) in msgs.as_chunks::<2>().0.iter().enumerate() {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         t.grind_check(o, pow, nonces.get(l).copied().unwrap_or(0));

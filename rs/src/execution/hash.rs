@@ -56,8 +56,10 @@ impl Builder {
             }
             return Ok(out);
         }
+        #[allow(clippy::needless_range_loop)]
         for row in 0..16 {
             let mut terms = vec![];
+            #[allow(clippy::needless_range_loop)]
             for column in 0..16 {
                 let coefficient = mds()[row][column];
                 terms.extend(
@@ -133,6 +135,7 @@ impl Builder {
                 } else {
                     (round - RP) * 16
                 };
+                #[allow(clippy::needless_range_loop)]
                 for lane in 0..16 {
                     let rc = hemera::constants::ROUND_CONSTANTS_U64[offset + lane];
                     let value = self.add(&state[lane], &Value::Constant(F::new(rc)), false)?;

@@ -283,7 +283,7 @@ pub(crate) fn prove_prepared(
     }
     // inner, over the free half
     let gamma = Fp3::squeeze(&mut t);
-    let a_full = combined_weights(&relabelled, &rho_x, gamma, 2 * half);
+    let a_full = combined_weights(relabelled, &rho_x, gamma, 2 * half);
     let w: Vec<Fp3> = zp[..half].iter().map(|&v| Fp3::from_base(v)).collect();
     let mut inner = SumcheckProver::new(a_full[..half].to_vec(), w);
     let g2_sum = g2.sum();

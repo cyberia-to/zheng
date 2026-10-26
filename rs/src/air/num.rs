@@ -239,7 +239,6 @@ impl Graph {
             }
         }
         let base = self.inputs + consts.len();
-        let mut next = base as u32;
         let resolve =
             |x: Sym, slot: &[u32], cidx: &std::collections::BTreeMap<[u64; 3], u32>| -> u32 {
                 match x {
@@ -249,7 +248,7 @@ impl Graph {
                     }
                 }
             };
-        for (&i, &(op, a, b)) in order.iter().zip(&pending) {
+        for (next, (&i, &(op, a, b))) in (base as u32..).zip(order.iter().zip(&pending)) {
             let e = match (op, a, b) {
                 (OP_MUL, x, Sym::C(c)) | (OP_MUL, Sym::C(c), x)
                     if is_base(c) && !matches!(x, Sym::C(_)) =>
@@ -264,7 +263,6 @@ impl Graph {
             };
             ops.push(e);
             slot[i] = next;
-            next += 1;
         }
         let outputs = self
             .outputs
@@ -279,6 +277,9 @@ impl Graph {
         }
     }
 }
+
+/// The slot form of a [`Compiled`] graph: `(ops, consts, inputs, outputs)`.
+pub type Parts<'a> = (&'a [(u8, u32, u32)], &'a [Fp3], usize, &'a [u32]);
 
 impl Compiled {
     /// Evaluate at `inputs`.
@@ -305,7 +306,7 @@ impl Compiled {
     }
     /// The slot form: `(ops, consts, inputs, outputs)` (slots: inputs,
     /// then constants, then one per op; `OP_MULB`'s `b` indexes consts).
-    pub fn parts(&self) -> (&[(u8, u32, u32)], &[Fp3], usize, &[u32]) {
+    pub fn parts(&self) -> Parts<'_> {
         (&self.ops, &self.consts, self.inputs, &self.outputs)
     }
     /// Operations evaluated.

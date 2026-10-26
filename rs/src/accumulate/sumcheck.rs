@@ -329,7 +329,12 @@ fn threads(pairs: usize) -> usize {
 fn round_sums(f: &[Fp3], w: &[Fp3]) -> (Fp3, Fp3) {
     let part = |f: &[Fp3], w: &[Fp3]| {
         let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
-        for (fp, wp) in f.chunks_exact(2).zip(w.chunks_exact(2)) {
+        for (fp, wp) in f
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(w.as_chunks::<2>().0.iter())
+        {
             h0 += fp[0] * wp[0];
             let f2 = fp[1] + fp[1] - fp[0];
             let w2 = wp[1] + wp[1] - wp[0];
@@ -396,7 +401,7 @@ pub fn verify(
     }
     let mut claim = sigma;
     let mut point = Vec::with_capacity(vars);
-    for pair in msgs.chunks_exact(2) {
+    for pair in msgs.as_chunks::<2>().0 {
         let (h0, h2) = (pair[0], pair[1]);
         let h1 = claim - h0;
         t.absorb_fp3(h0);

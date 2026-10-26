@@ -122,6 +122,7 @@ pub fn rebalance(wc: &mut WhirConfig, inputs: usize, target: f64) {
             s.ood = ood_count(reg, r, log_n, cur.num_vars, target);
         }
     }
+    #[allow(clippy::needless_range_loop)]
     for i in 0..wc.rounds.len() {
         if !wc.rounds[i].opens_all() {
             wc.rounds[i].query_pow = query_pow(wc, i, target);
