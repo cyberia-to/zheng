@@ -1,5 +1,5 @@
 //! Adversarial review of the IVC speed changes (`audit/ivc-speed-2026-10.md`):
-//! every IVC tree 4-ary, profile 6's IVC at rate 1/8, the field-native WHIR
+//! every IVC tree 4-ary, profile 6's IVC at rate 1/16, the field-native WHIR
 //! schedules rebalanced for grinding work.
 //!
 //! - 4-ary paths: a spot opening's siblings permuted within a node group,

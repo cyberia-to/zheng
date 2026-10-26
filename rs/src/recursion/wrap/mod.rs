@@ -76,14 +76,18 @@ use crate::air::num::{Graph, Num, record};
 use crate::air::{Air, Public, Shape, Vals};
 
 /// The shipped chain of levels over the IVC proof, innermost first, as
-/// the benches spell it (`<log inv rate><i|f>[:<grinding bits>]`): inner
+/// the benches spell it (`<log inv rate><i|f>[:<grinding bits>[:<fold>]]`): inner
 /// 1/16 grinding 16 bits (2^16 rows), inner 1/128 grinding 22 (2^15; its
-/// key over the base field, `splitkey`, so the final circuit fits 2^14),
-/// final 1/512 grinding 26 (2^14): the outermost proof is ≤ 64,213 B
-/// over every transcript ([`max_proof_bytes`] ≤ [`MAX_FINAL_BYTES`]), so a
-/// profile-6 envelope of a statement up to ≈ 1.3 KB fits 64 KiB —
-/// `audit/wrap-fastverify-2026-10.md`.
-pub const SHIPPED: &str = "4i:16,7i:22,9f:26";
+/// key over the base field, `splitkey`), final 1/1024 grinding 32 with
+/// folding factor 5 (23,921 rows, so 2^15): the outermost proof is
+/// ≤ 64,129 B over every transcript ([`max_proof_bytes`] ≤
+/// [`MAX_FINAL_BYTES`]), 128.07 bits at the weakest row, so a profile-6
+/// envelope of a statement up to 1,356 B (65,536 − 64,129 − 51) fits
+/// 64 KiB. The price is the prover: the final level did not finish within
+/// 355 min on 4 threads (≥ 19,417 s, zheng run 40334403053), roughly 10–25×
+/// the 2,022 s final level of `9f:26:5` or more —
+/// `audit/wrap-frontier-hemera-0.4-2026-10-26.md`.
+pub const SHIPPED: &str = "4i:16,7i:22,10f:32:5";
 
 /// The outermost proof's size bound: 64 KiB, by construction.
 pub const MAX_FINAL_BYTES: usize = 65_536;

@@ -62,7 +62,7 @@ pub fn admitted(whir: &WhirParams, log_rows: u32) -> bool {
 
 /// The roots of the IVC keys' committed words (`ivc::Key::kw_root`) of
 /// every IVC parameter set a verifier admits — profile 5's two sets and
-/// profile 6's IVC (rate 1/8, 16 grinding bits) — as the CPU derives them. The
+/// profile 6's IVC (rate 1/16, 16 grinding bits) — as the CPU derives them. The
 /// decider opens the key words against this root natively, and deriving
 /// it runs on the process's prover backend (Merkle levels, coset leaves,
 /// permutation batches): a key whose root is not pinned here is refused,

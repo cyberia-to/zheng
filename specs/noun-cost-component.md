@@ -15,11 +15,15 @@ selector, low and high 32-bit Cost limbs. A component test schema contains one
 version coordinate followed by these seven records: 127 input coordinates.
 Inputs, opcode values and noun shapes never select circuit layout.
 
-The builder keeps its existing ceiling of 32768 operation wires and 32768
-constraint rows. One local component per builder is supported; a second attempt
+The builder's ceiling is derived, not declared: `MAX_GATES =
+(NODE_COST_PERMUTATIONS * PERMUTATION_GATES).next_power_of_two()`. With
+hemera 0.4 (`ROUNDS_F` = 12, `ROUNDS_P` = 48) a permutation is 16 + 12 * 96 +
+48 * 21 = 2176 gates, the component holds 21 permutations (seven records of
+three), so 21 * 2176 = 45,696 and the ceiling is 65536 operation wires and
+65536 constraint rows (it was 32768 at hemera 0.3's 24 rounds). One local component per builder is supported; a second attempt
 rejects before extending the builder. A smaller caller-selected test ceiling
 can only tighten the existing gate ceiling. The maximum padded witness extent
-is 65536 field coordinates. These are declared limits, not measurements or
+is 65536 field coordinates (asserted as `num_cols <= 65536` by `node_cost_tests`). These are declared limits, not measurements or
 whole-compiler capacity claims.
 
 ## Identity and read premises

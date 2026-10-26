@@ -81,9 +81,9 @@ at 24 grinding bits).
 
 Shipped under profile 6 since `audit/ivc-speed-2026-10.md`
 (`ivc::SHIPPED_RATE`, every IVC tree 4-ary, the decider's schedule
-rebalanced — `recursion::whir::schedule`): rate **1/8**, 16 grinding bits —
+rebalanced — `recursion::whir::schedule`): rate **1/16**, 16 grinding bits —
 `J = 88` claims, `t = 77` spot checks, `query_pow = 16`, `comb_pow = 17`;
-the step circuit 24,259 of 2^15 rows. Rows: combine 128.19, spot 128.08;
+the step circuit 28,615 of 2^15 rows under hemera 0.4 (34,090 at rate 1/8, which `ivc::key` refuses). Rows: combine 128.19, spot 128.08;
 decider batch combine 128.80, fold ≥ 128.24, shift ≥ 128.04, fin 128.11,
 OOD ≥ 154.4; interactively the weakest round carries **111.04** bits (the
 decider's second shift after its 17 query bits). The tree fan-in changes
@@ -111,21 +111,21 @@ Every number below is printed and checked ≥ 128 by
 (inner 1/16 with 16 grinding bits, inner 1/64 and 1/256 with 24, inner
 1/128 with 22, final 1/256 with 30 and 1/512 with 24 and 26), by
 `recursion::wrap::review::the_shipped_wrap_levels_reach_128_bits_and_their_interactive_rows_are_stated`
-(the shipped chain `wrap::SHIPPED` = `4i:16,7i:22,9f:26`, measured in
+(the shipped chain `wrap::SHIPPED` = `4i:16,7i:22,10f:32:5`, measured in
 `audit/wrap-fastverify-2026-10.md` and `audit/ivc-speed-2026-10.md`:
 inner 1/16 with 16 grinding bits (2^16 rows), inner 1/128 with 22 (2^15),
-final 1/512 with 26 (2^14) — weakest rows 128.09 / 128.24 / 128.40) and by
+final 1/1024 with 32, folding factor 5 (2^15) — weakest rows 128.09 / 128.24 / 128.07) and by
 `examples/wrap_bench` for the derived keys. Every field-native schedule
 keeps lens's queries per round and re-chooses per round the Johnson
 regime, OOD count and fold/query grinding for the least grinding work
 (`recursion::whir::schedule`; each term recomputed by lens's ledger,
-`tests/ivc_speed_review.rs`): the final level grinds fold 22/22/22 and
-query 24/24/27 (was 17/20/25 and 26/26/26), level 1's combination 21
+`tests/ivc_speed_review.rs`): the final level grinds fold 27/31/31 and
+query 31/32/32 (under `9f:26`: 22/22/22 and 24/24/27), level 1's combination 21
 (was 26). The ≥ 128 figures price grinding as hemera work:
 interactively (every grinding removed — fold, query and combination
-challenges) the weakest rounds carry **110.23 / 104.24 / 101.89** bits
-(the final level's `fin` after its 27-bit query grinding — the
-queries 24/18/14 keep the proof ≤ 64,213 B over every transcript), so
+challenges) the weakest rounds carry **110.23 / 104.24 / 96.07** bits
+(the final level's `shift_2` after round 1's 32-bit query grinding; under `9f:26` it was 101.89, `fin` after 27 bits — the
+queries 24/18/14 kept the proof ≤ 64,213 B over every transcript under hemera 0.3 and `9f:26`; `10f:32:5` bounds at 64,129 B now), so
 the non-interactive bound `Q·2^-128` assumes a prover's `Q` counts every
 grinding permutation. The previous chain (`6i,8i,8f:30`,
 `audit/wrap-2026-10.md`) carried 98.02 interactively at its final level.

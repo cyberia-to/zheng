@@ -509,7 +509,7 @@ fn a_loaded_key_must_send_the_successor_columns_its_graph_reads() {
 }
 
 /// (7) The recursion profile shipped under the wrap chain
-/// (`ivc::SHIPPED_RATE` 1/8, `ivc::SHIPPED_POW` 16, steps of 2^15, 4-ary
+/// (`ivc::SHIPPED_RATE` 1/16, `ivc::SHIPPED_POW` 16, steps of 2^15, 4-ary
 /// trees, the decider's schedule rebalanced): every row ≥ 128 with
 /// grinding priced, the figures `specs/soundness.md` states, and the
 /// interactive weakest (every grinding removed: the accumulation's
