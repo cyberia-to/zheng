@@ -6,3 +6,10 @@
 [workspace]
 members = ["rs", "cli"]
 resolver = "3"
+
+# The soft3 release train runs `cargo test --locked` in rs/ under a 900 s per-gate budget;
+# unoptimized, the proving tests run past it (rehearsal 40286177469: 267 ok, 0 failed,
+# timeout). Debug assertions and overflow checks stay on (the dev defaults). Profiles of a
+# non-root manifest are ignored, so consumers of zheng are unaffected.
+[profile.dev]
+opt-level = 3
