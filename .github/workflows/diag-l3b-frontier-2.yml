@@ -1,14 +1,18 @@
-# DIAGNOSTIC — never merged, never a PR (soft3 director plan, row L3b).
+# DIAGNOSTIC — never merged, never a PR (soft3 director plan, row L3b), round 2.
+# Round 1 (run 40273927146) found no chain <= 64 KiB up to grinding 30 / fold 5;
+# the bound fell ~900 B per +2 grinding bits at 10f fold 5, so this round extends
+# grinding 30..40 and fold 5..8 on the shipped inner chain at IVC 1/16, 2^15
+# (round 1: inner chain and IVC rate do not move the final bound).
 # The frontier of the wrap chain under hemera 0.4, lambda fixed (every ledger row
 # >= 128 bits is wrap's own derivation): final-proof bytes over rate, grinding,
 # folding and levels (shape only, `wrap_chain`), and prover time for the shipped
 # chain and three candidates (`wrap_bench`, add.tri). Base: zheng#73 4c9005e +
 # diag/l3-sweep-fix (wrap_chain census).
-name: diag-l3b-frontier
+name: diag-l3b-frontier-2
 
 on:
   push:
-    branches: [diag/l3b-frontier]
+    branches: [diag/l3b-frontier-2]
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,8 +30,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ivc: ["4:15", "3:16"]
-        inner: ["4i:16,7i:22", "4i:16,6i:22", "4i:16,8i:24", "5i:18,7i:22", "4i:16,7i:22,8i:24"]
+        ivc: ["4:15"]
+        inner: ["4i:16,7i:22"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,7 +76,7 @@ jobs:
           set -o pipefail
           IFS=: read RATE STEP <<< "${{ matrix.ivc }}"
           specs=()
-          for r in 8 9 10 11 12 13; do for p in 22 24 26 28 30; do for k in 3 4 5; do
+          for r in 8 9 10; do for p in 30 32 34 36 38 40; do for k in 5 6 7 8; do
             specs+=("${{ matrix.inner }},${r}f:${p}:${k}")
           done; done; done
           ZHENG_RATE=$RATE ZHENG_STEP=$STEP cargo run --locked --release -p zheng --example wrap_chain -- "${specs[@]}" 2>&1 | grep -vE "Compiling|Finished|Running|Updating|warning" | tee ../shape.txt || true
@@ -83,59 +87,3 @@ jobs:
           name: shape-${{ env.TAG }}
           path: shape.txt
 
-  time:
-    runs-on: ubuntu-latest
-    timeout-minutes: 85
-    strategy:
-      fail-fast: false
-      matrix:
-        wrap: ["4i:16,7i:22,9f:26", "4i:16,7i:22,10f:28", "4i:16,7i:22,11f:28", "4i:16,7i:22,12f:30"]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: zheng
-      - uses: actions/checkout@v4
-        with:
-          repository: cyberia-to/strata
-          path: strata
-          ref: ${{ env.STRATA_REF }}
-      - uses: actions/checkout@v4
-        with:
-          repository: cyberia-to/hemera
-          path: hemera
-          ref: ${{ env.HEMERA_REF }}
-      - uses: actions/checkout@v4
-        with:
-          repository: cyberia-to/lens
-          path: lens
-          ref: ${{ env.LENS_REF }}
-      - uses: actions/checkout@v4
-        with:
-          repository: cyberia-to/nox
-          path: nox
-          ref: ${{ env.NOX_REF }}
-      - uses: actions/checkout@v4
-        with:
-          repository: cyberia-to/tade
-          path: tade
-          ref: ${{ env.TADE_REF }}
-      - uses: actions/checkout@v4
-        with:
-          repository: cyberia-to/honeycrisp
-          path: honeycrisp
-          ref: ${{ env.HONEYCRISP_REF }}
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: zheng
-      - name: bench
-        working-directory: zheng
-        run: |
-          set -o pipefail
-          nproc; lscpu | grep -E 'Model name|^CPU\(s\)'
-          ZHENG_RATE=4 ZHENG_STEP=15 ZHENG_WRAP="${{ matrix.wrap }}" /usr/bin/time -v cargo run --locked --release -p zheng --example wrap_bench -- add.tri 2>&1 | grep -vE "Compiling|Downloaded|Downloading" | tee ../time.txt || true
-          echo "TAG=$(echo '${{ matrix.wrap }}' | tr ',:' '_-')" >> $GITHUB_ENV
-      - uses: actions/upload-artifact@v4
-        with:
-          name: time-${{ env.TAG }}
-          path: time.txt
