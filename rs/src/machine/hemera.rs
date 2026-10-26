@@ -90,7 +90,10 @@ pub fn is_full(k: usize) -> bool {
 fn apply(m: &[[Goldilocks; 16]; 16], s: &[Goldilocks; 16]) -> [Goldilocks; 16] {
     let mut out = [Goldilocks::ZERO; 16];
     for (o, row) in out.iter_mut().zip(m) {
-        *o = row.iter().zip(s).fold(Goldilocks::ZERO, |a, (&c, &x)| a + c * x);
+        *o = row
+            .iter()
+            .zip(s)
+            .fold(Goldilocks::ZERO, |a, (&c, &x)| a + c * x);
     }
     out
 }
@@ -304,14 +307,26 @@ mod tests {
     #[test]
     fn noun_identities_match_nox() {
         let t = Tables::default();
-        for v in [0u64, 1, 7, 255, 256, 1 << 56, (1 << 63) + 5, nebu::field::P - 1] {
+        for v in [
+            0u64,
+            1,
+            7,
+            255,
+            256,
+            1 << 56,
+            (1 << 63) + 5,
+            nebu::field::P - 1,
+        ] {
             let base = head4(&t.permute(&atom1_input(v)));
             let dig = head4(&t.permute(&atom2_input(base)));
             assert_eq!(dig, nox::data::hash_atom(Goldilocks::new(v)), "atom {v}");
         }
         let a = nox::data::hash_atom(Goldilocks::new(3));
         let b = nox::data::hash_atom(Goldilocks::new(4));
-        assert_eq!(head4(&t.permute(&pair_input(a, b))), nox::data::hash_pair(&a, &b));
+        assert_eq!(
+            head4(&t.permute(&pair_input(a, b))),
+            nox::data::hash_pair(&a, &b)
+        );
         // the hash opcode: StepSponge over the digest = plain permutation
         let mut sp = hemera::StepSponge::absorb(&a.map(to_h));
         while !sp.done() {

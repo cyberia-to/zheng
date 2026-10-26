@@ -84,10 +84,11 @@ impl<'a> Reader<'a> {
     pub fn fields(&mut self, length: usize) -> Result<Vec<F>, PrivateError> {
         let length = length.checked_mul(8).ok_or(PrivateError::InvalidProof)?;
         self.take(length)?
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|bytes| {
-                let value =
-                    u64::from_le_bytes(bytes.try_into().map_err(|_| PrivateError::InvalidProof)?);
+                let value = u64::from_le_bytes(*bytes);
                 if value >= P {
                     return Err(PrivateError::InvalidProof);
                 }

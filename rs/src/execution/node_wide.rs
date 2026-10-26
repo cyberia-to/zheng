@@ -151,14 +151,23 @@ pub mod jet {
         let (lo, hi) = children(r, d)?;
         let half = |d| r.read_hash_data(d).map(|v| v.map(|x: F| x.as_u64()));
         let (lo, hi) = (half(lo)?, half(hi)?);
-        Some(core::array::from_fn(|i| if i < 4 { lo[i] } else { hi[i - 4] }))
+        Some(core::array::from_fn(
+            |i| if i < 4 { lo[i] } else { hi[i - 4] },
+        ))
     }
 
     /// `(L limbs, R limbs, flags)` of a wide node subject, or `None`.
-    fn operands<const S: usize>(r: &Reduction<S>, object: Order) -> Option<([u64; 8], [u64; 8], u64)> {
+    fn operands<const S: usize>(
+        r: &Reduction<S>,
+        object: Order,
+    ) -> Option<([u64; 8], [u64; 8], u64)> {
         let (lr, flags) = children(r, object)?;
         let (left, right) = children(r, lr)?;
-        Some((limbs8(r, left)?, limbs8(r, right)?, r.atom_value(flags)?.as_u64()))
+        Some((
+            limbs8(r, left)?,
+            limbs8(r, right)?,
+            r.atom_value(flags)?.as_u64(),
+        ))
     }
 
     fn admit<const S: usize>(r: &Reduction<S>, object: Order, _: &DigestKey, budget: u64) -> bool {

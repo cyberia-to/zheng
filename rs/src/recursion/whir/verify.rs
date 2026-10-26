@@ -17,7 +17,11 @@ pub(super) enum Point<V> {
     Multi(Vec<V>),
     /// `pow(x)` over the round's variables.
     Pow(V),
-    RowCol { next: bool, rho: Vec<V>, col: Vec<V> },
+    RowCol {
+        next: bool,
+        rho: Vec<V>,
+        col: Vec<V>,
+    },
     Native(usize),
 }
 
@@ -29,14 +33,20 @@ pub(super) struct Constraint<V> {
 
 /// The batch: claims of every input reduced to one point; returns the
 /// point and every word's value there.
-pub fn batch<O: Ops>(o: &mut O, t: &mut Sponge<O>, inputs: &[InstV<O::V>], sumcheck: &[Fp3], evals: &[Fp3]) -> (Vec<O::V>, Vec<O::V>) {
+pub fn batch<O: Ops>(
+    o: &mut O,
+    t: &mut Sponge<O>,
+    inputs: &[InstV<O::V>],
+    sumcheck: &[Fp3],
+    evals: &[Fp3],
+) -> (Vec<O::V>, Vec<O::V>) {
     let gamma = t.squeeze_ext(o);
     let all: Vec<&ClaimRef<O::V>> = inputs.iter().flat_map(|i| &i.claims).collect();
     let gp = gm::powers(o, gamma, all.len());
     let vals: Vec<O::V> = all.iter().map(|c| c.value()).collect();
     let mut claim = gm::combine(o, &gp, &vals);
     let mut rho = Vec::with_capacity(sumcheck.len() / 2);
-    for pair in sumcheck.chunks_exact(2) {
+    for pair in sumcheck.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);
@@ -72,9 +82,16 @@ pub fn batch<O: Ops>(o: &mut O, t: &mut Sponge<O>, inputs: &[InstV<O::V>], sumch
 
 /// WHIR's folding sumcheck: `rounds` rounds of `(h(0), h(2))`, grinding
 /// before each challenge; updates `sigma`.
-fn fold_rounds<O: Ops>(o: &mut O, t: &mut Sponge<O>, sigma: &mut O::V, msgs: &[Fp3], nonces: &[u64], pow: u32) -> Vec<O::V> {
+fn fold_rounds<O: Ops>(
+    o: &mut O,
+    t: &mut Sponge<O>,
+    sigma: &mut O::V,
+    msgs: &[Fp3],
+    nonces: &[u64],
+    pow: u32,
+) -> Vec<O::V> {
     let mut alphas = Vec::with_capacity(msgs.len() / 2);
-    for (l, pair) in msgs.chunks_exact(2).enumerate() {
+    for (l, pair) in msgs.as_chunks::<2>().0.iter().enumerate() {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         t.grind_check(o, pow, nonces.get(l).copied().unwrap_or(0));
@@ -91,7 +108,13 @@ fn query_bits<O: Ops>(o: &mut O, t: &mut Sponge<O>, s: &RoundSpec) -> Vec<Vec<O:
     let depth = s.log_leaves() as usize;
     if s.opens_all() {
         let (zero, one) = (o.zero(), o.one());
-        return (0..1usize << depth).map(|j| (0..depth).map(|k| if (j >> k) & 1 == 1 { one } else { zero }).collect()).collect();
+        return (0..1usize << depth)
+            .map(|j| {
+                (0..depth)
+                    .map(|k| if (j >> k) & 1 == 1 { one } else { zero })
+                    .collect()
+            })
+            .collect();
     }
     t.indices(o, s.queries, depth)
 }
@@ -115,9 +138,17 @@ fn fold_leaf<O: Ops>(o: &mut O, vals: &[O::V], alphas: &[O::V], log_n: u32, x0_i
         for t in 0..h {
             let (a, b) = (cur[t], cur[t + h]);
             // d = (a − b)·x_inv/2, x_inv = x0_inv·ζ^{-t}
-            let g = Gate { qm: Fp3::from_base(half * scale), qs: -Fp3::ONE, ..Gate::default() };
+            let g = Gate {
+                qm: Fp3::from_base(half * scale),
+                qs: -Fp3::ONE,
+                ..Gate::default()
+            };
             let d = o.gate(g, x0_inv, a, b);
-            let g = Gate { qa: Fp3::from_base(half), qb: Fp3::from_base(half), ..Gate::default() };
+            let g = Gate {
+                qa: Fp3::from_base(half),
+                qb: Fp3::from_base(half),
+                ..Gate::default()
+            };
             let even = o.gate(g, a, b, b);
             next.push(o.mul_add(alpha, d, even));
             scale *= zeta_inv;
@@ -158,14 +189,21 @@ fn open_fold<O: Ops>(
                     let k = *c.next().expect("a coefficient per word");
                     leaf = Some(match leaf {
                         None => part.to_vec(),
-                        Some(acc) => acc.iter().zip(part).map(|(&a, &s)| o.mul_add(k, s, a)).collect(),
+                        Some(acc) => acc
+                            .iter()
+                            .zip(part)
+                            .map(|(&a, &s)| o.mul_add(k, s, a))
+                            .collect(),
                     });
                 }
             }
             let x = gm::pow_bits(o, omega, b);
             let x_inv = o.inv(x, "whir: a domain point is invertible");
             let shift = gm::pow2k(o, x, spec.fold);
-            (fold_leaf(o, &leaf.expect("a word"), alphas, spec.log_domain, x_inv), shift)
+            (
+                fold_leaf(o, &leaf.expect("a word"), alphas, spec.log_domain, x_inv),
+                shift,
+            )
         })
         .collect()
 }
@@ -209,30 +247,39 @@ fn open_fold_native<O: Ops>(
                     });
                 }
             }
-            (leaf.expect("a word"), b.iter().map(|&x| o.value(x)).collect())
+            (
+                leaf.expect("a word"),
+                b.iter().map(|&x| o.value(x)).collect(),
+            )
         })
         .collect();
     let omega = root_of_unity(spec.log_domain);
-    let res = crate::recursion::pool::map_chunks(leaves.len(), crate::recursion::wrap::verifier_threads(), |r| {
-        let mut n = Native::new();
-        r.map(|i| {
-            let (leaf, b) = &leaves[i];
-            let x = gm::pow_bits(&mut n, omega, b);
-            let x_inv = n.inv(x, "whir: a domain point is invertible");
-            let shift = gm::pow2k(&mut n, x, spec.fold);
-            let al = alphas.clone();
-            let v = fold_leaf(&mut n, leaf, &al, spec.log_domain, x_inv);
-            (v, shift, n.error.is_some())
-        })
-        .collect::<Vec<_>>()
-    })
+    let res = crate::recursion::pool::map_chunks(
+        leaves.len(),
+        crate::recursion::wrap::verifier_threads(),
+        |r| {
+            let mut n = Native::new();
+            r.map(|i| {
+                let (leaf, b) = &leaves[i];
+                let x = gm::pow_bits(&mut n, omega, b);
+                let x_inv = n.inv(x, "whir: a domain point is invertible");
+                let shift = gm::pow2k(&mut n, x, spec.fold);
+                let al = alphas.clone();
+                let v = fold_leaf(&mut n, leaf, &al, spec.log_domain, x_inv);
+                (v, shift, n.error.is_some())
+            })
+            .collect::<Vec<_>>()
+        },
+    )
     .concat();
     if res.iter().any(|r| r.2) {
         // a zero domain point cannot occur (ω^j ≠ 0); keep the check
         let z = o.zero();
         o.inv(z, "whir: a domain point is invertible");
     }
-    res.into_iter().map(|(v, s, _)| (o.constant(v), o.constant(s))).collect()
+    res.into_iter()
+        .map(|(v, s, _)| (o.constant(v), o.constant(s)))
+        .collect()
 }
 
 /// Panics on a proof of the wrong shape (callers check first).
@@ -244,14 +291,29 @@ pub fn check_shape(cfg: &Config, inputs: usize, pf: &Proof) -> Result<(), String
     let leaf_ok = |s: &RoundSpec, l: &LeafOpening, m: usize, ext: Option<bool>| {
         l.symbols.len() == m << s.fold
             && l.path.len() == cfg.arity.path_len(s.log_leaves() as usize)
-            && (ext != Some(false) || l.symbols.iter().all(|x| x.c1 == Goldilocks::ZERO && x.c2 == Goldilocks::ZERO))
+            && (ext != Some(false)
+                || l.symbols
+                    .iter()
+                    .all(|x| x.c1 == Goldilocks::ZERO && x.c2 == Goldilocks::ZERO))
     };
-    let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };
+    let q = |s: &RoundSpec| {
+        if s.opens_all() {
+            1usize << s.log_leaves()
+        } else {
+            s.queries
+        }
+    };
     let one = [1usize];
     let opens = |s: &RoundSpec, first: bool, open: &[Vec<LeafOpening>]| {
         let g: &[usize] = if first { &cfg.groups } else { &one };
         open.len() == q(s)
-            && open.iter().all(|ws| ws.len() == g.len() && ws.iter().zip(g).all(|(l, &m)| leaf_ok(s, l, m, if first { None } else { Some(true) })))
+            && open.iter().all(|ws| {
+                ws.len() == g.len()
+                    && ws
+                        .iter()
+                        .zip(g)
+                        .all(|(l, &m)| leaf_ok(s, l, m, if first { None } else { Some(true) }))
+            })
     };
     let batch = if cfg.direct() { 0 } else { 1 };
     let mut ok = inputs == cfg.inputs
@@ -274,17 +336,31 @@ pub fn check_shape(cfg: &Config, inputs: usize, pf: &Proof) -> Result<(), String
     // nonces are field elements (absorbed as one limb)
     let p = nebu::field::P;
     ok &= pf.batch.comb_nonce < p && pf.final_nonce < p && pf.fold_nonces0.iter().all(|&x| x < p);
-    ok &= pf.rounds.iter().all(|rp| rp.query_nonce < p && rp.fold_nonces.iter().all(|&x| x < p));
+    ok &= pf
+        .rounds
+        .iter()
+        .all(|rp| rp.query_nonce < p && rp.fold_nonces.iter().all(|&x| x < p));
     // a nonce no grinding reads must be zero (one encoding per proof)
-    ok &= (cfg.comb_pow > 0 || pf.batch.comb_nonce == 0) && (last.query_pow > 0 || pf.final_nonce == 0);
+    ok &= (cfg.comb_pow > 0 || pf.batch.comb_nonce == 0)
+        && (last.query_pow > 0 || pf.final_nonce == 0);
     for (i, rp) in pf.rounds.iter().enumerate() {
         ok &= wc.rounds[i].query_pow > 0 || rp.query_nonce == 0;
     }
-    if ok { Ok(()) } else { Err("whir: proof shape".into()) }
+    if ok {
+        Ok(())
+    } else {
+        Err("whir: proof shape".into())
+    }
 }
 
 /// Verify a batched opening of `inputs` (each word in round 0's layout).
-pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[InstV<O::V>], pf: &Proof) {
+pub fn verify<O: Ops>(
+    o: &mut O,
+    cfg: &Config,
+    t: &mut Sponge<O>,
+    inputs: &[InstV<O::V>],
+    pf: &Proof,
+) {
     check_shape(cfg, inputs.len(), pf).expect("whir: proof shape");
     assert!(!cfg.direct(), "whir: one word opens directly");
     let m = inputs.len();
@@ -301,7 +377,11 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &Config, t: &mut Sponge<O>, inputs: &[Inst
         at += m;
     }
     let one = o.one();
-    let cons = vec![Constraint { round: 0, point: Point::Multi(rho), coef: one }];
+    let cons = vec![Constraint {
+        round: 0,
+        point: Point::Multi(rho),
+        coef: one,
+    }];
     core(o, cfg, t, roots, coef, cons, value, &[], pf);
 }
 
@@ -320,7 +400,10 @@ pub fn verify_direct<O: Ops>(
     pf: &Proof,
 ) {
     check_shape(cfg, 1, pf).expect("whir: proof shape");
-    assert!(cfg.direct() && claims.len() <= cfg.claims, "whir: a direct opening");
+    assert!(
+        cfg.direct() && claims.len() <= cfg.claims,
+        "whir: a direct opening"
+    );
     let gamma = t.squeeze_ext(o);
     let mut g = o.one();
     let mut sigma = o.zero();
@@ -333,11 +416,25 @@ pub fn verify_direct<O: Ops>(
             Weight::RowCol { next, rho, col } => Point::RowCol { next, rho, col },
             Weight::Native(i) => Point::Native(i),
         };
-        cons.push(Constraint { round: 0, point, coef: g });
+        cons.push(Constraint {
+            round: 0,
+            point,
+            coef: g,
+        });
         g = o.mul(g, gamma);
     }
     let one = o.one();
-    core(o, cfg, t, vec![(root, ext, 1)], vec![one], cons, sigma, natives, pf);
+    core(
+        o,
+        cfg,
+        t,
+        vec![(root, ext, 1)],
+        vec![one],
+        cons,
+        sigma,
+        natives,
+        pf,
+    );
 }
 
 /// WHIR on `f_0 = Σ coef_i·f_i` from its initial constraints and claimed
@@ -370,10 +467,21 @@ fn core<O: Ops>(
     let mut g = gamma;
     for &(z, y) in &zs {
         sigma = o.mul_add(g, y, sigma);
-        cons.push(Constraint { round: 0, point: Point::Pow(z), coef: g });
+        cons.push(Constraint {
+            round: 0,
+            point: Point::Pow(z),
+            coef: g,
+        });
         g = o.mul(g, gamma);
     }
-    let mut alphas = fold_rounds(o, t, &mut sigma, &pf.sumcheck0, &pf.fold_nonces0, s0.fold_pow);
+    let mut alphas = fold_rounds(
+        o,
+        t,
+        &mut sigma,
+        &pf.sumcheck0,
+        &pf.fold_nonces0,
+        s0.fold_pow,
+    );
     let mut prev_coef = coef;
     let mut prev = s0;
     for (i, rp) in pf.rounds.iter().enumerate() {
@@ -392,19 +500,42 @@ fn core<O: Ops>(
         let bits = query_bits(o, t, &prev);
         let gamma = t.squeeze_ext(o);
         let pa = alphas[alphas.len() - prev.fold..].to_vec();
-        let folded = if cfg.direct() && o.native() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa) };
+        let folded = if cfg.direct() && o.native() {
+            open_fold_native(
+                o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa,
+            )
+        } else {
+            open_fold(
+                o, &prev, &roots, cfg.arity, &prev_coef, &bits, &rp.open, &pa,
+            )
+        };
         let mut g = gamma;
         for &(z, y) in &zs {
             sigma = o.mul_add(g, y, sigma);
-            cons.push(Constraint { round: i, point: Point::Pow(z), coef: g });
+            cons.push(Constraint {
+                round: i,
+                point: Point::Pow(z),
+                coef: g,
+            });
             g = o.mul(g, gamma);
         }
         for &(v, x) in &folded {
             sigma = o.mul_add(g, v, sigma);
-            cons.push(Constraint { round: i, point: Point::Pow(x), coef: g });
+            cons.push(Constraint {
+                round: i,
+                point: Point::Pow(x),
+                coef: g,
+            });
             g = o.mul(g, gamma);
         }
-        alphas.extend(fold_rounds(o, t, &mut sigma, &rp.sumcheck, &rp.fold_nonces, s.fold_pow));
+        alphas.extend(fold_rounds(
+            o,
+            t,
+            &mut sigma,
+            &rp.sumcheck,
+            &rp.fold_nonces,
+            s.fold_pow,
+        ));
         roots = vec![(root, true, 1)];
         prev_coef = vec![o.one()];
         prev = s;
@@ -415,12 +546,37 @@ fn core<O: Ops>(
     let fin: Vec<O::V> = if cfg.direct() {
         crate::recursion::msg::absorb(o, t, &pf.final_poly)
     } else {
-        pf.final_poly.iter().map(|&c| t.absorb_free_ext(o, c)).collect()
+        pf.final_poly
+            .iter()
+            .map(|&c| t.absorb_free_ext(o, c))
+            .collect()
     };
     t.grind_check(o, prev.query_pow, pf.final_nonce);
     let bits = query_bits(o, t, &prev);
     let pa = alphas[alphas.len() - prev.fold..].to_vec();
-    let folded = if cfg.direct() && o.native() { open_fold_native(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) } else { open_fold(o, &prev, &roots, cfg.arity, &prev_coef, &bits, &pf.final_open, &pa) };
+    let folded = if cfg.direct() && o.native() {
+        open_fold_native(
+            o,
+            &prev,
+            &roots,
+            cfg.arity,
+            &prev_coef,
+            &bits,
+            &pf.final_open,
+            &pa,
+        )
+    } else {
+        open_fold(
+            o,
+            &prev,
+            &roots,
+            cfg.arity,
+            &prev_coef,
+            &bits,
+            &pf.final_open,
+            &pa,
+        )
+    };
     for &(v, x) in &folded {
         let f = gm::horner(o, &fin, x);
         o.assert_eq(f, v, "whir: final queries");
@@ -459,7 +615,15 @@ fn core<O: Ops>(
 
 /// `w_c(α, ·)·f_M` summed over the cube for one constraint (without its
 /// coefficient).
-pub(super) fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Constraint<O::V>, alphas: &[O::V], fin: &[O::V], cube: &mut Option<Vec<O::V>>, natives: &[&dyn NativeWeight]) -> O::V {
+pub(super) fn term<O: Ops>(
+    o: &mut O,
+    wc: &lens::rspcs::whir::WhirConfig,
+    c: &Constraint<O::V>,
+    alphas: &[O::V],
+    fin: &[O::V],
+    cube: &mut Option<Vec<O::V>>,
+    natives: &[&dyn NativeWeight],
+) -> O::V {
     let fv = wc.final_vars;
     let off = wc.alpha_offset(c.round);
     let nv = wc.rounds[c.round].num_vars;
@@ -481,7 +645,11 @@ pub(super) fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Co
             let fm = cube.get_or_insert_with(|| cube_values(o, fin)).clone();
             if pre >= n {
                 // the rows inside α: one row factor, the columns split
-                let e = if *next { gm::next_eval(o, rho, &a[..n]) } else { gm::eq(o, rho, &a[..n]) };
+                let e = if *next {
+                    gm::next_eval(o, rho, &a[..n])
+                } else {
+                    gm::eq(o, rho, &a[..n])
+                };
                 let lo = pre - n;
                 let mut acc: Option<O::V> = None;
                 for (c, &w) in col.iter().enumerate() {
@@ -500,8 +668,16 @@ pub(super) fn term<O: Ops>(o: &mut O, wc: &lens::rspcs::whir::WhirConfig, c: &Co
                 let (zero, one) = (o.zero(), o.one());
                 let mut acc: Option<O::V> = None;
                 for br in 0..1usize << rb {
-                    let pt: Vec<O::V> = a.iter().copied().chain((0..rb).map(|i| if (br >> i) & 1 == 1 { one } else { zero })).collect();
-                    let rv = if *next { gm::next_eval(o, rho, &pt) } else { gm::eq(o, rho, &pt) };
+                    let pt: Vec<O::V> = a
+                        .iter()
+                        .copied()
+                        .chain((0..rb).map(|i| if (br >> i) & 1 == 1 { one } else { zero }))
+                        .collect();
+                    let rv = if *next {
+                        gm::next_eval(o, rho, &pt)
+                    } else {
+                        gm::eq(o, rho, &pt)
+                    };
                     for (c, &w) in col.iter().enumerate() {
                         let rw = o.mul(rv, w);
                         let f = fm[br + (c << rb)];
@@ -532,15 +708,29 @@ fn to_native<O: Ops>(o: &mut O, c: &Constraint<O::V>) -> Constraint<Fp3> {
     let point = match &c.point {
         Point::Multi(p) => Point::Multi(p.iter().map(v).collect()),
         Point::Pow(x) => Point::Pow(v(x)),
-        Point::RowCol { next, rho, col } => Point::RowCol { next: *next, rho: rho.iter().map(v).collect(), col: col.iter().map(v).collect() },
+        Point::RowCol { next, rho, col } => Point::RowCol {
+            next: *next,
+            rho: rho.iter().map(v).collect(),
+            col: col.iter().map(v).collect(),
+        },
         Point::Native(i) => Point::Native(*i),
     };
-    Constraint { round: c.round, point, coef: o.value(c.coef) }
+    Constraint {
+        round: c.round,
+        point,
+        coef: o.value(c.coef),
+    }
 }
 
 /// The closing sum natively: the native weights first (they spread their
 /// own work), then the other constraints over the verifier's threads.
-pub(super) fn closing_native(wc: &lens::rspcs::whir::WhirConfig, cons: &[Constraint<Fp3>], alphas: &[Fp3], fin: &[Fp3], natives: &[&dyn NativeWeight]) -> Fp3 {
+pub(super) fn closing_native(
+    wc: &lens::rspcs::whir::WhirConfig,
+    cons: &[Constraint<Fp3>],
+    alphas: &[Fp3],
+    fin: &[Fp3],
+    natives: &[&dyn NativeWeight],
+) -> Fp3 {
     use crate::recursion::ops::Native;
     let mut total = Fp3::ZERO;
     let mut rest = Vec::with_capacity(cons.len());
@@ -553,17 +743,24 @@ pub(super) fn closing_native(wc: &lens::rspcs::whir::WhirConfig, cons: &[Constra
         }
     }
     let cube = cube_native(fin);
-    let threads = crate::recursion::wrap::verifier_threads().min(rest.len().div_ceil(4)).max(1);
+    let threads = crate::recursion::wrap::verifier_threads()
+        .min(rest.len().div_ceil(4))
+        .max(1);
     let size = rest.len().div_ceil(threads).max(1);
     let part = |cs: &[&Constraint<Fp3>]| {
         let mut o = Native::new();
         let mut cube = Some(cube.clone());
-        cs.iter().fold(Fp3::ZERO, |acc, c| acc + c.coef * term(&mut o, wc, c, alphas, fin, &mut cube, &[]))
+        cs.iter().fold(Fp3::ZERO, |acc, c| {
+            acc + c.coef * term(&mut o, wc, c, alphas, fin, &mut cube, &[])
+        })
     };
     let groups = rest.len().div_ceil(size);
-    crate::recursion::pool::map_chunks(groups, threads, |r| r.map(|g| part(&rest[g * size..((g + 1) * size).min(rest.len())])).fold(Fp3::ZERO, |a, x| a + x))
-        .into_iter()
-        .fold(total, |a, x| a + x)
+    crate::recursion::pool::map_chunks(groups, threads, |r| {
+        r.map(|g| part(&rest[g * size..((g + 1) * size).min(rest.len())]))
+            .fold(Fp3::ZERO, |a, x| a + x)
+    })
+    .into_iter()
+    .fold(total, |a, x| a + x)
 }
 
 /// The final polynomial's values on the cube from its monomial

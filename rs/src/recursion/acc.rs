@@ -48,7 +48,11 @@ impl<V: Copy> AccV<V> {
         let mut claims = vec![ClaimRef::Multi(self.rho.clone(), self.v0)];
         claims.extend(self.ood.iter().map(|&(z, y)| ClaimRef::Uni(z, y)));
         claims.extend(self.spot.iter().map(|&(x, y)| ClaimRef::Uni(x, y)));
-        InstV { root: self.root, ext: true, claims }
+        InstV {
+            root: self.root,
+            ext: true,
+            claims,
+        }
     }
 }
 
@@ -70,18 +74,31 @@ fn free4<O: Ops>(o: &mut O, t: &mut Sponge<O>, d: Digest) -> [O::V; 4] {
 }
 
 /// Verify one step over the inputs; returns the new accumulator.
-pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, arity: Arity, t: &mut Sponge<O>, inputs: &[InstV<O::V>], pf: &AccProof) -> AccV<O::V> {
+pub fn verify<O: Ops>(
+    o: &mut O,
+    cfg: &AccConfig,
+    arity: Arity,
+    t: &mut Sponge<O>,
+    inputs: &[InstV<O::V>],
+    pf: &AccProof,
+) -> AccV<O::V> {
     let m = inputs.len();
     let vars = cfg.num_vars;
-    assert!(pf.sumcheck.len() == 2 * vars && pf.evals.len() == m && pf.ood.len() == cfg.ood, "acc: proof shape");
-    assert!(pf.openings.len() == cfg.queries && pf.openings.iter().all(|q| q.len() == m), "acc: openings");
+    assert!(
+        pf.sumcheck.len() == 2 * vars && pf.evals.len() == m && pf.ood.len() == cfg.ood,
+        "acc: proof shape"
+    );
+    assert!(
+        pf.openings.len() == cfg.queries && pf.openings.iter().all(|q| q.len() == m),
+        "acc: openings"
+    );
     let gamma = t.squeeze_ext(o);
     let all: Vec<&ClaimRef<O::V>> = inputs.iter().flat_map(|i| &i.claims).collect();
     let gp = gm::powers(o, gamma, all.len());
     let vals: Vec<O::V> = all.iter().map(|c| c.value()).collect();
     let mut claim = gm::combine(o, &gp, &vals);
     let mut rho = Vec::with_capacity(vars);
-    for pair in pf.sumcheck.chunks_exact(2) {
+    for pair in pf.sumcheck.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);
@@ -132,7 +149,15 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, arity: Arity, t: &mut Sponge<O
     for (bits, ops) in idx.iter().zip(&pf.openings) {
         let mut y: Option<O::V> = None;
         for ((inst, op), &c) in inputs.iter().zip(ops).zip(&coef) {
-            let syms = verify_leaf(o, inst.ext, arity, op, &bits[..log_leaves], inst.root, "acc: opening");
+            let syms = verify_leaf(
+                o,
+                inst.ext,
+                arity,
+                op,
+                &bits[..log_leaves],
+                inst.root,
+                "acc: opening",
+            );
             let u = gm::mux(o, &syms, &bits[log_leaves..]);
             y = Some(match y {
                 None => o.mul(c, u),
@@ -142,5 +167,11 @@ pub fn verify<O: Ops>(o: &mut O, cfg: &AccConfig, arity: Arity, t: &mut Sponge<O
         let x = gm::pow_bits(o, omega, bits);
         spot.push((x, y.expect("inputs")));
     }
-    AccV { root, rho, v0, ood, spot }
+    AccV {
+        root,
+        rho,
+        v0,
+        ood,
+        spot,
+    }
 }

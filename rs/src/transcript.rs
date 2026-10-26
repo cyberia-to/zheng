@@ -15,30 +15,30 @@
 //! retired artifacts and the legacy path. Bounds: `specs/soundness.md`.
 
 use hemera::Hasher;
-use nebu::{field::P, Fp3, Goldilocks};
+use nebu::{Fp3, Goldilocks, field::P};
 
 use lens::Commitment;
 
+use crate::field::ChallengeField;
 #[cfg(feature = "legacy")]
 use crate::types::Statement;
-use crate::field::ChallengeField;
 use crate::types::SumcheckPoly;
 
 // ── domain separators ─────────────────────────────────────────────
 // absorbed before the corresponding phase message. unique per phase.
 
-const DOM_INIT: &[u8]      = b"\x01zheng-transcript-v1";
+const DOM_INIT: &[u8] = b"\x01zheng-transcript-v1";
 const DOM_SQUEEZE_WIDE: &[u8] = b"\x09squeeze-wide";
-const DOM_COMMIT: &[u8]    = b"\x02commit";
-const DOM_SUMCHECK: u8     = 0x03;
-const DOM_EVAL: &[u8]      = b"\x04eval";
-const DOM_PCS_OPEN: &[u8]  = b"\x05pcs-open";
+const DOM_COMMIT: &[u8] = b"\x02commit";
+const DOM_SUMCHECK: u8 = 0x03;
+const DOM_EVAL: &[u8] = b"\x04eval";
+const DOM_PCS_OPEN: &[u8] = b"\x05pcs-open";
 #[cfg(feature = "legacy")]
-const DOM_RECURSE: &[u8]   = b"\x06recurse";
+const DOM_RECURSE: &[u8] = b"\x06recurse";
 #[cfg(feature = "legacy")]
 const DOM_STATEMENT: &[u8] = b"\x07statement";
 #[cfg(feature = "legacy")]
-const DOM_LINKAGE: &[u8]   = b"\x08linkage";
+const DOM_LINKAGE: &[u8] = b"\x08linkage";
 
 // ── transcript ───────────────────────────────────────────────────
 
@@ -80,14 +80,20 @@ impl Transcript {
     pub fn new() -> Self {
         let mut hasher = Hasher::new();
         hasher.update(DOM_INIT);
-        Self { hasher, rule: ChallengeRule::Wide }
+        Self {
+            hasher,
+            rule: ChallengeRule::Wide,
+        }
     }
 
     /// A transcript that reproduces the 0.4.0 challenge rule, for verifying
     /// retired artifacts (direct public v2 / state v1 proofs, the legacy
     /// path) for one release. New proofs use [`Transcript::new`].
     pub fn new_v1() -> Self {
-        Self { rule: ChallengeRule::V1FirstLimb, ..Self::new() }
+        Self {
+            rule: ChallengeRule::V1FirstLimb,
+            ..Self::new()
+        }
     }
 
     /// Create a transcript for recursive (inner) proofs. Legacy only;
@@ -96,7 +102,10 @@ impl Transcript {
     pub fn new_recursive() -> Self {
         let mut hasher = Hasher::new();
         hasher.update(DOM_RECURSE);
-        Self { hasher, rule: ChallengeRule::V1FirstLimb }
+        Self {
+            hasher,
+            rule: ChallengeRule::V1FirstLimb,
+        }
     }
 
     /// Absorb arbitrary bytes into the transcript.
@@ -168,7 +177,11 @@ impl Transcript {
 
     /// Absorb a sumcheck round polynomial (domain-separated).
     /// Goldilocks coefficients encode as 8 bytes, Fp3 as 24 (three limbs).
-    pub fn absorb_sumcheck_poly<F: ChallengeField>(&mut self, round: usize, poly: &SumcheckPoly<F>) {
+    pub fn absorb_sumcheck_poly<F: ChallengeField>(
+        &mut self,
+        round: usize,
+        poly: &SumcheckPoly<F>,
+    ) {
         self.absorb(&[DOM_SUMCHECK]);
         self.absorb(&(round as u64).to_le_bytes());
         self.absorb(&[poly.degree]);
@@ -276,7 +289,12 @@ pub fn decode_fields(bytes: &[u8]) -> Option<Vec<Goldilocks>> {
     if !bytes.len().is_multiple_of(8) {
         return None;
     }
-    bytes.chunks_exact(8).map(decode_field).collect()
+    bytes
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| decode_field(c))
+        .collect()
 }
 
 /// Encode a SumcheckPoly: 1-byte degree + (degree+1) field elements.
@@ -297,8 +315,11 @@ pub fn decode_sumcheck_poly(bytes: &[u8]) -> Option<(SumcheckPoly, usize)> {
     if bytes.len() < end {
         return None;
     }
-    let coeffs = bytes[1..end].chunks_exact(8)
-        .map(decode_field)
+    let coeffs = bytes[1..end]
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| decode_field(c))
         .collect::<Option<Vec<_>>>()?;
     Some((SumcheckPoly { degree, coeffs }, end))
 }

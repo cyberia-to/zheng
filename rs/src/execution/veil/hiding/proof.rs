@@ -106,7 +106,11 @@ impl HidingProof {
         let mu = r.ext()?;
         let row_test = r.exts(cfg.big_k())?;
         let linear = r.exts(cfg.big_k() + cfg.k - 1)?;
-        let pow_nonce = if cfg.pow_bits > 0 { Some(r.u64()?) } else { None };
+        let pow_nonce = if cfg.pow_bits > 0 {
+            Some(r.u64()?)
+        } else {
+            None
+        };
         let opened = r.u32()?;
         if opened == 0 || opened > cfg.queries {
             return Err("veil: opened column count".into());
@@ -114,7 +118,9 @@ impl HidingProof {
         let columns = (0..opened * cfg.total_rows())
             .map(|_| r.base())
             .collect::<Result<Vec<_>, _>>()?;
-        let salts = (0..opened * SALT).map(|_| r.base()).collect::<Result<Vec<_>, _>>()?;
+        let salts = (0..opened * SALT)
+            .map(|_| r.base())
+            .collect::<Result<Vec<_>, _>>()?;
         let d = r.u32()?;
         if d > opened * cfg.log_n as usize {
             return Err("veil: sibling count".into());

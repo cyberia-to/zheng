@@ -16,7 +16,13 @@ const BUDGET: u64 = 1 << 20;
 fn envelope() -> &'static (Envelope, Vec<u8>) {
     static E: OnceLock<(Envelope, Vec<u8>)> = OnceLock::new();
     E.get_or_init(|| {
-        let e = recursive::prove(&common::parse(common::HASH), &[7], BUDGET, &recursive::params()).unwrap();
+        let e = recursive::prove(
+            &common::parse(common::HASH),
+            &[7],
+            BUDGET,
+            &recursive::params(),
+        )
+        .unwrap();
         let bytes = e.to_bytes();
         (e, bytes)
     })
@@ -25,7 +31,9 @@ fn envelope() -> &'static (Envelope, Vec<u8>) {
 /// Offset of the proof's length prefix and the proof bytes.
 fn proof_span() -> (usize, Vec<u8>) {
     let (e, bytes) = envelope();
-    let Envelope::Recursive { params, proof, .. } = e else { unreachable!() };
+    let Envelope::Recursive { params, proof, .. } = e else {
+        unreachable!()
+    };
     let inner = recursive::proof_bytes(params, proof).unwrap();
     let prefix = varint(inner.len() as u64).len();
     (bytes.len() - inner.len() - prefix, inner)
@@ -75,18 +83,52 @@ fn a_recursive_envelope_round_trips_canonically_and_verifies() {
     assert!(back.verify(None).is_err());
     let add = zheng::machine::statement::tokens(&common::parse(common::ADD));
     assert!(back.verify_program(&add, None).is_err());
-    assert_eq!(Envelope::from_bytes_for(bytes, &add), Err(EnvelopeError::ProgramMismatch));
+    assert_eq!(
+        Envelope::from_bytes_for(bytes, &add),
+        Err(EnvelopeError::ProgramMismatch)
+    );
     // the statement is bound, its program digest included
-    let Envelope::Recursive { params, statement, proof } = back else { unreachable!() };
+    let Envelope::Recursive {
+        params,
+        statement,
+        proof,
+    } = back
+    else {
+        unreachable!()
+    };
     let mut other = statement.clone();
     other.program = zheng::machine::program_digest(&add);
-    assert!(Envelope::Recursive { params, statement: other, proof: proof.clone() }.verify_program(&add, None).is_err());
+    assert!(
+        Envelope::Recursive {
+            params,
+            statement: other,
+            proof: proof.clone()
+        }
+        .verify_program(&add, None)
+        .is_err()
+    );
     let mut other = statement.clone();
     other.input = vec![8];
-    assert!(Envelope::Recursive { params, statement: other, proof: proof.clone() }.verify_program(&program(), None).is_err());
+    assert!(
+        Envelope::Recursive {
+            params,
+            statement: other,
+            proof: proof.clone()
+        }
+        .verify_program(&program(), None)
+        .is_err()
+    );
     let mut other = statement.clone();
     other.cycles += 1;
-    assert!(Envelope::Recursive { params, statement: other, proof }.verify_program(&program(), None).is_err());
+    assert!(
+        Envelope::Recursive {
+            params,
+            statement: other,
+            proof
+        }
+        .verify_program(&program(), None)
+        .is_err()
+    );
 }
 
 #[test]
@@ -97,17 +139,29 @@ fn every_truncation_and_a_trailing_byte_are_rejected() {
     }
     let mut longer = bytes.clone();
     longer.push(0);
-    assert_eq!(Envelope::from_bytes(&longer), Err(EnvelopeError::TrailingBytes));
+    assert_eq!(
+        Envelope::from_bytes(&longer),
+        Err(EnvelopeError::TrailingBytes)
+    );
     // inside the length prefix: a shorter or longer proof is refused by the
     // IVC wire itself
     let (_, inner) = proof_span();
     let step = inner.len() / 97;
-    for cut in (0..inner.len()).step_by(step).chain(inner.len() - 8..inner.len()) {
-        assert!(Envelope::from_bytes(&with_inner(&inner[..cut])).is_err(), "inner prefix {cut}");
+    for cut in (0..inner.len())
+        .step_by(step)
+        .chain(inner.len() - 8..inner.len())
+    {
+        assert!(
+            Envelope::from_bytes(&with_inner(&inner[..cut])).is_err(),
+            "inner prefix {cut}"
+        );
     }
     let mut longer = inner.clone();
     longer.push(0);
-    assert_eq!(Envelope::from_bytes(&with_inner(&longer)), Err(EnvelopeError::NonCanonical));
+    assert_eq!(
+        Envelope::from_bytes(&with_inner(&longer)),
+        Err(EnvelopeError::NonCanonical)
+    );
 }
 
 #[test]
@@ -121,7 +175,10 @@ fn a_wrong_profile_or_format_byte_is_rejected() {
     for profile in [7u8, 0xff] {
         let mut bad = bytes.clone();
         bad[10] = profile;
-        assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
+        assert_eq!(
+            Envelope::from_bytes(&bad),
+            Err(EnvelopeError::UnknownProfile(profile))
+        );
     }
     for format in [0u8, 1, 2, 4, 0xff] {
         let mut bad = bytes.clone();
@@ -139,7 +196,11 @@ fn parameters_outside_the_admitted_sets_are_refused_before_any_key() {
         w.log_inv_rate = rate;
         let mut bad = bytes.clone();
         bad[at..at + 8].copy_from_slice(&w.header());
-        assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical), "rate {rate}");
+        assert_eq!(
+            Envelope::from_bytes(&bad),
+            Err(EnvelopeError::NonCanonical),
+            "rate {rate}"
+        );
     }
     let mut w = recursive::params();
     w.pow_bits = 16;
@@ -151,7 +212,11 @@ fn parameters_outside_the_admitted_sets_are_refused_before_any_key() {
     for log_rows in [0u8, 10, 14, 16, 20, 0xff] {
         let mut bad = inner.clone();
         bad[0] = log_rows;
-        assert_eq!(Envelope::from_bytes(&with_inner(&bad)), Err(EnvelopeError::NonCanonical), "log_rows {log_rows}");
+        assert_eq!(
+            Envelope::from_bytes(&with_inner(&bad)),
+            Err(EnvelopeError::NonCanonical),
+            "log_rows {log_rows}"
+        );
     }
     assert_eq!(ADMITTED.len(), 2);
     // a proof length beyond the bound
@@ -167,7 +232,9 @@ fn a_sample_of_bit_flips_is_never_accepted() {
     let (span, _) = proof_span();
     // every bit of the header, format, parameters, statement and length
     // prefix; then a stride over the proof
-    let bits: Vec<usize> = (0..(span + 3) * 8).chain(((span + 3) * 8..bytes.len() * 8).step_by(1031)).collect();
+    let bits: Vec<usize> = (0..(span + 3) * 8)
+        .chain(((span + 3) * 8..bytes.len() * 8).step_by(1031))
+        .collect();
     let (mut decoded, mut tried) = (0, 0);
     for bit in bits {
         let mut bad = bytes.clone();
@@ -175,7 +242,10 @@ fn a_sample_of_bit_flips_is_never_accepted() {
         tried += 1;
         if let Ok(e) = Envelope::from_bytes(&bad) {
             decoded += 1;
-            assert!(e.verify_program(&program(), None).is_err(), "bit {bit} accepted");
+            assert!(
+                e.verify_program(&program(), None).is_err(),
+                "bit {bit} accepted"
+            );
         }
     }
     eprintln!("bit flips: {tried} tried, {decoded} decoded, 0 accepted");

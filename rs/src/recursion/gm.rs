@@ -19,7 +19,13 @@ pub fn eq<O: Ops>(o: &mut O, a: &[O::V], b: &[O::V]) -> O::V {
     assert_eq!(a.len(), b.len());
     let mut acc: Option<O::V> = None;
     for (&x, &y) in a.iter().zip(b) {
-        let g = Gate { qm: k(2), qa: k(-1), qb: k(-1), qk: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: k(2),
+            qa: k(-1),
+            qb: k(-1),
+            qk: Fp3::ONE,
+            ..Gate::default()
+        };
         let f = o.gate(g, x, y, y);
         acc = Some(match acc {
             None => f,
@@ -37,7 +43,13 @@ pub fn eq_pow<O: Ops>(o: &mut O, x: O::V, b: &[O::V]) -> O::V {
         if i > 0 {
             xi = o.mul(xi, xi);
         }
-        let g = Gate { qm: k(2), qa: k(-1), qb: k(-1), qk: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: k(2),
+            qa: k(-1),
+            qb: k(-1),
+            qk: Fp3::ONE,
+            ..Gate::default()
+        };
         let f = o.gate(g, xi, y, y);
         acc = Some(match acc {
             None => f,
@@ -78,7 +90,11 @@ pub fn mle<O: Ops>(o: &mut O, vals: &[O::V], point: &[O::V]) -> O::V {
                 next.push(o.lerp(r, pair[0], pair[1]));
             } else {
                 // (a, 0): a·(1 − r)
-                let g = Gate { qm: -Fp3::ONE, qa: Fp3::ONE, ..Gate::default() };
+                let g = Gate {
+                    qm: -Fp3::ONE,
+                    qa: Fp3::ONE,
+                    ..Gate::default()
+                };
                 next.push(o.gate(g, pair[0], r, r));
             }
         }
@@ -128,7 +144,10 @@ pub fn interpolate<O: Ops>(o: &mut O, vals: &[O::V], x: O::V) -> O::V {
             (None, None) => o.constant(c),
             (Some(a), None) | (None, Some(a)) => o.affine(c, a, Fp3::ZERO),
             (Some(a), Some(b)) => {
-                let g = Gate { qm: c, ..Gate::default() };
+                let g = Gate {
+                    qm: c,
+                    ..Gate::default()
+                };
                 o.gate(g, a, b, b)
             }
         };
@@ -145,10 +164,19 @@ pub fn interpolate<O: Ops>(o: &mut O, vals: &[O::V], x: O::V) -> O::V {
 pub fn quadratic<O: Ops>(o: &mut O, h0: O::V, h1: O::V, h2: O::V, x: O::V) -> O::V {
     let half = Fp3::from_base(Goldilocks::new(2).inv());
     let d1 = o.sub(h1, h0);
-    let g = Gate { qa: Fp3::ONE, qb: k(-2), qc: Fp3::ONE, ..Gate::default() };
+    let g = Gate {
+        qa: Fp3::ONE,
+        qb: k(-2),
+        qc: Fp3::ONE,
+        ..Gate::default()
+    };
     let d2 = o.gate(g, h2, h1, h0);
     let xx = o.mul_const_add(x, x, Fp3::ZERO);
-    let g = Gate { qa: half, qb: -half, ..Gate::default() };
+    let g = Gate {
+        qa: half,
+        qb: -half,
+        ..Gate::default()
+    };
     let tri = o.gate(g, xx, x, x);
     let a = o.mul_add(x, d1, h0);
     o.mul_add(tri, d2, a)
@@ -159,7 +187,13 @@ pub fn next_eval<O: Ops>(o: &mut O, x: &[O::V], y: &[O::V]) -> O::V {
     let n = x.len();
     let mut suffix: Vec<Option<O::V>> = vec![None; n + 1];
     for i in (0..n).rev() {
-        let g = Gate { qm: k(2), qa: k(-1), qb: k(-1), qk: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: k(2),
+            qa: k(-1),
+            qb: k(-1),
+            qk: Fp3::ONE,
+            ..Gate::default()
+        };
         let e = o.gate(g, x[i], y[i], y[i]);
         suffix[i] = Some(match suffix[i + 1] {
             None => e,
@@ -170,7 +204,11 @@ pub fn next_eval<O: Ops>(o: &mut O, x: &[O::V], y: &[O::V]) -> O::V {
     let mut acc: Option<O::V> = None;
     for i in 0..n {
         // (1 − x_i)·y_i
-        let g = Gate { qm: -Fp3::ONE, qb: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: -Fp3::ONE,
+            qb: Fp3::ONE,
+            ..Gate::default()
+        };
         let mut t = o.gate(g, x[i], y[i], y[i]);
         if let Some(c) = carry {
             t = o.mul(t, c);
@@ -183,7 +221,11 @@ pub fn next_eval<O: Ops>(o: &mut O, x: &[O::V], y: &[O::V]) -> O::V {
             Some(a) => o.add(a, t),
         });
         // x_i·(1 − y_i)
-        let g = Gate { qm: -Fp3::ONE, qa: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: -Fp3::ONE,
+            qa: Fp3::ONE,
+            ..Gate::default()
+        };
         let f = o.gate(g, x[i], y[i], y[i]);
         carry = Some(match carry {
             None => f,
@@ -246,7 +288,11 @@ pub fn pow_bits<O: Ops>(o: &mut O, omega: Goldilocks, bits: &[O::V]) -> O::V {
         acc = Some(match acc {
             None => o.affine(c, b, Fp3::ONE),
             Some(a) => {
-                let g = Gate { qm: c, qa: Fp3::ONE, ..Gate::default() };
+                let g = Gate {
+                    qm: c,
+                    qa: Fp3::ONE,
+                    ..Gate::default()
+                };
                 o.gate(g, a, b, b)
             }
         });
@@ -304,7 +350,11 @@ mod tests {
     use lens::rspcs::field::{eq_eval, ml_eval_ext, pow_point, quadratic_at};
 
     fn e(i: u64) -> Fp3 {
-        Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i + 11), Goldilocks::new(3 * i + 2))
+        Fp3::new(
+            Goldilocks::new(i * 7 + 1),
+            Goldilocks::new(i + 11),
+            Goldilocks::new(3 * i + 2),
+        )
     }
 
     #[test]
@@ -326,16 +376,31 @@ mod tests {
             interpolate(&mut o, &pts, x),
             crate::air::zerocheck_interpolate(&pts, x)
         );
-        assert_eq!(quadratic(&mut o, e(1), e(2), e(3), x), quadratic_at(e(1), e(2), e(3), x));
-        assert_eq!(next_eval(&mut o, &a, &b), crate::air::public::next_eval(&a, &b));
+        assert_eq!(
+            quadratic(&mut o, e(1), e(2), e(3), x),
+            quadratic_at(e(1), e(2), e(3), x)
+        );
+        assert_eq!(
+            next_eval(&mut o, &a, &b),
+            crate::air::public::next_eval(&a, &b)
+        );
         let w = lens::rspcs::field::root_of_unity(8);
-        let bits: Vec<Fp3> = [1u64, 0, 1, 1, 0, 0, 0, 0].iter().map(|&v| Fp3::from_base(Goldilocks::new(v))).collect();
+        let bits: Vec<Fp3> = [1u64, 0, 1, 1, 0, 0, 0, 0]
+            .iter()
+            .map(|&v| Fp3::from_base(Goldilocks::new(v)))
+            .collect();
         assert_eq!(pow_bits(&mut o, w, &bits), Fp3::from_base(w.exp(13)));
         let syms: Vec<Fp3> = (0..8).map(e).collect();
         assert_eq!(mux(&mut o, &syms, &bits[..3]), e(5));
         let cs: Vec<Fp3> = (0..8).map(e).collect();
-        assert_eq!(horner(&mut o, &cs, x), lens::rspcs::field::univariate_ext(&cs, x));
-        assert_eq!(monomial(&mut o, &cs, &a[..3]), lens::rspcs::field::coeff_ml_eval(&cs, &a[..3]));
+        assert_eq!(
+            horner(&mut o, &cs, x),
+            lens::rspcs::field::univariate_ext(&cs, x)
+        );
+        assert_eq!(
+            monomial(&mut o, &cs, &a[..3]),
+            lens::rspcs::field::coeff_ml_eval(&cs, &a[..3])
+        );
         let x2 = x * x;
         let x4 = x2 * x2;
         assert_eq!(pow2k(&mut o, x, 3), x4 * x4);

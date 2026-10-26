@@ -46,12 +46,17 @@ pub fn is_satisfied(instance: &CCSInstance, witness: &CCSWitness) -> bool {
 mod tests {
     use super::*;
     use crate::ccs::reg_t;
-    use crate::ccs::universal::{test_witness, universal_ccs, NUM_ROWS};
+    use crate::ccs::universal::{NUM_ROWS, test_witness, universal_ccs};
 
     #[test]
     fn empty_instance_evaluates_to_zero_rows() {
-        let ccs = CCSInstance { num_rows: 3, ..CCSInstance::default() };
-        let w = CCSWitness { z: vec![Goldilocks::ZERO; 4] };
+        let ccs = CCSInstance {
+            num_rows: 3,
+            ..CCSInstance::default()
+        };
+        let w = CCSWitness {
+            z: vec![Goldilocks::ZERO; 4],
+        };
         assert_eq!(constraint_eval(&ccs, &w), vec![Goldilocks::ZERO; 3]);
     }
 

@@ -57,8 +57,15 @@ struct Pool {
 fn pool() -> &'static Pool {
     static POOL: OnceLock<&'static Pool> = OnceLock::new();
     POOL.get_or_init(|| {
-        let workers = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16).saturating_sub(1);
-        let p: &'static Pool = Box::leak(Box::new(Pool { slot: Mutex::new((0, None)), wake: Condvar::new(), workers }));
+        let workers = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(16)
+            .saturating_sub(1);
+        let p: &'static Pool = Box::leak(Box::new(Pool {
+            slot: Mutex::new((0, None)),
+            wake: Condvar::new(),
+            workers,
+        }));
         for _ in 0..workers {
             std::thread::Builder::new()
                 .name("zheng-verify".into())
@@ -100,8 +107,17 @@ pub fn run(n: usize, threads: usize, f: &(dyn Fn(usize) + Sync)) {
     }
     // SAFETY: the lifetime is erased only for the job's duration: this
     // function returns after `done == n`, and no task starts after that.
-    let fp: *const (dyn Fn(usize) + Sync) = unsafe { core::mem::transmute::<&(dyn Fn(usize) + Sync), &'static (dyn Fn(usize) + Sync)>(f) };
-    let job = Arc::new(Job { f: fp, n, next: AtomicUsize::new(0), done: AtomicUsize::new(0), panicked: AtomicBool::new(false), fin: (Mutex::new(()), Condvar::new()) });
+    let fp: *const (dyn Fn(usize) + Sync) = unsafe {
+        core::mem::transmute::<&(dyn Fn(usize) + Sync), &'static (dyn Fn(usize) + Sync)>(f)
+    };
+    let job = Arc::new(Job {
+        f: fp,
+        n,
+        next: AtomicUsize::new(0),
+        done: AtomicUsize::new(0),
+        panicked: AtomicBool::new(false),
+        fin: (Mutex::new(()), Condvar::new()),
+    });
     let _ = threads; // every worker may take tasks; `n` bounds the parallelism
     {
         let mut g = p.slot.lock().expect("pool");
@@ -128,7 +144,11 @@ pub fn run(n: usize, threads: usize, f: &(dyn Fn(usize) + Sync)) {
 }
 
 /// `f` over `0..n` in `chunks` contiguous ranges, results in order.
-pub fn map_chunks<T: Send>(n: usize, chunks: usize, f: impl Fn(core::ops::Range<usize>) -> T + Sync) -> Vec<T> {
+pub fn map_chunks<T: Send>(
+    n: usize,
+    chunks: usize,
+    f: impl Fn(core::ops::Range<usize>) -> T + Sync,
+) -> Vec<T> {
     let chunks = chunks.min(n.max(1)).max(1);
     let size = n.div_ceil(chunks).max(1);
     let count = n.div_ceil(size).max(1);
@@ -137,7 +157,9 @@ pub fn map_chunks<T: Send>(n: usize, chunks: usize, f: impl Fn(core::ops::Range<
         let v = f(i * size..((i + 1) * size).min(n));
         *out[i].lock().expect("result") = Some(v);
     });
-    out.into_iter().map(|m| m.into_inner().expect("result").expect("every chunk ran")).collect()
+    out.into_iter()
+        .map(|m| m.into_inner().expect("result").expect("every chunk ran"))
+        .collect()
 }
 
 #[cfg(test)]

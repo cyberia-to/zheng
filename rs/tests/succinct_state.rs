@@ -66,6 +66,9 @@ fn state_statements_prove_and_bind_their_reads() {
     for limb in 0..4 {
         let mut wrong = statement.clone();
         wrong.state_root[limb] = (wrong.state_root[limb] + 1) % 0xFFFF_FFFF_0000_0001;
-        assert!(succinct::verify_state(&wrong, &proof, &state(42)).is_err(), "limb {limb}");
+        assert!(
+            succinct::verify_state(&wrong, &proof, &state(42)).is_err(),
+            "limb {limb}"
+        );
     }
 }

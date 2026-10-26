@@ -19,7 +19,11 @@ pub struct CircuitAir {
 }
 
 fn t<T: Num>() -> T {
-    T::from_fp3(Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO))
+    T::from_fp3(Fp3::new(
+        Goldilocks::ZERO,
+        Goldilocks::ONE,
+        Goldilocks::ZERO,
+    ))
 }
 
 fn ext3<T: Num>(c: &[T]) -> T {
@@ -70,13 +74,26 @@ impl Default for CircuitAir {
     fn default() -> Self {
         let tables = Tables::default();
         let partial = tables.partial_chain(RP);
-        let mut air = Self { tables, partial, constraints: 0 };
+        let mut air = Self {
+            tables,
+            partial,
+            constraints: 0,
+        };
         let z1 = vec![Fp3::ZERO; V1];
         let z2 = vec![Fp3::ZERO; V2];
         let p = vec![Fp3::ZERO; pre::COUNT];
         let mut s = Sink { buf: &mut [], i: 0 };
         air.eval(
-            &Row { l1: &z1, l2: &z2, n1: &z1, n2: &z2, p: &p, pin: &[Fp3::ZERO; PIN], alpha: Fp3::ZERO, beta: Fp3::ZERO },
+            &Row {
+                l1: &z1,
+                l2: &z2,
+                n1: &z1,
+                n2: &z2,
+                p: &p,
+                pin: &[Fp3::ZERO; PIN],
+                alpha: Fp3::ZERO,
+                beta: Fp3::ZERO,
+            },
             &mut s,
         );
         air.constraints = s.i;
@@ -100,9 +117,13 @@ impl CircuitAir {
     fn full<T: Num>(&self, s: &[T], k: usize) -> [T; WIDTH] {
         debug_assert!(is_full(k));
         let rc = &self.tables.rc[k];
-        let sb: Vec<T> = (0..WIDTH).map(|i| pow7(s[i] + T::from_base(rc[i]))).collect();
+        let sb: Vec<T> = (0..WIDTH)
+            .map(|i| pow7(s[i] + T::from_base(rc[i])))
+            .collect();
         core::array::from_fn(|j| {
-            (0..WIDTH).fold(T::ZERO, |a, i| a + T::from_base(self.tables.mds[j][i]) * sb[i])
+            (0..WIDTH).fold(T::ZERO, |a, i| {
+                a + T::from_base(self.tables.mds[j][i]) * sb[i]
+            })
         })
     }
 
@@ -132,7 +153,9 @@ impl CircuitAir {
         let y = |k: usize| &states[k]; // the state after round k − 1 (y(0) = MDS·x)
         let w = &sbox[PARTIAL_FIRST..PARTIAL_END];
         let mut rows = [[Goldilocks::ZERO; 48]; PERM_ROWS];
-        let put = |r: &mut [Goldilocks; 48], at: usize, v: &[Goldilocks]| r[at..at + v.len()].copy_from_slice(v);
+        let put = |r: &mut [Goldilocks; 48], at: usize, v: &[Goldilocks]| {
+            r[at..at + v.len()].copy_from_slice(v)
+        };
         put(&mut rows[0], PX, x);
         put(&mut rows[0], PY1, y(1));
         put(&mut rows[0], PY2, y(2));
@@ -210,7 +233,11 @@ impl CircuitAir {
         // PERM
         let ph: [T; PERM_ROWS] = core::array::from_fn(|k| p[pre::PERM + k]);
         let mdsx: Vec<T> = (0..WIDTH)
-            .map(|j| (0..WIDTH).fold(T::ZERO, |a, i| a + T::from_base(self.tables.mds[j][i]) * l[PX + i]))
+            .map(|j| {
+                (0..WIDTH).fold(T::ZERO, |a, i| {
+                    a + T::from_base(self.tables.mds[j][i]) * l[PX + i]
+                })
+            })
             .collect();
         // row 0: x → y1, y2 | y3
         let y1 = self.full(&mdsx, 0);
@@ -233,7 +260,11 @@ impl CircuitAir {
         // row 2: y6 and w_0..w_31 | w_32..w_47, y7 — the 48 partial rounds
         // are the chain `self.partial` over y6 and the S-box outputs
         let y6c = &l[PY6..PY6 + 16];
-        let wv: Vec<T> = l[PW..PW + 32].iter().chain(&n[PW2..PW2 + 16]).copied().collect();
+        let wv: Vec<T> = l[PW..PW + 32]
+            .iter()
+            .chain(&n[PW2..PW2 + 16])
+            .copied()
+            .collect();
         for k in 0..RP {
             let u = self.lin(k, 0, y6c, &wv) + T::from_base(self.tables.rc[PARTIAL_FIRST + k][0]);
             out.push(ph[2] * (wv[k] - pow7(u)));
@@ -284,7 +315,12 @@ impl CircuitAir {
         // a 4-ary node: the current digest at position b0 + 2·b1
         let node4 = p[pre::NODE4];
         let b2 = l[PBIT2];
-        let sel = [(one - bit) * (one - b2), bit * (one - b2), (one - bit) * b2, bit * b2];
+        let sel = [
+            (one - bit) * (one - b2),
+            bit * (one - b2),
+            (one - bit) * b2,
+            bit * b2,
+        ];
         for (i, &s) in sel.iter().enumerate() {
             for j in 0..4 {
                 out.push(node4 * s * (nx[4 * i + j] - o8[j]));
@@ -323,7 +359,13 @@ pub const MEMORY_CONSTRAINTS: usize = SLOTS + 1;
 /// The value each memory slot of a row fingerprints (by row kind).
 pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {
     let tt = t::<T>();
-    let wide = |j: usize| if j < pre::WIDES { p[pre::WIDE + j] } else { T::ZERO };
+    let wide = |j: usize| {
+        if j < pre::WIDES {
+            p[pre::WIDE + j]
+        } else {
+            T::ZERO
+        }
+    };
     let packed = |v: &[T], j: usize| {
         let w = wide(j);
         v[j] + tt * w * v[j + 1] + tt * tt * w * v[j + 2]
@@ -340,7 +382,11 @@ pub fn slot_values<T: Num>(l: &[T], p: &[T]) -> [T; SLOTS] {
             l[LIVE]
         };
         let bv = if s < BITS_ROW { l[s] } else { l[BVAL] };
-        let p0 = if s < RATE { packed(&l[PX..PX + 16], s) } else { T::ZERO };
+        let p0 = if s < RATE {
+            packed(&l[PX..PX + 16], s)
+        } else {
+            T::ZERO
+        };
         let p3 = match s {
             s if s < RATE => packed(&l[PY12..PY12 + 16], s),
             s if s < RATE + 4 => l[PRT + s - RATE],
@@ -377,9 +423,28 @@ mod tests {
             };
             let (l1, n1) = (lift(&rows[ph]), lift(&rows[ph + 1]));
             let mut buf = vec![Fp3::ZERO; air.constraints()];
-            let mut s = Sink { buf: &mut buf, i: 0 };
-            air.eval(&Row { l1: &l1, l2: &z2, n1: &n1, n2: &z2, p: &p, pin: &[Fp3::ZERO; PIN], alpha: Fp3::ONE, beta: Fp3::ONE }, &mut s);
-            assert!(buf.iter().all(|&v| v == Fp3::ZERO), "phase {ph}: {:?}", buf.iter().position(|&v| v != Fp3::ZERO));
+            let mut s = Sink {
+                buf: &mut buf,
+                i: 0,
+            };
+            air.eval(
+                &Row {
+                    l1: &l1,
+                    l2: &z2,
+                    n1: &n1,
+                    n2: &z2,
+                    p: &p,
+                    pin: &[Fp3::ZERO; PIN],
+                    alpha: Fp3::ONE,
+                    beta: Fp3::ONE,
+                },
+                &mut s,
+            );
+            assert!(
+                buf.iter().all(|&v| v == Fp3::ZERO),
+                "phase {ph}: {:?}",
+                buf.iter().position(|&v| v != Fp3::ZERO)
+            );
         }
         assert!(air.constraints() > 200);
     }

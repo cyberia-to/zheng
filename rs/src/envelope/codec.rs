@@ -109,7 +109,11 @@ impl<'a> Reader<'a> {
         (0..n).map(|_| self.field()).collect()
     }
     pub fn finish(self) -> Result<(), E> {
-        if self.bytes.is_empty() { Ok(()) } else { Err(E::TrailingBytes) }
+        if self.bytes.is_empty() {
+            Ok(())
+        } else {
+            Err(E::TrailingBytes)
+        }
     }
 }
 
@@ -130,18 +134,21 @@ mod tests {
     fn varints_round_trip_with_shortest_encodings() {
         for v in [0, 1, 127, 128, 16383, 16384, P - 1, P, u64::MAX] {
             let bytes = roundtrip(v);
-            assert_eq!(bytes.len(), (64 - v.leading_zeros() as usize).div_ceil(7).max(1));
+            assert_eq!(
+                bytes.len(),
+                (64 - v.leading_zeros() as usize).div_ceil(7).max(1)
+            );
         }
     }
 
     #[test]
     fn overlong_and_oversized_varints_are_rejected() {
         for bad in [
-            vec![0x80, 0x00],             // 0 in two bytes
-            vec![0xff, 0x00],             // 127 with a zero continuation
-            vec![0x80; 10],               // never terminates within 10 bytes
+            vec![0x80, 0x00],                     // 0 in two bytes
+            vec![0xff, 0x00],                     // 127 with a zero continuation
+            vec![0x80; 10],                       // never terminates within 10 bytes
             [vec![0xff; 9], vec![0x02]].concat(), // 2^64
-            vec![0x80],                   // truncated
+            vec![0x80],                           // truncated
         ] {
             assert!(Reader::new(&bad).varint().is_err(), "{bad:?}");
         }

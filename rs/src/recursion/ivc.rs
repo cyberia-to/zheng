@@ -84,8 +84,22 @@ pub struct Key {
 fn layout(p: &Params, air: &CircuitAir) -> Result<(Pre, usize), String> {
     let mut b = Builder::new(false);
     let live = b.live_var();
-    let parts = CtxParts { statement: [Goldilocks::ZERO; 4], chain: [Goldilocks::ZERO; 4], g0: Fp3::ZERO, pn0: Fp3::ZERO, pv0: Fp3::ZERO };
-    program::run(&mut b, p, live, &program::dummy_state(p), &program::dummy_proof(p), &parts, |b, c| b.set_output(c));
+    let parts = CtxParts {
+        statement: [Goldilocks::ZERO; 4],
+        chain: [Goldilocks::ZERO; 4],
+        g0: Fp3::ZERO,
+        pn0: Fp3::ZERO,
+        pv0: Fp3::ZERO,
+    };
+    program::run(
+        &mut b,
+        p,
+        live,
+        &program::dummy_state(p),
+        &program::dummy_proof(p),
+        &parts,
+        |b, c| b.set_output(c),
+    );
     let (_, pre, out) = trace::generate(&b, air, p.n)?;
     Ok((pre, out))
 }
@@ -111,9 +125,27 @@ pub fn plan(whir: &WhirParams, n: usize) -> Result<(Params, usize, [usize; 3]), 
     let p = Params::new(whir, n)?;
     let mut b = Builder::new(false);
     let live = b.live_var();
-    let parts = CtxParts { statement: [Goldilocks::ZERO; 4], chain: [Goldilocks::ZERO; 4], g0: Fp3::ZERO, pn0: Fp3::ZERO, pv0: Fp3::ZERO };
-    program::run(&mut b, &p, live, &program::dummy_state(&p), &program::dummy_proof(&p), &parts, |b, c| b.set_output(c));
-    let census = [b.gates.len(), b.bits.len(), b.chains.iter().map(|c| c.blocks.len()).sum()];
+    let parts = CtxParts {
+        statement: [Goldilocks::ZERO; 4],
+        chain: [Goldilocks::ZERO; 4],
+        g0: Fp3::ZERO,
+        pn0: Fp3::ZERO,
+        pv0: Fp3::ZERO,
+    };
+    program::run(
+        &mut b,
+        &p,
+        live,
+        &program::dummy_state(&p),
+        &program::dummy_proof(&p),
+        &parts,
+        |b, c| b.set_output(c),
+    );
+    let census = [
+        b.gates.len(),
+        b.bits.len(),
+        b.chains.iter().map(|c| c.blocks.len()).sum(),
+    ];
     Ok((p, b.rows(), census))
 }
 
@@ -126,7 +158,10 @@ fn key_cache() -> &'static Cache {
 
 /// Whether the key of `(whir, n)` is in the process cache.
 pub fn cached(whir: &WhirParams, n: usize) -> bool {
-    key_cache().lock().expect("key cache").contains_key(&(whir.header(), n))
+    key_cache()
+        .lock()
+        .expect("key cache")
+        .contains_key(&(whir.header(), n))
 }
 
 /// Derive (or fetch) the key of `(whir, n)`.
@@ -145,7 +180,10 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
     }
     let (kw, _) = KeyWords::commit(p.cfg.layout, p.n, &pre, p.arity);
     let k = Arc::new(Key::assemble(p, pre, kw.root, Some(kw))?);
-    cache.lock().expect("key cache").insert((whir.header(), n), k.clone());
+    cache
+        .lock()
+        .expect("key cache")
+        .insert((whir.header(), n), k.clone());
     Ok(k)
 }
 
@@ -155,29 +193,59 @@ pub fn key(whir: &WhirParams, n: usize) -> Result<Arc<Key>, String> {
 pub fn install(k: Key) -> Arc<Key> {
     let cache = key_cache();
     let mut c = cache.lock().expect("key cache");
-    c.entry((k.params.whir.header(), k.params.n)).or_insert_with(|| Arc::new(k)).clone()
+    c.entry((k.params.whir.header(), k.params.n))
+        .or_insert_with(|| Arc::new(k))
+        .clone()
 }
 
 impl Key {
     /// Everything but the circuit layout, rebuilt from it.
-    fn assemble(params: Params, pre: Pre, kw_root: Digest, kw: Option<KeyWords>) -> Result<Self, String> {
+    fn assemble(
+        params: Params,
+        pre: Pre,
+        kw_root: Digest,
+        kw: Option<KeyWords>,
+    ) -> Result<Self, String> {
         let sparse = super::vkey::sparse(&pre);
         let key_ext = super::vkey::ext(&pre);
-        let dcfg = whir::Config::derive(&params.whir, params.vars, &[1, 2], params.cfg.acc_claims() + 2)?.with_arity(params.arity);
+        let dcfg = whir::Config::derive(
+            &params.whir,
+            params.vars,
+            &[1, 2],
+            params.cfg.acc_claims() + 2,
+        )?
+        .with_arity(params.arity);
         let g = g_graph(&params);
         let cell = OnceLock::new();
         if let Some(kw) = kw {
             let _ = cell.set(kw);
         }
-        Ok(Key { params, pre, sparse, kw_root, kw: cell, key_ext, dcfg, g })
+        Ok(Key {
+            params,
+            pre,
+            sparse,
+            kw_root,
+            kw: cell,
+            key_ext,
+            dcfg,
+            g,
+        })
     }
 
     /// The key's committed words (committed on first use; their root is
     /// the key's).
     pub fn words(&self) -> &KeyWords {
         self.kw.get_or_init(|| {
-            let (kw, _) = KeyWords::commit(self.params.cfg.layout, self.params.n, &self.pre, self.params.arity);
-            assert_eq!(kw.root, self.kw_root, "recursion: the key's words do not match its root");
+            let (kw, _) = KeyWords::commit(
+                self.params.cfg.layout,
+                self.params.n,
+                &self.pre,
+                self.params.arity,
+            );
+            assert_eq!(
+                kw.root, self.kw_root,
+                "recursion: the key's words do not match its root"
+            );
             kw
         })
     }
@@ -204,7 +272,8 @@ impl Key {
         if r.raw(LAYOUT_TAG.len()).map_err(e)? != LAYOUT_TAG {
             return Err("ivc key layout: tag".into());
         }
-        let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?).map_err(|_| "ivc key layout: header")?;
+        let whir = lens::Whir::params_from_header(r.raw(8).map_err(e)?)
+            .map_err(|_| "ivc key layout: header")?;
         let n = r.varint().map_err(e)? as usize;
         if !(10..=20).contains(&n) {
             return Err("ivc key layout: step size".into());
@@ -230,8 +299,18 @@ const LAYOUT_TAG: &[u8; 8] = b"ZHKIVC02";
 /// statement).
 fn g_graph(p: &Params) -> Graph {
     use crate::machine::air::{KCONSTS, KConst};
-    let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [Goldilocks::ZERO; 4], cycles: 0, root: [Goldilocks::ZERO; 4] };
-    let rel = Relation::new(Machine::new(constants, &[], 1 << p.n, 0, 1 << p.n), [Fp3::ZERO; 2]);
+    let constants = Constants {
+        fml0: 0,
+        obj0: 0,
+        p: 0,
+        output: [Goldilocks::ZERO; 4],
+        cycles: 0,
+        root: [Goldilocks::ZERO; 4],
+    };
+    let rel = Relation::new(
+        Machine::new(constants, &[], 1 << p.n, 0, 1 << p.n),
+        [Fp3::ZERO; 2],
+    );
     record(G_POINT + 2 + KCONSTS, |i| {
         let (pt, rest) = i.split_at(G_POINT);
         vec![rel.g_with(pt, &[rest[0], rest[1]], &KConst::from_slice(&rest[2..]))]
@@ -271,7 +350,14 @@ fn digest_vals(d: &[Fp3; 4]) -> Digest {
 }
 
 /// The context's parts for a run.
-fn parts(p: &Params, key: &[Vec<(u32, Fp3)>], rel: &Relation, global: &[Public], sd: Digest, chain: Digest) -> CtxParts {
+fn parts(
+    p: &Params,
+    key: &[Vec<(u32, Fp3)>],
+    rel: &Relation,
+    global: &[Public],
+    sd: Digest,
+    chain: Digest,
+) -> CtxParts {
     CtxParts {
         statement: sd,
         chain,
@@ -282,8 +368,15 @@ fn parts(p: &Params, key: &[Vec<(u32, Fp3)>], rel: &Relation, global: &[Public],
 }
 
 /// Run `program` and prove it recursively in steps of `2^n` rows.
-pub fn prove(program: &ExecutionNoun, input: &[u64], budget: u64, whir: &WhirParams, n: u32) -> Result<(MachineStatement, IvcProof), String> {
-    let run = machine::execute_exact(program, input, budget, n).map_err(|e| format!("machine: {e:?}"))?;
+pub fn prove(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    whir: &WhirParams,
+    n: u32,
+) -> Result<(MachineStatement, IvcProof), String> {
+    let run =
+        machine::execute_exact(program, input, budget, n).map_err(|e| format!("machine: {e:?}"))?;
     let proof = prove_run(&run, whir)?;
     Ok((run.statement, proof))
 }
@@ -348,7 +441,10 @@ fn nox_row0(seg: &crate::air::Trace, n2: &crate::air::Trace) -> Vec<Goldilocks> 
 /// (`ZHENG_KEEP_WORDS_BYTES`, default 2 GiB: about five steps of 2^15
 /// rows); words beyond it are committed again at their step.
 fn keep_words_bytes() -> usize {
-    std::env::var("ZHENG_KEEP_WORDS_BYTES").ok().and_then(|v| v.parse().ok()).unwrap_or(2 << 30)
+    std::env::var("ZHENG_KEEP_WORDS_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2 << 30)
 }
 
 /// Prove a run whose segments are the key's step size.
@@ -373,7 +469,12 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         let root = w.root().map(Fp3::from_base);
         let z = step::pre_points(&mut o, root, p.fresh);
         let ys: Vec<Fp3> = z.iter().map(|&z| w.univariate(z)).collect();
-        chain = digest_vals(&step::chain_next(&mut o, chain.map(Fp3::from_base), root, &ys));
+        chain = digest_vals(&step::chain_next(
+            &mut o,
+            chain.map(Fp3::from_base),
+            root,
+            &ys,
+        ));
         ood_a.push(ys);
         kept_bytes += w.bytes();
         kept_a.push((kept_bytes <= keep_words_bytes()).then_some(w));
@@ -382,7 +483,9 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     let sd = statement_digest(&run.statement, n, run.start as u64, segs as u64);
     let ch = run_challenges(sd, chain);
     let global = Machine::new(run.constants.clone(), &run.init, run.start, 0, segs << n).publics;
-    let rels: Vec<Relation> = (0..segs).map(|i| Relation::new(run.machine(i), ch)).collect();
+    let rels: Vec<Relation> = (0..segs)
+        .map(|i| Relation::new(run.machine(i), ch))
+        .collect();
     let ctx_parts = parts(p, &k.sparse, &rels[0], &global, sd, chain);
     let mut carry = Fp3::ZERO;
     let mut n2s = Vec::with_capacity(segs);
@@ -401,9 +504,17 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
         };
         let mut b = Builder::new(i > 0);
         let live = b.live_var();
-        let (out, h) = program::run(&mut b, p, live, &st_prev, &pf_prev, &ctx_parts, |b, c| b.set_output(c));
+        let (out, h) = program::run(&mut b, p, live, &st_prev, &pf_prev, &ctx_parts, |b, c| {
+            b.set_output(c)
+        });
         b.finish()?;
-        let st: State = state::StateV::from_items(&p.dims, &out.items().iter().map(|&(v, _)| b.value(v)).collect::<Vec<_>>());
+        let st: State = state::StateV::from_items(
+            &p.dims,
+            &out.items()
+                .iter()
+                .map(|&(v, _)| b.value(v))
+                .collect::<Vec<_>>(),
+        );
         let x = digest_vals(&h.map(|v| b.value(v)));
         lap(&format!("circuit {i}"));
         // the layout is the key's (the step's self-check below refuses a
@@ -445,10 +556,20 @@ pub fn prove_run(run: &Run, whir: &WhirParams) -> Result<IvcProof, String> {
     }
     let (state, step) = prev.expect("a segment");
     let fin = last_state.expect("a segment");
-    let AccData::Word(word) = acc else { return Err("recursion: the last accumulator".into()) };
+    let AccData::Word(word) = acc else {
+        return Err("recursion: the last accumulator".into());
+    };
     let decider = decide::prove(&k.dcfg, &word, &fin.acc, &fin.pv, k.words(), n)?;
     lap("decide");
-    Ok(IvcProof { log_rows: n as u32, start: run.start as u64, segments: segs as u64, chain, state, step, decider })
+    Ok(IvcProof {
+        log_rows: n as u32,
+        start: run.start as u64,
+        segments: segs as u64,
+        chain,
+        state,
+        step,
+        decider,
+    })
 }
 
 /// The statement-side work of a verification: everything that depends on
@@ -464,7 +585,14 @@ pub struct Prepared {
 }
 
 /// Prepare the verification of proofs of `st` with this header.
-pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u64, segments: u64, chain: Digest) -> Result<Prepared, String> {
+pub fn prepare(
+    st: &MachineStatement,
+    whir: &WhirParams,
+    log_rows: u32,
+    start: u64,
+    segments: u64,
+    chain: Digest,
+) -> Result<Prepared, String> {
     let n = log_rows as usize;
     if !(10..=20).contains(&n) {
         return Err("recursion: step size".into());
@@ -472,7 +600,12 @@ pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u
     let key = key(whir, n)?;
     let derived = st.derive()?;
     let (segs, st_row) = (segments as usize, start as usize);
-    if segs == 0 || segs > 1 << 32 || !st_row.is_multiple_of(BLOCK) || st_row <= derived.entries.len() || st_row + BLOCK > segs << n {
+    if segs == 0
+        || segs > 1 << 32
+        || !st_row.is_multiple_of(BLOCK)
+        || st_row <= derived.entries.len()
+        || st_row + BLOCK > segs << n
+    {
         return Err("recursion: geometry".into());
     }
     let constants = Constants {
@@ -487,7 +620,10 @@ pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u
     let sd = statement_digest(st, n, start, segments);
     let ch = run_challenges(sd, chain);
     let global = Machine::new(constants.clone(), &init, st_row, 0, segs << n).publics;
-    let rel = Relation::new(Machine::new(constants.clone(), &init, st_row, 0, 1 << n), ch);
+    let rel = Relation::new(
+        Machine::new(constants.clone(), &init, st_row, 0, 1 << n),
+        ch,
+    );
     let ctx = state::ctx_native(&parts(&key.params, &key.sparse, &rel, &global, sd, chain));
     let base = |d: Digest| d.map(Fp3::from_base);
     let publics = Publics {
@@ -497,12 +633,24 @@ pub fn prepare(st: &MachineStatement, whir: &WhirParams, log_rows: u32, start: u
         ch,
         k: constants.lift(),
     };
-    Ok(Prepared { key, header: (log_rows, start, segments, chain), publics, global })
+    Ok(Prepared {
+        key,
+        header: (log_rows, start, segments, chain),
+        publics,
+        global,
+    })
 }
 
 /// Verify a recursive proof of `st` under `whir`.
 pub fn verify(st: &MachineStatement, proof: &IvcProof, whir: &WhirParams) -> Result<(), String> {
-    let prep = prepare(st, whir, proof.log_rows, proof.start, proof.segments, proof.chain)?;
+    let prep = prepare(
+        st,
+        whir,
+        proof.log_rows,
+        proof.start,
+        proof.segments,
+        proof.chain,
+    )?;
     verify_prepared(&prep, proof)
 }
 
@@ -521,7 +669,11 @@ pub fn check_shapes(key: &Key, proof: &IvcProof) -> Result<(), String> {
         && s.pn.point.len() == p.dims.pn
         && s.pv.point.len() == p.dims.pv
         && state::is_canonical(s);
-    if shape_ok { Ok(()) } else { Err("recursion: state shape".into()) }
+    if shape_ok {
+        Ok(())
+    } else {
+        Err("recursion: state shape".into())
+    }
 }
 
 /// Verify against a preparation whose header must be the proof's: the

@@ -34,7 +34,11 @@ fn row_dot(matrix: &crate::types::SparseMatrix, r: usize, z: &[Goldilocks]) -> G
 ///   T[r] = c · ((M_i[r]·w_acc)·(M_k[r]·w_new) + (M_i[r]·w_new)·(M_k[r]·w_acc))
 ///
 /// Row-by-row computation ensures only diagonal contributions appear (r=s terms).
-fn cross_term(instance: &CCSInstance, w_acc: &[Goldilocks], w_new: &[Goldilocks]) -> Vec<Goldilocks> {
+fn cross_term(
+    instance: &CCSInstance,
+    w_acc: &[Goldilocks],
+    w_new: &[Goldilocks],
+) -> Vec<Goldilocks> {
     let m = instance.num_rows;
     let mut t = vec![Goldilocks::ZERO; m];
     for (multiset, &coeff) in instance.multisets.iter().zip(instance.coeffs.iter()) {
@@ -189,8 +193,8 @@ fn fold_step_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ccs::universal::{test_witness, universal_ccs};
     use crate::ccs::reg_t;
+    use crate::ccs::universal::{test_witness, universal_ccs};
 
     fn zero_accumulator(instance: &CCSInstance) -> Accumulator {
         let z = vec![Goldilocks::ZERO; 64];
@@ -205,7 +209,12 @@ mod tests {
 
     /// An add row (tag 5): r6 = r4 + r5.
     fn make_witness(r4: u64, r5: u64, r6: u64) -> CCSWitness {
-        test_witness(&[(reg_t(0), 5), (reg_t(4), r4), (reg_t(5), r5), (reg_t(6), r6)])
+        test_witness(&[
+            (reg_t(0), 5),
+            (reg_t(4), r4),
+            (reg_t(5), r5),
+            (reg_t(6), r6),
+        ])
     }
 
     #[test]
@@ -246,8 +255,19 @@ mod tests {
         fold_step(&mut acc2, &instance, &witness, &mut t2).unwrap();
 
         assert_eq!(acc1.step_count, acc2.step_count);
-        assert!(acc1.error_evals.iter().zip(acc2.error_evals.iter()).all(|(a, b)| a.as_u64() == b.as_u64()));
-        assert!(acc1.folded_witness.z.iter().zip(acc2.folded_witness.z.iter()).all(|(a, b)| a.as_u64() == b.as_u64()));
+        assert!(
+            acc1.error_evals
+                .iter()
+                .zip(acc2.error_evals.iter())
+                .all(|(a, b)| a.as_u64() == b.as_u64())
+        );
+        assert!(
+            acc1.folded_witness
+                .z
+                .iter()
+                .zip(acc2.folded_witness.z.iter())
+                .all(|(a, b)| a.as_u64() == b.as_u64())
+        );
     }
 
     // ── SOUNDNESS ─────────────────────────────────────────────────────────────
@@ -309,8 +329,14 @@ mod tests {
         let mut acc = zero_accumulator(&instance);
         let mut t = Transcript::new_v1();
         let err = fold_step(&mut acc, &instance, &bad, &mut t);
-        assert!(matches!(err, Err(FoldError::UnsatisfyingWitness)), "{err:?}");
-        assert_eq!(acc.step_count, 0, "a rejected fold must not mutate the accumulator");
+        assert!(
+            matches!(err, Err(FoldError::UnsatisfyingWitness)),
+            "{err:?}"
+        );
+        assert_eq!(
+            acc.step_count, 0,
+            "a rejected fold must not mutate the accumulator"
+        );
     }
 
     /// The gate applies on the second (legacy relaxed-fold) path too, not
@@ -326,8 +352,14 @@ mod tests {
         fold_step(&mut acc, &instance, &good, &mut t).unwrap();
         assert_eq!(acc.step_count, 1);
         let err = fold_step(&mut acc, &instance, &bad, &mut t);
-        assert!(matches!(err, Err(FoldError::UnsatisfyingWitness)), "{err:?}");
-        assert_eq!(acc.step_count, 1, "a rejected fold must not mutate the accumulator");
+        assert!(
+            matches!(err, Err(FoldError::UnsatisfyingWitness)),
+            "{err:?}"
+        );
+        assert_eq!(
+            acc.step_count, 1,
+            "a rejected fold must not mutate the accumulator"
+        );
     }
 
     /// Sharper finding: the all-zero witness — no selector set, no `CONST_IDX
@@ -347,7 +379,9 @@ mod tests {
         use crate::types::{ProofGroup, ProofParams, Statement, TraceProof};
 
         let instance = universal_ccs().clone();
-        let all_zero = CCSWitness { z: vec![Goldilocks::ZERO; instance.num_cols] };
+        let all_zero = CCSWitness {
+            z: vec![Goldilocks::ZERO; instance.num_cols],
+        };
         assert!(
             instance.is_satisfied_by(&all_zero),
             "the all-zero witness — CONST_IDX included — satisfies the universal \
@@ -372,8 +406,13 @@ mod tests {
         let proof = decide(&acc, &statement, &linkage, &ProofParams::default())
             .expect("decide() has no way to notice the constant wire is zeroed");
 
-        let trace_proof =
-            TraceProof { universal: ProofGroup { proof, accumulator: acc }, binding: None };
+        let trace_proof = TraceProof {
+            universal: ProofGroup {
+                proof,
+                accumulator: acc,
+            },
+            binding: None,
+        };
         assert!(
             crate::verify(&trace_proof, &statement, &ProofParams::default()).is_ok(),
             "documents the residual: the zeroed-constant-wire witness verifies for any statement"
@@ -413,8 +452,13 @@ mod tests {
         };
         let linkage = crate::linkage_digest(&[&acc.witness_commitment]);
         let proof = decide(&acc, &statement, &linkage, &ProofParams::default()).unwrap();
-        let trace_proof =
-            TraceProof { universal: ProofGroup { proof, accumulator: acc }, binding: None };
+        let trace_proof = TraceProof {
+            universal: ProofGroup {
+                proof,
+                accumulator: acc,
+            },
+            binding: None,
+        };
         assert!(
             crate::verify(&trace_proof, &statement, &ProofParams::default()).is_ok(),
             "documents the recursion-milestone residual: a real but unrelated \

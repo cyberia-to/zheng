@@ -61,7 +61,12 @@ pub fn pre_points<O: Ops>(o: &mut O, root: [O::V; 4], s: usize) -> Vec<O::V> {
 }
 
 /// The chain of pre-committed roots after one more.
-pub fn chain_next<O: Ops>(o: &mut O, chain: [O::V; 4], root: [O::V; 4], answers: &[O::V]) -> [O::V; 4] {
+pub fn chain_next<O: Ops>(
+    o: &mut O,
+    chain: [O::V; 4],
+    root: [O::V; 4],
+    answers: &[O::V],
+) -> [O::V; 4] {
     let mut sp = Sponge::new(o, tag::CHAIN);
     sp.absorb_all(o, &chain);
     sp.absorb_all(o, &root);
@@ -73,20 +78,42 @@ pub fn chain_next<O: Ops>(o: &mut O, chain: [O::V; 4], root: [O::V; 4], answers:
 pub fn word_row<V: Copy>(w: usize, nox: &[V], bv: &[V], zero: V) -> Vec<V> {
     match w {
         0 => nox[..W1].to_vec(),
-        1 => nox[W1..W1 + W2].iter().chain(&bv[..WORD - W2]).copied().collect(),
-        _ => bv[WORD - W2..].iter().copied().chain(core::iter::repeat(zero)).take(WORD).collect(),
+        1 => nox[W1..W1 + W2]
+            .iter()
+            .chain(&bv[..WORD - W2])
+            .copied()
+            .collect(),
+        _ => bv[WORD - W2..]
+            .iter()
+            .copied()
+            .chain(core::iter::repeat(zero))
+            .take(WORD)
+            .collect(),
     }
 }
 
 /// Fold a deferred claim with a new one along their line.
-fn fold<O: Ops>(o: &mut O, t: &mut Sponge<O>, old: &ClaimV<O::V>, point: &[O::V], value: O::V, evals: &[Fp3], deg: usize) -> ClaimV<O::V> {
+fn fold<O: Ops>(
+    o: &mut O,
+    t: &mut Sponge<O>,
+    old: &ClaimV<O::V>,
+    point: &[O::V],
+    value: O::V,
+    evals: &[Fp3],
+    deg: usize,
+) -> ClaimV<O::V> {
     assert_eq!(evals.len() + 1, deg, "fold: line polynomial");
     assert_eq!(point.len(), old.point.len(), "fold: dimension");
     let mut h = vec![old.value, value];
     h.extend(evals.iter().map(|&e| t.absorb_free_ext(o, e)));
     let r = t.squeeze_ext(o);
     let value = gm::interpolate(o, &h, r);
-    let point = old.point.iter().zip(point).map(|(&a, &b)| o.lerp(r, a, b)).collect();
+    let point = old
+        .point
+        .iter()
+        .zip(point)
+        .map(|(&a, &b)| o.lerp(r, a, b))
+        .collect();
     ClaimV { point, value }
 }
 
@@ -104,7 +131,13 @@ fn bind<O: Ops>(o: &mut O, t: &mut Sponge<O>, answers: &[Fp3], vars: usize) -> V
 
 /// Verify step `st.step` against the state it started from (`x` its
 /// digest); returns the state after it.
-pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf: &StepProof) -> StateV<O::V> {
+pub fn verify<O: Ops>(
+    o: &mut O,
+    p: &Params,
+    st: &StateV<O::V>,
+    x: [O::V; 4],
+    pf: &StepProof,
+) -> StateV<O::V> {
     let n = p.n;
     shape(p, pf);
     let mut t = Sponge::new(o, tag::STEP);
@@ -113,7 +146,11 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
     let root_a: [O::V; 4] = core::array::from_fn(|i| t.absorb_free(o, pf.roots[0][i]));
     let ans_a: Vec<O::V> = pf.ood[0].iter().map(|&y| t.absorb_free_ext(o, y)).collect();
     let za = pre_points(o, root_a, p.fresh);
-    let ood_a: Vec<ClaimRef<O::V>> = za.iter().zip(&ans_a).map(|(&z, &y)| ClaimRef::Uni(z, y)).collect();
+    let ood_a: Vec<ClaimRef<O::V>> = za
+        .iter()
+        .zip(&ans_a)
+        .map(|(&z, &y)| ClaimRef::Uni(z, y))
+        .collect();
     let chain = chain_next(o, st.chain, root_a, &ans_a);
     let root_b: [O::V; 4] = core::array::from_fn(|i| t.absorb_free(o, pf.roots[1][i]));
     let ood_b = bind(o, &mut t, &pf.ood[1], p.vars);
@@ -139,7 +176,11 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
     }
     let local: Vec<O::V> = pf.local.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
     let next: Vec<O::V> = pf.next.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
-    let pub_nox: Vec<O::V> = pf.pub_nox.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
+    let pub_nox: Vec<O::V> = pf
+        .pub_nox
+        .iter()
+        .map(|&v| t.absorb_free_ext(o, v))
+        .collect();
     let pub_v: Vec<O::V> = pf.pub_v.iter().map(|&v| t.absorb_free_ext(o, v)).collect();
     let e_out = gm::eq_row(o, p.out_row, &rho);
     let pin: Vec<O::V> = x.iter().map(|&xj| o.mul(e_out, xj)).collect();
@@ -157,7 +198,12 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
     point_g.extend_from_slice(&seeds);
     let g = fold(o, &mut t, &st.g, &point_g, c, &pf.fold_g, p.g_deg);
     let step_bits = o.bits(st.step, STEP_BITS);
-    let point_n: Vec<O::V> = rho.iter().chain(&step_bits).chain(&gamma_n).copied().collect();
+    let point_n: Vec<O::V> = rho
+        .iter()
+        .chain(&step_bits)
+        .chain(&gamma_n)
+        .copied()
+        .collect();
     let vn = gm::mle(o, &pub_nox, &gamma_n);
     let pn = fold(o, &mut t, &st.pn, &point_n, vn, &pf.fold_pn, p.pn_deg);
     let point_v: Vec<O::V> = rho.iter().chain(&gamma_v).copied().collect();
@@ -188,7 +234,7 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
     }
     let mut claim = sigma.expect("three words");
     let mut rho2 = Vec::with_capacity(n);
-    for pair in pf.shift.chunks_exact(2) {
+    for pair in pf.shift.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);
@@ -202,7 +248,11 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
     let nxt = gm::next_eval(o, &rho, &rho2);
     let mut wrap: Option<O::V> = None;
     for (&a, &b) in rho.iter().zip(&rho2) {
-        let g = super::ops::Gate { qm: -Fp3::ONE, qa: Fp3::ONE, ..Default::default() };
+        let g = super::ops::Gate {
+            qm: -Fp3::ONE,
+            qa: Fp3::ONE,
+            ..Default::default()
+        };
         let f = o.gate(g, a, b, b);
         wrap = Some(match wrap {
             None => f,
@@ -222,29 +272,57 @@ pub fn verify<O: Ops>(o: &mut O, p: &Params, st: &StateV<O::V>, x: [O::V; 4], pf
     for (w, gw) in gb.iter().enumerate() {
         let bw = word_row(w, &b_in, &b_v, zero);
         let v = gm::mle(o, &bw, gw);
-        let pt: Vec<O::V> = core::iter::repeat_n(zero, n).chain(gw.iter().copied()).collect();
+        let pt: Vec<O::V> = core::iter::repeat_n(zero, n)
+            .chain(gw.iter().copied())
+            .collect();
         bnd.push(ClaimRef::Multi(pt, v));
     }
     // boundaries across steps
     let first = is_zero(o, st.step);
     let not_first = o.affine(-Fp3::ONE, first, Fp3::ONE);
     for (&bi, &bl) in b_in.iter().zip(&st.b_last) {
-        let g = super::ops::Gate { qm: Fp3::ONE, qs: -Fp3::ONE, ..Default::default() };
+        let g = super::ops::Gate {
+            qm: Fp3::ONE,
+            qs: -Fp3::ONE,
+            ..Default::default()
+        };
         o.assert_gate(g, not_first, bi, bl, "boundary continuity");
     }
-    let b_first: Vec<O::V> = st.b_first.iter().zip(&b_in).map(|(&f, &bi)| o.lerp(first, f, bi)).collect();
+    let b_first: Vec<O::V> = st
+        .b_first
+        .iter()
+        .zip(&b_in)
+        .map(|(&f, &bi)| o.lerp(first, f, bi))
+        .collect();
     // accumulation
     let mut words = Vec::with_capacity(4);
     words.push(st.acc.instance());
-    for (w, (root, oods)) in [(root_a, ood_a), (root_b, ood_b), (root_c, ood_c)].into_iter().enumerate() {
+    for (w, (root, oods)) in [(root_a, ood_a), (root_b, ood_b), (root_c, ood_c)]
+        .into_iter()
+        .enumerate()
+    {
         let mut claims = oods;
         claims.push(own[w].clone());
         claims.push(bnd[w].clone());
-        words.push(InstV { root, ext: false, claims });
+        words.push(InstV {
+            root,
+            ext: false,
+            claims,
+        });
     }
     let acc = acc::verify(o, &p.cfg, p.arity, &mut t, &words, &pf.acc);
     let step = o.affine(Fp3::ONE, st.step, Fp3::ONE);
-    StateV { ctx: st.ctx, step, chain, b_first, b_last: b_out, acc, g, pn, pv }
+    StateV {
+        ctx: st.ctx,
+        step,
+        chain,
+        b_first,
+        b_last: b_out,
+        acc,
+        g,
+        pn,
+        pv,
+    }
 }
 
 /// `[x = 0]` with a checked inverse witness.
@@ -252,10 +330,17 @@ pub fn is_zero<O: Ops>(o: &mut O, x: O::V) -> O::V {
     let xv = o.value(x);
     let inv = o.witness(if xv == Fp3::ZERO { Fp3::ZERO } else { xv.inv() });
     let z = {
-        let g = super::ops::Gate { qm: -Fp3::ONE, qk: Fp3::ONE, ..Default::default() };
+        let g = super::ops::Gate {
+            qm: -Fp3::ONE,
+            qk: Fp3::ONE,
+            ..Default::default()
+        };
         o.gate(g, x, inv, inv)
     };
-    let g = super::ops::Gate { qm: Fp3::ONE, ..Default::default() };
+    let g = super::ops::Gate {
+        qm: Fp3::ONE,
+        ..Default::default()
+    };
     o.assert_gate(g, x, z, z, "is_zero");
     z
 }
@@ -292,8 +377,15 @@ pub fn check_shape(p: &Params, pf: &StepProof) -> Result<(), String> {
                 && q.iter().enumerate().all(|(i, l)| {
                     l.symbols.len() == 1 << p.cfg.layout.log_width
                         && l.path.len() == p.arity.path_len(p.cfg.layout.log_leaves() as usize)
-                        && (i == 0 || l.symbols.iter().all(|s| s.c1 == Goldilocks::ZERO && s.c2 == Goldilocks::ZERO))
+                        && (i == 0
+                            || l.symbols
+                                .iter()
+                                .all(|s| s.c1 == Goldilocks::ZERO && s.c2 == Goldilocks::ZERO))
                 })
         });
-    if ok { Ok(()) } else { Err("recursion: step proof shape".into()) }
+    if ok {
+        Ok(())
+    } else {
+        Err("recursion: step proof shape".into())
+    }
 }

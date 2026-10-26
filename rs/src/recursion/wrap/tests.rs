@@ -15,7 +15,13 @@ fn graph_case(mode: Mode) {
     let air = CircuitAir::default();
     let (g, k) = g_graph(&air, mode);
     let w = View(&air, mode).width();
-    let e = |i: u64| Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i * i + 11), Goldilocks::new(3 * i + 2));
+    let e = |i: u64| {
+        Fp3::new(
+            Goldilocks::new(i * 7 + 1),
+            Goldilocks::new(i * i + 11),
+            Goldilocks::new(3 * i + 2),
+        )
+    };
     let x: Vec<Fp3> = (0..g_inputs(w) as u64).map(e).collect();
     let mut out = vec![Fp3::ZERO; k];
     let (local, rest) = x.split_at(w);
@@ -33,19 +39,35 @@ fn graph_case(mode: Mode) {
     let ins: Vec<_> = x.iter().map(|&v| b.witness(v)).collect();
     let outs = crate::recursion::expr::compile(&mut b, &g, &ins);
     assert_eq!(b.value(outs[0]), want);
-    eprintln!("wrap G ({mode:?}): {k} constraints, {} nodes, {} gates", g.nodes.len(), b.gates.len());
+    eprintln!(
+        "wrap G ({mode:?}): {k} constraints, {} nodes, {} gates",
+        g.nodes.len(),
+        b.gates.len()
+    );
 }
 
 #[test]
 fn every_ledger_row_of_the_wrap_profiles_reaches_128_bits() {
     let base = crate::execution::succinct::params_for(20);
-    for (rate, pow, n, mode, reads) in [(4u8, 16u8, 16usize, Mode::Inner, 0usize), (6, 24, 16, Mode::Inner, 0), (8, 24, 15, Mode::Inner, 0), (7, 22, 15, Mode::Inner, 0), (8, 30, 14, Mode::Final, 1 << 18), (9, 24, 14, Mode::Final, 1 << 18), (9, 26, 14, Mode::Final, 1 << 18)] {
+    for (rate, pow, n, mode, reads) in [
+        (4u8, 16u8, 16usize, Mode::Inner, 0usize),
+        (6, 24, 16, Mode::Inner, 0),
+        (8, 24, 15, Mode::Inner, 0),
+        (7, 22, 15, Mode::Inner, 0),
+        (8, 30, 14, Mode::Final, 1 << 18),
+        (9, 24, 14, Mode::Final, 1 << 18),
+        (9, 26, 14, Mode::Final, 1 << 18),
+    ] {
         let mut whir = base;
         whir.log_inv_rate = rate;
         whir.pow_bits = pow;
         let params = WrapParams { whir, n, mode };
         let fresh = crate::accumulate::fresh_ood(&whir, n + CBITS).unwrap();
-        let (groups, claims): (&[usize], usize) = if mode == Mode::Inner { (&[1, 1, 2], 2 * (fresh + 1) + 2) } else { (&[1], fresh + 3) };
+        let (groups, claims): (&[usize], usize) = if mode == Mode::Inner {
+            (&[1, 1, 2], 2 * (fresh + 1) + 2)
+        } else {
+            (&[1], fresh + 3)
+        };
         let cfg = whir::Config::derive(&whir, n + CBITS, groups, claims).unwrap();
         let constraints = View(&CircuitAir::default(), mode).constraints();
         for (name, bits) in ledger(&params, &cfg, constraints, reads) {
@@ -57,7 +79,13 @@ fn every_ledger_row_of_the_wrap_profiles_reaches_128_bits() {
 
 #[test]
 fn a_coefficient_applies_as_the_field_product() {
-    let e = |i: u64| Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i * i + 11), Goldilocks::new(3 * i + 2));
+    let e = |i: u64| {
+        Fp3::new(
+            Goldilocks::new(i * 7 + 1),
+            Goldilocks::new(i * i + 11),
+            Goldilocks::new(3 * i + 2),
+        )
+    };
     let t = Fp3::new(Goldilocks::ZERO, Goldilocks::ONE, Goldilocks::ZERO);
     for i in 0..5 {
         let v = e(i);
@@ -87,7 +115,15 @@ fn the_shipped_final_proof_is_at_most_64_kib_over_every_transcript() {
         let mut w = whir;
         w.log_inv_rate = rate.parse().unwrap();
         w.pow_bits = parts.next().unwrap().parse().unwrap();
-        let params = WrapParams { whir: w, n: 0, mode: if mode == "f" { Mode::Final } else { Mode::Inner } };
+        let params = WrapParams {
+            whir: w,
+            n: 0,
+            mode: if mode == "f" {
+                Mode::Final
+            } else {
+                Mode::Inner
+            },
+        };
         prev = Some(match &prev {
             None => super::derive_shape_ivc(params, &ikey).unwrap(),
             Some(p) => super::derive_shape(params, p).unwrap(),
@@ -109,7 +145,13 @@ fn the_size_bound_is_the_worst_case_encoding() {
     for (q, d) in [(1usize, 5usize), (3, 6), (8, 10), (24, 25), (5, 3)] {
         // leaves in distinct subtrees at every level they can be
         let top = q.next_power_of_two().trailing_zeros() as usize;
-        let spread: Vec<usize> = if top <= d { (0..q).map(|i| nebu::ntt::bit_reverse(i, top as u32) << (d - top)).collect() } else { (0..1 << d).collect() };
+        let spread: Vec<usize> = if top <= d {
+            (0..q)
+                .map(|i| nebu::ntt::bit_reverse(i, top as u32) << (d - top))
+                .collect()
+        } else {
+            (0..1 << d).collect()
+        };
         let mut spread = spread;
         spread.sort_unstable();
         let q = spread.len();

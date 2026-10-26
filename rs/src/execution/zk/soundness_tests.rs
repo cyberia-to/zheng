@@ -29,7 +29,10 @@ fn reaches_128_bits(r: usize) -> bool {
 fn repetitions_bound_the_interactive_error_below_two_to_minus_128() {
     assert_eq!(REPETITIONS, 219);
     assert!(reaches_128_bits(REPETITIONS));
-    assert!(!reaches_128_bits(REPETITIONS - 1), "219 is the smallest such count");
+    assert!(
+        !reaches_128_bits(REPETITIONS - 1),
+        "219 is the smallest such count"
+    );
     // log2(3/2) · 219 = 128.107…: bitlen(3^219) = 348 = 219 + 129
     assert_eq!(bit_length_of_power(3, REPETITIONS), 348);
 }

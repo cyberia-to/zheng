@@ -181,7 +181,13 @@ pub const B_AND: usize = FLAG0 + 6;
 pub const B_NOT: usize = FLAG0 + 7;
 pub const B_SHL: usize = FLAG0 + 8;
 pub const B_LT: usize = FLAG0 + 9;
-pub const WOPS: [(usize, u64); 5] = [(B_XOR, T_XOR), (B_AND, T_AND), (B_NOT, T_NOT), (B_SHL, T_SHL), (B_LT, T_LT)];
+pub const WOPS: [(usize, u64); 5] = [
+    (B_XOR, T_XOR),
+    (B_AND, T_AND),
+    (B_NOT, T_NOT),
+    (B_SHL, T_SHL),
+    (B_LT, T_LT),
+];
 pub const B_CNT: usize = FLAG0 + 10;
 pub const B_LINV: usize = FLAG0 + 11; // (CNT − 31)·LINV = 1 − LAST
 pub const B_LAST: usize = FLAG0 + 12;
@@ -260,7 +266,7 @@ pub const PH_PART0: usize = PH_ROUND0 + super::hemera::RF_HALF; // 9
 pub const PART_ROWS: usize = super::hemera::RP / QUAD; // 12
 pub const PH_FULL1: usize = PH_PART0 + PART_ROWS; // 21
 pub const PH_OUT: usize = PH_FULL1 + super::hemera::RF_HALF; // 27
-const _: () = assert!(super::hemera::RP % QUAD == 0 && PH_OUT < BLOCK);
+const _: () = assert!(super::hemera::RP.is_multiple_of(QUAD) && PH_OUT < BLOCK);
 
 /// The rounds of a block phase: `(first round, count)` — one full round
 /// or `QUAD` partial rounds — or none (bits, MDS, output, idle rows).

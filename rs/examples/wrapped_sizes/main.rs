@@ -30,14 +30,24 @@ fn fixture(name: &str) -> Option<(N, Vec<u64>)> {
 
 fn main() {
     let choice: String = std::env::var("ZHENG_BACKEND").unwrap_or_else(|_| "auto".into());
-    let backend = choice.parse::<cyber_lens_gpu::Choice>().and_then(cyber_lens_gpu::install).expect("backend");
+    let backend = choice
+        .parse::<cyber_lens_gpu::Choice>()
+        .and_then(cyber_lens_gpu::install)
+        .expect("backend");
     eprintln!("backend: {} ({})", backend.0, backend.1);
     let names: Vec<String> = std::env::args().skip(1).collect();
-    let names = if names.is_empty() { vec!["hash.tri".to_string()] } else { names };
+    let names = if names.is_empty() {
+        vec!["hash.tri".to_string()]
+    } else {
+        names
+    };
     let t = Instant::now();
     let keys = wrapped::chain_keys().expect("chain keys");
     let bound = wrap::max_proof_bytes(keys.last().expect("final key"));
-    eprintln!("chain keys {:.1} s · final proof ≤ {bound} B over every transcript", t.elapsed().as_secs_f64());
+    eprintln!(
+        "chain keys {:.1} s · final proof ≤ {bound} B over every transcript",
+        t.elapsed().as_secs_f64()
+    );
     for name in names {
         let (prog, input) = fixture(&name).unwrap_or_else(|| panic!("fixture {name}"));
         let t = Instant::now();

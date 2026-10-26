@@ -242,7 +242,10 @@ pub(crate) fn schedule_parts() -> [N; 3] {
     let rc = hemera::constants::ROUND_CONSTANTS_U64;
     let entry = |round: usize| {
         if !is_full(round) {
-            pr(at(1), at(rc[hemera::constants::NUM_EXTERNAL + round - PARTIAL_FIRST]))
+            pr(
+                at(1),
+                at(rc[hemera::constants::NUM_EXTERNAL + round - PARTIAL_FIRST]),
+            )
         } else {
             let offset = if round < PARTIAL_FIRST {
                 round * 16
@@ -303,9 +306,9 @@ pub(crate) fn permutation() -> N {
 
 fn library() -> N {
     [sbox(), m4(), ext(), int(), full(), partial(), rounds()]
-    .into_iter()
-    .rev()
-    .fold(at(0), |rest, f| pr(f, rest))
+        .into_iter()
+        .rev()
+        .fold(at(0), |rest, f| pr(f, rest))
 }
 
 fn build() -> N {

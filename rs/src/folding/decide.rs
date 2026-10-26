@@ -54,16 +54,21 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nebu::Goldilocks;
     use crate::ccs::reg_t;
     use crate::ccs::universal::{test_witness, universal_ccs};
     use crate::folding::fold::fold_step;
     use crate::spartan::verifier::SpartanVerifier;
     use crate::types::{CCSWitness, Statement};
+    use nebu::Goldilocks;
 
     /// An add row (tag 5): r6 = r4 + r5.
     fn make_witness(r4: u64, r5: u64, r6: u64) -> CCSWitness {
-        test_witness(&[(reg_t(0), 5), (reg_t(4), r4), (reg_t(5), r5), (reg_t(6), r6)])
+        test_witness(&[
+            (reg_t(0), 5),
+            (reg_t(4), r4),
+            (reg_t(5), r5),
+            (reg_t(6), r6),
+        ])
     }
 
     fn zero_accumulator(instance: &crate::types::CCSInstance) -> Accumulator {
@@ -82,7 +87,13 @@ mod tests {
     fn decide_empty_accumulator_errors() {
         let instance = universal_ccs().clone();
         let acc = zero_accumulator(&instance);
-        let stmt = Statement { program_hash: [0u8; 32], input_hash: [0u8; 32], output_hash: [0u8; 32], focus_bound: 0, bbg_root: [0u8; 32] };
+        let stmt = Statement {
+            program_hash: [0u8; 32],
+            input_hash: [0u8; 32],
+            output_hash: [0u8; 32],
+            focus_bound: 0,
+            bbg_root: [0u8; 32],
+        };
         assert!(decide(&acc, &stmt, &[0u8; 32], &ProofParams::default()).is_err());
     }
 
@@ -99,7 +110,7 @@ mod tests {
             input_hash: [0u8; 32],
             output_hash: [0u8; 32],
             focus_bound: 0,
-        bbg_root: [0u8; 32],
+            bbg_root: [0u8; 32],
         };
         let linkage = [7u8; 32];
         let proof = decide(&acc, &stmt, &linkage, &ProofParams::default()).unwrap();
@@ -113,6 +124,9 @@ mod tests {
             vt.absorb(&e.as_u64().to_le_bytes());
         }
         vt.absorb(&acc.step_count.to_le_bytes());
-        assert!(SpartanVerifier::verify(&acc.committed_instance, &proof, &acc.error_evals, &mut vt).is_ok());
+        assert!(
+            SpartanVerifier::verify(&acc.committed_instance, &proof, &acc.error_evals, &mut vt)
+                .is_ok()
+        );
     }
 }

@@ -48,7 +48,12 @@ pub fn eq_instance() -> CCSInstance {
 ///
 /// Constraint: z[0] - z[1] = 0.  Z = [a, b, 1].
 pub fn eq_step(a: Goldilocks, b: Goldilocks) -> (CCSInstance, CCSWitness) {
-    (eq_instance(), CCSWitness { z: vec![a, b, Goldilocks::ONE] })
+    (
+        eq_instance(),
+        CCSWitness {
+            z: vec![a, b, Goldilocks::ONE],
+        },
+    )
 }
 
 /// Extract legacy Tensor equality rows; this is not opening verification.
@@ -63,7 +68,12 @@ pub fn verifier_steps(
     value: Goldilocks,
     opening: &Opening,
 ) -> Vec<(CCSInstance, CCSWitness)> {
-    let Opening::Tensor { round_commitments, final_poly, .. } = opening else {
+    let Opening::Tensor {
+        round_commitments,
+        final_poly,
+        ..
+    } = opening
+    else {
         return vec![];
     };
 
@@ -96,11 +106,14 @@ pub(crate) fn read_limb(bytes: &[u8], k: usize) -> Goldilocks {
 }
 
 fn de_goldilocks(bytes: &[u8]) -> Vec<Goldilocks> {
-    bytes.chunks_exact(8).map(|c| {
-        let mut buf = [0u8; 8];
-        buf.copy_from_slice(c);
-        Goldilocks::new(u64::from_le_bytes(buf))
-    }).collect()
+    bytes
+        .chunks_exact(8)
+        .map(|c| {
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(c);
+            Goldilocks::new(u64::from_le_bytes(buf))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -114,10 +127,7 @@ mod tests {
         MultilinearPoly::new(vals.iter().map(|&v| Goldilocks::new(v)).collect())
     }
 
-    fn open_poly(
-        poly: &MultilinearPoly<Goldilocks>,
-        point: &[Goldilocks],
-    ) -> Opening {
+    fn open_poly(poly: &MultilinearPoly<Goldilocks>, point: &[Goldilocks]) -> Opening {
         let mut lt = LensTranscript::new(b"verifier-steps-test");
         Brakedown::open(poly, point, &mut lt)
     }
@@ -159,8 +169,10 @@ mod tests {
 
     #[test]
     fn equality_rows_have_one_uniform_folding_shape() {
-        let steps: Vec<_> = [0, 1, 42, 9999].into_iter()
-            .map(|v| eq_step(Goldilocks::new(v), Goldilocks::new(v))).collect();
+        let steps: Vec<_> = [0, 1, 42, 9999]
+            .into_iter()
+            .map(|v| eq_step(Goldilocks::new(v), Goldilocks::new(v)))
+            .collect();
         for (instance, witness) in &steps {
             assert_eq!((instance.num_rows, instance.num_cols), (1, 3));
             assert_eq!(instance.matrices.len(), 2);
@@ -180,7 +192,9 @@ mod tests {
             let point = vec![Goldilocks::ZERO; vals.len().ilog2() as usize];
             let opening = open_poly(&poly, &point);
             assert!(matches!(opening, Opening::TensorMerkle { .. }));
-            assert!(verifier_steps(&commitment, &point, poly.evaluate(&point), &opening).is_empty());
+            assert!(
+                verifier_steps(&commitment, &point, poly.evaluate(&point), &opening).is_empty()
+            );
         }
     }
 

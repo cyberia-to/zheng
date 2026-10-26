@@ -20,7 +20,9 @@ fn op(t: u64, x: ExecutionNoun, y: ExecutionNoun) -> ExecutionNoun {
 /// Ten tables: namespace `ns` holds `ns + 20` at key 3 and `ns + 100` at key 4.
 fn evidence() -> StateEvidence {
     StateEvidence::with_tables(
-        (0..10).map(|ns| StateTable::with_body(ns, &[ns + 20, ns + 100])).collect(),
+        (0..10)
+            .map(|ns| StateTable::with_body(ns, &[ns + 20, ns + 100]))
+            .collect(),
     )
 }
 #[test]
@@ -80,21 +82,35 @@ fn every_private_state_verifier_authenticates_the_evidence_itself() {
     let (statement, prepared, witness) =
         prepare_execution(&program, &[], &[4, 4], 1000, true, &state).unwrap();
     assert_eq!(statement.root, state.root().unwrap());
-    let public: Vec<_> =
-        prepared.public_coordinates.iter().map(|&(i, v)| (i, F::new(v))).collect();
-    let w = crate::types::CCSWitness { z: witness.into_iter().map(F::new).collect() };
+    let public: Vec<_> = prepared
+        .public_coordinates
+        .iter()
+        .map(|&(i, v)| (i, F::new(v)))
+        .collect();
+    let w = crate::types::CCSWitness {
+        z: witness.into_iter().map(F::new).collect(),
+    };
     let bytes = b"private-state-test".to_vec();
-    let veil_proof = veil::prove_relation(&prepared.relation.instance, &w, &bytes, &public).unwrap();
+    let veil_proof =
+        veil::prove_relation(&prepared.relation.instance, &w, &bytes, &public).unwrap();
     let mith_proof = zk::prove(&prepared.relation.instance, &w, &bytes, &public).unwrap();
     type Check<'a> = Box<dyn Fn(&PrivateStateStatement, &StateEvidence) -> bool + 'a>;
     let verifiers: Vec<(&str, Check)> = vec![
-        ("veil", Box::new(|s, e| s.verify_veil(e, &veil_proof, &bytes).is_ok())),
-        ("mith", Box::new(|s, e| s.verify_mith(e, &mith_proof, &bytes).is_ok())),
+        (
+            "veil",
+            Box::new(|s, e| s.verify_veil(e, &veil_proof, &bytes).is_ok()),
+        ),
+        (
+            "mith",
+            Box::new(|s, e| s.verify_mith(e, &mith_proof, &bytes).is_ok()),
+        ),
     ];
     let mut wrong_root = statement.clone();
     wrong_root.root[0] = (wrong_root.root[0] + 1) % nebu::field::P;
     let foreign = StateEvidence::with_tables(
-        (0..10).map(|ns| StateTable::with_body(ns, &[ns + 21, ns + 100])).collect(),
+        (0..10)
+            .map(|ns| StateTable::with_body(ns, &[ns + 21, ns + 100]))
+            .collect(),
     );
     let mut altered_table = state.clone();
     altered_table.tables[4].fields[4] += 1;
@@ -108,7 +124,10 @@ fn every_private_state_verifier_authenticates_the_evidence_itself() {
         assert!(!verify(&statement, &foreign), "{name}: foreign evidence");
         let mut rerooted = statement.clone();
         rerooted.root = foreign.root().unwrap();
-        assert!(!verify(&rerooted, &foreign), "{name}: statement re-rooted to foreign evidence");
+        assert!(
+            !verify(&rerooted, &foreign),
+            "{name}: statement re-rooted to foreign evidence"
+        );
         assert!(!verify(&statement, &altered_table), "{name}: altered table");
         assert!(!verify(&statement, &altered_leaf), "{name}: altered leaf");
         assert!(!verify(&statement, &missing), "{name}: missing table");

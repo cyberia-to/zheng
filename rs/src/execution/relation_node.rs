@@ -63,7 +63,13 @@ impl Builder {
         let limbs8 = |v: &Value| -> Result<[Value; 8], RelationError> {
             let (lo, hi) = halves(v)?;
             let (lo, hi) = (limbs(lo)?, limbs(hi)?);
-            Ok(core::array::from_fn(|i| if i < 4 { lo[i].clone() } else { hi[i - 4].clone() }))
+            Ok(core::array::from_fn(|i| {
+                if i < 4 {
+                    lo[i].clone()
+                } else {
+                    hi[i - 4].clone()
+                }
+            }))
         };
         let (left, right) = (limbs8(left)?, limbs8(right)?);
         let mut state: [Value; 16] = core::array::from_fn(|_| Value::Constant(F::ZERO));
@@ -77,8 +83,14 @@ impl Builder {
         let out = self.hash_permute(state)?;
         let half = |k: usize| {
             Value::Pair(
-                Box::new(Value::Pair(Box::new(out[k].clone()), Box::new(out[k + 1].clone()))),
-                Box::new(Value::Pair(Box::new(out[k + 2].clone()), Box::new(out[k + 3].clone()))),
+                Box::new(Value::Pair(
+                    Box::new(out[k].clone()),
+                    Box::new(out[k + 1].clone()),
+                )),
+                Box::new(Value::Pair(
+                    Box::new(out[k + 2].clone()),
+                    Box::new(out[k + 3].clone()),
+                )),
             )
         };
         Ok(Value::Pair(Box::new(half(0)), Box::new(half(4))))

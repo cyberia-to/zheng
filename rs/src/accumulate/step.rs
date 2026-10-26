@@ -54,7 +54,11 @@ fn weights(inputs: &[&Instance], gamma: Fp3) -> (Vec<Weight>, Fp3) {
 
 fn shape_ok(cfg: &AccConfig, inputs: &[&Instance]) -> Result<(), String> {
     if inputs.is_empty() || inputs.len() > cfg.max_inputs {
-        return Err(format!("acc: {} inputs (1..={})", inputs.len(), cfg.max_inputs));
+        return Err(format!(
+            "acc: {} inputs (1..={})",
+            inputs.len(),
+            cfg.max_inputs
+        ));
     }
     if inputs
         .iter()
@@ -148,7 +152,10 @@ pub fn accumulate(
             *gi += c * f;
         }
     }
-    let combined = evals.iter().zip(&coef).fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
+    let combined = evals
+        .iter()
+        .zip(&coef)
+        .fold(Fp3::ZERO, |a, (&e, &c)| a + c * e);
     let (root, data) = Whir::commit_ext(&cfg.whir, &g);
     t.absorb(root.as_bytes());
     let mut zetas = Vec::with_capacity(cfg.ood);
@@ -217,8 +224,8 @@ pub fn verify_step(
     }
     let gamma = t.squeeze_fp3();
     let (ws, sigma) = weights(inputs, gamma);
-    let (rho, last) = sumcheck::verify(t, sigma, &proof.sumcheck, cfg.num_vars)
-        .ok_or("acc: sumcheck shape")?;
+    let (rho, last) =
+        sumcheck::verify(t, sigma, &proof.sumcheck, cfg.num_vars).ok_or("acc: sumcheck shape")?;
     let expect = ws
         .iter()
         .zip(&proof.evals)
@@ -253,7 +260,9 @@ pub fn verify_step(
             .map_err(|e| format!("acc: opening: {e}"))?;
         for (y, &s) in spot.iter_mut().zip(&symbols) {
             let (leaf, pos) = cfg.layout.locate(s);
-            let q = leaves.binary_search(&leaf).expect("leaf of a sampled symbol");
+            let q = leaves
+                .binary_search(&leaf)
+                .expect("leaf of a sampled symbol");
             *y += c * got[q][pos];
         }
     }

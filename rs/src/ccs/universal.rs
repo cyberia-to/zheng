@@ -200,7 +200,11 @@ struct Builder {
 
 impl Builder {
     fn new() -> Self {
-        Self { m: (0..NUM_MATRICES).map(|_| SparseMatrix::new(NUM_ROWS, Z_LEN)).collect() }
+        Self {
+            m: (0..NUM_MATRICES)
+                .map(|_| SparseMatrix::new(NUM_ROWS, Z_LEN))
+                .collect(),
+        }
     }
 
     fn put(&mut self, slot: usize, row: usize, form: Form) {
@@ -220,7 +224,14 @@ impl Builder {
     }
 
     /// Gated product gadget: gate · l · r = 0 on `row`, slot triple (c, d, e).
-    fn prod(&mut self, row: usize, (c, d, e): (usize, usize, usize), gate: usize, l: Form, r: Form) {
+    fn prod(
+        &mut self,
+        row: usize,
+        (c, d, e): (usize, usize, usize),
+        gate: usize,
+        l: Form,
+        r: Form,
+    ) {
         self.put(c, row, &[(gate, Goldilocks::ONE)]);
         self.put(d, row, l);
         self.put(e, row, r);
@@ -245,7 +256,10 @@ fn build() -> CCSInstance {
             A0,
             B0,
             sel(p),
-            &[(reg_t(0), one()), (CONST_IDX, neg(Goldilocks::new(p as u64)))],
+            &[
+                (reg_t(0), one()),
+                (CONST_IDX, neg(Goldilocks::new(p as u64))),
+            ],
         );
     }
     let mut sum: Vec<(usize, Goldilocks)> = (0..NUM_PATTERNS).map(|p| (sel(p), one())).collect();
@@ -259,10 +273,14 @@ fn build() -> CCSInstance {
             A0,
             B0,
             round_sel(k),
-            &[(reg_t(14), one()), (CONST_IDX, neg(Goldilocks::new(k as u64)))],
+            &[
+                (reg_t(14), one()),
+                (CONST_IDX, neg(Goldilocks::new(k as u64))),
+            ],
         );
     }
-    let mut usum: Vec<(usize, Goldilocks)> = (0..NUM_ROUNDS).map(|k| (round_sel(k), one())).collect();
+    let mut usum: Vec<(usize, Goldilocks)> =
+        (0..NUM_ROUNDS).map(|k| (round_sel(k), one())).collect();
     usum.push((sel(15), m1()));
     b.put(P, ROW_ROUND_SUM, &usum);
 
@@ -274,7 +292,15 @@ fn build() -> CCSInstance {
         rc.push((round_sel(PARTIAL_FIRST + pr), neg(partial_rc(pr))));
     }
     b.put(P, ROW_PI, &pi);
-    b.put(P, ROW_KAPPA, &[(IDX_KAPPA, one()), (sel(15), m1()), (round_sel(NUM_ROUNDS - 1), one())]);
+    b.put(
+        P,
+        ROW_KAPPA,
+        &[
+            (IDX_KAPPA, one()),
+            (sel(15), m1()),
+            (round_sel(NUM_ROUNDS - 1), one()),
+        ],
+    );
     b.put(P, ROW_RC, &rc);
 
     // ── Poseidon2 partial round (gate π), slot family 0 on rows 84..104 ─────
@@ -300,7 +326,12 @@ fn build() -> CCSInstance {
         A0,
         B0,
         IDX_PI,
-        &[(sk1(0), one()), (IDX_Y, neg(diag[0])), (sk1(1), m1()), (sk(1), diag[1])],
+        &[
+            (sk1(0), one()),
+            (IDX_Y, neg(diag[0])),
+            (sk1(1), m1()),
+            (sk(1), diag[1]),
+        ],
     );
     for i in 2..16 {
         b.lin(
@@ -308,37 +339,90 @@ fn build() -> CCSInstance {
             A0,
             B0,
             IDX_PI,
-            &[(sk1(i), one()), (sk(i), neg(diag[i])), (sk1(1), m1()), (sk(1), diag[1])],
+            &[
+                (sk1(i), one()),
+                (sk(i), neg(diag[i])),
+                (sk1(1), m1()),
+                (sk(1), diag[1]),
+            ],
         );
     }
 
     // ── pattern gadgets, slot family 1 + {F,G,H,I} on rows 84..100 ──────────
     // 0 axis: r9 − r8 + 1 = 0 (budget decrement).
-    b.lin(ROW_PAT, A1, B1, sel(0), &[(reg_t(9), one()), (reg_t(8), m1()), (CONST_IDX, one())]);
+    b.lin(
+        ROW_PAT,
+        A1,
+        B1,
+        sel(0),
+        &[(reg_t(9), one()), (reg_t(8), m1()), (CONST_IDX, one())],
+    );
     // 1 quote: r7 − r4 = 0.
-    b.lin(ROW_PAT + 1, A1, B1, sel(1), &[(reg_t(7), one()), (reg_t(4), m1())]);
+    b.lin(
+        ROW_PAT + 1,
+        A1,
+        B1,
+        sel(1),
+        &[(reg_t(7), one()), (reg_t(4), m1())],
+    );
     // 4 branch: r10 · (1 − r4·r5) = 0 ; r4 · (1 − r10) = 0.
     b.lin(ROW_PAT + 2, A1, B1, sel(4), &[(reg_t(10), one())]);
     b.put(F, ROW_PAT + 2, &[(sel(4), one())]);
     b.put(G, ROW_PAT + 2, &[(reg_t(10), m1())]);
     b.put(H, ROW_PAT + 2, &[(reg_t(4), one())]);
     b.put(I, ROW_PAT + 2, &[(reg_t(5), one())]);
-    b.prod(ROW_PAT + 3, CDE1, sel(4), &[(reg_t(4), one())], &[(CONST_IDX, one()), (reg_t(10), m1())]);
+    b.prod(
+        ROW_PAT + 3,
+        CDE1,
+        sel(4),
+        &[(reg_t(4), one())],
+        &[(CONST_IDX, one()), (reg_t(10), m1())],
+    );
     // 15 hash round counter (gate κ): r14_{t+1} − r14_t − 1 = 0.
-    b.lin(ROW_PAT + 3, A1, B1, IDX_KAPPA, &[(reg_t1(14), one()), (reg_t(14), m1()), (CONST_IDX, m1())]);
+    b.lin(
+        ROW_PAT + 3,
+        A1,
+        B1,
+        IDX_KAPPA,
+        &[(reg_t1(14), one()), (reg_t(14), m1()), (CONST_IDX, m1())],
+    );
     // 5 add: r6 − r4 − r5 = 0.
-    b.lin(ROW_PAT + 4, A1, B1, sel(5), &[(reg_t(6), one()), (reg_t(4), m1()), (reg_t(5), m1())]);
+    b.lin(
+        ROW_PAT + 4,
+        A1,
+        B1,
+        sel(5),
+        &[(reg_t(6), one()), (reg_t(4), m1()), (reg_t(5), m1())],
+    );
     // 6 sub: r6 − r4 + r5 = 0.
-    b.lin(ROW_PAT + 5, A1, B1, sel(6), &[(reg_t(6), one()), (reg_t(4), m1()), (reg_t(5), one())]);
+    b.lin(
+        ROW_PAT + 5,
+        A1,
+        B1,
+        sel(6),
+        &[(reg_t(6), one()), (reg_t(4), m1()), (reg_t(5), one())],
+    );
     // 7 mul: r6 − r4·r5 = 0.
     b.lin(ROW_PAT + 6, A1, B1, sel(7), &[(reg_t(6), one())]);
-    b.prod(ROW_PAT + 6, CDE1, sel(7), &[(reg_t(4), m1())], &[(reg_t(5), one())]);
+    b.prod(
+        ROW_PAT + 6,
+        CDE1,
+        sel(7),
+        &[(reg_t(4), m1())],
+        &[(reg_t(5), one())],
+    );
     // 8 inv: r6 · (r6·r4 − 1) = 0 — r6 is 0 on chain rows, v⁻¹ on the final row.
     b.put(F, ROW_PAT + 7, &[(sel(8), one())]);
     b.put(G, ROW_PAT + 7, &[(reg_t(6), one())]);
     b.put(H, ROW_PAT + 7, &[(reg_t(6), one())]);
     b.put(I, ROW_PAT + 7, &[(reg_t(4), one())]);
-    b.prod(ROW_PAT + 7, CDE1, sel(8), &[(reg_t(6), one())], &[(CONST_IDX, m1())]);
+    b.prod(
+        ROW_PAT + 7,
+        CDE1,
+        sel(8),
+        &[(reg_t(6), one())],
+        &[(CONST_IDX, m1())],
+    );
     // 9 eq: (r4−r5)(1−r6) = 0 ; r6(1−r6) = 0 ; (r4−r5)·r7 − r6 = 0.
     let diff = [(reg_t(4), one()), (reg_t(5), m1())];
     let one_m_r6 = [(CONST_IDX, one()), (reg_t(6), m1())];
@@ -356,8 +440,20 @@ fn build() -> CCSInstance {
     b.prod(ROW_PAT + 11, CDE1, sel(10), &r10, &r10_m1);
     b.prod(ROW_PAT + 14, CDE1, sel(10), &r11, &r11_m1);
     // 11 xor: r10 + r11 − 2·r10·r11 − r12 = 0 ; r10, r11 ∈ {0,1}.
-    b.lin(ROW_PAT + 12, A1, B1, sel(11), &[(reg_t(10), one()), (reg_t(11), one()), (reg_t(12), m1())]);
-    b.prod(ROW_PAT + 12, CDE1, sel(11), &[(reg_t(10), neg(Goldilocks::new(2)))], &r11);
+    b.lin(
+        ROW_PAT + 12,
+        A1,
+        B1,
+        sel(11),
+        &[(reg_t(10), one()), (reg_t(11), one()), (reg_t(12), m1())],
+    );
+    b.prod(
+        ROW_PAT + 12,
+        CDE1,
+        sel(11),
+        &[(reg_t(10), neg(Goldilocks::new(2)))],
+        &r11,
+    );
     b.prod(ROW_PAT + 1, CDE1, sel(11), &r10, &r10_m1);
     b.prod(ROW_PAT + 4, CDE1, sel(11), &r11, &r11_m1);
     // 12 and: r10·r11 − r12 = 0 ; r10, r11 ∈ {0,1}.
@@ -366,10 +462,22 @@ fn build() -> CCSInstance {
     b.prod(ROW_PAT + 5, CDE1, sel(12), &r10, &r10_m1);
     b.prod(ROW_PAT + 15, CDE1, sel(12), &r11, &r11_m1);
     // 13 not: r10 + r12 − 1 = 0 ; r11 = 0.
-    b.lin(ROW_PAT + 14, A1, B1, sel(13), &[(reg_t(10), one()), (reg_t(12), one()), (CONST_IDX, m1())]);
+    b.lin(
+        ROW_PAT + 14,
+        A1,
+        B1,
+        sel(13),
+        &[(reg_t(10), one()), (reg_t(12), one()), (CONST_IDX, m1())],
+    );
     b.lin(ROW_PAT + 7, A1, B1, sel(13), &r11);
     // 14 shl: r12 − r11 = 0.
-    b.lin(ROW_PAT + 15, A1, B1, sel(14), &[(reg_t(12), one()), (reg_t(11), m1())]);
+    b.lin(
+        ROW_PAT + 15,
+        A1,
+        B1,
+        sel(14),
+        &[(reg_t(12), one()), (reg_t(11), m1())],
+    );
     // 2 compose, 3 cons, 17 look: no in-row constraint (cross-row wiring
     // and the look bindings live elsewhere — see specs/constraints.md).
 
@@ -487,7 +595,15 @@ pub fn capacity(state_k: &[Goldilocks; 16], state_k1: &[Goldilocks; 16]) -> Capa
 /// The universal witness of one synthetic Poseidon2 transition
 /// state_k → state_{k+1} (round index k, 0..60) — the row shape shared by
 /// the Fiat-Shamir transcript replay and the BBG root chain.
-pub fn poseidon_witness(state_k: &[Goldilocks; 16], state_k1: &[Goldilocks; 16], k: usize) -> CCSWitness {
+pub fn poseidon_witness(
+    state_k: &[Goldilocks; 16],
+    state_k1: &[Goldilocks; 16],
+    k: usize,
+) -> CCSWitness {
     let caps = capacity(state_k, state_k1);
-    universal_witness(&poseidon_regs(state_k, k), &poseidon_regs(state_k1, k + 1), Some(&caps))
+    universal_witness(
+        &poseidon_regs(state_k, k),
+        &poseidon_regs(state_k1, k + 1),
+        Some(&caps),
+    )
 }

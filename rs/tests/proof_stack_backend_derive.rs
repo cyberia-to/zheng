@@ -27,16 +27,29 @@ fn keys_derived_under_a_corrupting_backend_are_refused() {
     let step = wrapped::admitted_ivc().1;
     // the derivation itself completes; its key-word root is another
     let raw = ivc::key(&recursive::params(), step).unwrap();
-    assert_ne!(Some(raw.kw_root.map(|x| x.as_u64())), recursive::KEY_ROOTS.iter().find(|r| r.0 == recursive::params().header()).map(|r| r.1));
+    assert_ne!(
+        Some(raw.kw_root.map(|x| x.as_u64())),
+        recursive::KEY_ROOTS
+            .iter()
+            .find(|r| r.0 == recursive::params().header())
+            .map(|r| r.1)
+    );
     // before the fix the profile-5 verifier used it: the honest proof is
     // then checked against a wrong root (here refused; a reproducible
     // device fault would let a prover open the key words to other values)
     // — now every verifier-facing key path refuses it
     let r5 = recursive::key(&recursive::params(), step as u32);
-    assert!(r5.as_ref().is_err_and(|e| e.contains("not the pinned ones")), "{:?}", r5.map(|_| ()));
+    assert!(
+        r5.as_ref()
+            .is_err_and(|e| e.contains("not the pinned ones")),
+        "{:?}",
+        r5.map(|_| ())
+    );
     assert!(keys::export(Profile::Recursive).is_err());
     let w6 = ivc::key(&ivc_whir, step).unwrap();
     assert!(recursive::pinned_key(&ivc_whir, w6).is_err());
     assert!(wrapped::final_key().is_err());
-    eprintln!("keys derived under a corrupting backend: every verifier-facing key path refuses them");
+    eprintln!(
+        "keys derived under a corrupting backend: every verifier-facing key path refuses them"
+    );
 }

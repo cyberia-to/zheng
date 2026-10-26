@@ -56,7 +56,11 @@ impl Gate {
     pub fn of(instance: &CCSInstance) -> Result<Self, String> {
         let one = Goldilocks::ONE;
         let neg = -Goldilocks::ONE;
-        match (instance.matrices.len(), instance.multisets.as_slice(), instance.coeffs.as_slice()) {
+        match (
+            instance.matrices.len(),
+            instance.multisets.as_slice(),
+            instance.coeffs.as_slice(),
+        ) {
             (3, [a, b], [c0, c1]) if *a == [0, 1] && *b == [2] && (*c0, *c1) == (one, neg) => {
                 Ok(Self::Product)
             }
@@ -108,7 +112,9 @@ pub(crate) struct Extension {
 }
 
 fn empty_row(i: &CCSInstance, r: usize) -> bool {
-    i.matrices.iter().all(|m| m.entries.get(r).is_none_or(Vec::is_empty))
+    i.matrices
+        .iter()
+        .all(|m| m.entries.get(r).is_none_or(Vec::is_empty))
 }
 
 /// The statement's relation with masking rows; the same for prover and
@@ -118,7 +124,10 @@ pub(crate) fn extend(base: &CCSInstance) -> Result<(CCSInstance, Extension), Str
     let kinds = gate.types();
     let rows_needed = kinds.len() * PER_TYPE;
     let cols_needed: usize = kinds.iter().map(|k| k.columns() * PER_TYPE).sum();
-    let trailing = (0..base.num_rows).rev().take_while(|&r| empty_row(base, r)).count();
+    let trailing = (0..base.num_rows)
+        .rev()
+        .take_while(|&r| empty_row(base, r))
+        .count();
     let num_rows = if trailing >= rows_needed {
         base.num_rows
     } else {
@@ -214,7 +223,10 @@ mod tests {
     #[test]
     fn extended_relations_are_satisfied_by_every_mask() {
         // a·b, and hash(a) through the S-box
-        let mul = pair(N::Atom(7), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
+        let mul = pair(
+            N::Atom(7),
+            pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))),
+        );
         let hash = pair(N::Atom(15), pair(N::Atom(0), N::Atom(2)));
         for (program, gate) in [(mul, Gate::Product), (hash, Gate::ProductSbox)] {
             let (_, prepared, z) = prepare_execution(&program, &[3, 4], &[], 1000).unwrap();

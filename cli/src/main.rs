@@ -18,9 +18,7 @@ use std::time::Instant;
 
 use nebu::Goldilocks;
 use nox::{NullCalls, Reduction, VecTrace};
-use zheng::{
-    AxisOpening, HashAux, LookOpening, ProofParams, Statement, TraceProof,
-};
+use zheng::{AxisOpening, HashAux, LookOpening, ProofParams, Statement, TraceProof};
 
 use formula::ORDER_SIZE;
 
@@ -45,8 +43,15 @@ fn run() -> i32 {
         "eval" => cmd_eval(),
         "pack" => cmd_pack(&args[2..]),
         "prove" => cmd_prove(&args[2..]),
-        "help" | "-h" | "--help" => { print_help(); 0 }
-        other => { tape_out::error(&format!("unknown command '{other}'")); usage_hint(); 2 }
+        "help" | "-h" | "--help" => {
+            print_help();
+            0
+        }
+        other => {
+            tape_out::error(&format!("unknown command '{other}'"));
+            usage_hint();
+            2
+        }
     };
     tape_out::status(code);
     code
@@ -57,7 +62,10 @@ fn run() -> i32 {
 fn cmd_run(args: &[String]) -> i32 {
     let opts = match Opts::parse(args) {
         Ok(o) => o,
-        Err(e) => { tape_out::error(&e); return 2; }
+        Err(e) => {
+            tape_out::error(&e);
+            return 2;
+        }
     };
     let Some(formula_text) = opts.formula else {
         tape_out::error("run requires -e '<formula>'");
@@ -66,14 +74,27 @@ fn cmd_run(args: &[String]) -> i32 {
     let mut reduction = Reduction::<ORDER_SIZE>::new();
     let object = match reduction.atom(Goldilocks::new(opts.object)) {
         Some(o) => o,
-        None => { tape_out::error("order arena full building object"); return 1; }
+        None => {
+            tape_out::error("order arena full building object");
+            return 1;
+        }
     };
     let root = match formula::parse(&mut reduction, &formula_text) {
         Ok(r) => r,
-        Err(e) => { tape_out::error(&e); return 2; }
+        Err(e) => {
+            tape_out::error(&e);
+            return 2;
+        }
     };
     let mut trace = VecTrace::default();
-    let _ = nox::reduce(&mut reduction, object, root, opts.budget, &NullCalls, &mut trace);
+    let _ = nox::reduce(
+        &mut reduction,
+        object,
+        root,
+        opts.budget,
+        &NullCalls,
+        &mut trace,
+    );
     prove_and_report(&format!("run {formula_text}"), &trace, &[], &[], &[])
 }
 
@@ -82,8 +103,14 @@ fn cmd_run(args: &[String]) -> i32 {
 fn cmd_demo(args: &[String]) -> i32 {
     match args.first().map(String::as_str) {
         Some("hash") => demo_hash(),
-        Some(other) => { tape_out::error(&format!("unknown demo '{other}' (try: hash)")); 2 }
-        None => { tape_out::error("demo requires a name (try: hash)"); 2 }
+        Some(other) => {
+            tape_out::error(&format!("unknown demo '{other}' (try: hash)"));
+            2
+        }
+        None => {
+            tape_out::error("demo requires a name (try: hash)");
+            2
+        }
     }
 }
 
@@ -94,7 +121,10 @@ fn demo_hash() -> i32 {
     let g = Goldilocks::new;
     let (s, t1, t15) = match (r.atom(g(42)), r.atom(g(1)), r.atom(g(15))) {
         (Some(s), Some(a), Some(b)) => (s, a, b),
-        _ => { tape_out::error("order arena full"); return 1; }
+        _ => {
+            tape_out::error("order arena full");
+            return 1;
+        }
     };
     let quote = r.pair(t1, s).unwrap();
     let hash_f = r.pair(t15, quote).unwrap();
@@ -104,7 +134,10 @@ fn demo_hash() -> i32 {
 
     let digest = match r.digest(s) {
         Some(d) => *d,
-        None => { tape_out::error("no digest for subject"); return 1; }
+        None => {
+            tape_out::error("no digest for subject");
+            return 1;
+        }
     };
     let z = Goldilocks::ZERO;
     let rate = [digest[0], digest[1], digest[2], digest[3], z, z, z, z];
@@ -123,14 +156,23 @@ fn cmd_eval() -> i32 {
 
     let (commitment, opening) = match zheng::open(&poly, &point, &params) {
         Ok(v) => v,
-        Err(e) => { tape_out::error(&format!("open failed: {e:?}")); return 1; }
+        Err(e) => {
+            tape_out::error(&format!("open failed: {e:?}"));
+            return 1;
+        }
     };
     let verified = zheng::verify_eval(&commitment, &point, expected, &opening, &params).is_ok();
-    tape_out::report("eval (Brakedown PCS)", &[
-        ("point", format!("[{}, {}]", point[0].as_u64(), point[1].as_u64())),
-        ("value", expected.as_u64().to_string()),
-        ("verify", if verified { "ok" } else { "fail" }.to_string()),
-    ]);
+    tape_out::report(
+        "eval (Brakedown PCS)",
+        &[
+            (
+                "point",
+                format!("[{}, {}]", point[0].as_u64(), point[1].as_u64()),
+            ),
+            ("value", expected.as_u64().to_string()),
+            ("verify", if verified { "ok" } else { "fail" }.to_string()),
+        ],
+    );
     if verified { 0 } else { 1 }
 }
 
@@ -139,22 +181,29 @@ fn cmd_eval() -> i32 {
 fn cmd_pack(args: &[String]) -> i32 {
     let opts = match Opts::parse(args) {
         Ok(o) => o,
-        Err(e) => { tape_out::error(&e); return 2; }
+        Err(e) => {
+            tape_out::error(&e);
+            return 2;
+        }
     };
     let (Some(formula), Some(out)) = (opts.formula, opts.output) else {
         tape_out::error("pack requires -e '<formula>' and -o <file>");
         return 2;
     };
-    let prog = capsule::Program { formula, object: opts.object, budget: opts.budget };
+    let prog = capsule::Program {
+        formula,
+        object: opts.object,
+        budget: opts.budget,
+    };
     match std::fs::write(&out, capsule::encode(&prog)) {
         Ok(()) => {
-            tape_out::report("pack", &[
-                ("file", out),
-                ("formula", prog.formula),
-            ]);
+            tape_out::report("pack", &[("file", out), ("formula", prog.formula)]);
             0
         }
-        Err(e) => { tape_out::error(&format!("write {out}: {e}")); 1 }
+        Err(e) => {
+            tape_out::error(&format!("write {out}: {e}"));
+            1
+        }
     }
 }
 
@@ -165,23 +214,42 @@ fn cmd_prove(args: &[String]) -> i32 {
     };
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
-        Err(e) => { tape_out::error(&format!("read {path}: {e}")); return 1; }
+        Err(e) => {
+            tape_out::error(&format!("read {path}: {e}"));
+            return 1;
+        }
     };
     let prog = match capsule::decode(&bytes) {
         Ok(p) => p,
-        Err(e) => { tape_out::error(&e); return 1; }
+        Err(e) => {
+            tape_out::error(&e);
+            return 1;
+        }
     };
     let mut reduction = Reduction::<ORDER_SIZE>::new();
     let object = match reduction.atom(Goldilocks::new(prog.object)) {
         Some(o) => o,
-        None => { tape_out::error("order arena full building object"); return 1; }
+        None => {
+            tape_out::error("order arena full building object");
+            return 1;
+        }
     };
     let root = match formula::parse(&mut reduction, &prog.formula) {
         Ok(r) => r,
-        Err(e) => { tape_out::error(&e); return 1; }
+        Err(e) => {
+            tape_out::error(&e);
+            return 1;
+        }
     };
     let mut trace = VecTrace::default();
-    let _ = nox::reduce(&mut reduction, object, root, prog.budget, &NullCalls, &mut trace);
+    let _ = nox::reduce(
+        &mut reduction,
+        object,
+        root,
+        prog.budget,
+        &NullCalls,
+        &mut trace,
+    );
     prove_and_report(&format!("prove {}", prog.formula), &trace, &[], &[], &[])
 }
 
@@ -217,7 +285,10 @@ fn prove_and_report(
     let proof = match zheng::commit(trace, hash_aux, axis, look, &stmt, &params) {
         Ok(p) => p,
         Err(e) => {
-            tape_out::error(&format!("prover error: {e:?} (trace rows: {})", trace.0.len()));
+            tape_out::error(&format!(
+                "prover error: {e:?} (trace rows: {})",
+                trace.0.len()
+            ));
             return 1;
         }
     };
@@ -227,7 +298,10 @@ fn prove_and_report(
     let verified = zheng::verify(&proof, &stmt, &params).is_ok();
     let verify_ms = t1.elapsed().as_secs_f64() * 1e3;
 
-    tape_out::report(title, &proof_rows(trace, &proof, verified, commit_ms, verify_ms));
+    tape_out::report(
+        title,
+        &proof_rows(trace, &proof, verified, commit_ms, verify_ms),
+    );
     if verified { 0 } else { 1 }
 }
 
@@ -278,7 +352,7 @@ fn zero_statement() -> Statement {
         input_hash: [0u8; 32],
         output_hash: [0u8; 32],
         focus_bound: 0,
-    bbg_root: [0u8; 32],
+        bbg_root: [0u8; 32],
     }
 }
 
@@ -294,16 +368,30 @@ struct Opts {
 
 impl Opts {
     fn parse(args: &[String]) -> Result<Opts, String> {
-        let mut o = Opts { object: 0, budget: 1_000_000, ..Default::default() };
+        let mut o = Opts {
+            object: 0,
+            budget: 1_000_000,
+            ..Default::default()
+        };
         let mut i = 0;
         while i < args.len() {
             match args[i].as_str() {
-                "-e" => { o.formula = Some(take(args, &mut i, "-e")?); }
-                "-o" | "--output" => { o.output = Some(take(args, &mut i, "-o")?); }
-                "--object" => { o.object = take(args, &mut i, "--object")?.parse()
-                    .map_err(|e| format!("bad --object: {e}"))?; }
-                "--budget" => { o.budget = take(args, &mut i, "--budget")?.parse()
-                    .map_err(|e| format!("bad --budget: {e}"))?; }
+                "-e" => {
+                    o.formula = Some(take(args, &mut i, "-e")?);
+                }
+                "-o" | "--output" => {
+                    o.output = Some(take(args, &mut i, "-o")?);
+                }
+                "--object" => {
+                    o.object = take(args, &mut i, "--object")?
+                        .parse()
+                        .map_err(|e| format!("bad --object: {e}"))?;
+                }
+                "--budget" => {
+                    o.budget = take(args, &mut i, "--budget")?
+                        .parse()
+                        .map_err(|e| format!("bad --budget: {e}"))?;
+                }
                 other => return Err(format!("unexpected argument '{other}'")),
             }
             i += 1;
@@ -314,7 +402,9 @@ impl Opts {
 
 fn take(args: &[String], i: &mut usize, flag: &str) -> Result<String, String> {
     *i += 1;
-    args.get(*i).cloned().ok_or_else(|| format!("{flag} requires a value"))
+    args.get(*i)
+        .cloned()
+        .ok_or_else(|| format!("{flag} requires a value"))
 }
 
 // ── help ─────────────────────────────────────────────────────────────────────

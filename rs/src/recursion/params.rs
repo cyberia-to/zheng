@@ -58,7 +58,14 @@ impl Params {
         let probe = AccConfig::derive(whir, vars, INPUTS, 3 * (fresh + 2))?;
         let claims = probe.acc_claims() + 3 * (fresh + 2);
         let cfg = AccConfig::derive(whir, vars, INPUTS, claims)?;
-        let constants = Constants { fml0: 0, obj0: 0, p: 0, output: [nebu::Goldilocks::ZERO; 4], cycles: 0, root: [nebu::Goldilocks::ZERO; 4] };
+        let constants = Constants {
+            fml0: 0,
+            obj0: 0,
+            p: 0,
+            output: [nebu::Goldilocks::ZERO; 4],
+            cycles: 0,
+            root: [nebu::Goldilocks::ZERO; 4],
+        };
         let machine = Machine::new(constants, &[], 1 << n, 0, 1 << n);
         let rel = relation::Relation::new(machine, [nebu::Fp3::ZERO; 2]);
         let dims = Dims {
@@ -118,7 +125,9 @@ pub fn ledger(p: &Params) -> Vec<(String, f64, u32)> {
             (n, b, g)
         })
         .collect();
-    if let Ok(dcfg) = super::whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2).map(|c| c.with_arity(p.arity)) {
+    if let Ok(dcfg) = super::whir::Config::derive(&p.whir, p.vars, &[1, 2], p.cfg.acc_claims() + 2)
+        .map(|c| c.with_arity(p.arity))
+    {
         let wc = &dcfg.wc;
         for (n, b) in dcfg.terms() {
             let g = if let Some(i) = n.strip_prefix("shift_") {
@@ -138,7 +147,10 @@ pub fn ledger(p: &Params) -> Vec<(String, f64, u32)> {
     let k = lens::rspcs::soundness::ext_field_bits();
     let log2 = |x: usize| (x as f64).log2();
     let mut push = |n: &str, b: f64| rows.push((n.into(), b, 0));
-    push("zerocheck μ (structured powers)", k - log2(SEEDS * (p.base - 1)));
+    push(
+        "zerocheck μ (structured powers)",
+        k - log2(SEEDS * (p.base - 1)),
+    );
     push("zerocheck τ", k - log2(p.n));
     push("zerocheck round (degree 9)", k - log2(10));
     // shift reduction: rounds of degree 2, ζ over three words (degree
@@ -161,12 +173,19 @@ pub fn ledger(p: &Params) -> Vec<(String, f64, u32)> {
 mod tests {
     use super::*;
 
-
     /// Every round of the recursion profile at its shipped parameters
     /// proves ≥ 128 bits (`specs/soundness.md` § recursion).
     #[test]
     fn every_ledger_row_of_the_recursion_profile_reaches_128_bits() {
-        for (rate, pow) in [(4u8, 24u8), (6, 24), (4, super::super::ivc::SHIPPED_POW), (super::super::ivc::SHIPPED_RATE, super::super::ivc::SHIPPED_POW)] {
+        for (rate, pow) in [
+            (4u8, 24u8),
+            (6, 24),
+            (4, super::super::ivc::SHIPPED_POW),
+            (
+                super::super::ivc::SHIPPED_RATE,
+                super::super::ivc::SHIPPED_POW,
+            ),
+        ] {
             rows_at(rate, pow);
         }
     }
@@ -179,13 +198,25 @@ mod tests {
         eprintln!("rate 1/{} pow {pow}", 1u32 << rate);
         let j = p.cfg.acc_claims() + 3 * (p.fresh + 2);
         let rows = ledger(&p);
-        let inter = rows.iter().map(|r| r.1 - f64::from(r.2)).fold(f64::INFINITY, f64::min);
+        let inter = rows
+            .iter()
+            .map(|r| r.1 - f64::from(r.2))
+            .fold(f64::INFINITY, f64::min);
         eprintln!("interactive weakest {inter:.2}");
         for (name, bits, _) in &rows {
             eprintln!("{name:40} {bits:8.2}");
             assert!(*bits >= 128.0, "{name}: {bits}");
         }
-        eprintln!("t {} s {} query_pow {} comb_pow {} fresh {} J {j} base {} g_deg {}", p.cfg.queries, p.cfg.ood, p.cfg.query_pow, p.cfg.comb_pow_for(INPUTS), p.fresh, p.base, p.g_deg);
+        eprintln!(
+            "t {} s {} query_pow {} comb_pow {} fresh {} J {j} base {} g_deg {}",
+            p.cfg.queries,
+            p.cfg.ood,
+            p.cfg.query_pow,
+            p.cfg.comb_pow_for(INPUTS),
+            p.fresh,
+            p.base,
+            p.g_deg
+        );
     }
 }
 
@@ -197,7 +228,14 @@ mod levers {
     #[test]
     #[ignore = "prints the parameter table of audit/recursion-2026-10.md"]
     fn parameter_levers() {
-        for (rate, pow, k) in [(4u8, 24u8, 4u8), (4, 30, 4), (4, 24, 5), (5, 24, 4), (6, 24, 4), (6, 30, 4)] {
+        for (rate, pow, k) in [
+            (4u8, 24u8, 4u8),
+            (4, 30, 4),
+            (4, 24, 5),
+            (5, 24, 4),
+            (6, 24, 4),
+            (6, 30, 4),
+        ] {
             let mut whir = crate::execution::succinct::params_for(20);
             whir.log_inv_rate = rate;
             whir.pow_bits = pow;
@@ -208,7 +246,13 @@ mod levers {
                     let q: Vec<usize> = wc.rounds.iter().map(|r| r.queries).collect();
                     eprintln!(
                         "rate 1/{} pow {pow} k {k}: acc t {} depth {} · decider rounds {} queries {:?} final vars {} · bits {:.2}",
-                        1 << rate, p.cfg.queries, p.cfg.layout.log_leaves(), wc.rounds.len(), q, wc.final_vars, wc.security_bits()
+                        1 << rate,
+                        p.cfg.queries,
+                        p.cfg.layout.log_leaves(),
+                        wc.rounds.len(),
+                        q,
+                        wc.final_vars,
+                        wc.security_bits()
                     );
                 }
                 Err(e) => eprintln!("rate 1/{} pow {pow} k {k}: {e}", 1 << rate),

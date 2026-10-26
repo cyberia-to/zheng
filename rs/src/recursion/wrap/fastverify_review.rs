@@ -47,7 +47,9 @@ fn c_other(a: &[Fp3]) -> Vec<Fp3> {
 }
 
 fn bits_of(j: usize, len: usize) -> Vec<Fp3> {
-    (0..len).map(|k| Fp3::from_base(Goldilocks::new(((j >> k) & 1) as u64))).collect()
+    (0..len)
+        .map(|k| Fp3::from_base(Goldilocks::new(((j >> k) & 1) as u64)))
+        .collect()
 }
 
 /// (1) An opening recomputed from coefficients is accepted only when
@@ -60,24 +62,43 @@ fn bits_of(j: usize, len: usize) -> Vec<Fp3> {
 fn a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients() {
     let mut r = Rng(0x5eed_0001);
     let k = 1usize << 6;
-    let layout = LeafLayout { log_domain: 10, log_width: 2 };
+    let layout = LeafLayout {
+        log_domain: 10,
+        log_width: 2,
+    };
     let a: Vec<Fp3> = (0..k).map(|_| r.e()).collect();
     let w = Word::commit_coeffs(layout, a.clone(), Arity::Two);
     let root = w.root().map(Fp3::from_base);
     let leaves = 1usize << layout.log_leaves();
     // the streamed tree is the held tree
-    let streamed = stream::digests(&[Coeffs::Ext(&a)], layout.log_domain, layout.log_width, |leaves, width, sym| {
-        crate::recursion::word::hash_leaves(leaves, width, true, sym)
-    });
+    let streamed = stream::digests(
+        &[Coeffs::Ext(&a)],
+        layout.log_domain,
+        layout.log_width,
+        |leaves, width, sym| crate::recursion::word::hash_leaves(leaves, width, true, sym),
+    );
     for j in [0, 1, 7, leaves - 1] {
         let honest = w.open(j);
-        assert_eq!(honest.symbols, stream::leaf(Coeffs::Ext(&a), layout.log_domain, layout.log_width, j));
+        assert_eq!(
+            honest.symbols,
+            stream::leaf(Coeffs::Ext(&a), layout.log_domain, layout.log_width, j)
+        );
         assert_eq!(leaf_digest(true, &honest.symbols), streamed[j]);
         // a parse of the honest leaf fills the memo
-        let _ = hash_leaves_with(1, honest.symbols.len(), true, |_, t| honest.symbols[t], true);
+        let _ = hash_leaves_with(
+            1,
+            honest.symbols.len(),
+            true,
+            |_, t| honest.symbols[t],
+            true,
+        );
         let bits = bits_of(j, honest.path.len());
         for batched in [false, true] {
-            let mut o = if batched { Native::batched() } else { Native::new() };
+            let mut o = if batched {
+                Native::batched()
+            } else {
+                Native::new()
+            };
             verify_leaf(&mut o, true, Arity::Two, &honest, &bits, root, "root");
             assert!(o.finish().is_ok(), "honest leaf {j}");
         }
@@ -87,13 +108,27 @@ fn a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients() 
         let c: Vec<Fp3> = (0..k).map(|_| r.e()).collect();
         for other in [&b, &c] {
             let mut forged = honest.clone();
-            forged.symbols = stream::leaf(Coeffs::Ext(other), layout.log_domain, layout.log_width, j);
+            forged.symbols =
+                stream::leaf(Coeffs::Ext(other), layout.log_domain, layout.log_width, j);
             assert_ne!(forged.symbols, honest.symbols);
-            let _ = hash_leaves_with(1, forged.symbols.len(), true, |_, t| forged.symbols[t], true);
+            let _ = hash_leaves_with(
+                1,
+                forged.symbols.len(),
+                true,
+                |_, t| forged.symbols[t],
+                true,
+            );
             for batched in [false, true] {
-                let mut o = if batched { Native::batched() } else { Native::new() };
+                let mut o = if batched {
+                    Native::batched()
+                } else {
+                    Native::new()
+                };
                 verify_leaf(&mut o, true, Arity::Two, &forged, &bits, root, "root");
-                assert!(o.finish().is_err(), "a leaf of other coefficients, leaf {j}");
+                assert!(
+                    o.finish().is_err(),
+                    "a leaf of other coefficients, leaf {j}"
+                );
             }
         }
     }
@@ -111,7 +146,12 @@ fn a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients() 
         verify_leaf(&mut o, true, Arity::Two, &op, &bits, root, "root");
         assert!(o.finish().is_ok());
         let mut forged = op.clone();
-        forged.symbols = stream::leaf(Coeffs::Ext(&c_other(&a)), layout.log_domain, layout.log_width, j);
+        forged.symbols = stream::leaf(
+            Coeffs::Ext(&c_other(&a)),
+            layout.log_domain,
+            layout.log_width,
+            j,
+        );
         let mut o = Native::batched();
         verify_leaf(&mut o, true, Arity::Two, &forged, &bits, root, "root");
         assert!(o.finish().is_err());
@@ -119,7 +159,10 @@ fn a_streamed_opening_binds_to_the_committed_codeword_not_to_the_coefficients() 
     // base words: the symbols of a base word lie in the base field
     let ab: Vec<Goldilocks> = (0..k).map(|_| r.g()).collect();
     let lb = stream::leaf(Coeffs::Base(&ab), layout.log_domain, layout.log_width, 3);
-    assert!(lb.iter().all(|s| s.c1 == Goldilocks::ZERO && s.c2 == Goldilocks::ZERO));
+    assert!(
+        lb.iter()
+            .all(|s| s.c1 == Goldilocks::ZERO && s.c2 == Goldilocks::ZERO)
+    );
 }
 
 /// (6) The parser's batched leaf digests (which also fill the memo) are
@@ -131,7 +174,11 @@ fn the_parser_s_batched_leaf_digests_are_the_verifier_s_sponge() {
         for width in 1..=40usize {
             let leaves = 5;
             let syms: Vec<Vec<Fp3>> = (0..leaves)
-                .map(|_| (0..width).map(|_| if ext { r.e() } else { Fp3::from_base(r.g()) }).collect())
+                .map(|_| {
+                    (0..width)
+                        .map(|_| if ext { r.e() } else { Fp3::from_base(r.g()) })
+                        .collect()
+                })
                 .collect();
             for remember in [false, true] {
                 let got = hash_leaves_with(leaves, width, ext, |j, t| syms[j][t], remember);
@@ -158,8 +205,9 @@ fn the_permutation_memo_returns_only_permutations_under_concurrency() {
             sc.spawn(move || {
                 let mut r = Rng(0x5eed_1000 + th);
                 for round in 0..12 {
-                    let mut states: Vec<[Goldilocks; WIDTH]> =
-                        (0..64).map(|_| core::array::from_fn(|_| Goldilocks::new(r.next() % 1000))).collect();
+                    let mut states: Vec<[Goldilocks; WIDTH]> = (0..64)
+                        .map(|_| core::array::from_fn(|_| Goldilocks::new(r.next() % 1000)))
+                        .collect();
                     let want: Vec<_> = states.iter().map(truth).collect();
                     let mut rem = states.clone();
                     perm::permute_many_remember(&mut rem);
@@ -174,8 +222,11 @@ fn the_permutation_memo_returns_only_permutations_under_concurrency() {
                     assert_eq!(got, want, "thread {th} round {round}");
                     if round == 6 && th == 0 {
                         // past the cap: the memo clears under the others
-                        let mut big: Vec<[Goldilocks; WIDTH]> =
-                            (0..perm::MEMO_CAP as u64 + 8).map(|i| core::array::from_fn(|l| Goldilocks::new(i * 17 + l as u64 + 5000))).collect();
+                        let mut big: Vec<[Goldilocks; WIDTH]> = (0..perm::MEMO_CAP as u64 + 8)
+                            .map(|i| {
+                                core::array::from_fn(|l| Goldilocks::new(i * 17 + l as u64 + 5000))
+                            })
+                            .collect();
                         perm::permute_many_remember(&mut big);
                     }
                 }
@@ -197,7 +248,11 @@ fn message_digests_bind_length_order_and_content() {
         longer.push(Fp3::ZERO);
         assert_ne!(msg::digest_native(&longer), d, "a trailing zero, {len}");
         if len > 1 {
-            assert_ne!(msg::digest_native(&items[..len - 1]), d, "a dropped item, {len}");
+            assert_ne!(
+                msg::digest_native(&items[..len - 1]),
+                d,
+                "a dropped item, {len}"
+            );
             let mut sw = items.clone();
             sw.swap(0, len - 1);
             assert_ne!(msg::digest_native(&sw), d, "a swap, {len}");
@@ -251,7 +306,11 @@ fn the_compiled_graph_is_the_graph_and_skipped_key_columns_are_never_read() {
             if u {
                 let mut one = ins.clone();
                 one[2 * w + j] += Fp3::ONE;
-                assert_ne!(gc.eval(&one), want, "{mode:?}: key column {j} listed but not read");
+                assert_ne!(
+                    gc.eval(&one),
+                    want,
+                    "{mode:?}: key column {j} listed but not read"
+                );
             }
         }
         // random points: compiled = graph
@@ -259,7 +318,12 @@ fn the_compiled_graph_is_the_graph_and_skipped_key_columns_are_never_read() {
             let x: Vec<Fp3> = (0..g.inputs).map(|_| r.e()).collect();
             assert_eq!(gc.eval(&x), g.eval(&x));
         }
-        eprintln!("{mode:?}: {} of {} key columns read, {} compiled operations", kc.iter().filter(|&&u| u).count(), kc.len(), gc.len());
+        eprintln!(
+            "{mode:?}: {} of {} key columns read, {} compiled operations",
+            kc.iter().filter(|&&u| u).count(),
+            kc.len(),
+            gc.len()
+        );
     }
 }
 
@@ -277,7 +341,9 @@ fn per_cell(w: &Wiring, n: usize, lambda: Fp3, alpha: &[Fp3], fm: &[Fp3]) -> Fp3
     }
     let ea = eq_table(alpha);
     let pre = alpha.len();
-    u.iter().enumerate().fold(Fp3::ZERO, |s, (x, &v)| s + v * ea[x & ((1 << pre) - 1)] * fm[x >> pre])
+    u.iter().enumerate().fold(Fp3::ZERO, |s, (x, &v)| {
+        s + v * ea[x & ((1 << pre) - 1)] * fm[x >> pre]
+    })
 }
 
 /// A random wiring of `reads` read slots and `writes` write slots over
@@ -332,11 +398,15 @@ fn the_slot_closing_is_the_per_cell_closing() {
         let pre = trial % (n + 1);
         let alpha: Vec<Fp3> = (0..pre).map(|_| r.e()).collect();
         let fm: Vec<Fp3> = (0..1usize << (n + CBITS - pre)).map(|_| r.e()).collect();
-        let got = w.closing(n, lambda, &alpha, &fm).expect("the slot form applies");
+        let got = w
+            .closing(n, lambda, &alpha, &fm)
+            .expect("the slot form applies");
         assert_eq!(got, per_cell(&w, n, lambda, &alpha, &fm), "pre {pre}");
         // another |α| on the same wiring: declined, never wrong
         let alpha2: Vec<Fp3> = (0..(pre + 1) % (n + 1)).map(|_| r.e()).collect();
-        let fm2: Vec<Fp3> = (0..1usize << (n + CBITS - alpha2.len())).map(|_| r.e()).collect();
+        let fm2: Vec<Fp3> = (0..1usize << (n + CBITS - alpha2.len()))
+            .map(|_| r.e())
+            .collect();
         if let Some(v) = w.closing(n, lambda, &alpha2, &fm2) {
             assert_eq!(v, per_cell(&w, n, lambda, &alpha2, &fm2));
         }
@@ -349,15 +419,29 @@ fn the_slot_closing_is_the_per_cell_closing() {
     // |α| > n
     let w = random_wiring(&mut r, n, 30, 9, false);
     let big: Vec<Fp3> = (0..n + 1).map(|_| r.e()).collect();
-    assert!(w.closing(n, lambda, &big, &fm[..1 << (CBITS - 1)]).is_none());
+    assert!(
+        w.closing(n, lambda, &big, &fm[..1 << (CBITS - 1)])
+            .is_none()
+    );
     // general coefficients
     let w = random_wiring(&mut r, n, 30, 9, true);
-    assert!(w.read_cells.iter().chain(&w.write_cells).any(|c| matches!(c.2, Coef::Other(_))));
+    assert!(
+        w.read_cells
+            .iter()
+            .chain(&w.write_cells)
+            .any(|c| matches!(c.2, Coef::Other(_)))
+    );
     assert!(w.closing(n, lambda, &alpha, &fm).is_none());
     // cells out of slot order
     let mut w = random_wiring(&mut r, n, 30, 9, false);
     w.read_cells.reverse();
-    let w = Wiring::new(w.reads, w.read_cells, w.write_reads, w.write_at, w.write_cells);
+    let w = Wiring::new(
+        w.reads,
+        w.read_cells,
+        w.write_reads,
+        w.write_at,
+        w.write_cells,
+    );
     assert!(w.closing(n, lambda, &alpha, &fm).is_none());
     // a read listed by two writes
     let w = random_wiring(&mut r, n, 30, 9, false);
@@ -391,7 +475,15 @@ fn a_loaded_key_must_send_the_successor_columns_its_graph_reads() {
     whir.log_inv_rate = 4;
     whir.pow_bits = 24;
     let ikey = crate::recursion::ivc::key(&whir, 15).unwrap();
-    let mut k = super::derive_shape_ivc(super::WrapParams { whir, n: 0, mode: Mode::Final }, &ikey).unwrap();
+    let mut k = super::derive_shape_ivc(
+        super::WrapParams {
+            whir,
+            n: 0,
+            mode: Mode::Final,
+        },
+        &ikey,
+    )
+    .unwrap();
     let b = k.vk_bytes();
     let back = super::WrapKey::from_vk_bytes(&b).expect("a derived key loads");
     assert_eq!(back.vk_bytes(), b);
@@ -399,13 +491,21 @@ fn a_loaded_key_must_send_the_successor_columns_its_graph_reads() {
     assert!(!k.next_cols.is_empty());
     // drop a successor column the graph reads
     let dropped = k.next_cols.remove(0);
-    assert!(super::WrapKey::from_vk_bytes(&k.vk_bytes()).is_err(), "column {dropped} dropped");
+    assert!(
+        super::WrapKey::from_vk_bytes(&k.vk_bytes()).is_err(),
+        "column {dropped} dropped"
+    );
     k.next_cols.insert(0, dropped);
     // send a column the graph does not read
-    let extra = (0..V1).find(|c| !k.next_cols.contains(c)).expect("an unread column");
+    let extra = (0..V1)
+        .find(|c| !k.next_cols.contains(c))
+        .expect("an unread column");
     k.next_cols.push(extra);
     k.next_cols.sort_unstable();
-    assert!(super::WrapKey::from_vk_bytes(&k.vk_bytes()).is_err(), "column {extra} added");
+    assert!(
+        super::WrapKey::from_vk_bytes(&k.vk_bytes()).is_err(),
+        "column {extra} added"
+    );
 }
 
 /// (7) The recursion profile shipped under the wrap chain
@@ -422,14 +522,32 @@ fn the_shipped_ivc_profile_rows_and_interactive_figure() {
     whir.log_inv_rate = crate::recursion::ivc::SHIPPED_RATE;
     whir.pow_bits = crate::recursion::ivc::SHIPPED_POW;
     let p = crate::recursion::params::Params::new(&whir, 15).unwrap();
-    assert_eq!((p.cfg.queries, p.cfg.query_pow, p.cfg.comb_pow_for(crate::recursion::params::INPUTS)), (77, 16, 17));
+    assert_eq!(
+        (
+            p.cfg.queries,
+            p.cfg.query_pow,
+            p.cfg.comb_pow_for(crate::recursion::params::INPUTS)
+        ),
+        (77, 16, 17)
+    );
     let rows = crate::recursion::params::ledger(&p);
     let get = |n: &str| rows.iter().find(|r| r.0 == n).map(|r| r.1).unwrap();
     assert!(rows.iter().all(|r| r.1 >= 128.0), "{rows:?}");
-    for (n, want) in [("combine", 128.19), ("spot", 128.08), ("decider batch combine", 128.80), ("decider shift_2", 128.04), ("decider fin", 128.11)] {
+    for (n, want) in [
+        ("combine", 128.19),
+        ("spot", 128.08),
+        ("decider batch combine", 128.80),
+        ("decider shift_2", 128.04),
+        ("decider fin", 128.11),
+    ] {
         assert!((get(n) - want).abs() < 0.01, "{n}: {}", get(n));
     }
-    let (name, inter) = rows.iter().map(|r| (r.0.clone(), r.1 - f64::from(r.2))).fold((String::new(), f64::INFINITY), |a, r| if r.1 < a.1 { r } else { a });
+    let (name, inter) = rows
+        .iter()
+        .map(|r| (r.0.clone(), r.1 - f64::from(r.2)))
+        .fold((String::new(), f64::INFINITY), |a, r| {
+            if r.1 < a.1 { r } else { a }
+        });
     assert_eq!(name, "decider shift_2");
     assert!((inter - 111.04).abs() < 0.01, "{inter}");
 }

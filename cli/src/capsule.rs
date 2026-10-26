@@ -12,7 +12,7 @@
 //! Encoding: `(sigil::BAR, render::STRUCT)` chunk whose payload is
 //! `encode_nested` of `kv` pairs in fixed order (formula, object, budget).
 
-use tape::{encode_nested, kv, read_kv, render, sigil, Chunk, Reader};
+use tape::{Chunk, Reader, encode_nested, kv, read_kv, render, sigil};
 
 /// A nox program: what to run and with how much budget.
 pub struct Program {
@@ -44,9 +44,17 @@ pub fn decode(bytes: &[u8]) -> Result<Program, String> {
     };
 
     let formula = get("formula")?;
-    let object = get("object")?.parse::<u64>().map_err(|e| format!("bad object: {e}"))?;
-    let budget = get("budget")?.parse::<u64>().map_err(|e| format!("bad budget: {e}"))?;
-    Ok(Program { formula, object, budget })
+    let object = get("object")?
+        .parse::<u64>()
+        .map_err(|e| format!("bad object: {e}"))?;
+    let budget = get("budget")?
+        .parse::<u64>()
+        .map_err(|e| format!("bad budget: {e}"))?;
+    Ok(Program {
+        formula,
+        object,
+        budget,
+    })
 }
 
 #[cfg(test)]
@@ -55,7 +63,11 @@ mod tests {
 
     #[test]
     fn capsule_roundtrips() {
-        let p = Program { formula: "[15 [1 42]]".to_string(), object: 0, budget: 1000 };
+        let p = Program {
+            formula: "[15 [1 42]]".to_string(),
+            object: 0,
+            budget: 1000,
+        };
         let bytes = encode(&p);
         let back = decode(&bytes).unwrap();
         assert_eq!(back.formula, p.formula);

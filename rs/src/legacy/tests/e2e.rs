@@ -2,7 +2,6 @@ use super::*;
 
 // ── end-to-end tests ─────────────────────────────────────────────────────
 
-
 /// E2E: trace with Poseidon2 hash operation → hash_aux drives particle CCS.
 ///
 /// formula = [15, [1, s]] hashes subject s, producing 25 rows (tag=15)
@@ -73,7 +72,7 @@ fn e2e_axis_accumulator_and_statement_binding_roundtrip() {
         input_hash,
         output_hash,
         focus_bound: 10,
-    bbg_root: [0u8; 32],
+        bbg_root: [0u8; 32],
     };
     let params = ProofParams::default();
 
@@ -103,7 +102,7 @@ fn e2e_statement_binding_rejects_wrong_input_hash() {
         input_hash: wrong_hash,
         output_hash: [0u8; 32],
         focus_bound: 0,
-    bbg_root: [0u8; 32],
+        bbg_root: [0u8; 32],
     };
     let params = ProofParams::default();
     let err = commit(&trace, &[], &[], &[], &stmt, &params);
@@ -156,7 +155,10 @@ fn e2e_compose_roundtrip() {
     let mut trace = VecTrace::default();
     nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
     nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
-    assert!(trace.0.iter().any(|r| r.r()[0] == 2), "trace has a compose row");
+    assert!(
+        trace.0.iter().any(|r| r.r()[0] == 2),
+        "trace has a compose row"
+    );
 
     let stmt = zero_statement();
     let params = ProofParams::default();
@@ -183,7 +185,10 @@ fn e2e_cons_roundtrip() {
     let mut trace = VecTrace::default();
     nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
     nox::reduce(&mut ar, obj, formula, 1000, &NullCalls, &mut trace);
-    assert!(trace.0.iter().any(|r| r.r()[0] == 3), "trace has a cons row");
+    assert!(
+        trace.0.iter().any(|r| r.r()[0] == 3),
+        "trace has a cons row"
+    );
 
     let stmt = zero_statement();
     let params = ProofParams::default();

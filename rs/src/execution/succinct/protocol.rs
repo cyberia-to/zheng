@@ -141,7 +141,9 @@ impl Layout {
                         .map(|row| {
                             row.iter()
                                 .filter(|&&(_, v)| v != Goldilocks::ZERO)
-                                .filter_map(|&(c, v)| self.map.get(c).copied().flatten().map(|c| (c, v)))
+                                .filter_map(|&(c, v)| {
+                                    self.map.get(c).copied().flatten().map(|c| (c, v))
+                                })
                                 .collect::<Vec<_>>()
                         })
                         .collect::<Vec<_>>()
@@ -174,7 +176,11 @@ impl Layout {
         // eq(r, c') over z' = (w ‖ p): (1 − r_0)·eq(r', c') or r_0·eq(r', c' − 2^ℓ)
         let (lo, hi) = (Fp3::ONE - r0, r0);
         let eq_full = |s: usize| -> Fp3 {
-            if s < eq_col.len() { lo * eq_col[s] } else { hi * eq_col[s - eq_col.len()] }
+            if s < eq_col.len() {
+                lo * eq_col[s]
+            } else {
+                hi * eq_col[s - eq_col.len()]
+            }
         };
         let eq_z: Vec<Fp3> = (0..2 * eq_col.len()).map(eq_full).collect();
         let scale = |a: Fp3, v: Goldilocks| Fp3::new(a.c0 * v, a.c1 * v, a.c2 * v);
@@ -319,7 +325,13 @@ pub fn verify<P: SuccinctPcs>(
     if !instance.num_rows.is_power_of_two() {
         return Err("succinct: row count".into());
     }
-    let mut t = prologue::<P>(statement, &proof.params, layout.vars, instance.num_rows, &proof.root);
+    let mut t = prologue::<P>(
+        statement,
+        &proof.params,
+        layout.vars,
+        instance.num_rows,
+        &proof.root,
+    );
     let r = reduce::reduce::<Fp3>(
         instance,
         &proof.matrix_evals,
@@ -355,17 +367,28 @@ mod tests {
     #[test]
     fn mapped_weight_equals_the_relabelled_weight() {
         let pair = |a, b| N::Pair(Box::new(a), Box::new(b));
-        let add = pair(N::Atom(5), pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))));
+        let add = pair(
+            N::Atom(5),
+            pair(pair(N::Atom(0), N::Atom(2)), pair(N::Atom(0), N::Atom(6))),
+        );
         let program = pair(N::Atom(7), pair(add, pair(N::Atom(0), N::Atom(2))));
         let (statement, _) = certify_execution(&program, &[7, 5], 1000).unwrap();
         let (instance, pins) = super::super::relation_and_pins(&statement).unwrap();
         let layout = Layout::new(&instance, &pins).unwrap();
         let relabelled = layout.instance(&instance);
-        let f = |i: u64| Fp3::new(Goldilocks::new(i), Goldilocks::new(i + 3), Goldilocks::new(2 * i));
+        let f = |i: u64| {
+            Fp3::new(
+                Goldilocks::new(i),
+                Goldilocks::new(i + 3),
+                Goldilocks::new(2 * i),
+            )
+        };
         let red = reduce::Reduction {
             point: (0..=layout.vars as u64).map(f).collect(),
             claim: Fp3::ZERO,
-            rho_x: (0..instance.num_rows.trailing_zeros() as u64).map(|i| f(i + 50)).collect(),
+            rho_x: (0..instance.num_rows.trailing_zeros() as u64)
+                .map(|i| f(i + 50))
+                .collect(),
             gamma: f(99),
         };
         assert_eq!(layout.weight(&instance, &red), red.weight(&relabelled));

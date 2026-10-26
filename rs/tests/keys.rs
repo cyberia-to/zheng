@@ -15,7 +15,11 @@ use zheng::recursion::wrap::WrapKey;
 fn the_pinned_digests_are_the_derived_keys() {
     for profile in [Profile::Recursive, Profile::Wrapped] {
         let bundle = keys::export(profile).unwrap();
-        assert_eq!(Some(keys::digest(&bundle)), keys::pinned(profile), "{profile:?}");
+        assert_eq!(
+            Some(keys::digest(&bundle)),
+            keys::pinned(profile),
+            "{profile:?}"
+        );
         assert_eq!(keys::install(&bundle), Ok(profile));
         assert!(keys::cached(profile));
     }
@@ -42,7 +46,22 @@ fn layouts_rebuild_the_same_keys() {
     assert_eq!(back.next_cols, fk.next_cols);
     assert_eq!(back.sparse, fk.sparse);
     let (a, b) = (back.wiring.as_ref().unwrap(), fk.wiring.as_ref().unwrap());
-    assert_eq!((a.reads, &a.read_cells, &a.write_reads, &a.write_at, &a.write_cells), (b.reads, &b.read_cells, &b.write_reads, &b.write_at, &b.write_cells));
+    assert_eq!(
+        (
+            a.reads,
+            &a.read_cells,
+            &a.write_reads,
+            &a.write_at,
+            &a.write_cells
+        ),
+        (
+            b.reads,
+            &b.read_cells,
+            &b.write_reads,
+            &b.write_at,
+            &b.write_cells
+        )
+    );
     // every truncation and a trailing byte of a layout are refused
     for cut in (0..lb.len()).step_by(997).chain(lb.len() - 3..lb.len()) {
         assert!(WrapKey::from_layout(&lb[..cut]).is_err(), "cut {cut}");

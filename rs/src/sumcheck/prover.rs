@@ -27,7 +27,10 @@ const MIN_PAIRS: usize = 1 << 11;
 /// — the MSB fold, the same values as `(1−r)·lo + r·hi`.
 fn fold_table<F: ChallengeField>(table: &mut Vec<F>, r: F) {
     let half = table.len() / 2;
-    assert!(half >= 1 && table.len().is_power_of_two(), "table must be power-of-2 size ≥ 2");
+    assert!(
+        half >= 1 && table.len().is_power_of_two(),
+        "table must be power-of-2 size ≥ 2"
+    );
     let (lo, hi) = table.split_at_mut(half);
     let hi = &*hi;
     par::chunks_mut(lo, MIN_PAIRS, |off, c| {
@@ -88,15 +91,22 @@ impl<F: ChallengeField> SumcheckProver<F> {
         debug_assert_eq!(w.len(), f.len());
         debug_assert!(w.len().is_power_of_two());
         let num_vars = w.len().trailing_zeros() as usize;
-        Self { w_table: w, f_table: f, num_vars, round: 0 }
+        Self {
+            w_table: w,
+            f_table: f,
+            num_vars,
+            round: 0,
+        }
     }
 
     /// The claim of the current round: Σ_x w(x)·f(x) over the tables.
     pub fn claimed_sum(&self) -> F {
         let (w, f) = (&self.w_table, &self.f_table);
-        par::ranges(w.len(), MIN_PAIRS, |r| r.fold(F::ZERO, |acc, i| acc + w[i] * f[i]))
-            .into_iter()
-            .fold(F::ZERO, |a, b| a + b)
+        par::ranges(w.len(), MIN_PAIRS, |r| {
+            r.fold(F::ZERO, |acc, i| acc + w[i] * f[i])
+        })
+        .into_iter()
+        .fold(F::ZERO, |a, b| a + b)
     }
 
     /// Number of sumcheck rounds remaining.
@@ -123,7 +133,10 @@ impl<F: ChallengeField> SumcheckProver<F> {
         })
         .into_iter()
         .fold([F::ZERO; 3], |a, b| [a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
-        SumcheckPoly { degree: 2, coeffs: evals_to_coeffs(&evals) }
+        SumcheckPoly {
+            degree: 2,
+            coeffs: evals_to_coeffs(&evals),
+        }
     }
 
     /// Fold both tables with challenge r, advancing to the next round.
@@ -330,14 +343,31 @@ impl<F: ChallengeField> OuterSumcheckProver<F> {
         let evals = match &self.base {
             Some((tables, coeffs)) => {
                 let tables: Vec<&[Goldilocks]> = tables.iter().map(Vec::as_slice).collect();
-                outer_evals(&self.eq_table, &tables, &self.terms, coeffs, points, |e, g| e.mul_base(g))
+                outer_evals(
+                    &self.eq_table,
+                    &tables,
+                    &self.terms,
+                    coeffs,
+                    points,
+                    |e, g| e.mul_base(g),
+                )
             }
             None => {
                 let tables: Vec<&[F]> = self.f_tables.iter().map(Vec::as_slice).collect();
-                outer_evals(&self.eq_table, &tables, &self.terms, &self.coeffs, points, |e, g| e * g)
+                outer_evals(
+                    &self.eq_table,
+                    &tables,
+                    &self.terms,
+                    &self.coeffs,
+                    points,
+                    |e, g| e * g,
+                )
             }
         };
-        SumcheckPoly { degree: (self.degree + 1) as u8, coeffs: evals_to_coeffs(&evals) }
+        SumcheckPoly {
+            degree: (self.degree + 1) as u8,
+            coeffs: evals_to_coeffs(&evals),
+        }
     }
 
     /// Fold eq_table and all f_tables with challenge r, advancing one round.
@@ -407,9 +437,9 @@ mod tests {
 }
 #[cfg(test)]
 mod pairing_tests {
-    use nebu::Goldilocks;
     use crate::multilinear::eq_evals;
     use crate::sumcheck::prover::OuterSumcheckProver;
+    use nebu::Goldilocks;
 
     /// The outer fold pins the MSB row bit with the round-0 challenge, so the
     /// folded matrix eval equals the MLE weighted by eq of the REVERSED
@@ -421,17 +451,24 @@ mod pairing_tests {
         let f = vec![g(1), g(2), g(3), g(4)];
         let tau = vec![g(10), g(20)];
         let eq_t = eq_evals(&tau);
-        let mut p = OuterSumcheckProver::new(
-            eq_t, vec![f.clone()], vec![vec![0]], vec![Goldilocks::ONE],
-        );
+        let mut p =
+            OuterSumcheckProver::new(eq_t, vec![f.clone()], vec![vec![0]], vec![Goldilocks::ONE]);
         let ch = [g(5), g(7)];
         let mut i = 0;
-        let _ = p.prove_all(|_| { let c = ch[i]; i += 1; c });
+        let _ = p.prove_all(|_| {
+            let c = ch[i];
+            i += 1;
+            c
+        });
         let u = p.f_tables[0][0];
 
-        let rev_paired: Goldilocks = eq_evals(&[ch[1], ch[0]]).iter().zip(f.iter())
+        let rev_paired: Goldilocks = eq_evals(&[ch[1], ch[0]])
+            .iter()
+            .zip(f.iter())
             .fold(Goldilocks::ZERO, |a, (&w, &v)| a + w * v);
-        let lsb_paired: Goldilocks = eq_evals(&ch).iter().zip(f.iter())
+        let lsb_paired: Goldilocks = eq_evals(&ch)
+            .iter()
+            .zip(f.iter())
             .fold(Goldilocks::ZERO, |a, (&w, &v)| a + w * v);
         assert_eq!(u.as_u64(), rev_paired.as_u64(), "fold is MSB-first");
         assert_ne!(u.as_u64(), lsb_paired.as_u64(), "pairing direction matters");

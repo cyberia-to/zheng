@@ -35,13 +35,54 @@ fn a_wrapped_proof_verifies_and_binds_its_statement() {
     let ikey = ivc::key(&whir(4), STEP as usize).unwrap();
     let prep = ivc::prepare(&st, &whir(4), STEP, p.start, p.segments, p.chain).unwrap();
     let pn = ivc::verify_claim(&prep, &p).unwrap();
-    let k0 = wrap::derive_key_ivc(WrapParams { whir: whir(4), n: 0, mode: Mode::Inner }, &ikey).unwrap();
-    let (w0, x0) = wrap::prove(&k0, &Inner::Ivc { key: &ikey, proof: &p }, &prep.publics, &pn).unwrap();
+    let k0 = wrap::derive_key_ivc(
+        WrapParams {
+            whir: whir(4),
+            n: 0,
+            mode: Mode::Inner,
+        },
+        &ikey,
+    )
+    .unwrap();
+    let (w0, x0) = wrap::prove(
+        &k0,
+        &Inner::Ivc {
+            key: &ikey,
+            proof: &p,
+        },
+        &prep.publics,
+        &pn,
+    )
+    .unwrap();
     wrap::verify_native(&k0, x0, &w0).unwrap();
-    let k1 = wrap::derive_key_wrap(WrapParams { whir: whir(4), n: 0, mode: Mode::Final }, &k0).unwrap();
-    let (w1, x1) = wrap::prove(&k1, &Inner::Wrap { key: &k0, proof: &w0 }, &prep.publics, &pn).unwrap();
+    let k1 = wrap::derive_key_wrap(
+        WrapParams {
+            whir: whir(4),
+            n: 0,
+            mode: Mode::Final,
+        },
+        &k0,
+    )
+    .unwrap();
+    let (w1, x1) = wrap::prove(
+        &k1,
+        &Inner::Wrap {
+            key: &k0,
+            proof: &w0,
+        },
+        &prep.publics,
+        &pn,
+    )
+    .unwrap();
     assert_eq!(x0, x1, "every level binds the same public values");
-    let fp = FinalProof { log_rows: p.log_rows, start: p.start, segments: p.segments, chain: p.chain, pn: pn.clone(), wrap: w1 };
+    let fp = FinalProof {
+        log_rows: p.log_rows,
+        start: p.start,
+        segments: p.segments,
+        chain: p.chain,
+        pn: pn.clone(),
+        wrap: w1,
+    };
     let bytes = fp.to_bytes(&k1);
     let fp = FinalProof::from_bytes(&bytes, &k1).unwrap();
     verify(&st, &fp, &k1).unwrap();

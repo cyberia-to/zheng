@@ -38,8 +38,8 @@ mod tests;
 pub use prove::{prove, prove_direct};
 pub use verify::{check_shape, verify, verify_direct};
 
-use lens::rspcs::whir::{LeafLayout, RoundSpec, WhirConfig};
 use lens::WhirParams;
+use lens::rspcs::whir::{LeafLayout, RoundSpec, WhirConfig};
 use nebu::Fp3;
 
 use super::word::{Arity, Digest, LeafOpening, Word};
@@ -71,7 +71,12 @@ pub struct Config {
 
 impl Config {
     /// `groups`: input words per round-0 tree.
-    pub fn derive(whir: &WhirParams, num_vars: usize, groups: &[usize], claims: usize) -> Result<Self, String> {
+    pub fn derive(
+        whir: &WhirParams,
+        num_vars: usize,
+        groups: &[usize],
+        claims: usize,
+    ) -> Result<Self, String> {
         let mut wc = WhirConfig::derive(whir, num_vars).map_err(|e| format!("whir: {e}"))?;
         let inputs: usize = groups.iter().sum();
         // lens's queries, each round's regime and grinding rebalanced for
@@ -80,10 +85,21 @@ impl Config {
         if inputs == 0 || groups.contains(&0) || claims < inputs {
             return Err("whir: every input word carries a claim".into());
         }
-        let mut c = Self { whir: *whir, wc, inputs, groups: groups.to_vec(), claims, comb_pow: 0, arity: Arity::Two };
+        let mut c = Self {
+            whir: *whir,
+            wc,
+            inputs,
+            groups: groups.to_vec(),
+            claims,
+            comb_pow: 0,
+            arity: Arity::Two,
+        };
         c.comb_pow = lens::rspcs::whir::batch::comb_pow(&c.wc, inputs, MIN_BITS);
         if c.comb_pow > COMB_POW_MAX {
-            return Err(format!("whir: combination grinding {} > {COMB_POW_MAX}", c.comb_pow));
+            return Err(format!(
+                "whir: combination grinding {} > {COMB_POW_MAX}",
+                c.comb_pow
+            ));
         }
         let bits = c.security_bits();
         if bits < MIN_BITS {
@@ -105,7 +121,10 @@ impl Config {
     /// words').
     pub fn layout(&self, i: usize) -> LeafLayout {
         let s = self.wc.rounds[i];
-        LeafLayout { log_domain: s.log_domain, log_width: s.fold as u32 }
+        LeafLayout {
+            log_domain: s.log_domain,
+            log_width: s.fold as u32,
+        }
     }
     pub fn round(&self, i: usize) -> RoundSpec {
         self.wc.rounds[i]
@@ -124,13 +143,17 @@ impl Config {
     /// Every round-by-round term as `(name, bits)`: the batch's (lens
     /// `whir::batch`) and lens's WHIR terms.
     pub fn terms(&self) -> Vec<(String, f64)> {
-        let mut out = lens::rspcs::whir::batch::terms(&self.wc, self.inputs, self.claims, self.comb_pow);
+        let mut out =
+            lens::rspcs::whir::batch::terms(&self.wc, self.inputs, self.claims, self.comb_pow);
         out.extend(self.wc.terms());
         out
     }
 
     pub fn security_bits(&self) -> f64 {
-        self.terms().into_iter().map(|(_, b)| b).fold(f64::INFINITY, f64::min)
+        self.terms()
+            .into_iter()
+            .map(|(_, b)| b)
+            .fold(f64::INFINITY, f64::min)
     }
 }
 
@@ -184,7 +207,11 @@ pub enum Weight<V> {
     /// `row(ρ, r)·col[c]` at index `c·2^n + r`, `row` = `eq` or the
     /// successor `nxt` (the claim on a column combination at `ρ` or at its
     /// successor row).
-    RowCol { next: bool, rho: Vec<V>, col: Vec<V> },
+    RowCol {
+        next: bool,
+        rho: Vec<V>,
+        col: Vec<V>,
+    },
     /// The `i`-th [`NativeWeight`] (a native verifier only).
     Native(usize),
 }
@@ -245,7 +272,6 @@ pub struct Proof {
     pub final_open: Vec<Vec<LeafOpening>>,
 }
 
-
 /// An opening of the right shape, every value zero (circuit layouts are
 /// fixed by shapes alone).
 pub fn dummy(cfg: &Config) -> Proof {
@@ -256,7 +282,13 @@ pub fn dummy(cfg: &Config) -> Proof {
         path: vec![[nebu::Goldilocks::ZERO; 4]; cfg.arity.path_len(s.log_leaves() as usize)],
         leaf: Some(0),
     };
-    let q = |s: &RoundSpec| if s.opens_all() { 1usize << s.log_leaves() } else { s.queries };
+    let q = |s: &RoundSpec| {
+        if s.opens_all() {
+            1usize << s.log_leaves()
+        } else {
+            s.queries
+        }
+    };
     let opens = |s: &RoundSpec, first: bool| {
         let one = [1usize];
         let g: &[usize] = if first { &cfg.groups } else { &one };
@@ -279,7 +311,11 @@ pub fn dummy(cfg: &Config) -> Proof {
         .collect();
     let last = *wc.rounds.last().expect("a round");
     Proof {
-        batch: BatchProof { sumcheck: vec![z; 2 * wc.num_vars], evals: vec![z; cfg.inputs], comb_nonce: 0 },
+        batch: BatchProof {
+            sumcheck: vec![z; 2 * wc.num_vars],
+            evals: vec![z; cfg.inputs],
+            comb_nonce: 0,
+        },
         ood0: vec![z; s0.ood],
         sumcheck0: vec![z; 2 * s0.fold],
         fold_nonces0: vec![0; fold_n(&s0)],

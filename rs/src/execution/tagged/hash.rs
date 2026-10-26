@@ -35,8 +35,10 @@ impl Builder {
     }
     fn linear_layer(&mut self, state: State, internal: bool) -> Result<State, Error> {
         let mut out = [ZERO; 16];
+        #[allow(clippy::needless_range_loop)]
         for row in 0..16 {
             let mut terms = Vec::with_capacity(16);
+            #[allow(clippy::needless_range_loop)]
             for col in 0..16 {
                 let coefficient = if internal {
                     F::ONE
@@ -65,7 +67,8 @@ impl Builder {
         for round in 0..ROUNDS {
             let partial = !is_full(round);
             if partial {
-                let rc = hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
+                let rc =
+                    hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
                 let x = self.lin(vec![(state[0], F::ONE), (ONE, F::new(rc))])?;
                 state[0] = self.sbox(x)?;
             } else {

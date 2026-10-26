@@ -33,6 +33,9 @@ impl Coeffs<'_> {
             Coeffs::Ext(c) => c.len(),
         }
     }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     pub fn is_ext(&self) -> bool {
         matches!(self, Coeffs::Ext(_))
     }
@@ -57,7 +60,11 @@ fn coset(c: Coeffs<'_>, log_n: u32, s: usize, tw: &[Goldilocks]) -> Vec<Vec<Gold
         Coeffs::Base(b) => vec![limb(&|i| b[i], b.len())],
         Coeffs::Ext(e) => {
             let k = e.len();
-            vec![limb(&|i| e[i].c0, k), limb(&|i| e[i].c1, k), limb(&|i| e[i].c2, k)]
+            vec![
+                limb(&|i| e[i].c0, k),
+                limb(&|i| e[i].c1, k),
+                limb(&|i| e[i].c2, k),
+            ]
         }
     }
 }
@@ -142,22 +149,37 @@ pub fn commit(
     let w = 1usize << log_width;
     let leaves = n / w;
     let per = leaves / b;
-    assert!(per >= 1 && leaves % b == 0, "a leaf lies in one coset");
+    assert!(
+        per >= 1 && leaves.is_multiple_of(b),
+        "a leaf lies in one coset"
+    );
     let lpm = if members[0].is_ext() { 3 } else { 1 };
     let planes = members.len() * lpm;
-    let mut vals_out = if keep { vec![0u64; planes * n] } else { Vec::new() };
+    let mut vals_out = if keep {
+        vec![0u64; planes * n]
+    } else {
+        Vec::new()
+    };
     // twiddles for the CPU's cosets, computed when one is needed
     let tw_cell = std::sync::OnceLock::new();
     let tw = || tw_cell.get_or_init(|| precompute_twiddles_vec(k));
-    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16).min(b);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |x| x.get())
+        .min(16)
+        .min(b);
     let next = std::sync::atomic::AtomicUsize::new(0);
     let mut d = vec![[Goldilocks::ZERO; 4]; leaves];
     let cpu_coset = |s: usize, out: &Out<[Goldilocks; 4]>, vout: &Out<u64>| {
-        let vals: Vec<Vec<Vec<Goldilocks>>> = members.iter().map(|&m| coset(m, log_n, s, tw())).collect();
+        let vals: Vec<Vec<Vec<Goldilocks>>> =
+            members.iter().map(|&m| coset(m, log_n, s, tw())).collect();
         let symbol = |a: usize, t: usize| {
             let v = &vals[t / w];
             let u = a + (t % w) * per;
-            if v.len() == 1 { Fp3::from_base(v[0][u]) } else { Fp3::new(v[0][u], v[1][u], v[2][u]) }
+            if v.len() == 1 {
+                Fp3::from_base(v[0][u])
+            } else {
+                Fp3::new(v[0][u], v[1][u], v[2][u])
+            }
         };
         let ds = hash(per, w * members.len(), &symbol);
         for (a, x) in ds.into_iter().enumerate() {
@@ -195,11 +217,22 @@ pub fn commit(
     // the cosets it declines go to the CPU workers
     let mut declined: Vec<usize> = Vec::new();
     if let Some((init, rate)) = device {
-        let job = lens::rspcs::backend::CosetLeaves { limbs: limb_vecs.iter().map(|v| v.as_slice()).collect(), limbs_per_member: lpm, log_n, log_width, init, rate };
+        let job = lens::rspcs::backend::CosetLeaves {
+            limbs: limb_vecs.iter().map(|v| v.as_slice()).collect(),
+            limbs_per_member: lpm,
+            log_n,
+            log_width,
+            init,
+            rate,
+        };
         // cosets per device call: the coset values within DEVICE_VALUES bytes
         let g = (DEVICE_VALUES / (planes * k * 8)).clamp(1, b);
         let be = lens::rspcs::backend::current();
-        let mut tmp = if keep && planes > 1 { vec![0u64; planes * g * k] } else { Vec::new() };
+        let mut tmp = if keep && planes > 1 {
+            vec![0u64; planes * g * k]
+        } else {
+            Vec::new()
+        };
         for s0 in (0..b).step_by(g) {
             let s1 = (s0 + g).min(b);
             let gg = s1 - s0;
@@ -211,7 +244,8 @@ pub fn commit(
                 let r = be.coset_leaves_kept(&job, s0..s1, &mut tmp[..planes * gg * k]);
                 if r.is_some() {
                     for p in 0..planes {
-                        vals_out[p * n + s0 * k..p * n + s1 * k].copy_from_slice(&tmp[p * gg * k..(p + 1) * gg * k]);
+                        vals_out[p * n + s0 * k..p * n + s1 * k]
+                            .copy_from_slice(&tmp[p * gg * k..(p + 1) * gg * k]);
                     }
                 }
                 r
@@ -235,17 +269,26 @@ pub fn commit(
         let threads = threads.min(declined.len());
         std::thread::scope(|sc| {
             for _ in 0..threads {
-                sc.spawn(|| loop {
-                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if i >= declined.len() {
-                        break;
+                sc.spawn(|| {
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if i >= declined.len() {
+                            break;
+                        }
+                        cpu_coset(declined[i], &out, &vout);
                     }
-                    cpu_coset(declined[i], &out, &vout);
                 });
             }
         });
     }
-    (d, keep.then_some(Kept { planes: vals_out, k, log_n }))
+    (
+        d,
+        keep.then_some(Kept {
+            planes: vals_out,
+            k,
+            log_n,
+        }),
+    )
 }
 
 /// Bytes of coset values a device call holds.
@@ -297,7 +340,10 @@ pub fn symbol(c: Coeffs<'_>, log_n: u32, s: usize) -> Fp3 {
     let x = root_of_unity(log_n).exp(s as u64);
     match c {
         Coeffs::Base(b) => Fp3::from_base(b.iter().rev().fold(Goldilocks::ZERO, |a, &v| a * x + v)),
-        Coeffs::Ext(e) => e.iter().rev().fold(Fp3::ZERO, |a, &v| lens::rspcs::field::mul_base(a, x) + v),
+        Coeffs::Ext(e) => e
+            .iter()
+            .rev()
+            .fold(Fp3::ZERO, |a, &v| lens::rspcs::field::mul_base(a, x) + v),
     }
 }
 
@@ -310,15 +356,26 @@ mod tests {
     fn streamed_leaves_and_symbols_are_the_codeword() {
         let k = 1usize << 8;
         let base: Vec<Goldilocks> = (0..k as u64).map(|i| Goldilocks::new(i * i + 7)).collect();
-        let ext: Vec<Fp3> = (0..k as u64).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(3 * i + 1), Goldilocks::new(i ^ 5))).collect();
+        let ext: Vec<Fp3> = (0..k as u64)
+            .map(|i| {
+                Fp3::new(
+                    Goldilocks::new(i),
+                    Goldilocks::new(3 * i + 1),
+                    Goldilocks::new(i ^ 5),
+                )
+            })
+            .collect();
         for log_n in [10u32, 12] {
             for log_w in [2u32, 4] {
                 let cb = encode_base(&base, log_n);
                 let ce = encode_ext(&ext, log_n);
                 let leaves = 1usize << (log_n - log_w);
                 for j in [0, 1, 5, leaves - 1] {
-                    let want_b: Vec<Fp3> = (0..1usize << log_w).map(|t| Fp3::from_base(cb[j + t * leaves])).collect();
-                    let want_e: Vec<Fp3> = (0..1usize << log_w).map(|t| ce[j + t * leaves]).collect();
+                    let want_b: Vec<Fp3> = (0..1usize << log_w)
+                        .map(|t| Fp3::from_base(cb[j + t * leaves]))
+                        .collect();
+                    let want_e: Vec<Fp3> =
+                        (0..1usize << log_w).map(|t| ce[j + t * leaves]).collect();
                     assert_eq!(leaf(Coeffs::Base(&base), log_n, log_w, j), want_b);
                     assert_eq!(leaf(Coeffs::Ext(&ext), log_n, log_w, j), want_e);
                 }
@@ -327,20 +384,67 @@ mod tests {
                     assert_eq!(symbol(Coeffs::Ext(&ext), log_n, s), ce[s]);
                 }
                 // every coset's leaves, in leaf order
-                let got = digests(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, |leaves, width, sym| {
-                    (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, width - 1).c1, Goldilocks::new(width as u64)]).collect()
-                });
+                let got = digests(
+                    &[Coeffs::Base(&base), Coeffs::Ext(&ext)],
+                    log_n,
+                    log_w,
+                    |leaves, width, sym| {
+                        (0..leaves)
+                            .map(|a| {
+                                [
+                                    sym(a, 0).c0,
+                                    sym(a, 1).c0,
+                                    sym(a, width - 1).c1,
+                                    Goldilocks::new(width as u64),
+                                ]
+                            })
+                            .collect()
+                    },
+                );
                 let mut init = [0u64; 16];
                 init[9] = 2;
-                let hashed = |leaves: usize, len: usize, sym: &dyn Fn(usize, usize) -> Fp3| -> Vec<[Goldilocks; 4]> {
-                    (0..leaves).map(|a| [sym(a, 0).c0, sym(a, 1).c0, sym(a, len - 1).c1, Goldilocks::new(len as u64)]).collect()
+                let hashed = |leaves: usize,
+                              len: usize,
+                              sym: &dyn Fn(usize, usize) -> Fp3|
+                 -> Vec<[Goldilocks; 4]> {
+                    (0..leaves)
+                        .map(|a| {
+                            [
+                                sym(a, 0).c0,
+                                sym(a, 1).c0,
+                                sym(a, len - 1).c1,
+                                Goldilocks::new(len as u64),
+                            ]
+                        })
+                        .collect()
                 };
                 // the CPU backend declines coset_leaves: the CPU workers take all
-                assert_eq!(digests_device(&[Coeffs::Base(&base), Coeffs::Ext(&ext)], log_n, log_w, init, 9, hashed), got);
+                assert_eq!(
+                    digests_device(
+                        &[Coeffs::Base(&base), Coeffs::Ext(&ext)],
+                        log_n,
+                        log_w,
+                        init,
+                        9,
+                        hashed
+                    ),
+                    got
+                );
                 for j in 0..leaves {
                     let w = 1usize << log_w;
-                    let row: Vec<Fp3> = (0..w).map(|t| Fp3::from_base(cb[j + t * leaves])).chain((0..w).map(|t| ce[j + t * leaves])).collect();
-                    assert_eq!(got[j], [row[0].c0, row[1].c0, row[row.len() - 1].c1, Goldilocks::new(row.len() as u64)]);
+                    let row: Vec<Fp3> = (0..w)
+                        .map(|t| Fp3::from_base(cb[j + t * leaves]))
+                        .chain((0..w).map(|t| ce[j + t * leaves]))
+                        .collect();
+                    assert_eq!(
+                        got[j],
+                        [
+                            row[0].c0,
+                            row[1].c0,
+                            row[row.len() - 1].c1,
+                            Goldilocks::new(row.len() as u64)
+                        ]
+                    );
                 }
             }
         }

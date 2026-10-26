@@ -27,7 +27,9 @@ pub(crate) fn constrain<T: Num>(v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     out.push(ev * (key(0) - l[X]));
     out.push(ev * (key(1) - pay(0, 0)));
     let t = pay(1, 0);
-    let tag = OPS.iter().fold(T::ZERO, |a, &(o, tg, _)| a + f(FLAG0 + o) * c::<T>(tg));
+    let tag = OPS
+        .iter()
+        .fold(T::ZERO, |a, &(o, tg, _)| a + f(FLAG0 + o) * c::<T>(tg));
     out.push(ev * ((one - f(OP_WORD)) * t - tag));
     let gw = ev * f(OP_WORD);
     out.push(gw * WORD_TAGS.iter().fold(one, |a, &w| a * (t - c::<T>(w))));
@@ -66,7 +68,13 @@ pub(crate) fn constrain<T: Num>(v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     set.push((X, pay(0, 1)));
     go(out, n, gu + gn, K_EVAL, &set);
     // quote
-    go(out, n, ev * f(OP_QUOTE), K_RET, &[(X, pay(0, 1)), (K, l[K]), (ALLOC, alloc)]);
+    go(
+        out,
+        n,
+        ev * f(OP_QUOTE),
+        K_RET,
+        &[(X, pay(0, 1)), (K, l[K]), (ALLOC, alloc)],
+    );
 
     // axis: a = 0 (digest noun), 1 (the subject), ≥ 2 (walk)
     let ga = ev * f(OP_AXIS);
@@ -77,7 +85,13 @@ pub(crate) fn constrain<T: Num>(v: &Vals<'_, T>, out: &mut Out<'_, T>) {
     out.push(ga * ((a - one) * l[E_A1INV] - (one - is1)));
     out.push(ga * (a - one) * is1);
     out.push(ga * is0 * (key(3) - l[OBJ]));
-    go(out, n, ga * is1, K_RET, &[(X, l[OBJ]), (K, l[K]), (ALLOC, alloc)]);
+    go(
+        out,
+        n,
+        ga * is1,
+        K_RET,
+        &[(X, l[OBJ]), (K, l[K]), (ALLOC, alloc)],
+    );
     let mut hda = vec![(K, l[K]), (ALLOC, alloc)];
     for i in 0..4 {
         hda.push((slot(i, P0), pay(3, i)));

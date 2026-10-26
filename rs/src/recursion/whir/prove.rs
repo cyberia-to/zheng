@@ -1,7 +1,9 @@
 //! The batched field-native WHIR prover: the messages
 //! [`super::verify`] reads, in its transcript order.
 
-use lens::rspcs::field::{add_scaled_eq, eq_table, fold_coeffs_ext, fold_evals_ext, pow_point, root_of_unity};
+use lens::rspcs::field::{
+    add_scaled_eq, eq_table, fold_coeffs_ext, fold_evals_ext, pow_point, root_of_unity,
+};
 use lens::rspcs::whir::RoundSpec;
 use nebu::Fp3;
 
@@ -25,17 +27,25 @@ fn round_poly(f: &[Fp3], w: &[Fp3]) -> (Fp3, Fp3) {
     if pairs < 1 << 14 {
         return part(0, pairs);
     }
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16);
     let size = pairs.div_ceil(threads);
     std::thread::scope(|s| {
-        let hs: Vec<_> = (0..threads).map(|k| s.spawn(move || part(k * size, ((k + 1) * size).min(pairs)))).collect();
-        hs.into_iter().map(|h| h.join().expect("round")).fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
+        let hs: Vec<_> = (0..threads)
+            .map(|k| s.spawn(move || part(k * size, ((k + 1) * size).min(pairs))))
+            .collect();
+        hs.into_iter()
+            .map(|h| h.join().expect("round"))
+            .fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
     })
 }
 
 /// `dst += c · src`, in threads for long tables (exact field arithmetic).
 fn axpy(dst: &mut [Fp3], c: Fp3, src: &[Fp3]) {
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16);
     if dst.len() < 1 << 14 || threads == 1 {
         for (x, &y) in dst.iter_mut().zip(src) {
             *x += c * y;
@@ -93,13 +103,26 @@ fn queries(t: &mut ProverTranscript, s: &RoundSpec) -> Result<Vec<usize>, String
 /// Prove the batched opening of the words of `trees` (each in round 0's
 /// layout, `cfg.groups` words a tree) with `claims[i]` on word `i`
 /// (`(point, value)`, a univariate claim as its `pow` point).
-pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims: &[Vec<(Vec<Fp3>, Fp3)>]) -> Result<Proof, String> {
+pub fn prove(
+    cfg: &Config,
+    t: &mut ProverTranscript,
+    trees: &[&dyn Tree],
+    claims: &[Vec<(Vec<Fp3>, Fp3)>],
+) -> Result<Proof, String> {
     let wc = &cfg.wc;
     let ell = wc.num_vars;
     let words: Vec<&Word> = trees.iter().flat_map(|tr| tr.members()).collect();
     let m = words.len();
     let shape: Vec<usize> = trees.iter().map(|tr| tr.members().len()).collect();
-    if cfg.direct() || m != cfg.inputs || shape != cfg.groups || trees.iter().any(|tr| tr.arity() != cfg.arity) || claims.len() != m || words.iter().any(|w| w.num_vars != ell || w.layout != cfg.layout(0)) {
+    if cfg.direct()
+        || m != cfg.inputs
+        || shape != cfg.groups
+        || trees.iter().any(|tr| tr.arity() != cfg.arity)
+        || claims.len() != m
+        || words
+            .iter()
+            .any(|w| w.num_vars != ell || w.layout != cfg.layout(0))
+    {
         return Err("whir: input words".into());
     }
     // batch
@@ -143,14 +166,36 @@ pub fn prove(cfg: &Config, t: &mut ProverTranscript, trees: &[&dyn Tree], claims
     drop(tables);
     let w = eq_table(&rho);
     lap("combination");
-    core(cfg, t, trees, f, coeffs, w, BatchProof { sumcheck: msgs, evals, comb_nonce })
+    core(
+        cfg,
+        t,
+        trees,
+        f,
+        coeffs,
+        w,
+        BatchProof {
+            sumcheck: msgs,
+            evals,
+            comb_nonce,
+        },
+    )
 }
 
 /// Prove an opening of one word with claims given by their weights'
 /// tables (`Σ_x w(x)·f(x) = v`), in [`super::verify_direct`]'s order.
-pub fn prove_direct(cfg: &Config, t: &mut ProverTranscript, word: &Word, claims: &[(Vec<Fp3>, Fp3)]) -> Result<Proof, String> {
+pub fn prove_direct(
+    cfg: &Config,
+    t: &mut ProverTranscript,
+    word: &Word,
+    claims: &[(Vec<Fp3>, Fp3)],
+) -> Result<Proof, String> {
     let ell = cfg.wc.num_vars;
-    if !cfg.direct() || word.arity != cfg.arity || word.num_vars != ell || word.layout != cfg.layout(0) || claims.len() > cfg.claims {
+    if !cfg.direct()
+        || word.arity != cfg.arity
+        || word.num_vars != ell
+        || word.layout != cfg.layout(0)
+        || claims.len() > cfg.claims
+    {
         return Err("whir: a direct opening".into());
     }
     let gamma = t.squeeze_ext();
@@ -160,7 +205,19 @@ pub fn prove_direct(cfg: &Config, t: &mut ProverTranscript, word: &Word, claims:
         axpy(&mut w, g, tb);
         g *= gamma;
     }
-    core(cfg, t, &[word as &dyn Tree], word.table(), word.coeffs(), w, BatchProof { sumcheck: vec![], evals: vec![], comb_nonce: 0 })
+    core(
+        cfg,
+        t,
+        &[word as &dyn Tree],
+        word.table(),
+        word.coeffs(),
+        w,
+        BatchProof {
+            sumcheck: vec![],
+            evals: vec![],
+            comb_nonce: 0,
+        },
+    )
 }
 
 /// WHIR on `f_0` (table `f`, coefficients) from its initial weight table.
@@ -194,7 +251,8 @@ fn core(
         g *= gamma;
     }
     lap("ood 0");
-    let (sumcheck0, fold_nonces0) = fold_rounds(t, &mut f, &mut w, &mut coeffs, s0.fold, s0.fold_pow);
+    let (sumcheck0, fold_nonces0) =
+        fold_rounds(t, &mut f, &mut w, &mut coeffs, s0.fold, s0.fold_pow);
     lap(&format!("folds 0 (grinding {} bits)", s0.fold_pow));
     let mut prev_words: Option<Word> = None;
     let mut prev = s0;
@@ -205,11 +263,19 @@ fn core(
             Some(wd) => vec![wd.open(j)],
             None => trees.iter().map(|tr| tr.open(j)).collect::<Vec<_>>(),
         };
-        let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16).min(idx.len().max(1));
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(16)
+            .min(idx.len().max(1));
         let size = idx.len().div_ceil(threads).max(1);
         std::thread::scope(|s| {
-            let hs: Vec<_> = idx.chunks(size).map(|c| s.spawn(move || c.iter().map(|&j| one(j)).collect::<Vec<_>>())).collect();
-            hs.into_iter().flat_map(|h| h.join().expect("opening")).collect()
+            let hs: Vec<_> = idx
+                .chunks(size)
+                .map(|c| s.spawn(move || c.iter().map(|&j| one(j)).collect::<Vec<_>>()))
+                .collect();
+            hs.into_iter()
+                .flat_map(|h| h.join().expect("opening"))
+                .collect()
         })
     };
     for (i, s) in wc.rounds.iter().enumerate().skip(1) {
@@ -226,7 +292,10 @@ fn core(
             zs.push(z);
         }
         let query_nonce = t.grind(prev.query_pow);
-        lap(&format!("round {i} query grinding ({} bits)", prev.query_pow));
+        lap(&format!(
+            "round {i} query grinding ({} bits)",
+            prev.query_pow
+        ));
         let idx = queries(t, &prev)?;
         let gamma = t.squeeze_ext();
         let opening = open(&prev_words, &idx);
@@ -242,9 +311,17 @@ fn core(
             add_scaled_eq(&mut w, &pow_point(x, s.num_vars), g);
             g *= gamma;
         }
-        let (sumcheck, fold_nonces) = fold_rounds(t, &mut f, &mut w, &mut coeffs, s.fold, s.fold_pow);
+        let (sumcheck, fold_nonces) =
+            fold_rounds(t, &mut f, &mut w, &mut coeffs, s.fold, s.fold_pow);
         lap(&format!("round {i} folds (grinding {} bits)", s.fold_pow));
-        rounds.push(Round { root: wd.root(), ood, query_nonce, open: opening, sumcheck, fold_nonces });
+        rounds.push(Round {
+            root: wd.root(),
+            ood,
+            query_nonce,
+            open: opening,
+            sumcheck,
+            fold_nonces,
+        });
         prev_words = Some(wd);
         prev = *s;
     }

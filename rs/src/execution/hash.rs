@@ -47,13 +47,19 @@ impl Builder {
             for row in 0..16 {
                 let diag = F::new(hemera::field::MATRIX_DIAG_16[row].as_canonical_u64());
                 let mut terms = sum.clone();
-                terms.extend(self.linear(&state[row])?.into_iter().map(|(i, c)| (i, c * diag)));
+                terms.extend(
+                    self.linear(&state[row])?
+                        .into_iter()
+                        .map(|(i, c)| (i, c * diag)),
+                );
                 out[row] = Value::Linear(normalize(terms));
             }
             return Ok(out);
         }
+        #[allow(clippy::needless_range_loop)]
         for row in 0..16 {
             let mut terms = vec![];
+            #[allow(clippy::needless_range_loop)]
             for column in 0..16 {
                 let coefficient = mds()[row][column];
                 terms.extend(
@@ -118,7 +124,8 @@ impl Builder {
         for round in 0..ROUNDS {
             let partial = !is_full(round);
             if partial {
-                let rc = hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
+                let rc =
+                    hemera::constants::ROUND_CONSTANTS_U64[NUM_EXTERNAL + round - PARTIAL_FIRST];
                 let value = self.add(&state[0], &Value::Constant(F::new(rc)), false)?;
                 let x = self.linear(&value)?;
                 state[0] = self.pow7(x);
@@ -128,6 +135,7 @@ impl Builder {
                 } else {
                     (round - RP) * 16
                 };
+                #[allow(clippy::needless_range_loop)]
                 for lane in 0..16 {
                     let rc = hemera::constants::ROUND_CONSTANTS_U64[offset + lane];
                     let value = self.add(&state[lane], &Value::Constant(F::new(rc)), false)?;

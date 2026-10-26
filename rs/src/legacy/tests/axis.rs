@@ -76,7 +76,11 @@ fn prover_active_axis_setup(tweak: u64) -> (VecTrace, Vec<AxisOpening>) {
     nox::reduce(&mut order, s, axis_f, 99, &prover, &mut trace);
     assert_eq!(trace.0.len(), 2);
     assert_eq!(trace.0[0].r()[7], b as u64, "axis 5 = tail(head(s)) = b");
-    assert_ne!(trace.0[0].r()[11], 0, "prover-active row carries the commitment");
+    assert_ne!(
+        trace.0[0].r()[11],
+        0,
+        "prover-active row carries the commitment"
+    );
 
     let point = crate::ccs::axis_eval_point(5);
     let value = poly.evaluate(&point);
@@ -105,11 +109,17 @@ fn prover_active_axis_setup(tweak: u64) -> (VecTrace, Vec<AxisOpening>) {
 fn authenticated_recursive_openings_are_refused_until_constrained() {
     let (trace, openings) = prover_active_axis_setup(0);
     assert!(matches!(
-        commit(&trace, &[], &openings, &[], &zero_statement(), &ProofParams::default()),
+        commit(
+            &trace,
+            &[],
+            &openings,
+            &[],
+            &zero_statement(),
+            &ProofParams::default()
+        ),
         Err(CommitError::UnsupportedRecursiveOpening)
     ));
 }
-
 
 /// Negative: a valid opening for a DIFFERENT commitment than the trace
 /// carries (r11-r14) must be rejected — the swapped-opening attack.
@@ -140,7 +150,10 @@ fn commit_rejects_forged_axis_result() {
 #[test]
 fn commit_rejects_tampered_axis_opening() {
     let (trace, mut openings) = prover_active_axis_setup(0);
-    if let Opening::TensorMerkle { row_combination, .. } = &mut openings[0].opening {
+    if let Opening::TensorMerkle {
+        row_combination, ..
+    } = &mut openings[0].opening
+    {
         row_combination[0] ^= 1;
     } else {
         panic!("current Brakedown opening must be TensorMerkle");
@@ -150,7 +163,6 @@ fn commit_rejects_tampered_axis_opening() {
     let err = commit(&trace, &[], &openings, &[], &stmt, &params);
     assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
 }
-
 
 /// Regression: the PUBLIC folding path (`fold_all`, which calls the
 /// gated `fold_step`) now refuses an unsatisfied binding step before it
@@ -238,10 +250,15 @@ fn verify_rejects_folded_forged_result_binding() {
 #[test]
 fn verify_accepts_nonempty_satisfied_linear_bindings() {
     use crate::ccs::eq_step;
-    let steps: Vec<_> = [5, 15, 25, 35].into_iter()
-        .map(|v| eq_step(Goldilocks::new(v), Goldilocks::new(v))).collect();
+    let steps: Vec<_> = [5, 15, 25, 35]
+        .into_iter()
+        .map(|v| eq_step(Goldilocks::new(v), Goldilocks::new(v)))
+        .collect();
     assert_eq!(steps.len(), 4);
     let trace_proof = prove_raw_linear_steps(&steps);
-    assert_eq!(trace_proof.binding.as_ref().unwrap().accumulator.step_count, 4);
+    assert_eq!(
+        trace_proof.binding.as_ref().unwrap().accumulator.step_count,
+        4
+    );
     assert!(verify(&trace_proof, &zero_statement(), &ProofParams::default()).is_ok());
 }

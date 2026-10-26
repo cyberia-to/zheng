@@ -77,10 +77,9 @@ impl Mask {
         if r == 0 {
             return Fp3::ZERO;
         }
-        let ends = self
-            .coeffs
-            .iter()
-            .fold(Fp3::ZERO, |acc, c| acc + eval(c, Fp3::ZERO) + eval(c, Fp3::ONE));
+        let ends = self.coeffs.iter().fold(Fp3::ZERO, |acc, c| {
+            acc + eval(c, Fp3::ZERO) + eval(c, Fp3::ONE)
+        });
         two_pow(r - 1) * ends
     }
 
@@ -97,9 +96,9 @@ impl Mask {
         let mut out: Vec<Fp3> = self.coeffs[j].iter().map(|&c| scale * c).collect();
         out[0] += scale * bound;
         if j + 1 < r {
-            let rest = self.coeffs[j + 1..]
-                .iter()
-                .fold(Fp3::ZERO, |acc, c| acc + eval(c, Fp3::ZERO) + eval(c, Fp3::ONE));
+            let rest = self.coeffs[j + 1..].iter().fold(Fp3::ZERO, |acc, c| {
+                acc + eval(c, Fp3::ZERO) + eval(c, Fp3::ONE)
+            });
             out[0] += two_pow(r - 2 - j) * rest;
         }
         out

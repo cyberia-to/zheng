@@ -31,12 +31,22 @@ fn main() {
     if let Some(p) = std::env::var("ZHENG_POW").ok().and_then(|v| v.parse().ok()) {
         whir.pow_bits = p;
     }
-    if let Some(r) = std::env::var("ZHENG_RATE").ok().and_then(|v| v.parse().ok()) {
+    if let Some(r) = std::env::var("ZHENG_RATE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+    {
         whir.log_inv_rate = r;
     }
-    let seg: u32 = std::env::var("ZHENG_SEG").ok().and_then(|v| v.parse().ok()).unwrap_or(machine::SEGMENT_LOG_ROWS);
+    let seg: u32 = std::env::var("ZHENG_SEG")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(machine::SEGMENT_LOG_ROWS);
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let names = if args.is_empty() { vec!["add.tri".into(), "hash.tri".into()] } else { args };
+    let names = if args.is_empty() {
+        vec!["add.tri".into(), "hash.tri".into()]
+    } else {
+        args
+    };
     for name in names {
         let (prog, input) = fixture(&name).unwrap_or_else(|| panic!("fixture {name}"));
         let t0 = Instant::now();

@@ -29,15 +29,25 @@ fn main() {
         .map(|v| v.split(',').filter_map(|p| p.parse().ok()).collect())
         .unwrap_or_else(|| vec![5, 6]);
     for p in profiles {
-        let profile = if p == 5 { Profile::Recursive } else { Profile::Wrapped };
+        let profile = if p == 5 {
+            Profile::Recursive
+        } else {
+            Profile::Wrapped
+        };
         if p == 6 {
             let t = Instant::now();
             if std::env::var_os("ZHENG_VERIFIER").is_some() {
                 zheng::envelope::wrapped::final_key().expect("final key");
-                println!("profile 6: verifier key derivation over pinned roots {:.0} ms", ms(t));
+                println!(
+                    "profile 6: verifier key derivation over pinned roots {:.0} ms",
+                    ms(t)
+                );
             } else {
                 match zheng::envelope::wrapped::chain_keys() {
-                    Ok(_) => println!("profile 6: prover chain {:.0} ms (roots match the pins)", ms(t)),
+                    Ok(_) => println!(
+                        "profile 6: prover chain {:.0} ms (roots match the pins)",
+                        ms(t)
+                    ),
                     Err(e) => println!("profile 6: prover chain {:.0} ms: {e}", ms(t)),
                 }
             }
@@ -46,13 +56,22 @@ fn main() {
         let bundle = keys::export(profile).expect("export");
         let derive = ms(t);
         let digest = keys::digest(&bundle);
-        println!("profile {p}: derive {derive:.0} ms · bundle {} B · digest {}", bundle.len(), hex(&digest));
+        println!(
+            "profile {p}: derive {derive:.0} ms · bundle {} B · digest {}",
+            bundle.len(),
+            hex(&digest)
+        );
         // the layouts rebuild keys whose layouts are the same bytes
         let ik = ivc::key(&zheng::envelope::recursive::params(), 15).expect("ivc key");
         let t = Instant::now();
         let lb = ik.layout_bytes();
         let back = ivc::Key::from_layout(&lb).expect("ivc layout");
-        println!("  ivc layout {} B · rebuild {:.1} ms · round trip {}", lb.len(), ms(t), back.layout_bytes() == lb);
+        println!(
+            "  ivc layout {} B · rebuild {:.1} ms · round trip {}",
+            lb.len(),
+            ms(t),
+            back.layout_bytes() == lb
+        );
         if p == 6 {
             let fk = zheng::envelope::wrapped::final_key().expect("final key");
             let t = Instant::now();
@@ -71,7 +90,11 @@ fn main() {
         let _ = keys::digest(&bundle);
         println!("  digest {:.1} ms", ms(t));
         if let Some(dir) = &out {
-            let name = if p == 5 { "recursive.keys" } else { "wrapped.keys" };
+            let name = if p == 5 {
+                "recursive.keys"
+            } else {
+                "wrapped.keys"
+            };
             std::fs::write(format!("{dir}/{name}"), &bundle).expect("write");
         }
     }

@@ -91,9 +91,9 @@ impl Coins {
         let seed = Zeroizing::new(seed);
         let bytes = Zeroizing::new(hemera::derive_key(CONTEXT, seed.as_ref()));
         let mut key = Zeroizing::new([0u64; 4]);
-        for (k, chunk) in key.iter_mut().zip(bytes.chunks_exact(8)) {
+        for (k, chunk) in key.iter_mut().zip(bytes.as_chunks::<8>().0) {
             // hemera digests carry canonical lanes; no reduction, no branch
-            *k = u64::from_le_bytes(chunk.try_into().expect("8 bytes"));
+            *k = u64::from_le_bytes(*chunk);
         }
         Self { key }
     }
@@ -152,7 +152,9 @@ impl Coins {
     /// The first `n` `Fp3` elements of stream `label` (three bases each).
     pub fn exts(&self, label: Label, n: usize) -> Vec<Fp3> {
         self.bases(label, 3 * n)
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| Fp3::new(c[0], c[1], c[2]))
             .collect()
     }
@@ -223,7 +225,10 @@ mod tests {
         let c = Coins::seeded([1; 32]);
         let v = c.bases(label::MASK_A, 3 * BLOCK);
         for b in 0..3 {
-            assert_eq!(&v[b * BLOCK..(b + 1) * BLOCK], &c.block(label::MASK_A, b as u64));
+            assert_eq!(
+                &v[b * BLOCK..(b + 1) * BLOCK],
+                &c.block(label::MASK_A, b as u64)
+            );
         }
         // the input layout, spelled out once with the plain permutation
         let mut st = [Lane::ZERO; 16];
@@ -235,7 +240,10 @@ mod tests {
         st[15] = Lane::new(TAG);
         assert_eq!(st, c.input(label::MASK_A, 2));
         hemera::permutation::permute(&mut st);
-        let want: Vec<Goldilocks> = st[..BLOCK].iter().map(|l| Goldilocks::new(l.as_canonical_u64())).collect();
+        let want: Vec<Goldilocks> = st[..BLOCK]
+            .iter()
+            .map(|l| Goldilocks::new(l.as_canonical_u64()))
+            .collect();
         assert_eq!(&v[2 * BLOCK..], &want[..]);
     }
 
@@ -273,7 +281,11 @@ mod tests {
         }
         let e = c.exts(label::LIBRA_G1, 10);
         let b = c.bases(label::LIBRA_G1, 30);
-        assert!(e.iter().zip(b.chunks(3)).all(|(e, b)| *e == Fp3::new(b[0], b[1], b[2])));
+        assert!(
+            e.iter()
+                .zip(b.chunks(3))
+                .all(|(e, b)| *e == Fp3::new(b[0], b[1], b[2]))
+        );
     }
 
     #[test]
@@ -323,8 +335,16 @@ mod tests {
         for (name, h) in [("low bits", low), ("value/p", range)] {
             let num: i64 = h.iter().map(|&o| (o as i64 - e).pow(2)).sum();
             let chi2_times_e = num;
-            assert!(chi2_times_e < 370 * e, "{name}: chi-square {} too large", num / e);
-            assert!(chi2_times_e > 160 * e, "{name}: chi-square {} too small", num / e);
+            assert!(
+                chi2_times_e < 370 * e,
+                "{name}: chi-square {} too large",
+                num / e
+            );
+            assert!(
+                chi2_times_e > 160 * e,
+                "{name}: chi-square {} too small",
+                num / e
+            );
         }
         // the top bit is set about half the time (p ≈ 2^64 − 2^32)
         let top = v.iter().filter(|x| x.as_u64() >> 63 == 1).count();

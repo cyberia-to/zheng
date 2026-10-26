@@ -22,7 +22,9 @@ pub struct Pre {
 
 impl Pre {
     fn new(rows: usize) -> Self {
-        Self { cols: vec![vec![Fp3::ZERO; rows]; pre::COUNT] }
+        Self {
+            cols: vec![vec![Fp3::ZERO; rows]; pre::COUNT],
+        }
     }
     fn set(&mut self, col: usize, row: usize, v: Fp3) {
         self.cols[col][row] = v;
@@ -36,7 +38,8 @@ impl Pre {
     /// A digest of the columns (layout equality across steps).
     pub fn digest(&self) -> [Goldilocks; 4] {
         let mut o = crate::recursion::ops::Native::new();
-        let mut sp = crate::recursion::sponge::Sponge::new(&mut o, crate::recursion::perm::tag::CTX);
+        let mut sp =
+            crate::recursion::sponge::Sponge::new(&mut o, crate::recursion::perm::tag::CTX);
         for col in &self.cols {
             for &v in col {
                 if v != Fp3::ZERO {
@@ -82,9 +85,15 @@ impl KeyOut {
 
 /// The permutation rows of every block, chain by chain, in threads.
 fn perm_cells(b: &Builder, air: &CircuitAir) -> Vec<[[Goldilocks; 48]; PERM_ROWS]> {
-    let xs: Vec<&[Goldilocks; crate::recursion::perm::WIDTH]> = b.chains.iter().flat_map(|ch| ch.blocks.iter().map(|blk| &blk.x)).collect();
+    let xs: Vec<&[Goldilocks; crate::recursion::perm::WIDTH]> = b
+        .chains
+        .iter()
+        .flat_map(|ch| ch.blocks.iter().map(|blk| &blk.x))
+        .collect();
     let mut out = vec![[[Goldilocks::ZERO; 48]; PERM_ROWS]; xs.len()];
-    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |x| x.get())
+        .min(16);
     let chunk = xs.len().div_ceil(threads).max(1);
     std::thread::scope(|sc| {
         for (ci, part) in out.chunks_mut(chunk).enumerate() {
@@ -113,16 +122,28 @@ pub fn generate_trace(b: &Builder, air: &CircuitAir, n: usize) -> Result<(Trace,
     Ok((t, out))
 }
 
-fn lay_out(b: &Builder, air: &CircuitAir, n: usize, key: bool) -> Result<(Trace, Option<Pre>, usize), String> {
+fn lay_out(
+    b: &Builder,
+    air: &CircuitAir,
+    n: usize,
+    key: bool,
+) -> Result<(Trace, Option<Pre>, usize), String> {
     let rows = 1usize << n;
     if b.rows() > rows {
-        return Err(format!("circuit: {} rows needed, 2^{n} available", b.rows()));
+        return Err(format!(
+            "circuit: {} rows needed, 2^{n} available",
+            b.rows()
+        ));
     }
     let mut t = Trace::new(V1, rows);
     let mut p = KeyOut(key.then(|| Pre::new(rows)));
     let cells_all = perm_cells(b, air);
     let mut bi = 0;
-    let live = if b.live_value { Goldilocks::ONE } else { Goldilocks::ZERO };
+    let live = if b.live_value {
+        Goldilocks::ONE
+    } else {
+        Goldilocks::ZERO
+    };
     for r in 0..rows {
         t.row_mut(r)[LIVE] = live;
     }
@@ -133,7 +154,9 @@ fn lay_out(b: &Builder, air: &CircuitAir, n: usize, key: bool) -> Result<(Trace,
         p.one(pre::ARITH, r);
         p.one(pre::MEM, r);
         for k in 0..GATES {
-            let Some(gr) = b.gates.get(ar * GATES + k) else { break };
+            let Some(gr) = b.gates.get(ar * GATES + k) else {
+                break;
+            };
             let row = t.row_mut(r);
             let at = [gate_x(k), gate_y(k), gate_z(k)];
             for (&col, v) in at.iter().zip(&gr.ops) {
@@ -309,11 +332,18 @@ pub fn phase2(t1: &Trace, p: &Pre, alpha: Fp3, beta: Fp3) -> Trace {
     let rows = t1.rows();
     let mut t2 = Trace::new(V2, rows);
     let mut deltas = vec![Fp3::ZERO; rows];
-    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |x| x.get())
+        .min(16);
     let chunk = rows.div_ceil(threads).max(1);
     let width = t2.width;
     std::thread::scope(|sc| {
-        for ((ci, cells), dl) in t2.cells.chunks_mut(chunk * width).enumerate().zip(deltas.chunks_mut(chunk)) {
+        for ((ci, cells), dl) in t2
+            .cells
+            .chunks_mut(chunk * width)
+            .enumerate()
+            .zip(deltas.chunks_mut(chunk))
+        {
             sc.spawn(move || {
                 let r0 = ci * chunk;
                 let mut fps = Vec::with_capacity(dl.len() * SLOTS);

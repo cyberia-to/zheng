@@ -89,9 +89,17 @@ fn spartan_log_err(instance: &CCSInstance, vars: usize) -> f64 {
 
 /// The opening alone: lens commit/open/verify at the same size and params.
 fn pcs_verify_ms<Pc: SuccinctPcs>(params: &Pc::Params, vars: usize, reps: usize) -> f64 {
-    let evals: Vec<Goldilocks> = (0..1u64 << vars).map(|i| Goldilocks::new(i * 7 + 1)).collect();
+    let evals: Vec<Goldilocks> = (0..1u64 << vars)
+        .map(|i| Goldilocks::new(i * 7 + 1))
+        .collect();
     let point: Vec<Fp3> = (0..vars)
-        .map(|i| Fp3::new(Goldilocks::new(3 + i as u64), Goldilocks::new(5), Goldilocks::new(i as u64)))
+        .map(|i| {
+            Fp3::new(
+                Goldilocks::new(3 + i as u64),
+                Goldilocks::new(5),
+                Goldilocks::new(i as u64),
+            )
+        })
         .collect();
     let (root, data) = Pc::commit(params, &evals);
     let (value, proof) = Pc::open(params, &data, &point, &mut lens::Transcript::new(b"bench"));
@@ -99,8 +107,16 @@ fn pcs_verify_ms<Pc: SuccinctPcs>(params: &Pc::Params, vars: usize, reps: usize)
         (0..reps)
             .map(|_| {
                 let t = Instant::now();
-                Pc::verify(params, &root, vars, &point, value, &proof, &mut lens::Transcript::new(b"bench"))
-                    .unwrap();
+                Pc::verify(
+                    params,
+                    &root,
+                    vars,
+                    &point,
+                    value,
+                    &proof,
+                    &mut lens::Transcript::new(b"bench"),
+                )
+                .unwrap();
                 ms(t)
             })
             .collect(),
@@ -168,7 +184,13 @@ where
             let mut last = None;
             for _ in 0..reps {
                 let t = Instant::now();
-                match succinct::prove_relation::<Pc>(&params, &s.instance, &s.z, &s.pins, &s.statement) {
+                match succinct::prove_relation::<Pc>(
+                    &params,
+                    &s.instance,
+                    &s.z,
+                    &s.pins,
+                    &s.statement,
+                ) {
                     Ok(p) => last = Some(p),
                     Err(e) => {
                         eprintln!("{label} {}: {e}", fx.name());
@@ -277,15 +299,24 @@ fn bakeoff(reps: usize) {
     header();
     for fx in fixtures() {
         for r in [2u8, 4] {
-            let p = TensorRsParams { log_inv_rate: r, ..TensorRsParams::default() };
-            if let Some(row) = run::<TensorRs>(&format!("TensorRs 1/{}", 1 << r), p, &fx, reps, |_, _| String::new()) {
+            let p = TensorRsParams {
+                log_inv_rate: r,
+                ..TensorRsParams::default()
+            };
+            if let Some(row) =
+                run::<TensorRs>(&format!("TensorRs 1/{}", 1 << r), p, &fx, reps, |_, _| {
+                    String::new()
+                })
+            {
                 print(&row);
             }
         }
         for r in [2u8, 4] {
             for k in [2u8, 3, 4, 5, 6] {
                 let label = format!("WHIR 1/{} k={k}", 1 << r);
-                if let Some(row) = run::<Whir>(&label, whir(r, k, 16), &fx, reps, |_, _| String::new()) {
+                if let Some(row) =
+                    run::<Whir>(&label, whir(r, k, 16), &fx, reps, |_, _| String::new())
+                {
                     print(&row);
                 }
             }
@@ -314,7 +345,11 @@ fn chosen(reps: usize) {
             params.folding_factor,
             params.pow_bits,
             params.max_final_vars,
-            if vars <= succinct::SMALL_MAX_VARS { "small" } else { "large" }
+            if vars <= succinct::SMALL_MAX_VARS {
+                "small"
+            } else {
+                "large"
+            }
         );
         if let Some(r) = run::<Whir>(&label, params, &fx, reps, levers::describe) {
             print(&r);

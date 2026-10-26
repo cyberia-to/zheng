@@ -96,7 +96,10 @@ fn every_bit_of_the_wire_is_checked() {
     let tp = commit(&trace, &[], &[], &[], &stmt, &params).unwrap();
     let bytes = postcard::to_allocvec(&tp).unwrap();
     let back: TraceProof = postcard::from_bytes(&bytes).unwrap();
-    assert!(verify(&back, &stmt, &params).is_ok(), "the untouched wire verifies");
+    assert!(
+        verify(&back, &stmt, &params).is_ok(),
+        "the untouched wire verifies"
+    );
     assert_wire_tight(&bytes, &stmt, &[0, 1, 2, 3, 4, 5, 6, 7]);
 }
 
