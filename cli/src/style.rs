@@ -67,7 +67,7 @@ pub fn help(color: bool) -> String {
     ));
     o.push('\n');
     o.push_str(&g(
-        "  output renders to the terminal; piped, it is a tape chunk stream.\n",
+        "  output renders to the terminal; piped, it is a tade chunk stream.\n",
     ));
     o.push_str(&g(
         "  exit: 0 verified · 1 prover/verifier error · 2 usage error\n",
