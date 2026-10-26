@@ -6,7 +6,7 @@
 //! zheng command-line interface — see specs/cli.md.
 //!
 //! Drives the library's entry points from a shell and emits results as a
-//! [[tape]] chunk stream on stdout (with a human summary on stderr).
+//! [[tade]] chunk stream on stdout (with a human summary on stderr).
 
 mod capsule;
 mod formula;
