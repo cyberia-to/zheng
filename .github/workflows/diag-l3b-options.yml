@@ -72,12 +72,19 @@ jobs:
         run: |
           mkdir -p ../../logs
           set +e
+          rc=0
           cargo test --release --locked --no-fail-fast -p zheng --lib recursion::wrap::tests 2>&1 | tee ../../logs/wrap-tests.log
+          rc=$(( rc | ${PIPESTATUS[0]} ))
           cargo test --release --locked --no-fail-fast -p zheng --lib recursion::wrap::review 2>&1 | tee ../../logs/wrap-review.log
+          rc=$(( rc | ${PIPESTATUS[0]} ))
           cargo test --release --locked --no-fail-fast -p zheng --lib recursion::params 2>&1 | tee ../../logs/params.log
+          rc=$(( rc | ${PIPESTATUS[0]} ))
           cargo test --release --locked --no-fail-fast -p zheng --lib execution::tagged 2>&1 | tee ../../logs/tagged.log
+          rc=$(( rc | ${PIPESTATUS[0]} ))
           cargo run --release --locked -p zheng --example wrap_chain -- "${{ matrix.chain }}" 2>&1 | grep --line-buffered -vE "Compiling|Downloaded|Downloading" | tee ../../logs/wrap-chain.log
+          rc=$(( rc | ${PIPESTATUS[0]} ))
           echo "TAG=$(echo '${{ matrix.ref }}' | tr '/' '_')" >> $GITHUB_ENV
+          exit $rc
       - if: always()
         uses: actions/upload-artifact@v4
         with:
