@@ -1,8 +1,0 @@
-# ---
-# tags: zheng, config
-# crystal-type: source
-# crystal-domain: comp
-# ---
-[workspace]
-members = ["rs", "cli"]
-resolver = "3"

@@ -1,0 +1,85 @@
+# DIAGNOSTIC - never merged (soft3 director plan, row L3b): verifies the two alternative
+# PRs, l3b/option-i-64kib and l3b/option-ii-raised-gate, on the build service.
+name: diag-l3b-options
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [diag/l3b-options]
+
+env:
+  CARGO_TERM_COLOR: always
+  HEMERA_REF: release/0.4
+  LENS_REF: release/0.2
+  NOX_REF: release/0.4
+  STRATA_REF: ""
+  TADE_REF: ""
+  HONEYCRISP_REF: ""
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ref: l3b/option-i-64kib
+            chain: "4i:16,7i:22,10f:32:5"
+          - ref: l3b/option-ii-raised-gate
+            chain: "4i:16,7i:22,9f:26:5"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+          ref: ${{ matrix.ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zheng
+      - name: tests and chain plan
+        working-directory: zheng/rs
+        run: |
+          mkdir -p ../../logs
+          set +e
+          cargo test --release --locked --no-fail-fast -p zheng --lib recursion::wrap::tests 2>&1 | tee ../../logs/wrap-tests.log
+          cargo test --release --locked --no-fail-fast -p zheng --lib recursion::wrap::review 2>&1 | tee ../../logs/wrap-review.log
+          cargo test --release --locked --no-fail-fast -p zheng --lib recursion::params 2>&1 | tee ../../logs/params.log
+          cargo test --release --locked --no-fail-fast -p zheng --lib execution::tagged 2>&1 | tee ../../logs/tagged.log
+          cargo run --release --locked -p zheng --example wrap_chain -- "${{ matrix.chain }}" 2>&1 | grep --line-buffered -vE "Compiling|Downloaded|Downloading" | tee ../../logs/wrap-chain.log
+          echo "TAG=$(echo '${{ matrix.ref }}' | tr '/' '_')" >> $GITHUB_ENV
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ env.TAG }}
+          path: logs
