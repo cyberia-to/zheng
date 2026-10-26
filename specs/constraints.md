@@ -603,7 +603,7 @@ total per Poseidon2 round: 4 × w degree-2 constraints (S-box decomposition) + w
 
 | proof type | dominant patterns | total constraints |
 |---|---|---|
-| identity (preimage) | 15 (one hash) | ~736 |
+| identity (preimage) | 15 (one hash) | ~1,440 |
 | anonymous [[cyberlink]] | 15, 4, 9 | ~13,000 |
 | delivery (per hop) | 15, 7, 4 | ~60,000 |
 | private transfer (BBG) | 15, 7, 9 | ~50,000 |

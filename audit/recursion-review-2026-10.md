@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # recursion — adversarial soundness review of PR #53, 2026-10-09
 
+superseded by hemera 0.4 (2026-10-16): the hemera figures below (x⁻¹ partial rounds, 8 + 16 rounds, 144 constants, ~736 constraints) describe the 0.3 record; the frozen profile is x⁷ in every round, 6 + 6 + 48 rounds, 240 constants, ~1,440 constraints — `hemera/audit/profile-0.4-2026-10.md`.
+
 Target: zheng `feat/ivc` 5650094 (PR #53, stacked on `feat/accumulation`,
 PR #51): `rs/src/recursion/`, `rs/src/fs.rs`, `rs/tests/recursion.rs`,
 `specs/recursion.md`, `specs/soundness.md` § recursion,

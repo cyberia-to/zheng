@@ -145,7 +145,7 @@ for the planned verifier written as a [[nox]] program (in Trident, for compositi
 
 ```
 merkle_verify(root, leaf, path, index)
-  d × 736 constraints per depth-d path
+  d × 1,440 constraints per depth-d path
 
 fri_fold(poly_layer, challenge)        // nox jet
   N/2 constraints per folding round

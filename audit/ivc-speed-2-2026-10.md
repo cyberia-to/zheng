@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # IVC step and wrap chain speed, round 2 — 2026-10-14
 
+superseded by hemera 0.4 (2026-10-16): the hemera figures below (x⁻¹ partial rounds, 8 + 16 rounds, 144 constants, ~736 constraints) describe the 0.3 record; the frozen profile is x⁷ in every round, 6 + 6 + 48 rounds, 240 constants, ~1,440 constraints — `hemera/audit/profile-0.4-2026-10.md`.
+
 Follow-up to `audit/ivc-speed-2026-10.md` (zheng #63, lens #24). Items
 from the coordinator: (1) the hemera device kernels — batched partial
 inversions, tuned arithmetic — on Metal, WebGPU and the CPU path, target
