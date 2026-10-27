@@ -45,7 +45,11 @@ impl Builder {
             for row in 0..16 {
                 let diag = F::new(hemera::field::MATRIX_DIAG_16[row].as_canonical_u64());
                 let mut terms = sum.clone();
-                terms.extend(self.linear(&state[row])?.into_iter().map(|(i, c)| (i, c * diag)));
+                terms.extend(
+                    self.linear(&state[row])?
+                        .into_iter()
+                        .map(|(i, c)| (i, c * diag)),
+                );
                 out[row] = Value::Linear(normalize(terms));
             }
             return Ok(out);

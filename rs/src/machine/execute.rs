@@ -21,7 +21,12 @@ pub fn execute_with(
 
 /// Run and build the trace in segments of exactly `2^seg_log` rows (the
 /// recursion profile's fixed step size).
-pub fn execute_exact(program: &ExecutionNoun, input: &[u64], budget: u64, seg_log: u32) -> Result<Run, MachineError> {
+pub fn execute_exact(
+    program: &ExecutionNoun,
+    input: &[u64],
+    budget: u64,
+    seg_log: u32,
+) -> Result<Run, MachineError> {
     execute_sized(program, input, budget, seg_log, seg_log, &Hints::default())
 }
 

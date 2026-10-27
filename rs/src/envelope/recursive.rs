@@ -70,15 +70,45 @@ pub fn admitted(whir: &WhirParams, log_rows: u32) -> bool {
 /// (`audit/proof-stack-review-2026-10.md` F1; checked by
 /// `tests/keys.rs::the_pinned_ivc_key_roots_are_the_derived_ones`).
 pub const KEY_ROOTS: [([u8; 8], [u64; 4]); 3] = [
-    ([1, 4, 4, 24, 128, 0, 1, 8], [4491905516725670020, 3328524470941199224, 7822895334886079753, 284418518571696544]),
-    ([1, 6, 4, 24, 128, 0, 1, 8], [12054528635242799571, 12665011618142561561, 5178125058008943233, 14871959739192700421]),
-    ([1, 3, 4, 16, 128, 0, 1, 8], [14487870178850513477, 16787388207891397930, 14712683618482113395, 17511682741490682146]),
+    (
+        [1, 4, 4, 24, 128, 0, 1, 8],
+        [
+            4491905516725670020,
+            3328524470941199224,
+            7822895334886079753,
+            284418518571696544,
+        ],
+    ),
+    (
+        [1, 6, 4, 24, 128, 0, 1, 8],
+        [
+            12054528635242799571,
+            12665011618142561561,
+            5178125058008943233,
+            14871959739192700421,
+        ],
+    ),
+    (
+        [1, 3, 4, 16, 128, 0, 1, 8],
+        [
+            14487870178850513477,
+            16787388207891397930,
+            14712683618482113395,
+            17511682741490682146,
+        ],
+    ),
 ];
 
 /// `k` (of WHIR parameters `whir`, steps of 2^15 rows) if its key-word
 /// root is the pinned one.
-pub fn pinned_key(whir: &WhirParams, k: std::sync::Arc<ivc::Key>) -> Result<std::sync::Arc<ivc::Key>, String> {
-    let want = KEY_ROOTS.iter().find(|(h, _)| *h == whir.header()).map(|(_, r)| *r);
+pub fn pinned_key(
+    whir: &WhirParams,
+    k: std::sync::Arc<ivc::Key>,
+) -> Result<std::sync::Arc<ivc::Key>, String> {
+    let want = KEY_ROOTS
+        .iter()
+        .find(|(h, _)| *h == whir.header())
+        .map(|(_, r)| *r);
     match want {
         Some(r) if k.params.n == STEP_LOG_ROWS as usize && k.kw_root.map(|x| x.as_u64()) == r => Ok(k),
         Some(_) => Err("recursive envelope: the derived IVC key's words are not the pinned ones (prover backend?)".into()),
@@ -136,7 +166,8 @@ pub fn proof_bytes(whir: &WhirParams, proof: &IvcProof) -> Result<Vec<u8>, Strin
 /// panics only on parameters no key exists for (`Params::new` refuses
 /// them), which no prover produces. Decoding then admits only [`ADMITTED`].
 pub(super) fn encode(params: &WhirParams, st: &MachinePublic, proof: &IvcProof, w: &mut Writer) {
-    let key = ivc::key(params, proof.log_rows as usize).expect("a recursion key for the envelope's parameters");
+    let key = ivc::key(params, proof.log_rows as usize)
+        .expect("a recursion key for the envelope's parameters");
     let bytes = proof.to_bytes(&key);
     w.raw(&[RECURSIVE_FORMAT]);
     w.raw(&params.header());

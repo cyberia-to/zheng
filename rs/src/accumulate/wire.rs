@@ -92,7 +92,10 @@ impl AccProof {
         nonce(w, self.query_nonce);
         w.u32(self.openings.len());
         for o in &self.openings {
-            w.u8(u8::from(matches!(o.symbols, lens::rspcs::wire::Symbols::Ext(_))));
+            w.u8(u8::from(matches!(
+                o.symbols,
+                lens::rspcs::wire::Symbols::Ext(_)
+            )));
             bytes_field(w, &o.to_bytes());
         }
     }

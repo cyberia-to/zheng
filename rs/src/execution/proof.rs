@@ -369,7 +369,10 @@ mod tests {
         let proof = prove(&instance, &witness, b"frozen-v1", &public).unwrap();
         let mut h = hemera::Hasher::new();
         h.update(proof.spartan.commitment.as_bytes());
-        for polys in [&proof.spartan.outer_sumcheck_polys, &proof.spartan.sumcheck_polys] {
+        for polys in [
+            &proof.spartan.outer_sumcheck_polys,
+            &proof.spartan.sumcheck_polys,
+        ] {
             for p in polys.iter() {
                 for c in &p.coeffs {
                     h.update(&c.as_u64().to_le_bytes());
@@ -380,7 +383,10 @@ mod tests {
             h.update(&e.as_u64().to_le_bytes());
         }
         h.update(&proof.spartan.eval_value.as_u64().to_le_bytes());
-        if let lens::Opening::TensorMerkle { row_combination, .. } = &proof.spartan.pcs_opening {
+        if let lens::Opening::TensorMerkle {
+            row_combination, ..
+        } = &proof.spartan.pcs_opening
+        {
             h.update(row_combination);
         }
         assert_eq!(h.finalize().to_hex(), FROZEN_V1_DIGEST);

@@ -85,7 +85,12 @@ pub struct Reduction<F: ChallengeField> {
 impl<F: ChallengeField> Reduction<F> {
     /// `Σ_i γ^i M̃_i(ρ_x, point)` from the instance the IOP ran on.
     pub fn weight(&self, instance: &CCSInstance) -> F {
-        let w = combined_weights(instance, &self.rho_x, self.gamma, 1usize << self.point.len());
+        let w = combined_weights(
+            instance,
+            &self.rho_x,
+            self.gamma,
+            1usize << self.point.len(),
+        );
         evaluate_multilinear(&w, &self.point)
     }
 }
@@ -150,7 +155,9 @@ pub fn reduce<F: ChallengeField>(
     let eq_tau_rho = tau
         .iter()
         .zip(rho_x.iter().rev())
-        .fold(F::ONE, |acc, (&t, &r)| acc * (t * r + (F::ONE - t) * (F::ONE - r)));
+        .fold(F::ONE, |acc, (&t, &r)| {
+            acc * (t * r + (F::ONE - t) * (F::ONE - r))
+        });
     if eq_tau_rho * constraint != outer_final {
         return Err(VerifyError::EvaluationMismatch);
     }

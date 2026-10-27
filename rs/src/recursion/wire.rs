@@ -16,20 +16,20 @@
 //! distinct leaf and the siblings of a lens-style multi-opening; the
 //! reader rebuilds every full path by hashing.
 
-use lens::rspcs::wire::{Reader, Writer};
 use lens::PcsError;
+use lens::rspcs::wire::{Reader, Writer};
 use nebu::{Fp3, Goldilocks};
 
 use super::acc::AccProof;
+use super::decide::Decider;
 use super::ivc::IvcProof;
+use super::ivc::Key;
 use super::params::{BV, Params};
 use super::perm;
 use super::relation::{COLS, PUB_NOX, PUB_V};
 use super::state::{State, StateV};
 use super::step::StepProof;
 use super::word::{Arity, Digest, LeafOpening};
-use super::decide::Decider;
-use super::ivc::Key;
 use crate::machine::layout::{W1, W2};
 
 type R<T> = Result<T, PcsError>;
@@ -73,7 +73,11 @@ fn read_state(r: &mut Reader<'_>, p: &Params) -> R<State> {
     let template = super::program::dummy_state(p);
     let mut vals = Vec::new();
     for (_, ext) in template.items() {
-        vals.push(if ext { r.ext()? } else { Fp3::from_base(r.base()?) });
+        vals.push(if ext {
+            r.ext()?
+        } else {
+            Fp3::from_base(r.base()?)
+        });
     }
     Ok(StateV::from_items(&p.dims, &vals))
 }
@@ -81,7 +85,11 @@ fn read_state(r: &mut Reader<'_>, p: &Params) -> R<State> {
 /// Sibling digests of a multi-opening of sorted distinct `leaves` in a
 /// tree of `2^log_leaves` leaves and `arity` (level by level, increasing
 /// index, only those not computable).
-pub(crate) fn multi_siblings(paths: &[(usize, &LeafOpening)], log_leaves: usize, arity: Arity) -> Vec<Digest> {
+pub(crate) fn multi_siblings(
+    paths: &[(usize, &LeafOpening)],
+    log_leaves: usize,
+    arity: Arity,
+) -> Vec<Digest> {
     let mut out = Vec::new();
     let mut known: Vec<usize> = paths.iter().map(|p| p.0).collect();
     let (mut off, mut div) = (0, 1usize);
@@ -133,7 +141,12 @@ fn acc_proof(w: &mut Writer, a: &AccProof, p: &Params) {
     for word in 0..4 {
         let ops: Vec<(usize, &LeafOpening)> = distinct
             .iter()
-            .map(|&l| (l, &a.openings[leaves.iter().position(|&x| x == l).expect("leaf")][word]))
+            .map(|&l| {
+                (
+                    l,
+                    &a.openings[leaves.iter().position(|&x| x == l).expect("leaf")][word],
+                )
+            })
             .collect();
         for (_, op) in &ops {
             if word == 0 {
@@ -178,7 +191,16 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
     for word in 0..4 {
         let syms: Vec<Vec<Fp3>> = distinct
             .iter()
-            .map(|_| if word == 0 { read_exts(r, width) } else { Ok(read_bases(r, width)?.into_iter().map(Fp3::from_base).collect()) })
+            .map(|_| {
+                if word == 0 {
+                    read_exts(r, width)
+                } else {
+                    Ok(read_bases(r, width)?
+                        .into_iter()
+                        .map(Fp3::from_base)
+                        .collect())
+                }
+            })
             .collect::<R<_>>()?;
         let ns = r.count(32)?;
         let sib: Vec<Digest> = (0..ns).map(|_| read_digest(r)).collect::<R<_>>()?;
@@ -191,7 +213,15 @@ fn read_acc(r: &mut Reader<'_>, p: &Params) -> R<AccProof> {
             (0..4).map(|wd| per_word[wd][q].clone()).collect()
         })
         .collect();
-    Ok(AccProof { sumcheck, evals, comb_nonce, root, ood, query_nonce, openings })
+    Ok(AccProof {
+        sumcheck,
+        evals,
+        comb_nonce,
+        root,
+        ood,
+        query_nonce,
+        openings,
+    })
 }
 
 /// A node group of one tree level: the parent at `base / a` and its
@@ -206,7 +236,14 @@ struct Group {
 /// without hashing; then every leaf's chain is hashed up to the first
 /// node it shares with another leaf, chains split over the verifier's
 /// threads, and the shared top of the tree level by level.
-pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_leaves: usize, ext: bool, arity: Arity) -> R<Vec<LeafOpening>> {
+pub(crate) fn expand(
+    leaves: &[usize],
+    syms: Vec<Vec<Fp3>>,
+    sib: &[Digest],
+    log_leaves: usize,
+    ext: bool,
+    arity: Arity,
+) -> R<Vec<LeafOpening>> {
     // leaf digests batched (every leaf of one opening has one width)
     let width = syms.first().map_or(0, |s| s.len());
     if syms.iter().any(|s| s.len() != width) {
@@ -250,7 +287,11 @@ pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_
         return Err(PcsError::Merkle);
     }
     let input = |kids: &[Digest]| -> [Goldilocks; 16] {
-        if kids.len() == 4 { perm::node4_input([kids[0], kids[1], kids[2], kids[3]]) } else { perm::node_input(kids[0], kids[1]) }
+        if kids.len() == 4 {
+            perm::node4_input([kids[0], kids[1], kids[2], kids[3]])
+        } else {
+            perm::node_input(kids[0], kids[1])
+        }
     };
     let solo = |g: &Group| g.kids.iter().filter(|k| k.is_ok()).count() == 1;
     // node digests per level (level 0: the leaves)
@@ -262,43 +303,57 @@ pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_
     }
     // chains: each leaf up to the first group it shares, in parallel
     let chains = leaves.len();
-    let threads = crate::recursion::wrap::verifier_threads().min(chains.div_ceil(3)).max(1);
-    let done: Vec<Vec<(usize, usize, Digest)>> = crate::recursion::pool::map_chunks(chains, threads, |r| {
-        let mut out = Vec::new();
-        // (current level node, its digest) per chain still climbing
-        let mut cur: Vec<(usize, Digest)> = r.map(|q| (q, dig[0][q].expect("leaf digest"))).collect();
-        for (l, groups) in levels.iter().enumerate() {
-            let mut ins = Vec::new();
-            let mut gs = Vec::new();
-            for &(k, d) in &cur {
-                let g = parent[l][k];
-                if !solo(&groups[g]) {
-                    continue;
+    let threads = crate::recursion::wrap::verifier_threads()
+        .min(chains.div_ceil(3))
+        .max(1);
+    let done: Vec<Vec<(usize, usize, Digest)>> =
+        crate::recursion::pool::map_chunks(chains, threads, |r| {
+            let mut out = Vec::new();
+            // (current level node, its digest) per chain still climbing
+            let mut cur: Vec<(usize, Digest)> =
+                r.map(|q| (q, dig[0][q].expect("leaf digest"))).collect();
+            for (l, groups) in levels.iter().enumerate() {
+                let mut ins = Vec::new();
+                let mut gs = Vec::new();
+                for &(k, d) in &cur {
+                    let g = parent[l][k];
+                    if !solo(&groups[g]) {
+                        continue;
+                    }
+                    let kids: Vec<Digest> = groups[g]
+                        .kids
+                        .iter()
+                        .map(|c| match *c {
+                            Ok(_) => d,
+                            Err(i) => sib[i],
+                        })
+                        .collect();
+                    ins.push(input(&kids));
+                    gs.push(g);
                 }
-                let kids: Vec<Digest> = groups[g].kids.iter().map(|c| match *c {
-                    Ok(_) => d,
-                    Err(i) => sib[i],
-                }).collect();
-                ins.push(input(&kids));
-                gs.push(g);
+                if ins.is_empty() {
+                    break;
+                }
+                perm::permute_many_remember(&mut ins);
+                cur = gs
+                    .iter()
+                    .zip(&ins)
+                    .map(|(&g, s)| (g, perm::head(s)))
+                    .collect();
+                for &(g, d) in &cur {
+                    out.push((l + 1, g, d));
+                }
             }
-            if ins.is_empty() {
-                break;
-            }
-            perm::permute_many_remember(&mut ins);
-            cur = gs.iter().zip(&ins).map(|(&g, s)| (g, perm::head(s))).collect();
-            for &(g, d) in &cur {
-                out.push((l + 1, g, d));
-            }
-        }
-        out
-    });
+            out
+        });
     for (l, g, d) in done.into_iter().flatten() {
         dig[l][g] = Some(d);
     }
     // the shared top, level by level
     for (l, groups) in levels.iter().enumerate() {
-        let todo: Vec<usize> = (0..groups.len()).filter(|&g| dig[l + 1][g].is_none()).collect();
+        let todo: Vec<usize> = (0..groups.len())
+            .filter(|&g| dig[l + 1][g].is_none())
+            .collect();
         if todo.is_empty() {
             continue;
         }
@@ -339,7 +394,11 @@ pub(crate) fn expand(leaves: &[usize], syms: Vec<Vec<Fp3>>, sib: &[Digest], log_
         .into_iter()
         .zip(paths)
         .zip(leaves)
-        .map(|((symbols, path), &l)| LeafOpening { symbols, path, leaf: Some(l) })
+        .map(|((symbols, path), &l)| LeafOpening {
+            symbols,
+            path,
+            leaf: Some(l),
+        })
         .collect())
 }
 
@@ -356,7 +415,9 @@ fn step(w: &mut Writer, s: &StepProof, p: &Params) {
     for m in &s.zerocheck {
         exts(w, m);
     }
-    for v in [&s.local, &s.next, &s.pub_nox, &s.pub_v, &s.fold_g, &s.fold_pn, &s.fold_pv, &s.shift] {
+    for v in [
+        &s.local, &s.next, &s.pub_nox, &s.pub_v, &s.fold_g, &s.fold_pn, &s.fold_pv, &s.shift,
+    ] {
         exts(w, v);
     }
     exts(w, &s.vals);
@@ -365,11 +426,17 @@ fn step(w: &mut Writer, s: &StepProof, p: &Params) {
 
 fn read_step(r: &mut Reader<'_>, p: &Params) -> R<StepProof> {
     let roots = [read_digest(r)?, read_digest(r)?, read_digest(r)?];
-    let ood = [read_exts(r, p.fresh)?, read_exts(r, p.fresh)?, read_exts(r, p.fresh)?];
+    let ood = [
+        read_exts(r, p.fresh)?,
+        read_exts(r, p.fresh)?,
+        read_exts(r, p.fresh)?,
+    ];
     let b_in = read_bases(r, W1 + W2)?;
     let b_out = read_bases(r, W1 + W2)?;
     let b_v = read_bases(r, BV)?;
-    let zerocheck = (0..p.n).map(|_| read_exts(r, p.zc_deg())).collect::<R<_>>()?;
+    let zerocheck = (0..p.n)
+        .map(|_| read_exts(r, p.zc_deg()))
+        .collect::<R<_>>()?;
     let local = read_exts(r, COLS)?;
     let next = read_exts(r, COLS)?;
     let pub_nox = read_exts(r, PUB_NOX)?;
@@ -412,7 +479,10 @@ pub(crate) fn decider(w: &mut Writer, d: &Decider, k: &Key) {
 pub(crate) fn read_decider(r: &mut Reader<'_>, k: &Key) -> R<Decider> {
     let v = read_exts(r, 2)?;
     let whir = super::whir::wire::read(r, &k.dcfg, &decider_ext(k))?;
-    Ok(Decider { key: [v[0], v[1]], whir })
+    Ok(Decider {
+        key: [v[0], v[1]],
+        whir,
+    })
 }
 
 impl IvcProof {
@@ -450,7 +520,10 @@ impl IvcProof {
     }
 
     /// Parse under the parameters the header names (`params(log_rows)`).
-    pub fn from_bytes(bytes: &[u8], params: impl Fn(u32) -> Result<std::sync::Arc<super::ivc::Key>, String>) -> Result<Self, String> {
+    pub fn from_bytes(
+        bytes: &[u8],
+        params: impl Fn(u32) -> Result<std::sync::Arc<super::ivc::Key>, String>,
+    ) -> Result<Self, String> {
         let e = |e: PcsError| format!("recursive proof: {e}");
         let mut r = Reader::new(bytes);
         let log_rows = u32::from(r.u8().map_err(e)?);
@@ -463,6 +536,14 @@ impl IvcProof {
         let stp = read_step(&mut r, p).map_err(e)?;
         let decider = read_decider(&mut r, &key).map_err(e)?;
         r.finish().map_err(e)?;
-        Ok(Self { log_rows, start, segments, chain, state: st, step: stp, decider })
+        Ok(Self {
+            log_rows,
+            start,
+            segments,
+            chain,
+            state: st,
+            step: stp,
+            decider,
+        })
     }
 }

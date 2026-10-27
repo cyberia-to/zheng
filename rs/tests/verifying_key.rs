@@ -6,8 +6,8 @@ mod common;
 use common::{ADD, HASH, parse};
 use std::time::Instant;
 use zheng::envelope::AnySuccinct;
-use zheng::execution::succinct::{self, prove_default};
 use zheng::execution::VerifyingKey;
+use zheng::execution::succinct::{self, prove_default};
 
 fn median(mut v: Vec<f64>) -> f64 {
     v.sort_by(f64::total_cmp);
@@ -17,7 +17,9 @@ fn median(mut v: Vec<f64>) -> f64 {
 #[test]
 fn cached_key_verifies_hash_tri_without_recompiling() {
     let (statement, proof) = prove_default(&parse(HASH), &[7], 1_000_000).unwrap();
-    let AnySuccinct::Whir(proof) = proof else { panic!("shipped choice is WHIR") };
+    let AnySuccinct::Whir(proof) = proof else {
+        panic!("shipped choice is WHIR")
+    };
     let reps = 31;
     let time = |f: &dyn Fn()| {
         median(
@@ -51,4 +53,3 @@ fn cached_key_verifies_hash_tri_without_recompiling() {
     let foreign = VerifyingKey::for_execution(&add).unwrap();
     assert!(succinct::verify_with(&statement, &proof, Some(&foreign)).is_err());
 }
-

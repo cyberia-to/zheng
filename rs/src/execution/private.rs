@@ -82,7 +82,10 @@ pub fn prepare_execution(
         .into_iter()
         .map(|(i, v)| (i, v.as_u64()))
         .collect();
-    let prepared = PreparedExecution { relation, public_coordinates };
+    let prepared = PreparedExecution {
+        relation,
+        public_coordinates,
+    };
     Ok((
         statement,
         prepared,

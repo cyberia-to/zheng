@@ -56,11 +56,16 @@ fn state_certificates_verify_and_agree_with_v1() {
         (two_reads_from_input(), vec![3]),
     ] {
         let (statement, certificate) = certify(&program, &input);
-        statement.verify_certificate(&certificate, &state()).unwrap();
+        statement
+            .verify_certificate(&certificate, &state())
+            .unwrap();
         let (v1, proof) =
             prove_state_execution(&program, &input, 1000, true, &[7; 32], &state()).unwrap();
         v1.verify_v1(&[7; 32], &proof, &state()).unwrap();
-        assert!(v1.verify_v1(&[8; 32], &proof, &state()).is_err(), "v1 binds its context");
+        assert!(
+            v1.verify_v1(&[8; 32], &proof, &state()).is_err(),
+            "v1 binds its context"
+        );
         assert_eq!(statement, v1, "v3 and v1 state the same claim");
     }
     let (statement, _) = certify(&read_times_three(), &[]);
@@ -80,29 +85,49 @@ fn wrong_state_root_is_rejected() {
     // zheng authenticates the evidence under the statement's own root: a
     // statement naming another root fails, whatever the caller holds.
     let (statement, certificate) = certify(&read_times_three(), &[]);
-    statement.verify_certificate(&certificate, &state()).unwrap();
+    statement
+        .verify_certificate(&certificate, &state())
+        .unwrap();
     for limb in 0..4 {
         let mut bad = statement.clone();
         bad.state_root[limb] = (bad.state_root[limb] + 1) % P;
-        assert!(bad.verify_certificate(&certificate, &state()).is_err(), "limb {limb}");
+        assert!(
+            bad.verify_certificate(&certificate, &state()).is_err(),
+            "limb {limb}"
+        );
     }
     // evidence for another state (one value changed) has another root
     let mut tables = tables();
     tables[1].fields[11] = 43;
     let other = evidence(tables);
-    assert!(statement.verify_certificate(&certificate, &other).is_err(), "other state");
+    assert!(
+        statement.verify_certificate(&certificate, &other).is_err(),
+        "other state"
+    );
     // a statement re-rooted to the other state still reads 42: rejected
     let mut rerooted = statement.clone();
     rerooted.state_root = other.root().unwrap();
-    assert!(rerooted.verify_certificate(&certificate, &other).is_err(), "re-rooted");
+    assert!(
+        rerooted.verify_certificate(&certificate, &other).is_err(),
+        "re-rooted"
+    );
     // the root is also pinned into the subject
     let (statement, certificate) = certify(&read_times_root_limb(), &[]);
     let r0 = nebu::Goldilocks::new(statement.state_root[0]);
-    assert_eq!(statement.execution.public_output, vec![(r0 * nebu::Goldilocks::new(42)).as_u64()]);
-    statement.verify_certificate(&certificate, &state()).unwrap();
+    assert_eq!(
+        statement.execution.public_output,
+        vec![(r0 * nebu::Goldilocks::new(42)).as_u64()]
+    );
+    statement
+        .verify_certificate(&certificate, &state())
+        .unwrap();
     let mut noncanonical = statement.clone();
     noncanonical.state_root[0] = P;
-    assert!(noncanonical.verify_certificate(&certificate, &state()).is_err());
+    assert!(
+        noncanonical
+            .verify_certificate(&certificate, &state())
+            .is_err()
+    );
 }
 
 #[test]
@@ -112,18 +137,30 @@ fn an_unauthenticated_read_is_rejected_by_zheng_alone() {
     let missing = evidence(vec![tables()[1].clone()]);
     let mut leaves_kept = missing.clone();
     leaves_kept.leaves = state().leaves;
-    assert!(s.verify_certificate(&certificate, &missing).is_err(), "other root");
-    assert!(s.verify_certificate(&certificate, &leaves_kept).is_err(), "table absent");
+    assert!(
+        s.verify_certificate(&certificate, &missing).is_err(),
+        "other root"
+    );
+    assert!(
+        s.verify_certificate(&certificate, &leaves_kept).is_err(),
+        "table absent"
+    );
     // the table carried but altered under the honest leaves
     let mut altered = state();
     altered.tables[0].fields[3] = 104;
-    assert!(s.verify_certificate(&certificate, &altered).is_err(), "altered table");
+    assert!(
+        s.verify_certificate(&certificate, &altered).is_err(),
+        "altered table"
+    );
     // a leaf altered to match an altered table changes the root
     altered.leaves[0] = table_leaf(&altered.tables[0].fields);
-    assert!(s.verify_certificate(&certificate, &altered).is_err(), "altered leaf");
+    assert!(
+        s.verify_certificate(&certificate, &altered).is_err(),
+        "altered leaf"
+    );
     // the same execution certified against altered state is another statement
-    let (forged, _) = certify_state_execution(&two_reads_from_input(), &[3], 1000, true, &altered)
-        .unwrap();
+    let (forged, _) =
+        certify_state_execution(&two_reads_from_input(), &[3], 1000, true, &altered).unwrap();
     assert_ne!(forged.state_root, s.state_root);
     assert!(forged.verify_certificate(&certificate, &state()).is_err());
 }
@@ -211,12 +248,20 @@ fn only_the_canonical_state_certificate_verifies() {
         let mut noncanonical = certificate.clone();
         noncanonical.free[0] += P;
         assert!(check(&noncanonical), "noncanonical");
-        assert!(check(&Certificate { free: vec![1; 1 << 16] }), "overlong");
+        assert!(
+            check(&Certificate {
+                free: vec![1; 1 << 16]
+            }),
+            "overlong"
+        );
     }
     // read · 3 has one free value, the product: dropping it is rejected
     let (s, certificate) = certify(&read_times_three(), &[]);
     assert_eq!(certificate.free.len(), 1);
-    assert!(s.verify_certificate(&Certificate { free: vec![] }, &state()).is_err());
+    assert!(
+        s.verify_certificate(&Certificate { free: vec![] }, &state())
+            .is_err()
+    );
 }
 
 #[test]

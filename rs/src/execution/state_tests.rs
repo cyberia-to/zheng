@@ -28,7 +28,8 @@ fn state() -> StateEvidence {
 }
 #[test]
 fn every_lookup_coordinate_and_root_limb_is_bound_to_execution() {
-    let (s, proof) = prove_state_execution(&program(), &[], 1000, true, &[0; 32], &state()).unwrap();
+    let (s, proof) =
+        prove_state_execution(&program(), &[], 1000, true, &[0; 32], &state()).unwrap();
     assert_eq!(s.execution.public_output, vec![126]);
     assert_eq!(s.execution.cycles, 5);
     s.verify_v1(&[0; 32], &proof, &state()).unwrap();

@@ -7,7 +7,9 @@ use zheng::envelope::{Envelope, EnvelopeError, MAGIC};
 use zheng::execution::relation::{SubjectShape, compile_relation};
 use zheng::execution::state::certify_state_execution;
 use zheng::execution::state_evidence::{StateEvidence, StateTable};
-use zheng::execution::{Certificate, ExecutionNoun, certificate, certify_execution, verify_certificate};
+use zheng::execution::{
+    Certificate, ExecutionNoun, certificate, certify_execution, verify_certificate,
+};
 use zheng::types::CCSWitness;
 
 const P: u64 = 0xFFFF_FFFF_0000_0001;
@@ -42,7 +44,10 @@ fn parse(text: &str) -> ExecutionNoun {
 
 fn public(program: &str, input: &[u64]) -> Envelope {
     let (statement, certificate) = certify_execution(&parse(program), input, 1_000_000).unwrap();
-    Envelope::Public { statement, certificate }
+    Envelope::Public {
+        statement,
+        certificate,
+    }
 }
 
 fn rejected(envelope: &Envelope) -> bool {
@@ -55,14 +60,29 @@ fn fixture_forged_io_is_rejected() {
     for (program, input) in [(HASH, vec![7]), (ADD, vec![7, 5])] {
         let honest = public(program, &input);
         assert!(!rejected(&honest));
-        let Envelope::Public { statement, certificate } = honest else { unreachable!() };
+        let Envelope::Public {
+            statement,
+            certificate,
+        } = honest
+        else {
+            unreachable!()
+        };
         let forge = |edit: &dyn Fn(&mut zheng::execution::ExecutionStatement)| {
             let mut s = statement.clone();
             edit(&mut s);
-            rejected(&Envelope::Public { statement: s, certificate: certificate.clone() })
+            rejected(&Envelope::Public {
+                statement: s,
+                certificate: certificate.clone(),
+            })
         };
-        assert!(forge(&|s| s.public_input[0] = (s.public_input[0] + 1) % P), "input");
-        assert!(forge(&|s| s.public_output[0] = (s.public_output[0] + 1) % P), "output");
+        assert!(
+            forge(&|s| s.public_input[0] = (s.public_input[0] + 1) % P),
+            "input"
+        );
+        assert!(
+            forge(&|s| s.public_output[0] = (s.public_output[0] + 1) % P),
+            "output"
+        );
         assert!(forge(&|s| s.public_output.push(0)), "extra output");
         assert!(forge(&|s| s.cycles += 1), "cycles");
         assert!(forge(&|s| s.cycles -= 1), "fewer cycles");
@@ -71,7 +91,13 @@ fn fixture_forged_io_is_rejected() {
 
 #[test]
 fn fixture_forged_program_is_rejected() {
-    let Envelope::Public { statement, certificate } = public(ADD, &[7, 5]) else { unreachable!() };
+    let Envelope::Public {
+        statement,
+        certificate,
+    } = public(ADD, &[7, 5])
+    else {
+        unreachable!()
+    };
     // swap the final multiplication (tag 7) for an addition (tag 5)
     let mut other = statement.clone();
     let mul = other
@@ -80,13 +106,26 @@ fn fixture_forged_program_is_rejected() {
         .rposition(|t| *t == zheng::execution::NounToken::Atom(7))
         .unwrap();
     other.program[mul] = zheng::execution::NounToken::Atom(5);
-    assert!(rejected(&Envelope::Public { statement: other, certificate: certificate.clone() }));
+    assert!(rejected(&Envelope::Public {
+        statement: other,
+        certificate: certificate.clone()
+    }));
     // a valid certificate of another program
-    let Envelope::Public { statement: hash, certificate: hash_cert } = public(HASH, &[7]) else {
+    let Envelope::Public {
+        statement: hash,
+        certificate: hash_cert,
+    } = public(HASH, &[7])
+    else {
         unreachable!()
     };
-    assert!(rejected(&Envelope::Public { statement: hash, certificate: certificate.clone() }));
-    assert!(rejected(&Envelope::Public { statement, certificate: hash_cert }));
+    assert!(rejected(&Envelope::Public {
+        statement: hash,
+        certificate: certificate.clone()
+    }));
+    assert!(rejected(&Envelope::Public {
+        statement,
+        certificate: hash_cert
+    }));
 }
 
 #[test]
@@ -96,19 +135,33 @@ fn fixture_zeroed_constant_is_rejected() {
     // the prover cannot address it.
     let shape = SubjectShape::Pair(
         Box::new(SubjectShape::Atom),
-        Box::new(SubjectShape::Pair(Box::new(SubjectShape::Atom), Box::new(SubjectShape::Atom))),
+        Box::new(SubjectShape::Pair(
+            Box::new(SubjectShape::Atom),
+            Box::new(SubjectShape::Atom),
+        )),
     );
     let relation = compile_relation(&parse(ADD), &shape).unwrap();
-    let zero = CCSWitness { z: vec![F::ZERO; relation.instance.num_cols] };
-    assert!(relation.instance.is_satisfied_by(&zero), "the hole the pin closes");
+    let zero = CCSWitness {
+        z: vec![F::ZERO; relation.instance.num_cols],
+    };
+    assert!(
+        relation.instance.is_satisfied_by(&zero),
+        "the hole the pin closes"
+    );
     assert!(certificate::verify(&relation.instance, &Certificate { free: vec![] }, &[]).is_err());
     assert!(
-        certificate::verify(&relation.instance, &Certificate { free: vec![] }, &[(0, F::ZERO)])
-            .is_err(),
+        certificate::verify(
+            &relation.instance,
+            &Certificate { free: vec![] },
+            &[(0, F::ZERO)]
+        )
+        .is_err(),
         "z[0] is not a public coordinate a statement can set"
     );
     // the all-zero claim through the statement API
-    let Envelope::Public { mut statement, .. } = public(ADD, &[0, 0]) else { unreachable!() };
+    let Envelope::Public { mut statement, .. } = public(ADD, &[0, 0]) else {
+        unreachable!()
+    };
     statement.public_output = vec![0];
     statement.cycles = 0;
     assert!(verify_certificate(&statement, &Certificate { free: vec![] }).is_err());
@@ -119,17 +172,28 @@ fn fixture_meaningless_witness_is_rejected() {
     // A genuinely satisfying certificate (an honest run of ADD on 7, 5) shown
     // for statements it does not prove: other inputs, other outputs, other
     // programs. The relation and its public prefix come from the statement.
-    let Envelope::Public { certificate, .. } = public(ADD, &[7, 5]) else { unreachable!() };
+    let Envelope::Public { certificate, .. } = public(ADD, &[7, 5]) else {
+        unreachable!()
+    };
     for (program, input) in [(ADD, vec![1, 2]), (ADD, vec![0, 0]), (HASH, vec![7])] {
-        let Envelope::Public { statement, .. } = public(program, &input) else { unreachable!() };
-        assert!(verify_certificate(&statement, &certificate).is_err(), "{input:?}");
+        let Envelope::Public { statement, .. } = public(program, &input) else {
+            unreachable!()
+        };
+        assert!(
+            verify_certificate(&statement, &certificate).is_err(),
+            "{input:?}"
+        );
     }
 }
 
 #[test]
 fn fixture_truncated_and_overlong_certificates_are_rejected() {
     for (program, input) in [(HASH, vec![7]), (ADD, vec![7, 5])] {
-        let Envelope::Public { statement, certificate } = public(program, &input) else {
+        let Envelope::Public {
+            statement,
+            certificate,
+        } = public(program, &input)
+        else {
             unreachable!()
         };
         let check = |c: Certificate| verify_certificate(&statement, &c).is_err();
@@ -141,7 +205,11 @@ fn fixture_truncated_and_overlong_certificates_are_rejected() {
         assert!(check(overlong), "overlong");
         assert!(check(Certificate { free: vec![] }), "empty");
         // and on the wire: a cut envelope, a longer envelope
-        let bytes = Envelope::Public { statement: statement.clone(), certificate }.to_bytes();
+        let bytes = Envelope::Public {
+            statement: statement.clone(),
+            certificate,
+        }
+        .to_bytes();
         assert!(Envelope::from_bytes(&bytes[..bytes.len() - 1]).is_err());
         assert!(Envelope::from_bytes(&[bytes.as_slice(), &[1]].concat()).is_err());
     }
@@ -158,8 +226,12 @@ fn fixture_wrong_state_root_is_rejected() {
         body[8] = value;
         StateEvidence::with_tables(vec![StateTable::with_body(2, &body)])
     };
-    let (statement, certificate) = certify_state_execution(&program, &[], 1000, true, &state(42)).unwrap();
-    let honest = Envelope::StatePublic { statement: statement.clone(), certificate: certificate.clone() };
+    let (statement, certificate) =
+        certify_state_execution(&program, &[], 1000, true, &state(42)).unwrap();
+    let honest = Envelope::StatePublic {
+        statement: statement.clone(),
+        certificate: certificate.clone(),
+    };
     honest.verify(Some(&state(42))).unwrap();
     // no evidence, or evidence for another state, is rejected by zheng itself
     assert!(honest.verify(None).is_err());
@@ -167,7 +239,10 @@ fn fixture_wrong_state_root_is_rejected() {
     for limb in 0..4 {
         let mut wrong = statement.clone();
         wrong.state_root[limb] = (wrong.state_root[limb] + 1) % P;
-        let envelope = Envelope::StatePublic { statement: wrong, certificate: certificate.clone() };
+        let envelope = Envelope::StatePublic {
+            statement: wrong,
+            certificate: certificate.clone(),
+        };
         let decoded = Envelope::from_bytes(&envelope.to_bytes()).unwrap();
         assert!(decoded.verify(Some(&state(42))).is_err(), "limb {limb}");
     }
@@ -182,7 +257,10 @@ fn fixture_envelope_with_wrong_magic_version_or_profile_is_rejected() {
     assert_eq!(Envelope::from_bytes(&magic), Err(EnvelopeError::BadMagic));
     let mut version = bytes.clone();
     version[8] = 2;
-    assert_eq!(Envelope::from_bytes(&version), Err(EnvelopeError::UnsupportedVersion(2)));
+    assert_eq!(
+        Envelope::from_bytes(&version),
+        Err(EnvelopeError::UnsupportedVersion(2))
+    );
     for profile in [1u8, 2, 3, 4] {
         let mut wrong = bytes.clone();
         wrong[10] = profile;

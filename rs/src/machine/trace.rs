@@ -98,7 +98,13 @@ fn bits_rows(b: &mut Builder, base: usize, v: u64) {
 
 /// The permutation rows of a block (phases 2..=27) for `input`; the
 /// output row's slot 0 carries the output under `id`.
-fn perm_rows(b: &mut Builder, t: &Tables, base: usize, input: &[Goldilocks; 16], id: u64) -> [u64; 4] {
+fn perm_rows(
+    b: &mut Builder,
+    t: &Tables,
+    base: usize,
+    input: &[Goldilocks; 16],
+    id: u64,
+) -> [u64; 4] {
     let (states, invs) = t.trace(input);
     for (i, &x) in input.iter().enumerate() {
         b.setf(base + PH_MDS, STATE + i, x);
@@ -155,13 +161,17 @@ fn block(b: &mut Builder, dg: &mut Digests, t: &Tables, job: Job) {
             atom1_input(v)
         }
         Job::Atom2(id) => {
-            let Some(Entry::Atom(v)) = b.entry(id) else { unreachable!() };
+            let Some(Entry::Atom(v)) = b.entry(id) else {
+                unreachable!()
+            };
             let bd = head4(&t.permute(&atom1_input(v)));
             b.read(base + PH_MDS, 0, TAG_ABASE, id, u4(bd));
             atom2_input(bd)
         }
         Job::Pair(id) => {
-            let Some(Entry::Pair(l, r)) = b.entry(id) else { unreachable!() };
+            let Some(Entry::Pair(l, r)) = b.entry(id) else {
+                unreachable!()
+            };
             let (dl, dr) = (dg.digest(b, l), dg.digest(b, r));
             b.read(base + PH_MDS, 0, TAG_PAIR, id, [l, r, 0, 0]);
             b.read(base + PH_MDS, 1, TAG_DIG, l, u4(dl));
@@ -187,7 +197,13 @@ fn block(b: &mut Builder, dg: &mut Digests, t: &Tables, job: Job) {
 /// least `2^seg_min` rows, or a multiple of `2^seg_max` rows — and fill
 /// the write multiplicities. Returns the trace, the region start and
 /// `log2` of the segment rows.
-pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables, seg_min: u32, seg_max: u32) -> (Trace, usize, u32) {
+pub(crate) fn finish(
+    mut b: Builder,
+    dg: &mut Digests,
+    t: &Tables,
+    seg_min: u32,
+    seg_max: u32,
+) -> (Trace, usize, u32) {
     let jobs = jobs(&b);
     while !b.rows.len().is_multiple_of(BLOCK) {
         b.row(K_PAD);
@@ -199,7 +215,12 @@ pub(crate) fn finish(mut b: Builder, dg: &mut Digests, t: &Tables, seg_min: u32,
     if b.rows.len() == start {
         idle_block(&mut b, t);
     }
-    let single = b.rows.len().next_power_of_two().max(2 * BLOCK).max(1 << seg_min);
+    let single = b
+        .rows
+        .len()
+        .next_power_of_two()
+        .max(2 * BLOCK)
+        .max(1 << seg_min);
     let (n, seg_log) = if single <= 1 << seg_max {
         (single, single.trailing_zeros())
     } else {

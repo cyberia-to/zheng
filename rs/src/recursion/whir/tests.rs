@@ -10,11 +10,21 @@ use crate::recursion::sponge::{ProverTranscript, Sponge};
 use crate::recursion::word::{Arity, Word};
 
 fn e(i: u64) -> Fp3 {
-    Fp3::new(Goldilocks::new(i * 7 + 1), Goldilocks::new(i * i + 11), Goldilocks::new(3 * i + 2))
+    Fp3::new(
+        Goldilocks::new(i * 7 + 1),
+        Goldilocks::new(i * i + 11),
+        Goldilocks::new(3 * i + 2),
+    )
 }
 
 fn params(rate: u8, k: u8, fin: u8) -> WhirParams {
-    WhirParams { log_inv_rate: rate, folding_factor: k, pow_bits: 8, max_final_vars: fin, ..WhirParams::default() }
+    WhirParams {
+        log_inv_rate: rate,
+        folding_factor: k,
+        pow_bits: 8,
+        max_final_vars: fin,
+        ..WhirParams::default()
+    }
 }
 
 struct Case {
@@ -28,17 +38,36 @@ struct Case {
 fn case(ell: usize, rate: u8, k: u8, fin: u8, ext: &[bool], arity: Arity) -> Case {
     let whir = params(rate, k, fin);
     let claims_per = 3;
-    let cfg = Config::derive(&whir, ell, &vec![1; ext.len()], claims_per * ext.len()).unwrap().with_arity(arity);
+    let cfg = Config::derive(&whir, ell, &vec![1; ext.len()], claims_per * ext.len())
+        .unwrap()
+        .with_arity(arity);
     let layout = cfg.layout(0);
     let mut words = Vec::new();
     let mut claims = Vec::new();
     let mut uni = Vec::new();
     for (w, &x) in ext.iter().enumerate() {
         let table: Vec<Fp3> = (0..1u64 << ell)
-            .map(|i| if x { e(i + 1000 * w as u64) } else { Fp3::from_base(Goldilocks::new(i * i + 3 + w as u64)) })
+            .map(|i| {
+                if x {
+                    e(i + 1000 * w as u64)
+                } else {
+                    Fp3::from_base(Goldilocks::new(i * i + 3 + w as u64))
+                }
+            })
             .collect();
-        assert!(!x || arity == Arity::Two, "4-ary words of base symbols here");
-        let word = if x { Word::commit_ext(layout, &table) } else { Word::commit_base_a(layout, &table.iter().map(|v| v.c0).collect::<Vec<_>>(), arity) };
+        assert!(
+            !x || arity == Arity::Two,
+            "4-ary words of base symbols here"
+        );
+        let word = if x {
+            Word::commit_ext(layout, &table)
+        } else {
+            Word::commit_base_a(
+                layout,
+                &table.iter().map(|v| v.c0).collect::<Vec<_>>(),
+                arity,
+            )
+        };
         let p: Vec<Fp3> = (0..ell as u64).map(|i| e(50 + i + 13 * w as u64)).collect();
         let z = e(900 + w as u64);
         let z2 = e(901 + w as u64);
@@ -50,7 +79,12 @@ fn case(ell: usize, rate: u8, k: u8, fin: u8, ext: &[bool], arity: Arity) -> Cas
         uni.push(vec![None, Some(z), Some(z2)]);
         words.push(word);
     }
-    Case { cfg, words, claims, uni }
+    Case {
+        cfg,
+        words,
+        claims,
+        uni,
+    }
 }
 
 fn inputs<O: Ops>(o: &mut O, c: &Case) -> Vec<InstV<O::V>> {
@@ -104,8 +138,15 @@ fn a_batched_opening_verifies_natively_and_in_the_circuit() {
         let ins = inputs(&mut b, &c);
         let mut t = Sponge::new(&mut b, tag::STEP);
         verify(&mut b, &c.cfg, &mut t, &ins, &pf);
-        b.finish().unwrap_or_else(|e| panic!("ℓ {ell} circuit: {e}"));
-        eprintln!("ℓ {ell} rate 1/{} k {k} words {}: circuit rows {}, bits {:.1}", 1 << rate, ext.len(), b.rows(), c.cfg.security_bits());
+        b.finish()
+            .unwrap_or_else(|e| panic!("ℓ {ell} circuit: {e}"));
+        eprintln!(
+            "ℓ {ell} rate 1/{} k {k} words {}: circuit rows {}, bits {:.1}",
+            1 << rate,
+            ext.len(),
+            b.rows(),
+            c.cfg.security_bits()
+        );
     }
 }
 
@@ -139,7 +180,10 @@ fn a_wrong_claim_or_a_tampered_proof_is_refused() {
         let mut p = pf.clone();
         f(&mut p);
         let shape = check_shape(&c.cfg, 2, &p);
-        assert!(shape.is_err() || check(&c, &p).is_err(), "tamper {i} accepted");
+        assert!(
+            shape.is_err() || check(&c, &p).is_err(),
+            "tamper {i} accepted"
+        );
     }
 }
 
@@ -150,15 +194,28 @@ fn words_under_one_tree_open_with_one_path() {
     let whir = params(2, 4, 3);
     let cfg = Config::derive(&whir, ell, &[1, 2], 9).unwrap();
     let layout = cfg.layout(0);
-    let table = |w: u64| -> Vec<Goldilocks> { (0..1u64 << ell).map(|i| Goldilocks::new(i * (w + 3) + w)).collect() };
+    let table = |w: u64| -> Vec<Goldilocks> {
+        (0..1u64 << ell)
+            .map(|i| Goldilocks::new(i * (w + 3) + w))
+            .collect()
+    };
     let single = Word::commit_base(layout, &table(0));
-    let group = Group::new(vec![Word::member_base(layout, &table(1)), Word::member_base(layout, &table(2))], crate::recursion::word::Arity::Two);
+    let group = Group::new(
+        vec![
+            Word::member_base(layout, &table(1)),
+            Word::member_base(layout, &table(2)),
+        ],
+        crate::recursion::word::Arity::Two,
+    );
     let mut claims = Vec::new();
     let mut uni = Vec::new();
     for w in [&single, &group.words[0], &group.words[1]] {
         let p: Vec<Fp3> = (0..ell as u64).map(|i| e(70 + i)).collect();
         let z = e(500 + claims.len() as u64);
-        claims.push(vec![(p.clone(), ml_eval_ext(&w.table(), &p)), (pow_point(z, ell), w.univariate(z))]);
+        claims.push(vec![
+            (p.clone(), ml_eval_ext(&w.table(), &p)),
+            (pow_point(z, ell), w.univariate(z)),
+        ]);
         uni.push(vec![None, Some(z)]);
     }
     let mut t = ProverTranscript::new(tag::STEP);
@@ -173,7 +230,14 @@ fn words_under_one_tree_open_with_one_path() {
             .map(|((r, cs), us)| InstV {
                 root: r.map(Fp3::from_base),
                 ext: false,
-                claims: cs.iter().zip(us).map(|((p, v), u)| match u { Some(x) => ClaimRef::Uni(*x, *v), None => ClaimRef::Multi(p.clone(), *v) }).collect(),
+                claims: cs
+                    .iter()
+                    .zip(us)
+                    .map(|((p, v), u)| match u {
+                        Some(x) => ClaimRef::Uni(*x, *v),
+                        None => ClaimRef::Multi(p.clone(), *v),
+                    })
+                    .collect(),
             })
             .collect();
         let mut sp = Sponge::new(&mut o, tag::STEP);
@@ -228,27 +292,49 @@ fn direct_case(n: usize) {
         fn partial(&self, alpha: &[Fp3], fv: usize) -> Vec<Fp3> {
             let pre = alpha.len();
             let e = lens::rspcs::field::eq_table(alpha);
-            (0..1usize << fv).map(|b| (0..1usize << pre).fold(Fp3::ZERO, |a, x| a + e[x] * self.0[x + (b << pre)])).collect()
+            (0..1usize << fv)
+                .map(|b| {
+                    (0..1usize << pre).fold(Fp3::ZERO, |a, x| a + e[x] * self.0[x + (b << pre)])
+                })
+                .collect()
         }
     }
     let ell = 12usize;
     let whir = params(2, 4, 6);
     let cfg = Config::derive(&whir, ell, &[1], 6).unwrap();
     assert_eq!(cfg.wc.final_vars, 4);
-    let table: Vec<Goldilocks> = (0..1u64 << ell).map(|i| Goldilocks::new(i * i + 7)).collect();
+    let table: Vec<Goldilocks> = (0..1u64 << ell)
+        .map(|i| Goldilocks::new(i * i + 7))
+        .collect();
     let word = Word::commit_base(cfg.layout(0), &table);
     let f: Vec<Fp3> = word.table();
     let rho: Vec<Fp3> = (0..n as u64).map(|i| e(10 + i)).collect();
-    let col: Vec<Fp3> = (0..1u64 << (ell - n)).map(|c| if c % 3 == 0 { e(c + 1) } else { Fp3::ZERO }).collect();
+    let col: Vec<Fp3> = (0..1u64 << (ell - n))
+        .map(|c| if c % 3 == 0 { e(c + 1) } else { Fp3::ZERO })
+        .collect();
     let rowcol = |next: bool| -> Vec<Fp3> {
-        let rt = if next { crate::air::public::next_table(&rho) } else { lens::rspcs::field::eq_table(&rho) };
-        (0..1usize << ell).map(|i| rt[i % (1 << n)] * col[i >> n]).collect()
+        let rt = if next {
+            crate::air::public::next_table(&rho)
+        } else {
+            lens::rspcs::field::eq_table(&rho)
+        };
+        (0..1usize << ell)
+            .map(|i| rt[i % (1 << n)] * col[i >> n])
+            .collect()
     };
-    let lin: Vec<Fp3> = (0..1u64 << ell).map(|i| if i % 17 == 3 { e(i) } else { Fp3::ZERO }).collect();
+    let lin: Vec<Fp3> = (0..1u64 << ell)
+        .map(|i| if i % 17 == 3 { e(i) } else { Fp3::ZERO })
+        .collect();
     let z = e(77);
     let p: Vec<Fp3> = (0..ell as u64).map(|i| e(40 + i)).collect();
     let dot = |w: &[Fp3]| w.iter().zip(&f).fold(Fp3::ZERO, |a, (&x, &y)| a + x * y);
-    let tables = [lens::rspcs::field::eq_table(&p), lens::rspcs::field::eq_table(&pow_point(z, ell)), rowcol(false), rowcol(true), lin.clone()];
+    let tables = [
+        lens::rspcs::field::eq_table(&p),
+        lens::rspcs::field::eq_table(&pow_point(z, ell)),
+        rowcol(false),
+        rowcol(true),
+        lin.clone(),
+    ];
     let claims: Vec<(Vec<Fp3>, Fp3)> = tables.iter().map(|w| (w.clone(), dot(w))).collect();
     let mut t = ProverTranscript::new(tag::STEP);
     let pf = prove_direct(&cfg, &mut t, &word, &claims).unwrap();
@@ -258,13 +344,30 @@ fn direct_case(n: usize) {
         let weights = vec![
             Weight::Eq(p.clone()),
             Weight::Pow(z),
-            Weight::RowCol { next: false, rho: rho.clone(), col: col.clone() },
-            Weight::RowCol { next: true, rho: rho.clone(), col: col.clone() },
+            Weight::RowCol {
+                next: false,
+                rho: rho.clone(),
+                col: col.clone(),
+            },
+            Weight::RowCol {
+                next: true,
+                rho: rho.clone(),
+                col: col.clone(),
+            },
             Weight::Native(0),
         ];
         let cl: Vec<(Weight<Fp3>, Fp3)> = weights.into_iter().zip(vals.iter().copied()).collect();
         let mut sp = Sponge::new(&mut o, tag::STEP);
-        verify_direct(&mut o, &cfg, &mut sp, word.root().map(Fp3::from_base), false, cl, &[&native], &pf);
+        verify_direct(
+            &mut o,
+            &cfg,
+            &mut sp,
+            word.root().map(Fp3::from_base),
+            false,
+            cl,
+            &[&native],
+            &pf,
+        );
         o.finish()
     };
     let vals: Vec<Fp3> = claims.iter().map(|c| c.1).collect();
@@ -293,7 +396,9 @@ fn the_native_direct_closing_is_the_generic_closing() {
     let cfg = Config::derive(&whir, ell, &[1], 6).unwrap();
     let wc = &cfg.wc;
     assert!(wc.rounds.len() >= 2);
-    let alphas: Vec<Fp3> = (0..wc.rounds.iter().map(|r| r.fold).sum::<usize>() as u64).map(|i| e(100 + i)).collect();
+    let alphas: Vec<Fp3> = (0..wc.rounds.iter().map(|r| r.fold).sum::<usize>() as u64)
+        .map(|i| e(100 + i))
+        .collect();
     let fin: Vec<Fp3> = (0..1u64 << wc.final_vars).map(|i| e(500 + i)).collect();
     for n in [4usize, 6, 12] {
         let mut cons: Vec<Constraint<Fp3>> = Vec::new();
@@ -304,18 +409,38 @@ fn the_native_direct_closing_is_the_generic_closing() {
         };
         for (round, rd) in wc.rounds.iter().enumerate() {
             let nv = rd.num_vars;
-            cons.push(Constraint { round, point: Point::Multi((0..nv).map(|_| next()).collect()), coef: next() });
-            cons.push(Constraint { round, point: Point::Pow(next()), coef: next() });
+            cons.push(Constraint {
+                round,
+                point: Point::Multi((0..nv).map(|_| next()).collect()),
+                coef: next(),
+            });
+            cons.push(Constraint {
+                round,
+                point: Point::Pow(next()),
+                coef: next(),
+            });
         }
         for nx in [false, true] {
             let rho: Vec<Fp3> = (0..n).map(|_| next()).collect();
-            let col: Vec<Fp3> = (0..1usize << (ell - n)).map(|c| if c % 3 == 1 { Fp3::ZERO } else { next() }).collect();
-            cons.push(Constraint { round: 0, point: Point::RowCol { next: nx, rho, col }, coef: next() });
+            let col: Vec<Fp3> = (0..1usize << (ell - n))
+                .map(|c| if c % 3 == 1 { Fp3::ZERO } else { next() })
+                .collect();
+            cons.push(Constraint {
+                round: 0,
+                point: Point::RowCol { next: nx, rho, col },
+                coef: next(),
+            });
         }
         let mut o = Native::new();
         let mut cube = None;
-        let generic = cons.iter().fold(Fp3::ZERO, |a, c| a + c.coef * term(&mut o, wc, c, &alphas, &fin, &mut cube, &[]));
+        let generic = cons.iter().fold(Fp3::ZERO, |a, c| {
+            a + c.coef * term(&mut o, wc, c, &alphas, &fin, &mut cube, &[])
+        });
         assert!(o.error.is_none());
-        assert_eq!(closing_native(wc, &cons, &alphas, &fin, &[]), generic, "n = {n}");
+        assert_eq!(
+            closing_native(wc, &cons, &alphas, &fin, &[]),
+            generic,
+            "n = {n}"
+        );
     }
 }

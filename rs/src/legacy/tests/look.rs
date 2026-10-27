@@ -38,17 +38,21 @@ fn look_setup(evals: &[u64], key: u64) -> (VecTrace, Vec<LookOpening>, [u8; 32])
 
     let mut trace = VecTrace::default();
     let _ = reduce(&mut ar, obj, formula, 1000, &provider, &mut trace);
-    assert!(trace.0.iter().any(|r| r.r()[0] == 17), "trace has a look row");
+    assert!(
+        trace.0.iter().any(|r| r.r()[0] == 17),
+        "trace has a look row"
+    );
     let openings = crate::ccs::look_openings_from_provider(&provider);
     assert_eq!(openings.len(), 1);
     (trace, openings, root_bytes)
 }
 
-
 fn look_statement(root: [u8; 32]) -> Statement {
-    Statement { bbg_root: root, ..zero_statement() }
+    Statement {
+        bbg_root: root,
+        ..zero_statement()
+    }
 }
-
 
 /// Negative: the public root names a different state — rejected at commit.
 #[test]
@@ -56,7 +60,14 @@ fn commit_rejects_look_root_mismatch() {
     let (trace, openings, root) = look_setup(&[10, 20, 30, 40], 2);
     let mut wrong = root;
     wrong[0] ^= 1;
-    let err = commit(&trace, &[], &[], &openings, &look_statement(wrong), &ProofParams::default());
+    let err = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &look_statement(wrong),
+        &ProofParams::default(),
+    );
     assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
 }
 
@@ -66,7 +77,14 @@ fn commit_rejects_look_root_mismatch() {
 fn commit_rejects_swapped_look_opening() {
     let (trace, _, root) = look_setup(&[10, 20, 30, 40], 2);
     let (_, other_openings, _) = look_setup(&[11, 21, 31, 41], 2);
-    let err = commit(&trace, &[], &[], &other_openings, &look_statement(root), &ProofParams::default());
+    let err = commit(
+        &trace,
+        &[],
+        &[],
+        &other_openings,
+        &look_statement(root),
+        &ProofParams::default(),
+    );
     assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
 }
 
@@ -76,7 +94,14 @@ fn commit_rejects_swapped_look_opening() {
 fn commit_rejects_tampered_look_leaves() {
     let (trace, mut openings, root) = look_setup(&[10, 20, 30, 40], 2);
     openings[0].leaves.dims[3] = [Goldilocks::new(7); 4];
-    let err = commit(&trace, &[], &[], &openings, &look_statement(root), &ProofParams::default());
+    let err = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &look_statement(root),
+        &ProofParams::default(),
+    );
     assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
 }
 
@@ -85,7 +110,14 @@ fn commit_rejects_tampered_look_leaves() {
 #[test]
 fn commit_rejects_look_without_public_root() {
     let (trace, openings, _) = look_setup(&[10, 20, 30, 40], 2);
-    let err = commit(&trace, &[], &[], &openings, &zero_statement(), &ProofParams::default());
+    let err = commit(
+        &trace,
+        &[],
+        &[],
+        &openings,
+        &zero_statement(),
+        &ProofParams::default(),
+    );
     assert!(matches!(err, Err(CommitError::UnsupportedRecursiveOpening)));
 }
 

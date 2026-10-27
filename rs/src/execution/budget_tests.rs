@@ -83,7 +83,9 @@ fn state_wrappers_use_selected_cost_with_the_same_public_bindings() {
     bad.execution.cycles = 2;
     assert!(bad.verify_v1(&[0; 32], &proof, &evidence).is_err());
     let tables = super::state_evidence::StateEvidence::with_tables(
-        (0..10).map(|ns| super::state_evidence::StateTable::with_body(ns, &[])).collect(),
+        (0..10)
+            .map(|ns| super::state_evidence::StateTable::with_body(ns, &[]))
+            .collect(),
     );
     let (statement, prepared, witness) =
         super::private_state::prepare_execution(&program, &[], &[], 3, false, &tables).unwrap();

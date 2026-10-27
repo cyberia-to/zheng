@@ -34,7 +34,11 @@ impl Gate {
         let scale = |c: Fp3, v: Fp3| if c == one { v } else { c * v };
         let mut out = self.qk;
         if self.qm != zero {
-            let t = if self.qs == zero { y } else { y + scale(self.qs, z) };
+            let t = if self.qs == zero {
+                y
+            } else {
+                y + scale(self.qs, z)
+            };
             out += scale(self.qm, x * t);
         }
         if self.qa != zero {
@@ -140,7 +144,12 @@ pub trait Ops {
 
     /// [`Self::graph`] with `g`'s compiled form at hand (a native
     /// interpreter evaluates that; the circuit compiles `g` to gates).
-    fn graph_compiled(&mut self, g: &crate::air::num::Graph, c: &crate::air::num::Compiled, inputs: &[Self::V]) -> Vec<Self::V>
+    fn graph_compiled(
+        &mut self,
+        g: &crate::air::num::Graph,
+        c: &crate::air::num::Compiled,
+        inputs: &[Self::V],
+    ) -> Vec<Self::V>
     where
         Self: Sized,
     {
@@ -216,7 +225,10 @@ impl Native {
     }
     /// A native interpreter that batches Merkle openings.
     pub fn batched() -> Self {
-        Self { batch: true, ..Self::default() }
+        Self {
+            batch: true,
+            ..Self::default()
+        }
     }
     fn fail(&mut self, what: &str) {
         if self.error.is_none() {
@@ -229,13 +241,18 @@ impl Native {
     pub fn finish(&mut self) -> Result<(), String> {
         let jobs = core::mem::take(&mut self.deferred);
         if self.error.is_none() && !jobs.is_empty() {
-            let threads = crate::recursion::wrap::verifier_threads().min(jobs.len().div_ceil(8)).max(1);
+            let threads = crate::recursion::wrap::verifier_threads()
+                .min(jobs.len().div_ceil(8))
+                .max(1);
             let size = jobs.len().div_ceil(threads);
             let groups = jobs.len().div_ceil(size);
-            let bad: Option<&'static str> = super::pool::map_chunks(groups, threads, |r| r.filter_map(|g| run_chains(&jobs[g * size..((g + 1) * size).min(jobs.len())])).next())
-                .into_iter()
-                .flatten()
-                .next();
+            let bad: Option<&'static str> = super::pool::map_chunks(groups, threads, |r| {
+                r.filter_map(|g| run_chains(&jobs[g * size..((g + 1) * size).min(jobs.len())]))
+                    .next()
+            })
+            .into_iter()
+            .flatten()
+            .next();
             if let Some(what) = bad {
                 self.fail(what);
             }
@@ -291,7 +308,11 @@ fn run_chains(jobs: &[Job]) -> Option<&'static str> {
             states[q] = s;
         }
     }
-    states.iter().zip(jobs).find(|(s, j)| [s[0], s[1], s[2], s[3]] != j.1).map(|(_, j)| j.2)
+    states
+        .iter()
+        .zip(jobs)
+        .find(|(s, j)| [s[0], s[1], s[2], s[3]] != j.1)
+        .map(|(_, j)| j.2)
 }
 
 fn base_of(x: Fp3) -> Option<Goldilocks> {
@@ -313,9 +334,17 @@ impl Ops for Native {
         if self.error.is_some() {
             return (items.to_vec(), [Fp3::ZERO; 4]);
         }
-        (items.to_vec(), super::msg::digest_native(items).map(Fp3::from_base))
+        (
+            items.to_vec(),
+            super::msg::digest_native(items).map(Fp3::from_base),
+        )
     }
-    fn graph_compiled(&mut self, _: &crate::air::num::Graph, c: &crate::air::num::Compiled, inputs: &[Fp3]) -> Vec<Fp3> {
+    fn graph_compiled(
+        &mut self,
+        _: &crate::air::num::Graph,
+        c: &crate::air::num::Compiled,
+        inputs: &[Fp3],
+    ) -> Vec<Fp3> {
         c.eval(inputs)
     }
 
@@ -341,7 +370,11 @@ impl Ops for Native {
     }
     fn chain(&mut self, tag: u64) -> NChain {
         let ops = (self.batch && tag == super::perm::tag::LEAF).then(Vec::new);
-        NChain { tag, state: None, ops }
+        NChain {
+            tag,
+            state: None,
+            ops,
+        }
     }
     fn permute(&mut self, c: &mut NChain, items: &[In<Fp3>]) {
         if let Some(ops) = &mut c.ops {
@@ -356,7 +389,9 @@ impl Ops for Native {
                             l[lane + 2] = Some(v.c2);
                         } else {
                             if base_of(v).is_none() {
-                                self.error.get_or_insert_with(|| "a base lane holds an extension value".into());
+                                self.error.get_or_insert_with(|| {
+                                    "a base lane holds an extension value".into()
+                                });
                             }
                             l[lane] = Some(v.c0);
                         }
@@ -424,7 +459,8 @@ impl Ops for Native {
     fn node(&mut self, c: &mut NChain, bit: Fp3, sibling: [Goldilocks; 4]) {
         if let Some(ops) = &mut c.ops {
             if bit != Fp3::ONE && bit != Fp3::ZERO {
-                self.error.get_or_insert_with(|| "a Merkle direction is not a bit".into());
+                self.error
+                    .get_or_insert_with(|| "a Merkle direction is not a bit".into());
             }
             ops.push(NOp::Node(bit == Fp3::ONE, sibling));
             return;
@@ -439,8 +475,16 @@ impl Ops for Native {
             }
             false
         };
-        let (l, r) = if right { (sibling, cur) } else { (cur, sibling) };
-        c.state = Some(if self.error.is_none() { perm::node_state(l, r) } else { perm::node_input(l, r) });
+        let (l, r) = if right {
+            (sibling, cur)
+        } else {
+            (cur, sibling)
+        };
+        c.state = Some(if self.error.is_none() {
+            perm::node_state(l, r)
+        } else {
+            perm::node_input(l, r)
+        });
     }
     fn node4(&mut self, c: &mut NChain, bits: [Fp3; 2], siblings: [[Goldilocks; 4]; 3]) {
         let mut pos = 0;
@@ -465,7 +509,9 @@ impl Ops for Native {
     fn digest_eq(&mut self, c: &NChain, root: [Fp3; 4], what: &'static str) {
         if let Some(ops) = &c.ops {
             match root.iter().map(|r| base_of(*r)).collect::<Option<Vec<_>>>() {
-                Some(r) => self.deferred.push((ops.clone(), [r[0], r[1], r[2], r[3]], what)),
+                Some(r) => self
+                    .deferred
+                    .push((ops.clone(), [r[0], r[1], r[2], r[3]], what)),
                 None => self.fail(what),
             }
             return;
@@ -481,7 +527,9 @@ impl Ops for Native {
             return vec![Fp3::ZERO; want];
         };
         let x = b.as_u64();
-        (0..want).map(|i| Fp3::from_base(Goldilocks::new((x >> i) & 1))).collect()
+        (0..want)
+            .map(|i| Fp3::from_base(Goldilocks::new((x >> i) & 1)))
+            .collect()
     }
 }
 
@@ -501,55 +549,99 @@ pub trait Arith: Ops {
         self.constant(Fp3::ONE)
     }
     fn add(&mut self, x: Self::V, y: Self::V) -> Self::V {
-        let g = Gate { qa: Fp3::ONE, qb: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qa: Fp3::ONE,
+            qb: Fp3::ONE,
+            ..Gate::default()
+        };
         self.gate(g, x, y, y)
     }
     fn sub(&mut self, x: Self::V, y: Self::V) -> Self::V {
-        let g = Gate { qa: Fp3::ONE, qb: -Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qa: Fp3::ONE,
+            qb: -Fp3::ONE,
+            ..Gate::default()
+        };
         self.gate(g, x, y, y)
     }
     fn mul(&mut self, x: Self::V, y: Self::V) -> Self::V {
-        let g = Gate { qm: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: Fp3::ONE,
+            ..Gate::default()
+        };
         self.gate(g, x, y, y)
     }
     /// `x·y + z`.
     fn mul_add(&mut self, x: Self::V, y: Self::V, z: Self::V) -> Self::V {
-        let g = Gate { qm: Fp3::ONE, qc: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: Fp3::ONE,
+            qc: Fp3::ONE,
+            ..Gate::default()
+        };
         self.gate(g, x, y, z)
     }
     /// `c·x + z` for a constant `c`.
     fn scale_add(&mut self, c: Fp3, x: Self::V, z: Self::V) -> Self::V {
-        let g = Gate { qa: c, qc: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qa: c,
+            qc: Fp3::ONE,
+            ..Gate::default()
+        };
         self.gate(g, x, z, z)
     }
     /// `c·x + k`.
     fn affine(&mut self, c: Fp3, x: Self::V, k: Fp3) -> Self::V {
-        let g = Gate { qa: c, qk: k, ..Gate::default() };
+        let g = Gate {
+            qa: c,
+            qk: k,
+            ..Gate::default()
+        };
         self.gate(g, x, x, x)
     }
     /// `a + r·(b − a)`.
     fn lerp(&mut self, r: Self::V, a: Self::V, b: Self::V) -> Self::V {
-        let g = Gate { qm: Fp3::ONE, qs: -Fp3::ONE, qc: Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: Fp3::ONE,
+            qs: -Fp3::ONE,
+            qc: Fp3::ONE,
+            ..Gate::default()
+        };
         self.gate(g, r, b, a)
     }
     /// `x·y + k`.
     fn mul_const_add(&mut self, x: Self::V, y: Self::V, k: Fp3) -> Self::V {
-        let g = Gate { qm: Fp3::ONE, qk: k, ..Gate::default() };
+        let g = Gate {
+            qm: Fp3::ONE,
+            qk: k,
+            ..Gate::default()
+        };
         self.gate(g, x, y, y)
     }
     fn assert_eq(&mut self, x: Self::V, y: Self::V, what: &'static str) {
-        let g = Gate { qa: Fp3::ONE, qb: -Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qa: Fp3::ONE,
+            qb: -Fp3::ONE,
+            ..Gate::default()
+        };
         self.assert_gate(g, x, y, y, what);
     }
     fn assert_const(&mut self, x: Self::V, c: Fp3, what: &'static str) {
-        let g = Gate { qa: Fp3::ONE, qk: -c, ..Gate::default() };
+        let g = Gate {
+            qa: Fp3::ONE,
+            qk: -c,
+            ..Gate::default()
+        };
         self.assert_gate(g, x, x, x, what);
     }
     /// `1/x` (the prover's witness, checked: `x·w = 1`).
     fn inv(&mut self, x: Self::V, what: &'static str) -> Self::V {
         let xv = self.value(x);
         let w = self.witness(if xv == Fp3::ZERO { Fp3::ZERO } else { xv.inv() });
-        let g = Gate { qm: Fp3::ONE, qk: -Fp3::ONE, ..Gate::default() };
+        let g = Gate {
+            qm: Fp3::ONE,
+            qk: -Fp3::ONE,
+            ..Gate::default()
+        };
         self.assert_gate(g, x, w, w, what);
         w
     }

@@ -23,8 +23,7 @@ fn scan(envelope: &Envelope) -> (usize, usize) {
                 for flip in (t..total).step_by(threads) {
                     let (i, bit) = (flip / 8, 1u8 << (flip % 8));
                     bad[i] ^= bit;
-                    let ok = Envelope::from_bytes(&bad)
-                        .is_ok_and(|e| e.verify(None).is_ok());
+                    let ok = Envelope::from_bytes(&bad).is_ok_and(|e| e.verify(None).is_ok());
                     if ok {
                         eprintln!("accepted flip: byte {i} bit {}", flip % 8);
                         accepted.fetch_add(1, Ordering::Relaxed);
@@ -46,7 +45,10 @@ fn every_bit_flip_of_a_whir_hash_proof_is_rejected() {
         proof: proof.into(),
     };
     let (flips, accepted) = scan(&e);
-    println!("WHIR hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+    println!(
+        "WHIR hash.tri: {} bytes, {flips} flips, {accepted} accepted",
+        e.to_bytes().len()
+    );
     assert_eq!(accepted, 0);
 }
 
@@ -62,7 +64,10 @@ fn every_bit_flip_of_a_tensor_hash_proof_is_rejected() {
         proof: proof.into(),
     };
     let (flips, accepted) = scan(&e);
-    println!("TensorRs hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+    println!(
+        "TensorRs hash.tri: {} bytes, {flips} flips, {accepted} accepted",
+        e.to_bytes().len()
+    );
     assert_eq!(accepted, 0);
 }
 
@@ -76,7 +81,10 @@ fn every_bit_flip_of_a_shipped_device_proof_is_rejected() {
         proof,
     };
     let (flips, accepted) = scan(&e);
-    println!("device_params hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+    println!(
+        "device_params hash.tri: {} bytes, {flips} flips, {accepted} accepted",
+        e.to_bytes().len()
+    );
     assert_eq!(accepted, 0);
 }
 
@@ -86,14 +94,23 @@ fn every_bit_flip_of_a_shipped_device_proof_is_rejected() {
 #[ignore]
 fn every_bit_flip_of_a_folding_5_proof_is_rejected() {
     for pow_bits in [16, 22] {
-        let p = WhirParams { log_inv_rate: 6, folding_factor: 5, pow_bits, ..WhirParams::default() };
-        let (statement, proof) = succinct::prove::<Whir>(&p, &parse(HASH), &[7], 1_000_000).unwrap();
+        let p = WhirParams {
+            log_inv_rate: 6,
+            folding_factor: 5,
+            pow_bits,
+            ..WhirParams::default()
+        };
+        let (statement, proof) =
+            succinct::prove::<Whir>(&p, &parse(HASH), &[7], 1_000_000).unwrap();
         let e = Envelope::Succinct {
             statement: SuccinctStatement::Execution(statement),
             proof: proof.into(),
         };
         let (flips, accepted) = scan(&e);
-        println!("WHIR 1/64 k=5 pow={pow_bits} hash.tri: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+        println!(
+            "WHIR 1/64 k=5 pow={pow_bits} hash.tri: {} bytes, {flips} flips, {accepted} accepted",
+            e.to_bytes().len()
+        );
         assert_eq!(accepted, 0);
     }
 }
@@ -114,6 +131,9 @@ fn every_bit_flip_of_a_node_merkle_proof_is_rejected() {
         proof,
     };
     let (flips, accepted) = scan(&e);
-    println!("node-merkle-4: {} bytes, {flips} flips, {accepted} accepted", e.to_bytes().len());
+    println!(
+        "node-merkle-4: {} bytes, {flips} flips, {accepted} accepted",
+        e.to_bytes().len()
+    );
     assert_eq!(accepted, 0);
 }

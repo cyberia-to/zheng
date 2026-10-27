@@ -233,8 +233,13 @@ impl StateStatement {
         evidence: &StateEvidence,
     ) -> Result<(), String> {
         let (relation, public) = self.authenticated_bindings(evidence)?;
-        proof::verify(&relation.instance, proof, &self.transcript_bytes_v1(context), &public)
-            .map_err(|e| e.to_string())
+        proof::verify(
+            &relation.instance,
+            proof,
+            &self.transcript_bytes_v1(context),
+            &public,
+        )
+        .map_err(|e| e.to_string())
     }
 }
 /// The statement, relation, witness and pinned coordinates of one honest
@@ -247,7 +252,15 @@ pub(super) fn prepare(
     budget: u64,
     root_in_subject: bool,
     evidence: &StateEvidence,
-) -> Result<(StateStatement, ExecutionRelation, CCSWitness, Vec<(usize, F)>), String> {
+) -> Result<
+    (
+        StateStatement,
+        ExecutionRelation,
+        CCSWitness,
+        Vec<(usize, F)>,
+    ),
+    String,
+> {
     let state_root = evidence.root()?;
     let state = evidence.authenticate(state_root)?;
     let mut statement = StateStatement {

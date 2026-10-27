@@ -56,15 +56,24 @@ fn tree(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
     if digests.len() >= perm::BACKEND_MIN && on_device() {
         // every level on the device in one pass (no permutation batches)
         let raw: Vec<[u64; 4]> = digests.iter().map(|d| d.map(|x| x.as_u64())).collect();
-        if let Some(lv) = lens::rspcs::backend::current().merkle_levels(&raw, &arity.levels(log), perm::NODE_TAG) {
+        if let Some(lv) =
+            lens::rspcs::backend::current().merkle_levels(&raw, &arity.levels(log), perm::NODE_TAG)
+        {
             let mut levels = vec![digests];
-            levels.extend(lv.into_iter().map(|l| l.into_iter().map(|d| d.map(Goldilocks::new)).collect()));
+            levels.extend(
+                lv.into_iter()
+                    .map(|l| l.into_iter().map(|d| d.map(Goldilocks::new)).collect()),
+            );
             return levels;
         }
     }
     let mut levels = vec![digests];
     for a in arity.levels(log) {
-        let next = if a == 4 { parents4(levels.last().expect("level")) } else { parents(levels.last().expect("level")) };
+        let next = if a == 4 {
+            parents4(levels.last().expect("level"))
+        } else {
+            parents(levels.last().expect("level"))
+        };
         levels.push(next);
     }
     levels
@@ -75,14 +84,24 @@ fn tree(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
 /// order. A streamed word keeps no leaf level (`levels[0]` empty): its
 /// leaf-level siblings come from `leaf` (recomputed from the
 /// coefficients).
-fn path_of(levels: &[Vec<Digest>], arity: Arity, j: usize, log: usize, leaf: impl Fn(usize) -> Digest) -> Vec<Digest> {
+fn path_of(
+    levels: &[Vec<Digest>],
+    arity: Arity,
+    j: usize,
+    log: usize,
+    leaf: impl Fn(usize) -> Digest,
+) -> Vec<Digest> {
     let mut path = Vec::with_capacity(arity.path_len(log));
     let mut idx = j;
     for (li, (level, a)) in levels.iter().zip(arity.levels(log)).enumerate() {
         let base = idx & !(a - 1);
         for c in base..base + a {
             if c != idx {
-                path.push(if li == 0 && level.is_empty() { leaf(c) } else { level[c] });
+                path.push(if li == 0 && level.is_empty() {
+                    leaf(c)
+                } else {
+                    level[c]
+                });
             }
         }
         idx /= a;
@@ -102,11 +121,22 @@ fn drop_leaf_level(levels: &mut [Vec<Digest>], layout: LeafLayout) {
 /// `code`: a held word's codeword, coset-major ([`Kept`]); `None` for a
 /// streamed word.
 enum Data {
-    Base { evals: Vec<Goldilocks>, coeffs: Vec<Goldilocks>, code: Option<Kept> },
-    Ext { evals: Vec<Fp3>, coeffs: Vec<Fp3>, code: Option<Kept> },
+    Base {
+        evals: Vec<Goldilocks>,
+        coeffs: Vec<Goldilocks>,
+        code: Option<Kept>,
+    },
+    Ext {
+        evals: Vec<Fp3>,
+        coeffs: Vec<Fp3>,
+        code: Option<Kept>,
+    },
     /// A word committed from its coefficients alone (a WHIR round's
     /// folded function): no evaluation table.
-    Coeffs { coeffs: Vec<Fp3>, code: Option<Kept> },
+    Coeffs {
+        coeffs: Vec<Fp3>,
+        code: Option<Kept>,
+    },
 }
 
 /// A committed word: message, codeword and tree.
@@ -130,7 +160,9 @@ pub struct LeafOpening {
 }
 
 fn par_chunks<T: Send, F: Fn(usize, &mut [T]) + Sync>(v: &mut [T], f: F) {
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(16);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(16);
     let chunk = v.len().div_ceil(threads).max(1);
     std::thread::scope(|s| {
         for (i, c) in v.chunks_mut(chunk).enumerate() {
@@ -143,13 +175,24 @@ fn par_chunks<T: Send, F: Fn(usize, &mut [T]) + Sync>(v: &mut [T], f: F) {
 /// Leaf digests of `leaves` leaves of `width` symbols each (`ext`: Fp3
 /// symbols), `symbol(j, t)` the `t`-th symbol of leaf `j` — the sponge of
 /// [`leaf_digest`], batched, on this thread.
-pub(crate) fn hash_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3) -> Vec<Digest> {
+pub(crate) fn hash_leaves(
+    leaves: usize,
+    width: usize,
+    ext: bool,
+    symbol: impl Fn(usize, usize) -> Fp3,
+) -> Vec<Digest> {
     hash_leaves_with(leaves, width, ext, symbol, false)
 }
 
 /// [`hash_leaves`]; `remember`: keep the permutations for the verifier
 /// ([`perm::permute_many_remember`]).
-pub(crate) fn hash_leaves_with(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3, remember: bool) -> Vec<Digest> {
+pub(crate) fn hash_leaves_with(
+    leaves: usize,
+    width: usize,
+    ext: bool,
+    symbol: impl Fn(usize, usize) -> Fp3,
+    remember: bool,
+) -> Vec<Digest> {
     let lanes: Vec<usize> = if ext { vec![3; width] } else { vec![1; width] };
     // block boundaries: items never straddle the rate
     let mut blocks: Vec<Vec<usize>> = vec![vec![]];
@@ -231,7 +274,12 @@ fn leaf_blocks(width: usize, ext: bool) -> Vec<Vec<usize>> {
 /// [`hash_leaves`] in one call to the prover backend's sponge: the rate
 /// lanes of every leaf's blocks laid out in threads, the sponges run
 /// together.
-fn backend_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3 + Sync) -> Vec<Digest> {
+fn backend_leaves(
+    leaves: usize,
+    width: usize,
+    ext: bool,
+    symbol: impl Fn(usize, usize) -> Fp3 + Sync,
+) -> Vec<Digest> {
     let blocks = leaf_blocks(width, ext);
     let per = blocks.len() * RATE;
     let mut lanes = vec![0u64; leaves * per];
@@ -274,7 +322,12 @@ fn backend_leaves(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize,
 }
 
 /// [`hash_leaves`] on every core (or the prover backend's device).
-fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, usize) -> Fp3 + Sync) -> Vec<Digest> {
+fn leaf_digests(
+    leaves: usize,
+    width: usize,
+    ext: bool,
+    symbol: impl Fn(usize, usize) -> Fp3 + Sync,
+) -> Vec<Digest> {
     if leaves >= perm::BACKEND_MIN && on_device() {
         return backend_leaves(leaves, width, ext, symbol);
     }
@@ -290,14 +343,25 @@ fn leaf_digests(leaves: usize, width: usize, ext: bool, symbol: impl Fn(usize, u
 /// device takes groups of cosets, the CPU single cosets, from one
 /// counter; with `keep` the codeword comes back too (a held word: one
 /// pass, the device's coset values copied out).
-fn coset_commit(members: &[Coeffs<'_>], layout: LeafLayout, keep: bool) -> (Vec<Digest>, Option<Kept>) {
+fn coset_commit(
+    members: &[Coeffs<'_>],
+    layout: LeafLayout,
+    keep: bool,
+) -> (Vec<Digest>, Option<Kept>) {
     let ext = members[0].is_ext();
     let device = on_device().then(|| {
         let mut init = [0u64; WIDTH];
         init[RATE] = tag::LEAF;
         (init, RATE)
     });
-    stream::commit(members, layout.log_domain, layout.log_width, device, |leaves, width, sym| hash_leaves(leaves, width, ext, sym), keep)
+    stream::commit(
+        members,
+        layout.log_domain,
+        layout.log_width,
+        device,
+        |leaves, width, sym| hash_leaves(leaves, width, ext, sym),
+        keep,
+    )
 }
 
 /// Leaf digests of members streamed coset by coset ([`stream`]).
@@ -310,7 +374,15 @@ fn held_code(c: Coeffs<'_>, layout: LeafLayout) -> Option<Kept> {
     if streamed(layout) {
         return None;
     }
-    stream::commit(&[c], layout.log_domain, layout.log_width, None, |leaves, _, _| vec![[Goldilocks::ZERO; 4]; leaves], true).1
+    stream::commit(
+        &[c],
+        layout.log_domain,
+        layout.log_width,
+        None,
+        |leaves, _, _| vec![[Goldilocks::ZERO; 4]; leaves],
+        true,
+    )
+    .1
 }
 
 fn parents4(level: &[Digest]) -> Vec<Digest> {
@@ -357,7 +429,10 @@ thread_local! {
 fn mobius_par<T: Copy + Send + Sync + core::ops::SubAssign>(a: &mut [T]) {
     let n = a.len();
     assert!(n.is_power_of_two());
-    let threads = std::thread::available_parallelism().map_or(1, |x| x.get()).min(16).next_power_of_two();
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |x| x.get())
+        .min(16)
+        .next_power_of_two();
     if n < 1 << 16 || threads == 1 {
         let mut step = 1;
         while step < n {
@@ -422,12 +497,32 @@ impl Word {
     pub fn member_base_streamed(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
         let mut coeffs = evals.to_vec();
         mobius_par(&mut coeffs);
-        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code: None }, levels: Vec::new(), arity: Arity::Two }
+        Self {
+            num_vars: evals.len().trailing_zeros() as usize,
+            layout,
+            data: Data::Base {
+                evals: evals.to_vec(),
+                coeffs,
+                code: None,
+            },
+            levels: Vec::new(),
+            arity: Arity::Two,
+        }
     }
     pub fn member_ext_streamed(layout: LeafLayout, evals: &[Fp3]) -> Self {
         let mut coeffs = evals.to_vec();
         mobius_par(&mut coeffs);
-        Self { num_vars: evals.len().trailing_zeros() as usize, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code: None }, levels: Vec::new(), arity: Arity::Two }
+        Self {
+            num_vars: evals.len().trailing_zeros() as usize,
+            layout,
+            data: Data::Ext {
+                evals: evals.to_vec(),
+                coeffs,
+                code: None,
+            },
+            levels: Vec::new(),
+            arity: Arity::Two,
+        }
     }
 }
 
@@ -435,10 +530,18 @@ impl Word {
     /// Commit a word whose data has no codeword yet: leaves (and a held
     /// word's codeword) in one pass, then the tree.
     fn build_a(num_vars: usize, layout: LeafLayout, data: Data, arity: Arity) -> Self {
-        let mut w = Self { num_vars, layout, data, levels: Vec::new(), arity };
+        let mut w = Self {
+            num_vars,
+            layout,
+            data,
+            levels: Vec::new(),
+            arity,
+        };
         let (digests, kept) = coset_commit(&[w.coeff_ref()], layout, !streamed(layout));
         match &mut w.data {
-            Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => *code = kept,
+            Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => {
+                *code = kept
+            }
         }
         w.levels = tree(digests, arity);
         drop_leaf_level(&mut w.levels, layout);
@@ -460,7 +563,17 @@ impl Word {
         let mut coeffs = evals.to_vec();
         mobius_par(&mut coeffs);
         let code = held_code(Coeffs::Base(&coeffs), layout);
-        Self { num_vars, layout, data: Data::Base { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
+        Self {
+            num_vars,
+            layout,
+            data: Data::Base {
+                evals: evals.to_vec(),
+                coeffs,
+                code,
+            },
+            levels: Vec::new(),
+            arity: Arity::Two,
+        }
     }
 
     /// An Fp3 word without its own tree (a member of a [`Group`]).
@@ -470,7 +583,17 @@ impl Word {
         let mut coeffs = evals.to_vec();
         mobius_par(&mut coeffs);
         let code = held_code(Coeffs::Ext(&coeffs), layout);
-        Self { num_vars, layout, data: Data::Ext { evals: evals.to_vec(), coeffs, code }, levels: Vec::new(), arity: Arity::Two }
+        Self {
+            num_vars,
+            layout,
+            data: Data::Ext {
+                evals: evals.to_vec(),
+                coeffs,
+                code,
+            },
+            levels: Vec::new(),
+            arity: Arity::Two,
+        }
     }
 
     /// [`Self::commit_base`] under a tree of `arity`.
@@ -479,7 +602,16 @@ impl Word {
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
         mobius_par(&mut coeffs);
-        Self::build_a(num_vars, layout, Data::Base { evals: evals.to_vec(), coeffs, code: None }, arity)
+        Self::build_a(
+            num_vars,
+            layout,
+            Data::Base {
+                evals: evals.to_vec(),
+                coeffs,
+                code: None,
+            },
+            arity,
+        )
     }
 
     pub fn commit_base(layout: LeafLayout, evals: &[Goldilocks]) -> Self {
@@ -497,7 +629,16 @@ impl Word {
         assert!(evals.len().is_power_of_two() && layout.log_domain as usize > num_vars);
         let mut coeffs = evals.to_vec();
         mobius_par(&mut coeffs);
-        Self::build_a(num_vars, layout, Data::Ext { evals: evals.to_vec(), coeffs, code: None }, arity)
+        Self::build_a(
+            num_vars,
+            layout,
+            Data::Ext {
+                evals: evals.to_vec(),
+                coeffs,
+                code: None,
+            },
+            arity,
+        )
     }
 
     /// Commit an Fp3 polynomial given by its `2^ℓ` monomial coefficients.
@@ -522,8 +663,16 @@ impl Word {
     pub fn bytes(&self) -> usize {
         let code = |c: &Option<Kept>| c.as_ref().map_or(0, |k| 8 * k.planes.len());
         let data = match &self.data {
-            Data::Base { evals, coeffs, code: c } => 8 * (evals.len() + coeffs.len()) + code(c),
-            Data::Ext { evals, coeffs, code: c } => 24 * (evals.len() + coeffs.len()) + code(c),
+            Data::Base {
+                evals,
+                coeffs,
+                code: c,
+            } => 8 * (evals.len() + coeffs.len()) + code(c),
+            Data::Ext {
+                evals,
+                coeffs,
+                code: c,
+            } => 24 * (evals.len() + coeffs.len()) + code(c),
             Data::Coeffs { coeffs, code: c } => 24 * coeffs.len() + code(c),
         };
         data + 32 * self.levels.iter().map(Vec::len).sum::<usize>()
@@ -534,7 +683,9 @@ impl Word {
     /// Whether the codeword is held (else streamed: recomputed per leaf).
     fn held(&self) -> bool {
         match &self.data {
-            Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => code.is_some(),
+            Data::Base { code, .. } | Data::Ext { code, .. } | Data::Coeffs { code, .. } => {
+                code.is_some()
+            }
         }
     }
     /// The table as committed: base or Fp3 entries (`None`: a word
@@ -581,14 +732,21 @@ impl Word {
         let g = Goldilocks::new;
         match &self.data {
             Data::Base { code: Some(k), .. } => Fp3::from_base(g(k.limb(0, s))),
-            Data::Ext { code: Some(k), .. } | Data::Coeffs { code: Some(k), .. } => Fp3::new(g(k.limb(0, s)), g(k.limb(1, s)), g(k.limb(2, s))),
+            Data::Ext { code: Some(k), .. } | Data::Coeffs { code: Some(k), .. } => {
+                Fp3::new(g(k.limb(0, s)), g(k.limb(1, s)), g(k.limb(2, s)))
+            }
             _ => stream::symbol(self.coeff_ref(), self.layout.log_domain, s),
         }
     }
     /// The symbols of leaf `j` in coset order.
     fn leaf_symbols(&self, j: usize) -> Vec<Fp3> {
         if !self.held() {
-            return stream::leaf(self.coeff_ref(), self.layout.log_domain, self.layout.log_width, j);
+            return stream::leaf(
+                self.coeff_ref(),
+                self.layout.log_domain,
+                self.layout.log_width,
+                j,
+            );
         }
         let leaves = 1usize << self.layout.log_leaves();
         let width = 1usize << self.layout.log_width;
@@ -602,7 +760,11 @@ impl Word {
             let syms = self.leaf_symbols(c);
             hash_leaves(1, syms.len(), ext, |_, t| syms[t])[0]
         };
-        LeafOpening { symbols: self.leaf_symbols(j), path: path_of(&self.levels, self.arity, j, log, leaf), leaf: Some(j) }
+        LeafOpening {
+            symbols: self.leaf_symbols(j),
+            path: path_of(&self.levels, self.arity, j, log, leaf),
+            leaf: Some(j),
+        }
     }
 }
 
@@ -626,7 +788,12 @@ impl Group {
         if !words[0].held() {
             levels[0] = Vec::new();
         }
-        Self { words, layout, levels, arity }
+        Self {
+            words,
+            layout,
+            levels,
+            arity,
+        }
     }
     /// [`Self::new`], the tree read from the key cache when it holds one
     /// for these members (`keycache`), else committed and stored there.
@@ -645,22 +812,35 @@ impl Group {
             (l.log_domain, l.log_width, arity == Arity::Four, words.len()).hash(&mut h);
             for w in &words {
                 match &w.data {
-                    Data::Base { coeffs, .. } => coeffs.iter().for_each(|x| x.as_u64().hash(&mut h)),
-                    Data::Ext { coeffs, .. } | Data::Coeffs { coeffs, .. } => coeffs.iter().for_each(|x| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()].hash(&mut h)),
+                    Data::Base { coeffs, .. } => {
+                        coeffs.iter().for_each(|x| x.as_u64().hash(&mut h))
+                    }
+                    Data::Ext { coeffs, .. } | Data::Coeffs { coeffs, .. } => coeffs
+                        .iter()
+                        .for_each(|x| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()].hash(&mut h)),
                 }
             }
         });
         let layout = words[0].layout;
         if let Some(levels) = super::keycache::load(dir, id) {
             let leaves = 1usize << layout.log_leaves();
-            let want: Vec<usize> = core::iter::once(if words[0].held() { leaves } else { 0 })
-                .chain(arity.levels(layout.log_leaves() as usize).iter().scan(leaves, |n, a| {
-                    *n /= a;
-                    Some(*n)
-                }))
-                .collect();
+            let want: Vec<usize> =
+                core::iter::once(if words[0].held() { leaves } else { 0 })
+                    .chain(arity.levels(layout.log_leaves() as usize).iter().scan(
+                        leaves,
+                        |n, a| {
+                            *n /= a;
+                            Some(*n)
+                        },
+                    ))
+                    .collect();
             if levels.iter().map(Vec::len).collect::<Vec<_>>() == want {
-                return Self { words, layout, levels, arity };
+                return Self {
+                    words,
+                    layout,
+                    levels,
+                    arity,
+                };
             }
         }
         let g = Self::new(words, arity);
@@ -671,14 +851,21 @@ impl Group {
     fn digests(words: &[&Word]) -> Vec<Digest> {
         let layout = words[0].layout;
         let ext = words[0].is_ext();
-        assert!(words.iter().all(|w| w.layout == layout && w.is_ext() == ext), "group members");
+        assert!(
+            words
+                .iter()
+                .all(|w| w.layout == layout && w.is_ext() == ext),
+            "group members"
+        );
         if !words[0].held() {
             let members: Vec<Coeffs<'_>> = words.iter().map(|w| w.coeff_ref()).collect();
             return stream_digests(&members, layout);
         }
         let leaves = 1usize << layout.log_leaves();
         let width = 1usize << layout.log_width;
-        leaf_digests(leaves, width * words.len(), ext, |j, t| words[t / width].symbol(j + (t % width) * leaves))
+        leaf_digests(leaves, width * words.len(), ext, |j, t| {
+            words[t / width].symbol(j + (t % width) * leaves)
+        })
     }
     pub fn root(&self) -> Digest {
         self.levels.last().expect("root")[0]
@@ -692,7 +879,11 @@ impl Group {
             let syms: Vec<Fp3> = self.words.iter().flat_map(|w| w.leaf_symbols(c)).collect();
             hash_leaves(1, syms.len(), ext, |_, t| syms[t])[0]
         };
-        LeafOpening { symbols, path: path_of(&self.levels, self.arity, j, log, leaf), leaf: Some(j) }
+        LeafOpening {
+            symbols,
+            path: path_of(&self.levels, self.arity, j, log, leaf),
+            leaf: Some(j),
+        }
     }
 }
 
@@ -709,12 +900,22 @@ pub fn verify_leaf<O: Ops>(
     root: [O::V; 4],
     what: &'static str,
 ) -> Vec<O::V> {
-    assert_eq!(arity.path_len(bits.len()), opening.path.len(), "path length");
+    assert_eq!(
+        arity.path_len(bits.len()),
+        opening.path.len(),
+        "path length"
+    );
     let mut sp = Sponge::new(o, tag::LEAF);
     let syms: Vec<O::V> = opening
         .symbols
         .iter()
-        .map(|&x| if ext { sp.absorb_free_ext(o, x) } else { sp.absorb_free(o, x.c0) })
+        .map(|&x| {
+            if ext {
+                sp.absorb_free_ext(o, x)
+            } else {
+                sp.absorb_free(o, x.c0)
+            }
+        })
         .collect();
     if sp.has_pending() {
         sp.flush(o);
@@ -762,15 +963,31 @@ mod tests {
     use lens::rspcs::field::ml_eval_ext;
 
     fn layout(num_vars: usize) -> LeafLayout {
-        LeafLayout { log_domain: num_vars as u32 + 2, log_width: 2 }
+        LeafLayout {
+            log_domain: num_vars as u32 + 2,
+            log_width: 2,
+        }
     }
 
     #[test]
     fn a_streamed_word_commits_and_opens_as_the_held_one() {
         let n = 8;
-        let lay = LeafLayout { log_domain: n as u32 + 4, log_width: 3 };
-        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 17 + 3)).collect();
-        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(5 * i + 1), Goldilocks::new(i ^ 9))).collect();
+        let lay = LeafLayout {
+            log_domain: n as u32 + 4,
+            log_width: 3,
+        };
+        let base: Vec<Goldilocks> = (0..1u64 << n)
+            .map(|i| Goldilocks::new(i * 17 + 3))
+            .collect();
+        let ext: Vec<Fp3> = (0..1u64 << n)
+            .map(|i| {
+                Fp3::new(
+                    Goldilocks::new(i),
+                    Goldilocks::new(5 * i + 1),
+                    Goldilocks::new(i ^ 9),
+                )
+            })
+            .collect();
         let build = |force: bool| {
             FORCE_STREAM.with(|f| f.set(force));
             let ws = vec![
@@ -779,7 +996,10 @@ mod tests {
                 Word::commit_ext(lay, &ext),
                 Word::commit_coeffs(lay, ext.clone(), Arity::Four),
             ];
-            let g = Group::new(vec![Word::member_ext(lay, &ext), Word::member_ext(lay, &ext)], Arity::Four);
+            let g = Group::new(
+                vec![Word::member_ext(lay, &ext), Word::member_ext(lay, &ext)],
+                Arity::Four,
+            );
             FORCE_STREAM.with(|f| f.set(false));
             (ws, g)
         };
@@ -806,39 +1026,80 @@ mod tests {
         fn name(&self) -> &'static str {
             "device-test"
         }
-        fn coset_leaves(&self, job: &lens::rspcs::backend::CosetLeaves<'_>, cosets: core::ops::Range<usize>) -> Option<Vec<[u64; 4]>> {
+        fn coset_leaves(
+            &self,
+            job: &lens::rspcs::backend::CosetLeaves<'_>,
+            cosets: core::ops::Range<usize>,
+        ) -> Option<Vec<[u64; 4]>> {
             Some(lens::rspcs::backend::coset_leaves_reference(job, cosets))
         }
-        fn coset_leaves_kept(&self, job: &lens::rspcs::backend::CosetLeaves<'_>, cosets: core::ops::Range<usize>, values: &mut [u64]) -> Option<Vec<[u64; 4]>> {
-            values.copy_from_slice(&lens::rspcs::backend::coset_values_reference(job, cosets.clone()));
+        fn coset_leaves_kept(
+            &self,
+            job: &lens::rspcs::backend::CosetLeaves<'_>,
+            cosets: core::ops::Range<usize>,
+            values: &mut [u64],
+        ) -> Option<Vec<[u64; 4]>> {
+            values.copy_from_slice(&lens::rspcs::backend::coset_values_reference(
+                job,
+                cosets.clone(),
+            ));
             Some(lens::rspcs::backend::coset_leaves_reference(job, cosets))
         }
-        fn merkle_levels(&self, leaves: &[[u64; 4]], arities: &[usize], tag: u64) -> Option<Vec<Vec<[u64; 4]>>> {
-            Some(lens::rspcs::backend::merkle_levels_reference(leaves, arities, tag))
+        fn merkle_levels(
+            &self,
+            leaves: &[[u64; 4]],
+            arities: &[usize],
+            tag: u64,
+        ) -> Option<Vec<Vec<[u64; 4]>>> {
+            Some(lens::rspcs::backend::merkle_levels_reference(
+                leaves, arities, tag,
+            ))
         }
     }
 
     #[test]
     fn device_paths_give_the_cpu_digests() {
         let n = 8;
-        let lay = LeafLayout { log_domain: n as u32 + 7, log_width: 3 };
-        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 77 + 5)).collect();
-        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(i * i), Goldilocks::new(11))).collect();
+        let lay = LeafLayout {
+            log_domain: n as u32 + 7,
+            log_width: 3,
+        };
+        let base: Vec<Goldilocks> = (0..1u64 << n)
+            .map(|i| Goldilocks::new(i * 77 + 5))
+            .collect();
+        let ext: Vec<Fp3> = (0..1u64 << n)
+            .map(|i| {
+                Fp3::new(
+                    Goldilocks::new(i),
+                    Goldilocks::new(i * i),
+                    Goldilocks::new(11),
+                )
+            })
+            .collect();
         let (wb, wb2) = (Word::member_base(lay, &base), Word::member_base(lay, &base));
         let (we, we2) = (Word::member_ext(lay, &ext), Word::member_ext(lay, &ext));
         let mut want = Vec::new();
         for (a, b) in [(&wb, &wb2), (&we, &we2)] {
-            want.push((Group::digests(&[a, b]), stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay)));
+            want.push((
+                Group::digests(&[a, b]),
+                stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay),
+            ));
         }
         let leaves: Vec<Digest> = want[0].0.clone();
-        let trees: Vec<Vec<Vec<Digest>>> = [Arity::Two, Arity::Four].iter().map(|&a| tree(leaves.clone(), a)).collect();
+        let trees: Vec<Vec<Vec<Digest>>> = [Arity::Two, Arity::Four]
+            .iter()
+            .map(|&a| tree(leaves.clone(), a))
+            .collect();
         let prev = lens::rspcs::backend::install(std::sync::Arc::new(Device));
         for (&a, t) in [Arity::Two, Arity::Four].iter().zip(&trees) {
             assert_eq!(&tree(leaves.clone(), a), t, "device tree {a:?}");
         }
         for ((a, b), (held, streamed)) in [(&wb, &wb2), (&we, &we2)].into_iter().zip(&want) {
             assert_eq!(&Group::digests(&[a, b]), held);
-            assert_eq!(&stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay), streamed);
+            assert_eq!(
+                &stream_digests(&[a.coeff_ref(), b.coeff_ref()], lay),
+                streamed
+            );
             assert_eq!(held, streamed);
         }
         lens::rspcs::backend::install(prev);
@@ -849,9 +1110,22 @@ mod tests {
     #[test]
     fn held_words_through_the_device_equal_the_cpu_s() {
         let n = 8;
-        let lay = LeafLayout { log_domain: n as u32 + 6, log_width: 2 };
-        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 13 + 1)).collect();
-        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i + 2), Goldilocks::new(i * i), Goldilocks::new(5))).collect();
+        let lay = LeafLayout {
+            log_domain: n as u32 + 6,
+            log_width: 2,
+        };
+        let base: Vec<Goldilocks> = (0..1u64 << n)
+            .map(|i| Goldilocks::new(i * 13 + 1))
+            .collect();
+        let ext: Vec<Fp3> = (0..1u64 << n)
+            .map(|i| {
+                Fp3::new(
+                    Goldilocks::new(i + 2),
+                    Goldilocks::new(i * i),
+                    Goldilocks::new(5),
+                )
+            })
+            .collect();
         let build = || {
             vec![
                 Word::commit_base_a(lay, &base, Arity::Two),
@@ -870,7 +1144,10 @@ mod tests {
             assert_eq!(a.root(), b.root());
             for s in [0, 1, 77, (1usize << lay.log_domain) - 1] {
                 assert_eq!(a.symbol(s), b.symbol(s));
-                assert_eq!(a.symbol(s), stream::symbol(a.coeff_ref(), lay.log_domain, s));
+                assert_eq!(
+                    a.symbol(s),
+                    stream::symbol(a.coeff_ref(), lay.log_domain, s)
+                );
             }
             for j in [0, 5, leaves - 1] {
                 assert_eq!(a.open(j), b.open(j));
@@ -884,8 +1161,22 @@ mod tests {
     fn a_cached_key_tree_is_the_committed_one() {
         let dir = std::env::temp_dir().join(format!("zheng-keycache-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let lay = LeafLayout { log_domain: 14, log_width: 2 };
-        let members = |s: u64| -> Vec<Word> { (0..3u64).map(|w| Word::member_base_streamed(lay, &(0..1u64 << 10).map(|i| Goldilocks::new(i * 31 + w + s)).collect::<Vec<_>>())).collect() };
+        let lay = LeafLayout {
+            log_domain: 14,
+            log_width: 2,
+        };
+        let members = |s: u64| -> Vec<Word> {
+            (0..3u64)
+                .map(|w| {
+                    Word::member_base_streamed(
+                        lay,
+                        &(0..1u64 << 10)
+                            .map(|i| Goldilocks::new(i * 31 + w + s))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect()
+        };
         for arity in [Arity::Two, Arity::Four] {
             let fresh = Group::new(members(1), arity);
             let stored = Group::new_cached_in(&dir, members(1), arity);
@@ -897,7 +1188,10 @@ mod tests {
                 assert_eq!(loaded.open(j), fresh.open(j));
             }
             // other members: another tree, never the cached one
-            assert_ne!(Group::new_cached_in(&dir, members(2), arity).root(), fresh.root());
+            assert_ne!(
+                Group::new_cached_in(&dir, members(2), arity).root(),
+                fresh.root()
+            );
         }
         // damage every file: the next build recommits (and rewrites)
         for e in std::fs::read_dir(&dir).unwrap() {
@@ -907,7 +1201,10 @@ mod tests {
             std::fs::write(&p, b).unwrap();
         }
         let fresh = Group::new(members(1), Arity::Four);
-        assert_eq!(Group::new_cached_in(&dir, members(1), Arity::Four).levels, fresh.levels);
+        assert_eq!(
+            Group::new_cached_in(&dir, members(1), Arity::Four).levels,
+            fresh.levels
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -915,8 +1212,13 @@ mod tests {
     fn the_threaded_mobius_transform_is_lens_s() {
         use lens::rspcs::field::{mobius_base, mobius_ext};
         for log in [3usize, 16, 17, 20] {
-            let b: Vec<Goldilocks> = (0..1u64 << log).map(|i| Goldilocks::new(i.wrapping_mul(0x9e37_79b9) ^ 77)).collect();
-            let e: Vec<Fp3> = b.iter().map(|&x| Fp3::new(x, x + Goldilocks::ONE, x * x)).collect();
+            let b: Vec<Goldilocks> = (0..1u64 << log)
+                .map(|i| Goldilocks::new(i.wrapping_mul(0x9e37_79b9) ^ 77))
+                .collect();
+            let e: Vec<Fp3> = b
+                .iter()
+                .map(|&x| Fp3::new(x, x + Goldilocks::ONE, x * x))
+                .collect();
             let (mut b1, mut b2, mut e1, mut e2) = (b.clone(), b, e.clone(), e);
             mobius_base(&mut b1);
             mobius_par(&mut b2);
@@ -930,9 +1232,22 @@ mod tests {
     #[test]
     fn streamed_leaf_digests_equal_the_held_codeword_s() {
         let n = 8;
-        let lay = LeafLayout { log_domain: n as u32 + 4, log_width: 3 };
-        let base: Vec<Goldilocks> = (0..1u64 << n).map(|i| Goldilocks::new(i * 31 + 2)).collect();
-        let ext: Vec<Fp3> = (0..1u64 << n).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(i + 9), Goldilocks::new(3))).collect();
+        let lay = LeafLayout {
+            log_domain: n as u32 + 4,
+            log_width: 3,
+        };
+        let base: Vec<Goldilocks> = (0..1u64 << n)
+            .map(|i| Goldilocks::new(i * 31 + 2))
+            .collect();
+        let ext: Vec<Fp3> = (0..1u64 << n)
+            .map(|i| {
+                Fp3::new(
+                    Goldilocks::new(i),
+                    Goldilocks::new(i + 9),
+                    Goldilocks::new(3),
+                )
+            })
+            .collect();
         let (wb, wb2) = (Word::member_base(lay, &base), Word::member_base(lay, &base));
         let (we, we2) = (Word::member_ext(lay, &ext), Word::member_ext(lay, &ext));
         for (a, b) in [(&wb, &wb2), (&we, &we2)] {
@@ -949,7 +1264,11 @@ mod tests {
             let evals: Vec<Fp3> = (0..1u64 << n)
                 .map(|i| {
                     if ext {
-                        Fp3::new(Goldilocks::new(i), Goldilocks::new(i * 3 + 1), Goldilocks::new(7))
+                        Fp3::new(
+                            Goldilocks::new(i),
+                            Goldilocks::new(i * 3 + 1),
+                            Goldilocks::new(7),
+                        )
                     } else {
                         Fp3::from_base(Goldilocks::new(i * i + 5))
                     }

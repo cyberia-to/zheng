@@ -7,8 +7,8 @@ use nebu::{Fp3, Goldilocks};
 
 use super::{Config, Functional, HidingParams, HidingProof, SALT};
 use crate::execution::veil::coins::{Coins, label};
-use crate::par;
 use crate::multilinear::eq_evals;
+use crate::par;
 
 /// Prover state between commit and open.
 pub(crate) struct Committed {
@@ -39,20 +39,27 @@ pub(crate) fn commit(
     let lap = crate::laps::timer("veil commit");
     let config = Config::derive(params, entries.len())?;
     let (k, big_k) = (config.k, config.big_k());
-    lap(&format!("shape k={k} rows={} log_n={} queries={}", config.rows, config.log_n, config.queries));
+    lap(&format!(
+        "shape k={k} rows={} log_n={} queries={}",
+        config.rows, config.log_n, config.queries
+    ));
     // data rows with their padding ν_i, in threads (row i's ν_i is
     // ROW_PAD elements i·k .. (i + 1)·k)
     let mut coeffs: Vec<Vec<Goldilocks>> = vec![Vec::new(); config.total_rows()];
-    par::chunks_mut(&mut coeffs[..config.rows], (1 << 12) / k + 1, |first, rows| {
-        for (i, p) in rows.iter_mut().enumerate() {
-            let row = first + i;
-            *p = vec![Goldilocks::ZERO; big_k];
-            let start = (row * k).min(entries.len());
-            let end = ((row + 1) * k).min(entries.len());
-            p[..end - start].copy_from_slice(&entries[start..end]);
-            coins.fill_at(label::ROW_PAD, row * k, &mut p[k..]);
-        }
-    });
+    par::chunks_mut(
+        &mut coeffs[..config.rows],
+        (1 << 12) / k + 1,
+        |first, rows| {
+            for (i, p) in rows.iter_mut().enumerate() {
+                let row = first + i;
+                *p = vec![Goldilocks::ZERO; big_k];
+                let start = (row * k).min(entries.len());
+                let end = ((row + 1) * k).min(entries.len());
+                p[..end - start].copy_from_slice(&entries[start..end]);
+                coins.fill_at(label::ROW_PAD, row * k, &mut p[k..]);
+            }
+        },
+    );
     let mut m_b = coins.bases(label::MASK_B, k - 1);
     m_b.resize(big_k, Goldilocks::ZERO);
     coeffs[config.rows] = coins.bases(label::MASK_A, big_k);
@@ -65,19 +72,25 @@ pub(crate) fn commit(
     // the backend's per-row path
     let encoded: Vec<Vec<Goldilocks>> = if par::threads() > 1 {
         par::ranges(coeffs.len(), 1, |r| {
-            r.map(|i| encode_base_with(&coeffs[i], config.log_n, false)).collect::<Vec<_>>()
+            r.map(|i| encode_base_with(&coeffs[i], config.log_n, false))
+                .collect::<Vec<_>>()
         })
         .into_iter()
         .flatten()
         .collect()
     } else {
-        coeffs.iter().map(|p| encode_base_with(p, config.log_n, true)).collect()
+        coeffs
+            .iter()
+            .map(|p| encode_base_with(p, config.log_n, true))
+            .collect()
     };
     lap("encode");
     let n = config.n();
     let flat = coins.bases(label::SALT, n * SALT);
-    let salts: Vec<[Goldilocks; SALT]> =
-        flat.chunks_exact(SALT).map(|s| core::array::from_fn(|i| s[i])).collect();
+    let salts: Vec<[Goldilocks; SALT]> = flat
+        .chunks_exact(SALT)
+        .map(|s| core::array::from_fn(|i| s[i]))
+        .collect();
     lap("salts");
     let tree = Tree::build(n, |j| {
         let column: Vec<Goldilocks> = encoded.iter().map(|row| row[j]).collect();
@@ -100,7 +113,13 @@ pub(crate) fn commit(
 }
 
 /// Transcript prologue shared by prover and verifier.
-pub(crate) fn prologue(t: &mut Transcript, params: &HidingParams, entries: usize, root: &Commitment, value: Fp3) {
+pub(crate) fn prologue(
+    t: &mut Transcript,
+    params: &HidingParams,
+    entries: usize,
+    root: &Commitment,
+    value: Fp3,
+) {
     t.absorb(b"zheng-veil-hiding-v1");
     t.absorb(&params.header());
     t.absorb_u64(entries as u64);

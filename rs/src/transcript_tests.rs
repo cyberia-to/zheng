@@ -115,12 +115,14 @@ fn sumcheck_poly_encode_decode_roundtrip() {
 
 #[test]
 fn commitment_domain_separation() {
-    use lens::{brakedown::Brakedown, Lens, MultilinearPoly};
+    use lens::{Lens, MultilinearPoly, brakedown::Brakedown};
 
     // build a real commitment via lens so both sides use the same hemera version
     let poly = MultilinearPoly::new(vec![
-        Goldilocks::new(1), Goldilocks::new(2),
-        Goldilocks::new(3), Goldilocks::new(4),
+        Goldilocks::new(1),
+        Goldilocks::new(2),
+        Goldilocks::new(3),
+        Goldilocks::new(4),
     ]);
     let c = Brakedown::commit(&poly);
 

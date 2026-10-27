@@ -84,7 +84,12 @@ impl PrivateStateStatement {
         statement: &[u8],
     ) -> Result<(), String> {
         let prepared = self.prepare(evidence)?;
-        veil::verify_relation(&prepared.relation.instance, proof, statement, &coordinates(&prepared))
+        veil::verify_relation(
+            &prepared.relation.instance,
+            proof,
+            statement,
+            &coordinates(&prepared),
+        )
     }
     /// Verify a MITH proof made under `statement` bytes, after
     /// authenticating `evidence` under this statement's root.
@@ -95,13 +100,22 @@ impl PrivateStateStatement {
         statement: &[u8],
     ) -> Result<(), String> {
         let prepared = self.prepare(evidence)?;
-        zk::verify(&prepared.relation.instance, proof, statement, &coordinates(&prepared))
-            .map_err(|e| e.to_string())
+        zk::verify(
+            &prepared.relation.instance,
+            proof,
+            statement,
+            &coordinates(&prepared),
+        )
+        .map_err(|e| e.to_string())
     }
 }
 
 fn coordinates(prepared: &PreparedExecution) -> Vec<(usize, F)> {
-    prepared.public_coordinates.iter().map(|&(i, v)| (i, F::new(v))).collect()
+    prepared
+        .public_coordinates
+        .iter()
+        .map(|&(i, v)| (i, F::new(v)))
+        .collect()
 }
 
 /// All ten public dimensions are fixed by the verifier before witness generation.

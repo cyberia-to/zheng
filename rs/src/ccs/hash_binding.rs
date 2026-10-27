@@ -34,7 +34,7 @@
 use nebu::Goldilocks;
 use nox::TraceRow;
 
-use super::particle::{replay_states, HashAux};
+use super::particle::{HashAux, replay_states};
 use super::selector;
 use super::verifier_steps::eq_step;
 use crate::types::{CCSInstance, CCSWitness, CommitError};
@@ -113,7 +113,10 @@ pub fn build_hash_binding_steps_from_trace(
         for j in 0..4 {
             steps.push(eq_step(last[4 + j], reg(sq, 10 + j)));
         }
-        steps.push(eq_step(Goldilocks::new((BLOCK_ROWS - 1) as u64), reg(sq, 14)));
+        steps.push(eq_step(
+            Goldilocks::new((BLOCK_ROWS - 1) as u64),
+            reg(sq, 14),
+        ));
         // No budget binding: specs/trace.md claims r9 = r8 - 25 on the
         // squeeze row, but nox records r8 before evaluating the hash body
         // sub-formula, whose cost varies (observed r8=100, r9=74 for

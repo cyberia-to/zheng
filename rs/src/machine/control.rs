@@ -68,7 +68,9 @@ pub(crate) fn constrain<T: Num>(m: &Machine, k: &KConst<T>, v: &Vals<'_, T>, out
     out.push(term * nmach);
     out.push(l[K_PAD] * nmach);
     // CYC carries through every machine step (EVAL adds the cost)
-    let cost = OPS.iter().fold(T::ZERO, |a, &(o, _, cst)| a + l[FLAG0 + o] * c::<T>(cst))
+    let cost = OPS
+        .iter()
+        .fold(T::ZERO, |a, &(o, _, cst)| a + l[FLAG0 + o] * c::<T>(cst))
         + l[OP_WORD] * c::<T>(WORD_COST);
     out.push((mach - term) * (n[CYC] - l[CYC] - ev * cost));
     // TERM: empty continuation, the expected output digest and cycles

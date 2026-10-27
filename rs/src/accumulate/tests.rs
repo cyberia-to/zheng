@@ -59,7 +59,13 @@ pub(crate) fn fresh(cfg: &AccConfig, rng: &mut Rng, k: usize) -> Witnessed {
 
 fn cfg(vars: usize, inputs: usize) -> AccConfig {
     let probe = AccConfig::derive(&test_params(), vars, inputs, 2 * inputs).unwrap();
-    AccConfig::derive(&test_params(), vars, inputs, probe.acc_claims() + 2 * inputs).unwrap()
+    AccConfig::derive(
+        &test_params(),
+        vars,
+        inputs,
+        probe.acc_claims() + 2 * inputs,
+    )
+    .unwrap()
 }
 
 #[test]
@@ -157,7 +163,10 @@ fn decider_rejects_a_wrong_accumulator_claim_and_wrong_value() {
         let mut bad = acc.instance.clone();
         bad.claims[j].value += Fp3::ONE;
         let mut t3 = transcript(b"d", b"", &cfg);
-        assert!(verify_decider(&cfg, &bad, &proof, &mut t3).is_err(), "claim {j}");
+        assert!(
+            verify_decider(&cfg, &bad, &proof, &mut t3).is_err(),
+            "claim {j}"
+        );
     }
     let mut p2 = proof.clone();
     p2.value += Fp3::ONE;
@@ -179,7 +188,12 @@ fn shipped_parameters_reach_128_bits_for_513_inputs() {
         assert!(bits >= MIN_BITS, "{vars}: {bits}");
         eprintln!(
             "vars {vars}: regime {:?} t {} qpow {} ood {} comb_pow(2) {} comb_pow(513) {}",
-            c.regime, c.queries, c.query_pow, c.ood, c.comb_pow_for(2), c.comb_pow_for(513)
+            c.regime,
+            c.queries,
+            c.query_pow,
+            c.ood,
+            c.comb_pow_for(2),
+            c.comb_pow_for(513)
         );
     }
 }
@@ -203,7 +217,13 @@ fn config_table() {
             let compressed = 32 + vars * 24 + 24 + c.ood * 48 + c.queries * (4 + 24);
             eprintln!(
                 "rate 1/{} vars {vars}: {:?} t {} pow {} ood {} comb_pow(3) {} claims {j} instance {wire} B (compressible to {compressed} B) bits {:.2}",
-                1u32 << r, c.regime, c.queries, c.query_pow, c.ood, c.comb_pow_for(3), c.security_bits(3, 2 * j + 4)
+                1u32 << r,
+                c.regime,
+                c.queries,
+                c.query_pow,
+                c.ood,
+                c.comb_pow_for(3),
+                c.security_bits(3, 2 * j + 4)
             );
         }
     }
@@ -217,7 +237,9 @@ fn a_decider_below_128_bits_is_refused() {
         ..WhirParams::default()
     };
     let vars = 22;
-    let bits = lens::rspcs::WhirConfig::derive(&weak, vars).unwrap().security_bits();
+    let bits = lens::rspcs::WhirConfig::derive(&weak, vars)
+        .unwrap()
+        .security_bits();
     assert!(bits < MIN_BITS, "the probe must be weak: {bits}");
     assert!(AccConfig::derive(&weak, vars, 2, 8).is_err());
 }

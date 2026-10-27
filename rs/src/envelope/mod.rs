@@ -37,25 +37,25 @@
 
 mod body;
 pub(crate) mod codec;
-mod machine;
 pub mod keys;
+mod machine;
 pub mod recursive;
-pub mod wrapped;
 mod succinct;
 #[cfg(test)]
 mod tests;
+pub mod wrapped;
 
 use crate::execution::private::PrivateStatement;
 use crate::execution::state::StateStatement;
 use crate::execution::state_evidence::StateEvidence;
-use crate::execution::zk::{self, PrivateProof};
 use crate::execution::veil::{self, VeilProof};
+use crate::execution::zk::{self, PrivateProof};
 use crate::execution::{Certificate, ExecutionStatement, verify_certificate};
 use core::fmt;
 
 pub use succinct::{
-    AnySuccinct, MAX_PROOF_BYTES as MAX_SUCCINCT_PROOF_BYTES, SuccinctStatement, proof_bytes as succinct_proof_bytes,
-    proof_from_bytes as succinct_proof_from_bytes,
+    AnySuccinct, MAX_PROOF_BYTES as MAX_SUCCINCT_PROOF_BYTES, SuccinctStatement,
+    proof_bytes as succinct_proof_bytes, proof_from_bytes as succinct_proof_from_bytes,
 };
 
 pub const MAGIC: &[u8; 8] = b"ZHENGPF1";
@@ -178,8 +178,9 @@ pub fn prove_zk(
     budget: u64,
     context: [u8; 32],
 ) -> Result<Envelope, String> {
-    let (statement, proof) =
-        veil::prove_bound(program, input, secret, budget, &|s| zk_statement_bytes(s, &context))?;
+    let (statement, proof) = veil::prove_bound(program, input, secret, budget, &|s| {
+        zk_statement_bytes(s, &context)
+    })?;
     Ok(Envelope::Zk {
         statement,
         context,
@@ -225,7 +226,10 @@ impl Envelope {
     /// another program's digest is refused right after it is read — before
     /// the proof is parsed or any key built. Other profiles carry their
     /// program and decode as [`Envelope::from_bytes`].
-    pub fn from_bytes_for(bytes: &[u8], program: &[crate::execution::NounToken]) -> Result<Self, EnvelopeError> {
+    pub fn from_bytes_for(
+        bytes: &[u8],
+        program: &[crate::execution::NounToken],
+    ) -> Result<Self, EnvelopeError> {
         Self::decode(bytes, Some(&crate::machine::program_digest(program)))
     }
 
@@ -271,7 +275,12 @@ impl Envelope {
                 statement,
                 context,
                 proof: ZkProof::Veil(proof),
-            } => veil::verify_bound(statement, proof, None, &zk_statement_bytes(statement, context)),
+            } => veil::verify_bound(
+                statement,
+                proof,
+                None,
+                &zk_statement_bytes(statement, context),
+            ),
             Self::Zk {
                 statement,
                 context,
@@ -311,19 +320,30 @@ impl Envelope {
     /// init entries, its digest in every transcript). Other profiles carry
     /// their program: their statement's must be `program`, then
     /// [`Envelope::verify`].
-    pub fn verify_program(&self, program: &[crate::execution::NounToken], state: Option<&StateEvidence>) -> Result<(), String> {
+    pub fn verify_program(
+        &self,
+        program: &[crate::execution::NounToken],
+        state: Option<&StateEvidence>,
+    ) -> Result<(), String> {
         match self {
             Self::Machine {
                 params,
                 statement,
                 proof,
-            } => crate::machine::verify_with_state(&statement.with_program(program)?, proof, params, state),
+            } => crate::machine::verify_with_state(
+                &statement.with_program(program)?,
+                proof,
+                params,
+                state,
+            ),
             Self::Recursive {
                 params,
                 statement,
                 proof,
             } => recursive::verify(params, &statement.with_program(program)?, proof, state),
-            Self::Wrapped { statement, proof } => wrapped::verify(&statement.with_program(program)?, proof, state),
+            Self::Wrapped { statement, proof } => {
+                wrapped::verify(&statement.with_program(program)?, proof, state)
+            }
             _ => {
                 if self.program().is_some_and(|p| p != program) {
                     return Err("envelope: the statement's program is not the one given".into());
@@ -340,8 +360,14 @@ impl Envelope {
             Self::Public { statement, .. } => Some(&statement.program),
             Self::Zk { statement, .. } => Some(&statement.execution.program),
             Self::StatePublic { statement, .. } => Some(&statement.execution.program),
-            Self::Succinct { statement: SuccinctStatement::Execution(s), .. } => Some(&s.program),
-            Self::Succinct { statement: SuccinctStatement::State(s), .. } => Some(&s.execution.program),
+            Self::Succinct {
+                statement: SuccinctStatement::Execution(s),
+                ..
+            } => Some(&s.program),
+            Self::Succinct {
+                statement: SuccinctStatement::State(s),
+                ..
+            } => Some(&s.execution.program),
             _ => None,
         }
     }

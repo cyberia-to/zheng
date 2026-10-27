@@ -59,9 +59,15 @@ pub fn digest_native(items: &[Fp3]) -> [Goldilocks; 4] {
     let mut fresh = [Goldilocks::ZERO; WIDTH];
     fresh[RATE] = Goldilocks::new(tag::MSG);
     let mut states = vec![fresh; chunks.len()];
-    let blocks = chunks.iter().map(|c| c.len().div_ceil(3)).max().unwrap_or(0);
+    let blocks = chunks
+        .iter()
+        .map(|c| c.len().div_ceil(3))
+        .max()
+        .unwrap_or(0);
     for b in 0..blocks {
-        let idx: Vec<usize> = (0..chunks.len()).filter(|&q| b * 3 < chunks[q].len()).collect();
+        let idx: Vec<usize> = (0..chunks.len())
+            .filter(|&q| b * 3 < chunks[q].len())
+            .collect();
         let mut batch: Vec<[Goldilocks; WIDTH]> = idx
             .iter()
             .map(|&q| {
@@ -80,7 +86,9 @@ pub fn digest_native(items: &[Fp3]) -> [Goldilocks; 4] {
             states[q] = s;
         }
     }
-    let heads: Vec<Goldilocks> = core::iter::once(Goldilocks::new(items.len() as u64)).chain(states.iter().flat_map(|s| [s[0], s[1], s[2], s[3]])).collect();
+    let heads: Vec<Goldilocks> = core::iter::once(Goldilocks::new(items.len() as u64))
+        .chain(states.iter().flat_map(|s| [s[0], s[1], s[2], s[3]]))
+        .collect();
     let mut s = fresh;
     for block in heads.chunks(RATE) {
         for (k, x) in s.iter_mut().take(RATE).enumerate() {
@@ -106,7 +114,15 @@ mod tests {
     #[test]
     fn the_native_digest_is_the_generic_sponge_s() {
         for len in [1usize, 2, 3, 7, 8, 9, 25, 64, 256, 257] {
-            let items: Vec<Fp3> = (0..len as u64).map(|i| Fp3::new(Goldilocks::new(i), Goldilocks::new(i * 7 + 1), Goldilocks::new(3))).collect();
+            let items: Vec<Fp3> = (0..len as u64)
+                .map(|i| {
+                    Fp3::new(
+                        Goldilocks::new(i),
+                        Goldilocks::new(i * 7 + 1),
+                        Goldilocks::new(3),
+                    )
+                })
+                .collect();
             let mut o = Native::new();
             let (vals, d) = absorb_generic(&mut o, &items);
             assert_eq!(vals, items);

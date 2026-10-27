@@ -181,7 +181,13 @@ pub const B_AND: usize = FLAG0 + 6;
 pub const B_NOT: usize = FLAG0 + 7;
 pub const B_SHL: usize = FLAG0 + 8;
 pub const B_LT: usize = FLAG0 + 9;
-pub const WOPS: [(usize, u64); 5] = [(B_XOR, T_XOR), (B_AND, T_AND), (B_NOT, T_NOT), (B_SHL, T_SHL), (B_LT, T_LT)];
+pub const WOPS: [(usize, u64); 5] = [
+    (B_XOR, T_XOR),
+    (B_AND, T_AND),
+    (B_NOT, T_NOT),
+    (B_SHL, T_SHL),
+    (B_LT, T_LT),
+];
 pub const B_CNT: usize = FLAG0 + 10;
 pub const B_LINV: usize = FLAG0 + 11; // (CNT − 31)·LINV = 1 − LAST
 pub const B_LAST: usize = FLAG0 + 12;

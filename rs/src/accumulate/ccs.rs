@@ -109,7 +109,11 @@ pub fn prove_claim(
 }
 
 /// Check one statement's IOP messages; returns its accumulation instance.
-pub fn verify_claim(whir: &WhirParams, st: &Statement<'_>, proof: &ClaimProof) -> Result<Instance, String> {
+pub fn verify_claim(
+    whir: &WhirParams,
+    st: &Statement<'_>,
+    proof: &ClaimProof,
+) -> Result<Instance, String> {
     let instance = st.instance;
     let layout = Layout::new(instance, &st.pins)?;
     crate::execution::succinct::admit::<Whir>(whir, layout.vars)?;
@@ -239,7 +243,12 @@ pub fn verify_folded(
         inputs.extend(group.iter());
         acc = Some(super::verify_step(&cfg, &inputs, step, &mut t)?);
     }
-    super::verify_decider(&cfg, acc.as_ref().expect("a statement"), &proof.decider, &mut t)
+    super::verify_decider(
+        &cfg,
+        acc.as_ref().expect("a statement"),
+        &proof.decider,
+        &mut t,
+    )
 }
 
 impl ClaimProof {

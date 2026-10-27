@@ -151,7 +151,11 @@ impl ExecutionStatement {
 
     /// What the relation depends on, hashed: see [`super::vk`].
     pub fn program_key(&self) -> [u8; 32] {
-        super::vk::program_key(&self.program, self.public_input.len(), super::vk::StatementKind::Execution)
+        super::vk::program_key(
+            &self.program,
+            self.public_input.len(),
+            super::vk::StatementKind::Execution,
+        )
     }
 
     /// The relation from `vk` when it was derived for this statement's
@@ -165,7 +169,9 @@ impl ExecutionStatement {
                 self.validate_bounds()?;
                 Ok(std::borrow::Cow::Borrowed(vk.check(self.program_key())?))
             }
-            None => Ok(std::borrow::Cow::Owned(super::VerifyingKey::for_execution(self)?)),
+            None => Ok(std::borrow::Cow::Owned(super::VerifyingKey::for_execution(
+                self,
+            )?)),
         }
     }
 
@@ -226,8 +232,15 @@ pub(crate) fn prepare(
     program: &ExecutionNoun,
     input: &[u64],
     budget: u64,
-) -> Result<(ExecutionStatement, ExecutionRelation, crate::types::CCSWitness, Vec<(usize, F)>), String>
-{
+) -> Result<
+    (
+        ExecutionStatement,
+        ExecutionRelation,
+        crate::types::CCSWitness,
+        Vec<(usize, F)>,
+    ),
+    String,
+> {
     let mut statement = ExecutionStatement {
         program: ExecutionStatement::encode_program(program)?,
         public_input: input.to_vec(),

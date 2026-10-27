@@ -49,7 +49,10 @@ pub fn add_eq_terms(out: &mut [Fp3], terms: &[(Vec<Fp3>, Fp3)]) {
     let k = vars.min(12);
     // a point whose low coordinates are base (a spot check's ω^s powers)
     // has a base low table: its blocks add in mixed arithmetic
-    let is_base = |p: &[Fp3]| p.iter().all(|x| x.c1 == nebu::Goldilocks::ZERO && x.c2 == nebu::Goldilocks::ZERO);
+    let is_base = |p: &[Fp3]| {
+        p.iter()
+            .all(|x| x.c1 == nebu::Goldilocks::ZERO && x.c2 == nebu::Goldilocks::ZERO)
+    };
     let lo: Vec<Vec<Fp3>> = terms.iter().map(|(p, _)| eq_table(&p[..k])).collect();
     let lo_base: Vec<Option<Vec<nebu::Goldilocks>>> = terms
         .iter()
@@ -67,7 +70,13 @@ pub fn add_eq_terms(out: &mut [Fp3], terms: &[(Vec<Fp3>, Fp3)]) {
         })
         .collect();
     let block = 1usize << k;
-    let threads = if vars < 16 { 1 } else { std::thread::available_parallelism().map_or(1, |n| n.get()).min(16) };
+    let threads = if vars < 16 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(16)
+    };
     let blocks = out.len() / block;
     let per = blocks.div_ceil(threads).max(1);
     std::thread::scope(|s| {
@@ -105,9 +114,31 @@ mod eq_terms_tests {
     #[test]
     fn split_eq_terms_equal_the_full_tables() {
         for vars in [3usize, 12, 13, 17] {
-            let pt = |s: u64| (0..vars as u64).map(|i| Fp3::new(Goldilocks::new(s * 31 + i), Goldilocks::new(i * i + s), Goldilocks::new(7))).collect::<Vec<_>>();
-            let base_pt: Vec<Fp3> = (0..vars as u64).map(|i| Fp3::from_base(Goldilocks::new(i * 7 + 2))).collect();
-            let terms = vec![(pt(1), Fp3::from_base(Goldilocks::new(5))), (pt(2), Fp3::new(Goldilocks::new(2), Goldilocks::new(9), Goldilocks::ZERO)), (base_pt, Fp3::new(Goldilocks::new(4), Goldilocks::new(1), Goldilocks::new(8)))];
+            let pt = |s: u64| {
+                (0..vars as u64)
+                    .map(|i| {
+                        Fp3::new(
+                            Goldilocks::new(s * 31 + i),
+                            Goldilocks::new(i * i + s),
+                            Goldilocks::new(7),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let base_pt: Vec<Fp3> = (0..vars as u64)
+                .map(|i| Fp3::from_base(Goldilocks::new(i * 7 + 2)))
+                .collect();
+            let terms = vec![
+                (pt(1), Fp3::from_base(Goldilocks::new(5))),
+                (
+                    pt(2),
+                    Fp3::new(Goldilocks::new(2), Goldilocks::new(9), Goldilocks::ZERO),
+                ),
+                (
+                    base_pt,
+                    Fp3::new(Goldilocks::new(4), Goldilocks::new(1), Goldilocks::new(8)),
+                ),
+            ];
             let mut want = vec![Fp3::ZERO; 1 << vars];
             for (p, c) in &terms {
                 for (o, e) in want.iter_mut().zip(eq_table(p)) {
@@ -143,7 +174,12 @@ impl Table<'_> {
 /// − f(0)` and the fold are exact in either field). The weight tables
 /// are built, and every first round summed and folded, in one pass of
 /// threads per word.
-pub fn prove_tables(t: &mut impl FiatShamir, f: &[Table<'_>], weights: &[Weight], vars: usize) -> (Vec<Fp3>, Vec<Fp3>, Vec<Fp3>) {
+pub fn prove_tables(
+    t: &mut impl FiatShamir,
+    f: &[Table<'_>],
+    weights: &[Weight],
+    vars: usize,
+) -> (Vec<Fp3>, Vec<Fp3>, Vec<Fp3>) {
     use lens::rspcs::field::mul_base;
     assert!(vars >= 1 && f.iter().all(|x| x.len() == 1 << vars));
     let mut w: Vec<Vec<Fp3>> = weights.iter().map(|w| w.table(vars)).collect();
@@ -168,8 +204,12 @@ pub fn prove_tables(t: &mut impl FiatShamir, f: &[Table<'_>], weights: &[Weight]
     let mut fo: Vec<Vec<Fp3>> = f
         .iter()
         .map(|fi| match fi {
-            Table::Ext(e) => par_fold(e.len() / 2, |i| e[2 * i] + alpha * (e[2 * i + 1] - e[2 * i])),
-            Table::Base(bt) => par_fold(bt.len() / 2, |i| mul_base(alpha, bt[2 * i + 1] - bt[2 * i]) + Fp3::from_base(bt[2 * i])),
+            Table::Ext(e) => par_fold(e.len() / 2, |i| {
+                e[2 * i] + alpha * (e[2 * i + 1] - e[2 * i])
+            }),
+            Table::Base(bt) => par_fold(bt.len() / 2, |i| {
+                mul_base(alpha, bt[2 * i + 1] - bt[2 * i]) + Fp3::from_base(bt[2 * i])
+            }),
         })
         .collect();
     for wi in &mut w {
@@ -216,7 +256,9 @@ fn par_sums(pairs: usize, term: impl Fn(usize) -> (Fp3, Fp3) + Sync) -> (Fp3, Fp
                 })
             })
             .collect();
-        hs.into_iter().map(|h| h.join().expect("round")).fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
+        hs.into_iter()
+            .map(|h| h.join().expect("round"))
+            .fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
     })
 }
 
@@ -274,7 +316,13 @@ pub fn prove(
 
 /// Threads for a pass over `pairs` pairs (one below `2^14`).
 fn threads(pairs: usize) -> usize {
-    if pairs < 1 << 14 { 1 } else { std::thread::available_parallelism().map_or(1, |n| n.get()).min(16) }
+    if pairs < 1 << 14 {
+        1
+    } else {
+        std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(16)
+    }
 }
 
 /// `(Σ_b' f(0,b')w(0,b'), Σ_b' f(2,b')w(2,b'))` with variable 0 the low bit.
@@ -295,8 +343,14 @@ fn round_sums(f: &[Fp3], w: &[Fp3]) -> (Fp3, Fp3) {
     }
     let size = (f.len() / 2).div_ceil(t) * 2;
     std::thread::scope(|s| {
-        let hs: Vec<_> = f.chunks(size).zip(w.chunks(size)).map(|(a, b)| s.spawn(move || part(a, b))).collect();
-        hs.into_iter().map(|h| h.join().expect("round")).fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
+        let hs: Vec<_> = f
+            .chunks(size)
+            .zip(w.chunks(size))
+            .map(|(a, b)| s.spawn(move || part(a, b)))
+            .collect();
+        hs.into_iter()
+            .map(|h| h.join().expect("round"))
+            .fold((Fp3::ZERO, Fp3::ZERO), |a, x| (a.0 + x.0, a.1 + x.1))
     })
 }
 
@@ -362,7 +416,11 @@ mod tests {
     use nebu::Goldilocks;
 
     fn e(i: u64) -> Fp3 {
-        Fp3::new(Goldilocks::new(i), Goldilocks::new(3 * i + 1), Goldilocks::new(i * i + 7))
+        Fp3::new(
+            Goldilocks::new(i),
+            Goldilocks::new(3 * i + 1),
+            Goldilocks::new(i * i + 7),
+        )
     }
 
     #[test]
@@ -374,7 +432,12 @@ mod tests {
         let weights: Vec<Weight> = (0..3u64)
             .map(|i| Weight {
                 terms: (0..2u64)
-                    .map(|j| ((0..vars as u64).map(|k| e(7 * i + j + k)).collect(), e(i + j + 2)))
+                    .map(|j| {
+                        (
+                            (0..vars as u64).map(|k| e(7 * i + j + k)).collect(),
+                            e(i + j + 2),
+                        )
+                    })
                     .collect(),
             })
             .collect();

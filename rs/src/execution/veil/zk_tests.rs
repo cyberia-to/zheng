@@ -14,10 +14,16 @@ const PROOFS: usize = 40;
 const CRITICAL: f64 = 44.3;
 
 fn parsed(x: u64, seed: u64) -> Parsed {
-    let (statement, prepared, witness) = prepare_execution(&square_secret(), &[], &[x], 1000).unwrap();
-    let public: Vec<_> =
-        prepared.public_coordinates.iter().map(|&(i, v)| (i, Goldilocks::new(v))).collect();
-    let w = CCSWitness { z: witness.into_iter().map(Goldilocks::new).collect() };
+    let (statement, prepared, witness) =
+        prepare_execution(&square_secret(), &[], &[x], 1000).unwrap();
+    let public: Vec<_> = prepared
+        .public_coordinates
+        .iter()
+        .map(|&(i, v)| (i, Goldilocks::new(v)))
+        .collect();
+    let w = CCSWitness {
+        z: witness.into_iter().map(Goldilocks::new).collect(),
+    };
     let mut seed_bytes = [0u8; 32];
     seed_bytes[..8].copy_from_slice(&seed.to_le_bytes());
     let bytes = statement.transcript_bytes();
@@ -86,7 +92,10 @@ fn revealed_values_are_uniform_and_independent_of_the_witness() {
     for ((name, va), (_, vb)) in a.iter().zip(&b) {
         let (ha, hb) = (histogram(va), histogram(vb));
         let (ua, ub, two) = (chi_uniform(&ha), chi_uniform(&hb), chi_two_sample(&ha, &hb));
-        println!("{name}: {} values per witness, chi² uniform {ua:.1} / {ub:.1}, two-sample {two:.1}", va.len());
+        println!(
+            "{name}: {} values per witness, chi² uniform {ua:.1} / {ub:.1}, two-sample {two:.1}",
+            va.len()
+        );
         assert!(ua < CRITICAL && ub < CRITICAL, "{name} not uniform");
         assert!(two < CRITICAL, "{name} depends on the witness");
     }

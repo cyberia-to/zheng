@@ -13,7 +13,10 @@ fn mul_base(a: Fp3, b: Goldilocks) -> Fp3 {
 }
 
 fn horner(coeffs: &[Fp3], x: Goldilocks) -> Fp3 {
-    coeffs.iter().rev().fold(Fp3::ZERO, |acc, &c| mul_base(acc, x) + c)
+    coeffs
+        .iter()
+        .rev()
+        .fold(Fp3::ZERO, |acc, &c| mul_base(acc, x) + c)
 }
 
 /// Verify `proof` opens `f` at `value` for the commitment `root` to
@@ -68,15 +71,21 @@ pub(crate) fn verify(
         .zip(proof.salts.chunks_exact(SALT))
         .map(|(c, s)| column_bytes(c, s))
         .collect();
-    let leaves: Vec<(&[u8], usize)> =
-        bytes.iter().map(Vec::as_slice).zip(idx.iter().copied()).collect();
+    let leaves: Vec<(&[u8], usize)> = bytes
+        .iter()
+        .map(Vec::as_slice)
+        .zip(idx.iter().copied())
+        .collect();
     let digests = merkle::leaf_digests(&leaves, cfg.n());
     merkle::verify(&root.0, cfg.log_n as usize, &idx, digests, &proof.siblings)
         .map_err(|e| format!("veil: merkle: {e}"))?;
 
     // the functional's per-row weights at a column point
     let (hi, lo) = split(&f.point, k);
-    let row_w: Vec<Fp3> = eq_msb(&f.point[..hi]).iter().map(|&w| f.scale * w).collect();
+    let row_w: Vec<Fp3> = eq_msb(&f.point[..hi])
+        .iter()
+        .map(|&w| f.scale * w)
+        .collect();
     let lo_point = &f.point[hi..hi + lo];
     let omega = root_of_unity(cfg.log_n);
     let n = cfg.n() as u64;
@@ -90,7 +99,10 @@ pub(crate) fn verify(
         let x = omega.exp(j as u64);
         let y = omega.exp((n - j as u64) % n); // x^{-1}
         // test row: Σ α^i col_i
-        let test = col.iter().zip(&alpha_pows).fold(Fp3::ZERO, |acc, (&v, &w)| acc + mul_base(w, v));
+        let test = col
+            .iter()
+            .zip(&alpha_pows)
+            .fold(Fp3::ZERO, |acc, (&v, &w)| acc + mul_base(w, v));
         if horner(&proof.row_test, x) != test {
             return Err("veil: proximity column".into());
         }

@@ -63,7 +63,13 @@ impl Relation {
         while base * base * base < constraints {
             base += 1;
         }
-        Self { machine, circuit, ch, constraints, base }
+        Self {
+            machine,
+            circuit,
+            ch,
+            constraints,
+            base,
+        }
     }
     pub fn constraints(&self) -> usize {
         self.constraints
@@ -89,18 +95,37 @@ impl Relation {
             v
         };
         let (p1, p2, p3) = (pw(seeds[0]), pw(seeds[1]), pw(seeds[2]));
-        (0..self.constraints).map(|k| p1[k % b] * p2[(k / b) % b] * p3[k / (b * b)]).collect()
+        (0..self.constraints)
+            .map(|k| p1[k % b] * p2[(k / b) % b] * p3[k / (b * b)])
+            .collect()
     }
 
     /// Every constraint at one assignment.
     pub fn eval(&self, local: &[Fp3], next: &[Fp3], pubs: &[Fp3], ch_v: &[Fp3], out: &mut [Fp3]) {
-        self.eval_with(local, next, pubs, ch_v, &self.ch, &self.machine.constants.lift(), out);
+        self.eval_with(
+            local,
+            next,
+            pubs,
+            ch_v,
+            &self.ch,
+            &self.machine.constants.lift(),
+            out,
+        );
     }
 
     /// [`Self::eval`] in any arithmetic, the run's challenges `ch` and the
     /// statement constants `k` given as values of it.
     #[allow(clippy::too_many_arguments)]
-    pub fn eval_with<T: Num>(&self, local: &[T], next: &[T], pubs: &[T], ch_v: &[T], ch: &[T; 2], k: &KConst<T>, out: &mut [T]) {
+    pub fn eval_with<T: Num>(
+        &self,
+        local: &[T],
+        next: &[T],
+        pubs: &[T],
+        ch_v: &[T],
+        ch: &[T; 2],
+        k: &KConst<T>,
+        out: &mut [T],
+    ) {
         let km = self.machine.shape().constraints;
         let v = Vals {
             local: &local[..W1 + W2],
@@ -118,7 +143,10 @@ impl Relation {
             alpha: ch_v[0],
             beta: ch_v[1],
         };
-        let mut s = Sink { buf: &mut out[km..], i: 0 };
+        let mut s = Sink {
+            buf: &mut out[km..],
+            i: 0,
+        };
         self.circuit.eval(&row, &mut s);
     }
 
@@ -132,12 +160,18 @@ impl Relation {
     /// constants).
     pub fn g_with<T: Num>(&self, point: &[T], ch: &[T; 2], k: &KConst<T>) -> T {
         assert_eq!(point.len(), G_POINT);
-        let (local, next, pubs) = (&point[..COLS], &point[COLS..2 * COLS], &point[2 * COLS..2 * COLS + PUBS]);
+        let (local, next, pubs) = (
+            &point[..COLS],
+            &point[COLS..2 * COLS],
+            &point[2 * COLS..2 * COLS + PUBS],
+        );
         let ch_v = &point[2 * COLS + PUBS..2 * COLS + PUBS + 2];
         let seeds = &point[2 * COLS + PUBS + 2..];
         let mut out = vec![T::ZERO; self.constraints];
         self.eval_with(local, next, pubs, ch_v, ch, k, &mut out);
-        out.iter().zip(self.mu(seeds)).fold(T::ZERO, |a, (&c, m)| a + c * m)
+        out.iter()
+            .zip(self.mu(seeds))
+            .fold(T::ZERO, |a, (&c, m)| a + c * m)
     }
 }
 
@@ -161,14 +195,32 @@ impl Air for View<'_> {
     fn eval(&self, v: &Vals<'_>, challenges: &[Fp3], out: &mut [Fp3]) {
         self.0.eval(v.local, v.next, v.publics, challenges, out);
     }
-    fn eval_mix(&self, v: &Vals<'_, crate::air::mix::Mix>, challenges: &[Fp3], out: &mut [crate::air::mix::Mix]) -> bool {
+    fn eval_mix(
+        &self,
+        v: &Vals<'_, crate::air::mix::Mix>,
+        challenges: &[Fp3],
+        out: &mut [crate::air::mix::Mix],
+    ) -> bool {
         use crate::air::mix::Mix;
         let ch_v: Vec<Mix> = challenges.iter().map(|&c| Mix::of(c)).collect();
         let ch = self.0.ch.map(Mix::of);
-        self.0.eval_with(v.local, v.next, v.publics, &ch_v, &ch, &self.0.machine.constants.lift(), out);
+        self.0.eval_with(
+            v.local,
+            v.next,
+            v.publics,
+            &ch_v,
+            &ch,
+            &self.0.machine.constants.lift(),
+            out,
+        );
         true
     }
-    fn combine_graph(&self, inputs: usize, challenges: &[Fp3], mu: &[Fp3]) -> Option<crate::air::num::Graph> {
+    fn combine_graph(
+        &self,
+        inputs: usize,
+        challenges: &[Fp3],
+        mu: &[Fp3],
+    ) -> Option<crate::air::num::Graph> {
         use crate::air::num::{Sym, record};
         let rel = self.0;
         Some(record(inputs, |i| {
@@ -176,8 +228,20 @@ impl Air for View<'_> {
             let (next, pubs) = rest.split_at(COLS);
             let ch_v: Vec<Sym> = challenges.iter().map(|&c| Sym::C(c)).collect();
             let mut out = vec![Sym::ZERO; rel.constraints];
-            rel.eval_with(local, next, pubs, &ch_v, &rel.ch.map(Sym::C), &rel.machine.constants.lift(), &mut out);
-            vec![out.iter().zip(mu).fold(Sym::ZERO, |acc, (&c, &m)| acc + c * Sym::C(m))]
+            rel.eval_with(
+                local,
+                next,
+                pubs,
+                &ch_v,
+                &rel.ch.map(Sym::C),
+                &rel.machine.constants.lift(),
+                &mut out,
+            );
+            vec![
+                out.iter()
+                    .zip(mu)
+                    .fold(Sym::ZERO, |acc, (&c, &m)| acc + c * Sym::C(m)),
+            ]
         }))
     }
 }

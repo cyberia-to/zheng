@@ -70,31 +70,55 @@ fn a_chain_outside_the_admitted_one_is_refused_before_any_key() {
         for delta in [1u8, 0x80] {
             let mut bad = good.clone();
             bad[HEADER_BYTES + 1 + i] ^= delta;
-            assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical), "chain byte {i}");
+            assert_eq!(
+                Envelope::from_bytes(&bad),
+                Err(EnvelopeError::NonCanonical),
+                "chain byte {i}"
+            );
         }
     }
     for format in [0u8, 1, 2, 3, 4, 5, 7, 0xff] {
         let mut bad = good.clone();
         bad[HEADER_BYTES] = format;
-        assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::NonCanonical), "format {format}");
+        assert_eq!(
+            Envelope::from_bytes(&bad),
+            Err(EnvelopeError::NonCanonical),
+            "format {format}"
+        );
     }
     for log_rows in [0u8, 10, 14, 16, 20, 0xff] {
-        assert_eq!(Envelope::from_bytes(&body_with(&[log_rows])), Err(EnvelopeError::NonCanonical), "log_rows {log_rows}");
+        assert_eq!(
+            Envelope::from_bytes(&body_with(&[log_rows])),
+            Err(EnvelopeError::NonCanonical),
+            "log_rows {log_rows}"
+        );
     }
     // a proof length beyond the bound, an empty proof
     let mut bad = body_with(&[]);
     bad.pop();
     bad.extend(varint(MAX_PROOF_BYTES as u64 + 1));
     assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::TooLarge));
-    assert_eq!(Envelope::from_bytes(&body_with(&[])), Err(EnvelopeError::Truncated));
+    assert_eq!(
+        Envelope::from_bytes(&body_with(&[])),
+        Err(EnvelopeError::Truncated)
+    );
     // another program's envelope is refused right after the statement:
     // the proof (here not even a proof) is never parsed, no key is built
     let other = zheng::machine::statement::tokens(&zheng::execution::ExecutionNoun::Atom(1));
     for proof in [&[][..], &[15u8][..], &[15u8; 64][..]] {
-        assert_eq!(Envelope::from_bytes_for(&body_with(proof), &other), Err(EnvelopeError::ProgramMismatch));
+        assert_eq!(
+            Envelope::from_bytes_for(&body_with(proof), &other),
+            Err(EnvelopeError::ProgramMismatch)
+        );
     }
-    assert_eq!(Envelope::from_bytes_for(&body_with(&[]), &zero()), Err(EnvelopeError::Truncated));
-    assert!(!wrapped::final_key_cached() || std::env::var_os("ZHENG_WRAPPED_ENVELOPE").is_some(), "a key was built");
+    assert_eq!(
+        Envelope::from_bytes_for(&body_with(&[]), &zero()),
+        Err(EnvelopeError::Truncated)
+    );
+    assert!(
+        !wrapped::final_key_cached() || std::env::var_os("ZHENG_WRAPPED_ENVELOPE").is_some(),
+        "a key was built"
+    );
 }
 
 fn program() -> Vec<zheng::execution::NounToken> {
@@ -106,7 +130,10 @@ fn envelope() -> &'static (Envelope, Vec<u8>) {
     E.get_or_init(|| {
         let file = std::env::var("ZHENG_WRAPPED_ENVELOPE").ok();
         if let Some(bytes) = file.as_ref().and_then(|f| std::fs::read(f).ok()) {
-            return (Envelope::from_bytes_for(&bytes, &program()).expect("stored envelope"), bytes);
+            return (
+                Envelope::from_bytes_for(&bytes, &program()).expect("stored envelope"),
+                bytes,
+            );
         }
         let e = wrapped::prove(&common::parse(common::HASH), &[7], BUDGET).unwrap();
         let bytes = e.to_bytes();
@@ -120,7 +147,9 @@ fn envelope() -> &'static (Envelope, Vec<u8>) {
 /// Offset of the proof's length prefix and the proof bytes.
 fn proof_span() -> (usize, Vec<u8>) {
     let (e, bytes) = envelope();
-    let Envelope::Wrapped { proof, .. } = e else { unreachable!() };
+    let Envelope::Wrapped { proof, .. } = e else {
+        unreachable!()
+    };
     let inner = wrapped::proof_bytes(proof).unwrap();
     let prefix = varint(inner.len() as u64).len();
     (bytes.len() - inner.len() - prefix, inner)
@@ -136,7 +165,8 @@ fn with_inner(inner: &[u8]) -> Vec<u8> {
 }
 
 fn accepted(bytes: &[u8]) -> bool {
-    Envelope::from_bytes_for(bytes, &program()).is_ok_and(|e| e.verify_program(&program(), None).is_ok())
+    Envelope::from_bytes_for(bytes, &program())
+        .is_ok_and(|e| e.verify_program(&program(), None).is_ok())
 }
 
 #[test]
@@ -157,21 +187,42 @@ fn a_wrapped_envelope_round_trips_canonically_and_verifies() {
     assert!(back.verify(None).is_err());
     let add = zheng::machine::statement::tokens(&common::parse(common::ADD));
     assert!(back.verify_program(&add, None).is_err());
-    assert_eq!(Envelope::from_bytes_for(bytes, &add), Err(EnvelopeError::ProgramMismatch));
+    assert_eq!(
+        Envelope::from_bytes_for(bytes, &add),
+        Err(EnvelopeError::ProgramMismatch)
+    );
     // the statement is bound, its program digest included
-    let Envelope::Wrapped { statement, proof } = back else { unreachable!() };
+    let Envelope::Wrapped { statement, proof } = back else {
+        unreachable!()
+    };
     let mut other = statement.clone();
     other.program = zheng::machine::program_digest(&add);
-    assert!(Envelope::Wrapped { statement: other, proof: proof.clone() }.verify_program(&add, None).is_err());
+    assert!(
+        Envelope::Wrapped {
+            statement: other,
+            proof: proof.clone()
+        }
+        .verify_program(&add, None)
+        .is_err()
+    );
     for f in [
         (|s: &mut zheng::machine::MachinePublic| s.input = vec![8]) as fn(&mut _),
         |s| s.cycles += 1,
         |s| s.budget += 1,
-        |s| s.output = zheng::machine::statement::tokens(&zheng::execution::ExecutionNoun::Atom(13)),
+        |s| {
+            s.output = zheng::machine::statement::tokens(&zheng::execution::ExecutionNoun::Atom(13))
+        },
     ] {
         let mut other = statement.clone();
         f(&mut other);
-        assert!(Envelope::Wrapped { statement: other, proof: proof.clone() }.verify_program(&program(), None).is_err());
+        assert!(
+            Envelope::Wrapped {
+                statement: other,
+                proof: proof.clone()
+            }
+            .verify_program(&program(), None)
+            .is_err()
+        );
     }
 }
 
@@ -184,16 +235,25 @@ fn every_truncation_and_a_trailing_byte_are_rejected() {
     }
     let mut longer = bytes.clone();
     longer.push(0);
-    assert_eq!(Envelope::from_bytes(&longer), Err(EnvelopeError::TrailingBytes));
+    assert_eq!(
+        Envelope::from_bytes(&longer),
+        Err(EnvelopeError::TrailingBytes)
+    );
     // inside the length prefix: a shorter or longer proof is refused by the
     // final proof's wire itself
     let (_, inner) = proof_span();
     for cut in 0..inner.len() {
-        assert!(Envelope::from_bytes(&with_inner(&inner[..cut])).is_err(), "inner prefix {cut}");
+        assert!(
+            Envelope::from_bytes(&with_inner(&inner[..cut])).is_err(),
+            "inner prefix {cut}"
+        );
     }
     let mut longer = inner.clone();
     longer.push(0);
-    assert_eq!(Envelope::from_bytes(&with_inner(&longer)), Err(EnvelopeError::NonCanonical));
+    assert_eq!(
+        Envelope::from_bytes(&with_inner(&longer)),
+        Err(EnvelopeError::NonCanonical)
+    );
 }
 
 #[test]
@@ -208,7 +268,10 @@ fn a_wrong_profile_or_format_byte_is_rejected() {
     for profile in [7u8, 0xff] {
         let mut bad = bytes.clone();
         bad[10] = profile;
-        assert_eq!(Envelope::from_bytes(&bad), Err(EnvelopeError::UnknownProfile(profile)));
+        assert_eq!(
+            Envelope::from_bytes(&bad),
+            Err(EnvelopeError::UnknownProfile(profile))
+        );
     }
     for format in [0u8, 1, 2, 3, 4, 5, 7, 0xff] {
         let mut bad = bytes.clone();
@@ -220,7 +283,10 @@ fn a_wrong_profile_or_format_byte_is_rejected() {
     for log_rows in [14u8, 16] {
         let mut bad = inner.clone();
         bad[0] = log_rows;
-        assert_eq!(Envelope::from_bytes(&with_inner(&bad)), Err(EnvelopeError::NonCanonical));
+        assert_eq!(
+            Envelope::from_bytes(&with_inner(&bad)),
+            Err(EnvelopeError::NonCanonical)
+        );
     }
 }
 
@@ -231,7 +297,9 @@ fn a_sample_of_bit_flips_is_never_accepted() {
     let (span, _) = proof_span();
     // every bit of the header, format, chain, statement and length prefix;
     // then a stride over the proof
-    let bits: Vec<usize> = (0..(span + 3) * 8).chain(((span + 3) * 8..bytes.len() * 8).step_by(257)).collect();
+    let bits: Vec<usize> = (0..(span + 3) * 8)
+        .chain(((span + 3) * 8..bytes.len() * 8).step_by(257))
+        .collect();
     let (mut decoded, mut tried) = (0, 0);
     for bit in bits {
         let mut bad = bytes.clone();
@@ -239,7 +307,10 @@ fn a_sample_of_bit_flips_is_never_accepted() {
         tried += 1;
         if let Ok(e) = Envelope::from_bytes(&bad) {
             decoded += 1;
-            assert!(e.verify_program(&program(), None).is_err(), "bit {bit} accepted");
+            assert!(
+                e.verify_program(&program(), None).is_err(),
+                "bit {bit} accepted"
+            );
         }
     }
     eprintln!("bit flips: {tried} tried, {decoded} decoded, 0 accepted");

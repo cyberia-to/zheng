@@ -11,9 +11,9 @@
 
 use nebu::Goldilocks;
 
-use hemera::{Hasher, ROUNDS_TOTAL};
 use hemera::field::Goldilocks as HGoldilocks;
 use hemera::trace::{FullRoundWitnesses, RoundVisitor};
+use hemera::{Hasher, ROUNDS_TOTAL};
 
 use lens::{Commitment, Opening};
 
@@ -39,7 +39,10 @@ pub fn build_transcript_steps(
     commitment: &Commitment,
     opening: &Opening,
 ) -> Vec<CCSWitness> {
-    let Opening::Tensor { round_commitments, .. } = opening else {
+    let Opening::Tensor {
+        round_commitments, ..
+    } = opening
+    else {
         return vec![];
     };
 
@@ -79,7 +82,11 @@ pub(crate) fn squeeze_rows(visitor: &SqueezeVisitor) -> Vec<CCSWitness> {
     let states = &visitor.states;
     (0..ROUNDS_TOTAL)
         .map(|k| {
-            let next = if k + 1 < ROUNDS_TOTAL { &states[k + 1] } else { &states[ROUNDS_TOTAL - 1] };
+            let next = if k + 1 < ROUNDS_TOTAL {
+                &states[k + 1]
+            } else {
+                &states[ROUNDS_TOTAL - 1]
+            };
             poseidon_witness(&states[k], next, k)
         })
         .collect()
@@ -92,7 +99,9 @@ pub(crate) struct SqueezeVisitor {
 
 impl SqueezeVisitor {
     pub(crate) fn new() -> Self {
-        Self { states: Vec::with_capacity(ROUNDS_TOTAL) }
+        Self {
+            states: Vec::with_capacity(ROUNDS_TOTAL),
+        }
     }
 }
 
@@ -101,7 +110,12 @@ fn hstate(s: &[HGoldilocks; 16]) -> [Goldilocks; 16] {
 }
 
 impl RoundVisitor for SqueezeVisitor {
-    fn full_round(&mut self, _index: u8, state: &[HGoldilocks; 16], _witnesses: &FullRoundWitnesses) {
+    fn full_round(
+        &mut self,
+        _index: u8,
+        state: &[HGoldilocks; 16],
+        _witnesses: &FullRoundWitnesses,
+    ) {
         self.states.push(hstate(state));
     }
 
@@ -118,7 +132,9 @@ mod tests {
     use lens::brakedown::{Brakedown, MultilinearPoly};
     use lens::{Lens, Transcript as LensTranscript};
 
-    fn g(v: u64) -> Goldilocks { Goldilocks::new(v) }
+    fn g(v: u64) -> Goldilocks {
+        Goldilocks::new(v)
+    }
 
     fn small_poly() -> MultilinearPoly<Goldilocks> {
         MultilinearPoly::new(vec![g(1), g(2), g(3), g(4)])

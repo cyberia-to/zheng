@@ -159,8 +159,14 @@ impl Machine {
             region(|ph| one(ph == PH_BITS0), start),
             region(|ph| one(ph == PH_BITS1), start),
             region(|ph| one(ph == PH_MDS), start),
-            region(|ph| one(round(ph).is_some_and(super::hemera::is_full)), start),
-            region(|ph| one(round(ph).is_some_and(|k| !super::hemera::is_full(k))), start),
+            region(
+                |ph| one(round(ph).is_some_and(super::hemera::is_full)),
+                start,
+            ),
+            region(
+                |ph| one(round(ph).is_some_and(|k| !super::hemera::is_full(k))),
+                start,
+            ),
             region(|ph| one(ph == PH_OUT), start),
             region(|ph| one(ph + 1 < BLOCK), start),
         ];

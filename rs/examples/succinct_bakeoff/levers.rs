@@ -12,9 +12,9 @@
 
 use super::{Fixture, header, print, run, whir};
 use crate::common::{HASH, parse};
-use zheng::execution::succinct::{SuccinctProof, Whir, WhirParams};
 use lens::rspcs::WhirConfig;
 use lens::rspcs::wire::Symbols;
+use zheng::execution::succinct::{SuccinctProof, Whir, WhirParams};
 
 fn leb(v: u64) -> usize {
     ((64 - v.leading_zeros() as usize).div_ceil(7)).max(1)
