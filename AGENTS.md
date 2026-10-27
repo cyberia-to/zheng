@@ -542,20 +542,36 @@ all files that have it — it is not decoration.
 
 ## what zheng is
 
-zheng (証 — proof/evidence) is the proof system for cyber. it implements the
-SuperSpartan IOP + Brakedown PCS + sumcheck protocol. zero
-trusted setup. post-quantum. sub-millisecond verification.
+zheng (証 — proof/evidence) is the native proof system for soft3/cyber.
+zheng proofs are not STARKs (no AIR, no FRI): one field (Goldilocks, Fp3
+challenges), one hash (hemera), one code (Reed–Solomon), one IOP (Spartan
+over CCS). Every proof travels in the `ZHENGPF1` envelope. Profiles:
+public certificate v3 (0) and state-public v3 (3) — exact row checks of a
+disclosed witness; succinct (1) — Spartan over Fp3 + one WHIR opening;
+zk "veil" (2) — masked Spartan + a hiding RS tensor opening, with the
+MPC-in-the-head protocol as fallback; machine proof (4) — accumulation,
+landing with phase 3 (`specs/accumulation.md`, `specs/machine.md`).
+Bits per component: `specs/soundness.md`. Measured numbers live in
+`audit/` (succinct-profile-2026-10.md, zk-profile-2026-10.md); quote only
+those, or a goal labelled as a goal (≤ 64 KB, verify ≤ 1 ms, constant in
+steps). The folded SuperSpartan/Brakedown API (feature `legacy`) is
+unsound and removed in phase 5 — never describe it as current. Joy owns
+runtime orchestration; Trisha owns Triton/Neptune separately. Private
+MPC-in-the-head proof costs are linear and security follows the explicit
+assumptions in `specs/native-private-ccs.md`; never transfer another
+profile's timing or security claims to a different backend.
 
 ## components
 
 ```
 SuperSpartan    IOP for CCS (Customizable Constraint Systems)
-                handles AIR constraints of any degree via sumcheck
+                constraints of any degree via sumcheck, challenges in Fp3
                 one commitment, one opening per proof
 
-Brakedown        multilinear polynomial commitment scheme (expander-graph codes)
-                fastest PCS verification (290 μs – 1.0 ms)
-                transparent, post-quantum
+WHIR            multilinear PCS over Reed–Solomon (lens), hemera Merkle trees
+                shipped for the succinct profile: rate 1/64, folding 4,
+                24 grinding bits; hash.tri verify 7.96 ms (goal ≤ 1 ms)
+                transparent, post-quantum (hash-only)
 
 sumcheck        core interactive proof protocol
                 reduces N-term sum to log(N) rounds
@@ -575,7 +591,7 @@ sumcheck        core interactive proof protocol
 | bbg | `~/git/bbg/` | authenticated state (Big Badass Graph) |
 | cyber | `~/git/cyber/` | knowledge graph (parent subgraph) |
 
-lens was extracted from zheng. the Lens trait (commit/open/verify) and all five lens specs (Brakedown, Binius, Ikat, Isogeny, Tropical) now live in ~/git/lens/. zheng depends on lens for polynomial commitment.
+lens was extracted from zheng. the PCS trait and its specs (WHIR, TensorRs, Brakedown for state tables, and the research lenses Binius, Ikat, Isogeny, Tropical) live in ~/git/lens/. zheng depends on lens for polynomial commitment.
 
 ## do not touch zones
 

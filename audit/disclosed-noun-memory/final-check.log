@@ -1,0 +1,4 @@
+    Blocking waiting for file lock on build directory
+    Checking zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/rs)
+    Checking zheng-cli v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/cli)
+    Finished `release` profile [optimized] target(s) in 6.27s

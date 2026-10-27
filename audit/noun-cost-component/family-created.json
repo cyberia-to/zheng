@@ -1,0 +1,162 @@
+[
+  {
+    "name": "strata",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/strata",
+    "revision": "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/strata",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/strata",
+      "d2eb1763b8caf04e6c7647ac6fe99761519c2ef9"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "hemera",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/hemera",
+    "revision": "a931a0a8e7ed369852ce0f8bc6451a59745ee692",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/hemera",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/hemera",
+      "a931a0a8e7ed369852ce0f8bc6451a59745ee692"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "lens",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/lens",
+    "revision": "17cafe91431977b738e5b72361187cd01ad93638",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/lens",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/lens",
+      "17cafe91431977b738e5b72361187cd01ad93638"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "nox",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/nox",
+    "revision": "71b5860219f0e0810200946e4445e5fdf54269dd",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/nox",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/nox",
+      "71b5860219f0e0810200946e4445e5fdf54269dd"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "bbg",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/bbg",
+    "revision": "1d39975ad199b48c350fa4cc011cbf6f289480ee",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/bbg",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/bbg",
+      "1d39975ad199b48c350fa4cc011cbf6f289480ee"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "neuron",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/neuron",
+    "revision": "fd24e768d623604b67e20b4b93fa8e82c83ac373",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/neuron",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/neuron",
+      "fd24e768d623604b67e20b4b93fa8e82c83ac373"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "trident",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/trident",
+    "revision": "c17bd0371c11746f46e20222c48cae2ab08be79d",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/trident",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/trident",
+      "c17bd0371c11746f46e20222c48cae2ab08be79d"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "joy",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/joy",
+    "revision": "ec83bd8d85b20a8bd20d2d14b0f25aab0f75e9fe",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/semantic-observer-integration/joy",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/joy",
+      "ec83bd8d85b20a8bd20d2d14b0f25aab0f75e9fe"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "tade",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+    "revision": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/tade",
+      "c1d81c75725df0a666c36d81ef33c3a60eb007f3"
+    ],
+    "initial_status": ""
+  },
+  {
+    "name": "zheng",
+    "source": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+    "revision": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+    "argv": [
+      "git",
+      "-C",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/zheng-node-cost",
+      "worktree",
+      "add",
+      "--detach",
+      "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+      "c753f5ae055d3f4a43847877521f119d3b40dd39"
+    ],
+    "initial_status": ""
+  }
+]

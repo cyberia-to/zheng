@@ -6,185 +6,362 @@ alias: recursive composition spec, proof recursion, IVC spec
 ---
 # recursion
 
-the recursive composition protocol for [[zheng]]. [[HyperNova]] folding over [[CCS]]. per-step folding cost: ~30 field ops + 1 [[hemera]] hash. the decider runs once at the end. decider cost: ~825 constraints (CCS jet + batch + algebraic FS).
+Incrementally verifiable computation over the nox machine
+(`rs/src/recursion/`). The step relation of step `i` proves its nox
+segment *and* that the verifier of step `i − 1` accepted: the verifier
+runs inside the step's trace as the recursion circuit. A proof of any
+number of steps is the last step's proof, the state it started from and
+one decider — its size does not depend on the number of steps.
 
-## folding
+Constant size comes from this recursion, not from accumulation alone.
+Accumulation (`accumulation.md`) turns many evaluation claims into one
+decider, but every accumulation step leaves spot-check openings that
+someone must verify; without a verifier inside the next step the proof
+carries every step's openings and grows with the run
+(`audit/accumulation-2026-10.md` §6). Here each step's openings are
+checked by the next step's circuit and only the last step's travel.
 
-```
-fold(accumulator, instance) -> accumulator'
-  cost: ~30 field operations + 1 hemera hash
+## objects
 
-decide(accumulator) -> proof
-  cost: ~825 constraints (CCS jet + batch + algebraic FS)
-```
+- **parameters** (`Params`): WHIR parameters of every committed word
+  (profile 6: rate 1/8, 16 grinding bits — `ivc::SHIPPED_RATE`,
+  `SHIPPED_POW`), the step size `2^n` rows (`n = 15`), `ℓ = n + 6` variables per word, the
+  accumulation configuration for four input words (`AccConfig::derive`
+  with `m = 4`).
+- **words**: Reed–Solomon codewords in WHIR's round-0 layout (lens
+  `LeafLayout`) under a field-native hemera Merkle tree: a leaf is the
+  duplex sponge (tag `LEAF`) over its symbols, every IVC tree 4-ary
+  (`params::ARITY`: a node is the truncated permutation of its four
+  children; over an odd power of two leaves the top node binary,
+  `perm(l ‖ r ‖ NODE_TAG ‖ 0⁷)[0..4]`). Same code, domain and distance as a
+  lens commitment; only the hashing differs. The last accumulator is a
+  word like the others; the decider opens it field-natively (below).
+  A codeword above `2^25` symbols is streamed (`recursion::stream`): every
+  symbol of a leaf lies in one coset of the order-`2^ℓ` subgroup, so the
+  committer runs one size-`2^ℓ` NTT per coset, hashes that coset's leaves
+  and drops the values; an opening recomputes its leaf from the
+  coefficients. The commitment is the same; the prover holds the
+  coefficients and the tree, not the codeword.
+- **transcript**: an overwrite duplex sponge over hemera's permutation,
+  rate 9 lanes (three Fp3), capacity 7 lanes with a domain tag; an Fp3
+  item never straddles a block; challenges are output limbs (no byte
+  reduction); an index is the low bits of a limb `v ≠ p − 1`
+  (`p − 1 = 2^32·(2^32 − 1)`, so `v mod 2^k`, `k ≤ 32`, is exactly
+  uniform); grinding absorbs a nonce and requires the low bits of the next
+  limb to be zero.
+- **state** (`StateV`): context digest, steps verified, chain of
+  pre-committed roots, the first segment's first row and the last verified
+  segment's successor (nox columns), the accumulator (root, `(ρ, v)`, OOD
+  claims, spot claims `(ω^s, y)`), three deferred claims.
 
-for N independent proofs:
+## the step relation
 
-```
-1000 transactions in a block:
-  fold: 1000 steps * ~30 field ops = 30K field operations (trivial)
-  decider: 1 * ~825 constraints
-  total: ~825 constraints + 30K field ops
-```
+One AIR over `2^n` rows with three committed words of 64 columns:
 
-## epoch composition
-
-```
-block 1 -> fold -> block 2 -> fold -> ... -> block 1000 -> fold -> decider
-1000 folds * 30 field ops = 30K field ops
-1 decider = ~825 constraints
-total: ~825 constraints + negligible folding cost
-```
-
-## proof-carrying computation
-
-proofs accumulate during nox execution via per-step HyperNova folding. eliminates the separate proving phase entirely. when computation finishes, the proof is already done — run the O(1) decider.
-
-```
-reduce_with_proof(s, formula, f, acc) ->
-  let (tag, body) = formula
-  let (result, f', trace_row) = dispatch(s, tag, body, f)
-  let acc' = fold_row(acc, trace_row)      // one CCS fold per reduce() call
-  (result, f', acc')
-```
-
-each reduce() call:
-1. produces the usual result and focus update
-2. generates one trace row
-3. incrementally folds that row into a running accumulator
-
-at the end: the accumulator IS the proof (after one decider call).
-
-### cost
-
-```
-proof-carrying:
-  compute: N reduce() calls                    -> result + accumulator
-  fold:    N * ~30 field ops per fold          -> accumulator
-  decider: 1 * ~825 constraints               -> proof
-  total:   ~31N operations
-```
-
-### implications
-
-- **memoization is proof-verified**: `(H(object), H(formula)) -> (H(result), acc)` — the cache entry IS a proof
-- **network propagation carries proofs**: a neuron computes a cyberlink and gossips it with the proof attached
-- **verification is always O(1)**: the receiver runs the decider (~825 constraints) regardless of original computation size
-- **no proving infrastructure**: no proving queues, no prover-verifier asymmetry. every device is a prover
-
-## cross-algebra folding
-
-with algebra-polymorphic nox, different transactions may execute in different algebras (F_p, F_2, F_{p^3}). universal CCS with selectors enables heterogeneous folding:
-
-```
-universal_ccs = {
-  sel_Fp:   1 for Goldilocks rows, 0 otherwise
-  sel_F2:   1 for binary rows, 0 otherwise
-  sel_ring: 1 for ring-structured rows (Wav/FHE), 0 otherwise
-}
-
-fold(acc, goldilocks_instance)  -> acc'    (~30 F_p ops + 1 hemera)
-fold(acc', binary_instance)     -> acc''   (~30 F_p ops + 1 hemera)
-fold(acc'', ring_instance)      -> acc'''  (~30 F_p ops + 1 hemera)
-
-one accumulator, all algebras
-decider: one proof, ~5 us verification
-```
-
-boundary cost per cross-algebra fold: ~766 F_p constraints (30 field ops + 1 hemera hash). negligible vs execution cost.
-
-## folding algorithm
-
-the [[HyperNova]] folding protocol over [[CCS]]:
-
-### fold(accumulator, instance, witness)
-
-given running accumulator A = (E_acc, u_acc, w_acc, e_acc) and new CCS instance (E_new, u_new, w_new):
-
-1. compute cross-term T = cross_term(A, new_instance) — field operations over CCS matrices
-2. derive challenge beta from transcript: absorb A.commitment, new.commitment, T; squeeze beta
-3. fold instances: E_folded = E_acc + beta * E_new
-4. fold witnesses: w_folded = w_acc + beta * w_new
-5. fold error: e_folded = e_acc + beta * T + beta^2 * e_new
-6. update commitment: C_folded = hemera(w_folded)
-7. return new accumulator
-
-### decide(accumulator, params)
-
-prove that the accumulated CCS instance is satisfiable. a standard [[SuperSpartan]] + [[Brakedown]] proof of the folded instance. cost: ~825 constraints.
-
-### cross-term computation
-
-for CCS with matrices M_1,...,M_t and sets S_1,...,S_q:
-
-```
-T = sum_j c_j * sum over all mixed products of (M_i * z_acc) and (M_i * z_new) from set S_j
-```
-
-cost: O(|S| * nnz) where nnz is total non-zeros across matrices.
-
-### soundness
-
-folding preserves CCS satisfiability. if either the accumulator or the new instance is unsatisfying, the error term e_folded will be non-zero with overwhelming probability over the choice of beta.
-
-### CCS compatibility
-
-[[HyperNova]] folds over [[CCS]] instances. since [[SuperSpartan]] already uses CCS, the folding scheme and the proof system share the same constraint language:
-
-- fold a [[cyberlink]] insertion proof -> CCS instance
-- fold a rank update -> CCS instance
-- fold a cross-shard merge -> CCS instance
-
-one framework, one accumulator type, any proof in the zheng taxonomy.
-
-## row-by-row folding
-
-HyperNova folds complete CCS instances. row-by-row folding requires access to adjacent rows for transition constraints (AIR constraint: row t relates to row t+1). solution: sliding-window fold of width 2 — fold (row_t, row_{t+1}) as one CCS instance:
-
-```
-fold(acc, (row_0, row_1)) -> acc_1
-fold(acc_1, (row_1, row_2)) -> acc_2
-fold(acc_2, (row_2, row_3)) -> acc_3
-...
-```
-
-each fold sees the transition constraint between consecutive rows. row_t appears in two consecutive folds — once as "current" and once as "previous." the overlap ensures transition constraints are fully checked.
-
-## accumulator format
-
-```
-accumulator = {
-  committed_instance: CCSInstance,    // folded CCS instance
-  witness_commitment: [u8; 64],       // hemera digest of folded witness
-  error_term: GoldilocksElement,      // accumulated folding error
-  step_count: u64,                    // number of folds applied
-}
-```
-
-the accumulator grows by a constant amount per fold. the decider proof at the end verifies the entire accumulated sequence. serialization cost: ~200 bytes (constant regardless of computation size).
-
-## depth bounds
-
-| scenario | depth | total prover cost |
+| word | columns | committed |
 |---|---|---|
-| single transaction | 0 | |C| constraints |
-| block (1000 txns, fold) | 1 | 1000 * 30 ops + 825 decider |
-| epoch (1000 blocks, fold) | 1 | 1000 * 30 ops + 825 decider |
-| epoch + block combined | 2 | block fold + epoch fold + 2 deciders |
-| cross-epoch query | 1 | one recursive verification of epoch proof |
+| a | nox phase 1 (64) | before the run's challenges (pre-commit) |
+| b | nox phase 2 (15) ‖ circuit phase 1 (49) | at the step |
+| c | circuit phase 2 (54) ‖ zero (10) | after the circuit's challenges |
 
-folding depth is unbounded in theory. each step adds ~30 field ops. the decider runs once at ~825 constraints. folding is always preferred for composition.
+Constraints: the machine's (`machine.md`, with the run's memory
+challenges) and the circuit's (below, with the step's `(α_V, β_V)`).
 
-## security of recursive composition
+## the recursion circuit
 
-recursive soundness inherits from the base proof system. if the base zheng proof has soundness error epsilon per verification, k levels of recursion have error <= k * epsilon. at 128-bit security: epsilon ~ 2^{-128}, so even 1000 recursion levels give error <= 1000 * 2^{-128} ~ 2^{-118} — negligible.
+Four row kinds over the 49 + 54 circuit columns:
 
-the critical requirement: the [[verifier]] must be faithfully encoded as [[nox]] patterns. any discrepancy between the nox verifier program and the mathematical verifier specification would break recursive soundness.
+- **ARITH**: four gates a row, `out = qm·x·(y + qs·z) + qa·x + qb·y +
+  qc·z + qk` over Fp3, each a compute, an assertion (`out` unused, the
+  value must be zero when `live`) or a free witness;
+- **PERM**: a hemera permutation in four rows (input and states after
+  rounds 0, 1; after rounds 2, 3 and the 16 partial-round inverses; after
+  rounds 20–22; the output) — 160 constraints of degree ≤ 8 — the hemera
+  0.3 layout; hemera 0.4 (frozen 2026-10-16: 60 x⁷ rounds, no inverse
+  witness) needs a re-cut PERM block, pending the code sweep; the input
+  of a block is fixed by flags on the row before it: rate lanes kept,
+  zeroed or bound to memory; capacity chained, fresh with a tag, or a
+  Merkle node whose current digest comes from the previous output and
+  whose direction bit is a memory read;
+- **BITS**: a canonical 64-bit decomposition in four rows of 16 bits
+  (`hi = 2^32 − 1 ⇒ lo = 0`);
+- padding.
 
-## open questions
+Every row has 17 memory slots: a slot reads (`+1`) or writes (`−reads`)
+one Fp3 value at a fixed address; a logUp running sum over fingerprints
+`α_V − (addr + β_V·value)` closes cyclically. A permutation block reads or
+writes three lanes as one Fp3 (flag `WIDE`). The preprocessed columns —
+selectors, gate coefficients, addresses, multiplicities, block flags, the
+output row — are the circuit's key (107 columns); the public input is the
+state digest at the output row (four columns `x_j·[row = out]`).
 
-1. **sliding-window correctness**: formal proof that width-2 folding captures all AIR transition constraints. multi-row patterns (hash: 300 rows, inv: 64 rows) may need wider windows
-2. **universal CCS overhead**: padding smaller instances to match universal CCS dimensions wastes constraints. CycleFold addresses this but adds protocol complexity
-3. **cross-algebra soundness**: does folding F_p and F_2 instances into the same accumulator preserve HyperNova security guarantees?
+The program (`program::run`) is written once over `Ops` and run three
+ways: natively by the final verifier, by the prover's own check, and by
+the circuit builder, whose operation order fixes the layout. It absorbs
+the previous state (free witness), runs the step verifier on the previous
+proof, computes the initial state from the context's parts, selects
+`live ? verified : initial` element by element, and hashes the result.
+`live` is a column constant over the trace, 0 only in the base step:
+every assertion (gate assertions, Merkle roots, grinding) is multiplied
+by it, so the base step verifies a dummy proof and outputs the initial
+state. A base step anywhere but the first restarts the chain from the
+initial state; the final checks (step count = segments, chain = the
+pre-committed chain) then fail.
 
-see [[verifier]] for the standalone verification algorithm, [[constraints]] for the AIR format, [[transcript]] for Fiat-Shamir in recursive proofs, [[sumcheck]] for the core protocol, [[lens]] for polynomial commitment
+## deferred claims
+
+The step verifier never evaluates a constraint. After the zerocheck it
+holds `G(point) = c` with
+
+```text
+point = (local[192], next[192], nox publics[31], key[107], public input[4],
+         α_V, β_V, μ1, μ2, μ3)
+G     = Σ_k μ1^{k mod B}·μ2^{⌊k/B⌋ mod B}·μ3^{⌊k/B²⌋}·C_k     (B³ ≥ #constraints)
+```
+
+and the publics it was sent must equal the public columns:
+`Σ_j eq(γ_n, j)·nox_j(ρ ‖ bits(step)) ` over the run's global nox columns
+(`n + 32` row variables, 5 column variables) and `Σ_j eq(γ_v, j)·K_j(ρ)`
+over the key (`n` row and 7 column variables), `γ` drawn after the
+publics are absorbed. Each kind is one polynomial fixed by the statement
+(`G`, `P̄_nox`) or the parameters (`P̄_V`); the state carries one claim of
+each and every step folds its new claim in along the line through the
+two points: the prover sends the line polynomial at `2..=deg`, its values
+at 0 and 1 are the two claimed values, a challenge `r` gives the new
+point and value. The final verifier evaluates the three folded claims
+once (`Relation::g`, `Public::eval` of the global columns, the sparse
+key).
+
+## step protocol (`step::verify`)
+
+Transcript tag `STEP`:
+
+1. the public input `x = H(state)`;
+2. word a: root and OOD answers (points from the root alone, tag `PRE`;
+   the chain `D` absorbs root and answers); word b: root, OOD; `(α_V,
+   β_V)`; word c: root, OOD;
+3. nox boundary in (79) and out (79), the circuit's first row (103);
+4. `τ`, seeds; zerocheck (`n` rounds, degree 9); every column at `ρ` and
+   at its successor, the publics at `ρ`; `c = claim / eq(τ, ρ)`;
+5. `γ_n`, `γ_v`; the three line folds;
+6. the shift reduction (`air/shift.rs`) of the three words to one point
+   (`Σ ζ^w (a_w + β n_w)`, the last row's successor the boundary), the
+   three values; boundary claims at row 0;
+7. boundary continuity (`b_in = b_last` unless the first step), the
+   accumulation step over `(accumulator, a, b, c)` — `accumulation.md`
+   with instances not re-absorbed (the transcript binds them), positions
+   never deduplicated (every spot check opens its leaf in all four words
+   with a full path), spot points kept as `ω^s`.
+
+## IVC (`ivc::prove_run`, `ivc::verify`)
+
+```text
+pre       commit every segment's word a → D; (α, β) = H(statement, D);
+          nox phase 2 of every segment
+step i    circuit: verify step i−1 from state_{i−1} (base: none) → state_i;
+          prove segment i ‖ circuit with public input H(state_i)
+proof     state_{S−1}, step S−1's proof, the decider
+verify    the final verifier (below) natively, then the deferred
+          nox-public claim against the statement's columns
+```
+
+## final verifier (`finalv::run`, over `Ops`)
+
+```text
+state     the state's base items are base (else refused); absorb it →
+          x = H(state); verify step S−1 from it → state_S
+final     ctx, chain = D, step = S, the cyclic boundary — against the
+          public values (computed from the statement natively, the
+          public input of a wrap)
+G         the deferred constraint claim: G is recorded once as an
+          expression graph over (point, run challenges, statement
+          constants) and compiled to gates (870 constraints → 8,212
+          gates); natively the same gates are interpreted
+decider   tag DECIDE: the accumulator instance and the deferred key claim
+          absorbed; the key claim P̄_V(z, g) = (1 − g_6)·K̃_lo + g_6·K̃_hi
+          over the circuit key as two 64-column words committed under one
+          tree (fixed by the parameters); one batched field-native WHIR
+          opening of [accumulator, key words]
+out       the deferred nox-public claim (statement data: evaluated by
+          whoever holds the statement)
+```
+
+## field-native WHIR (`recursion::whir`)
+
+lens's WHIR schedule (`WhirConfig`: folds, rates, queries) on the duplex
+transcript and field-native words, each round's Johnson regime, OOD count
+and fold/query grinding re-chosen for the least grinding work at lens's
+queries (`whir::schedule`), its verifier over `Ops`. `m` words, each with its own
+claims, are batched: `γ`; an `ℓ`-round sumcheck to one point `ρ'`; every
+word's value there; grinding; `r`; WHIR on `f_0 = Σ r^i f_i` (a round-0
+query opens its leaf in every word, combines, folds). Words committed
+together may share one tree (`word::Group`: a leaf hashes every member's
+symbols; one path opens all). One word skips the batch: its claims are
+WHIR's initial weights — eq and pow points, a row polynomial (eq, or the
+successor `nxt`, at `ρ`) times a column vector, or a weight a native
+verifier evaluates (`NativeWeight`); the closing check sums each weight
+against the final polynomial on the cube. One word is opened only by a
+native verifier (the final wrap): it absorbs its final polynomial as a
+message digest (`recursion::msg`: eight part sponges, tag `MSG`, and a
+sponge over the message's length and their digests) instead of
+coefficient by coefficient; a native verifier only (`Ops::native`) takes
+the field-native closing check, a circuit the generic one. Trees are binary or 4-ary
+(`word::Arity`): a 4-ary node is the truncated permutation of its four
+children (all sixteen lanes); over an odd power of two leaves the top
+level is one binary node; the circuit's `NODE4` input places the current
+digest at `b0 + 2·b1`. Soundness: lens `whir::batch` and WHIR's terms
+(`soundness.md` § wrap).
+
+## wrap (`recursion::wrap`)
+
+A wrap proof shows the recursion circuit ran a verifier on a proof it
+holds and output the digest of the public values that verifier binds:
+
+```text
+X = H_PUBLIC(ctx, chain, segments, run challenges, statement constants,
+             the deferred nox-public claim (point, value))
+```
+
+The inner verifier is the IVC final verifier (the first level) or the
+verifier of the level below. The relation: the circuit's AIR alone over
+`2^n` rows (`n` the smallest the program fits), `live = 1` on every row,
+`X` at the output row.
+
+| mode | words | wiring | key | verifier |
+|---|---|---|---|---|
+| inner | `W1` (phase 1), `W2` (memory phase, after `(α_V, β_V)`) — 4-ary trees | logUp memory | over the base field (`recursion::splitkey`: Fp3 columns split in limbs), base words under one tree, opened in the batch | any interpreter (the circuit) |
+| final | `W1` — binary tree | linear: every read slot's value equals its write slot's, batched with powers of `λ` into one weight `u_λ` (`⟨u_λ, W1⟩ = 0`) | evaluated by the verifier (`O(key entries)`) | native |
+
+```text
+transcript  tag WRAP: X; W1 root, OOD; inner: (α_V, β_V), W2 root, OOD |
+            final: λ; τ, μ; zerocheck (degree 9); the committed columns at
+            ρ and their successors (final: only the columns the
+            constraints read at the next row, from the recorded graph;
+            absorbed as one message digest, `recursion::msg`);
+            inner: the key's physical columns at ρ, γ_k (8 variables), the
+            shift reduction of W1, W2 to one point, the key words at
+            (ρ, γ_k[..6]) checked against the batched columns, the batched
+            opening | final: column batching (local, successor), one
+            direct opening with weights OOD, Σ_c eq(g_l, c)·W1(ρ, c),
+            Σ_{c ∈ next} eq(g_n, c)·W1(ρ + 1, c), u_λ (claimed 0)
+```
+
+The constraints are evaluated at the point through their recorded graph
+(`Σ μ^k C_k`, 267 constraints → 4,054 gates inner, 249 → 3,620 final;
+a native verifier evaluates the graph pruned and compiled, `Compiled`,
+and only the key columns it reads). The final verifier's closing check
+evaluates `u_λ` slot by slot: with `ℓ − fv ≤ n` every cell of one slot
+shares its row's `eq(α, ·)` factor, so the term is one product per slot
+and a Horner sum over the reads (`wrap::wiring`).
+
+The chain shipped (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`): the IVC proof
+(rate 1/8, `ivc::SHIPPED_RATE`, steps of `2^15` rows, 4-ary trees) →
+inner 1/16 grinding 16 bits (the IVC final verifier, 48,453 of 2^16 rows) → inner 1/128 grinding 22 (2^15 rows) → final
+1/512 grinding 26 (2^14 rows). The final level's circuit size (≤ 2^14,
+so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the
+final circuit verifies; the base-field key (a key leaf of 6 permutations
+instead of 11) makes 1/128 fit — 16,230 of 16,384 rows; the final rate and grinding fix the
+proof's bytes (`examples/wrap_plan`, `examples/wrap_chain` plan a chain
+without proving). **Size gate.** The outermost proof's size is bounded by construction,
+not measured: every message shape is fixed by the final key and a
+multi-opening of `q` leaves carries at most `Σ_levels (a·n_{l+1} − n_l)`
+siblings with `n_l = min(q, nodes at level l)` (`whir::wire::max_siblings`,
+exact). The gate: `wrap::max_proof_bytes(final key)` ≤ 64 KiB
+(`wrap::MAX_FINAL_BYTES` = 65,536), hard, by key — the shipped chain
+64,213 B (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`);
+`FinalProof::from_bytes` refuses longer input and profile 6 refuses a
+final key over the gate. A profile-6 envelope adds its header (11 B), format byte and
+chain (37 B), the statement (program digest 32 B, inputs, output tokens,
+cycles, budget, state) and the proof's length varint (3 B): it is ≤ 64 KiB
+over every transcript whenever the encoded statement takes ≤ 1,272 B
+(65,536 − 64,213 − 51; small programs take ≈ 0.6–0.9 KB); a larger statement
+(many inputs or outputs) can push the envelope past 64 KiB while the
+proof stays under its gate. A verifying key travels as bytes (`WrapKey::vk_bytes`,
+pinned by `vk_digest`): it verifies, it does not prove.
+The outermost proof (`FinalProof`) is the deferred nox-public claim and
+the final wrap; `wrap::verify_final` refuses a key derived for another
+recursive proof (a wrap key records the IVC's WHIR parameters and step
+size; the header's must be them), evaluates the claim against the
+statement's columns, recomputes `X` and verifies the wrap natively. A
+final-mode level is verified natively only: `derive_key_wrap` refuses to
+put one inside a circuit (its verifier evaluates the key and the wiring
+weight in the field).
+
+The final verifier keeps #53's review checks: natively a state is read
+only if its base items are base (`state::is_canonical`); in the circuit a
+base item is absorbed as one free cell (`state::absorb_free` takes the
+base limb), so the state the circuit hashes is canonical by construction.
+A grinding nonce is a field element in the circuit; the native shape
+checks (step, field-native WHIR) refuse nonces `≥ p`.
+
+`verify(verify(π))`: a two-step proof is accepted only if the second
+step's circuit accepted the first step's proof (`tests/recursion.rs`).
+
+## soundness
+
+Ledger rows: `soundness.md` § recursion. Every challenge is over Fp3;
+every round is ≥ 128 bits with grinding priced in
+(`params::tests::every_ledger_row_of_the_recursion_profile_reaches_128_bits`).
+The composition of the step relation with the verifier it contains rests
+on hemera behaving as a random oracle *inside* the circuit (the
+Fiat–Shamir transcript of step `i − 1` is recomputed by step `i`); no
+proof of recursive Fiat–Shamir knowledge soundness is claimed — the row
+is conjectured, as for every deployed recursive proof system.
+
+## not built
+
+- the deferred nox-public claim evaluated in the circuit (it travels in
+  the final proof: `n + 37` Fp3).
+
+## envelope
+
+profile 5 of `ZHENGPF1` carries a recursive proof (`envelope::recursive`,
+body layout in `api.md` § envelope). The IVC wire (`recursion::wire`) is
+fixed-width little-endian with canonical Goldilocks limbs and no lengths
+but the header's; the envelope wraps it with a format byte, the WHIR
+header (admitted sets only), the machine statement and a length prefix.
+
+The statement digest (`ivc::statement_digest`) absorbs
+`MachineStatement::bytes` v2: the program enters as its hemera digest
+(`machine::program_digest`), the digest profiles 4–6 carry in place of the
+tokens, so the public digest `X` every wrap level outputs commits to the
+32 bytes the envelope shows. The verifier derives the init entries from
+the program it is given after checking that digest.
+
+profile 6 carries the final proof of the wrap chain (`envelope::wrapped`,
+`api.md` § wrapped): a format byte, the admitted chain (IVC header, three
+levels' headers and modes), the machine statement and the length-prefixed
+`FinalProof` wire (`wrap::wire`).
+
+## key layouts (`recursion::vkey`)
+
+A recursion key is fixed by its parameters and the circuit's layout: the
+fixed columns `Pre`, the output row and, for committed keys (the IVC key,
+inner wrap levels), the root of the key words. `Key::layout_bytes` /
+`WrapKey::layout_bytes` write exactly these (sparse columns, canonical
+varints, values < p); `from_layout` rebuilds the rest — sparse columns,
+configs, the constraint graph `G`, the final mode's wiring — in
+milliseconds. A rebuilt IVC key commits its words only when a prover asks
+(`Key::words`, checked against the root). A prover may keep committed key
+trees on disk (`ZHENG_KEY_CACHE=<dir>`, `recursion::keycache`): a tree is
+stored under a digest of its members' coefficients, layout and fan-in and
+read back instead of recommitted (an inner level's root is still checked
+against `INNER_ROOTS`, an IVC key's against `KEY_ROOTS`; a damaged file
+is ignored). Verifiers never read it.
+
+Deriving the final wrap key needs the inner levels' key roots, and
+committing those keys dominates (minutes, ~30 GB at 1/64 and 1/256). The
+roots are pinned (`envelope::wrapped::INNER_ROOTS`): the verifier derives
+the levels over the pinned roots (`derive_key_ivc_at`,
+`derive_key_wrap_at`) without committing, and the prover, which commits
+them anyway, refuses to run when its roots differ from the pins. Layout
+bundles a verifier persists are accepted only under pinned digests
+(`envelope::keys`), so a cached key is exactly a derived one. A derived
+IVC key commits its words on the process's prover backend (Merkle
+levels, coset leaves, permutation batches); the profile-5 decider opens
+them against that root natively, so every verifier-facing IVC key — the
+admitted profile-5 sets and profile 6's IVC — must carry the key-word
+root pinned in `envelope::recursive::KEY_ROOTS` (the CPU's derivation):
+a faulty device kernel makes the verifier refuse, never accept against
+another root. Verification itself never calls the backend
+(`rs/tests/proof_stack_backend.rs`).

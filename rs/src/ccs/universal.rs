@@ -11,7 +11,8 @@
 //! raise it by exactly one). Every trace pair (row t, row t+1) and every
 //! synthetic Poseidon2 round (Fiat-Shamir transcript replay, BBG root chain)
 //! is a witness of this single instance, so the whole Layer-1 argument is one
-//! HyperNova accumulator and one decider, whatever the program.
+//! accumulator of the legacy fold (unsound; feature `legacy`, removed in
+//! phase 5) and one decider, whatever the program.
 //!
 //! Witness layout (`Z_LEN` = 96, padded to 128 for the lens):
 //!

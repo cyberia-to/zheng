@@ -242,6 +242,8 @@ fn proof_rows(
     let p = &proof.universal.proof;
     let (outer, inner) = (p.outer_sumcheck_polys.len(), p.sumcheck_polys.len());
     vec![
+        ("verification_scope", "legacy_trace_statement".to_string()),
+        ("execution_output", "unverified".to_string()),
         ("trace_rows", trace.0.len().to_string()),
         ("groups", proof.group_count().to_string()),
         ("steps", steps.to_string()),

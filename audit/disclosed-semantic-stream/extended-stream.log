@@ -1,0 +1,24 @@
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/semantic/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 5.11s
+     Running unittests src/lib.rs (target/release/deps/zheng-d5a2a92bfda7b5e2)
+
+running 16 tests
+test execution::disclosed::stream::tests::differential::parent_keeps_left_header_when_right_child_evicts_its_summary ... ok
+test execution::disclosed::stream::tests::differential::cached_child_metrics_and_atom_facts_survive_noun_reset_and_slot_replacement ... ok
+test execution::disclosed::stream::tests::adversarial::exact_resource_caps_and_one_below_are_enforced_with_full_cached_charge ... ok
+test execution::disclosed::stream::tests::adversarial::invalid_types_inverse_zero_and_service_invocations_poison ... ok
+test execution::disclosed::stream::tests::boundaries::malformed_enter_noun_indices_and_noncanonical_root_reject ... ok
+test execution::disclosed::stream::tests::adversarial::wrong_keys_outputs_truncation_and_extra_roots_poison_or_reject ... ok
+test execution::disclosed::stream::tests::adversarial::stale_generations_empty_slots_wrong_keys_and_generation_overflow_reject ... ok
+test execution::disclosed::stream::tests::boundaries::reused_summary_counts_its_entire_height_at_the_current_stack_depth ... ok
+test execution::disclosed::stream::tests::adversarial::selected_branch_and_computed_continuation_keys_survive_reset_and_reject_changes ... ok
+test execution::disclosed::stream::tests::boundaries::hash_outputs_require_all_limbs_and_exact_pair_of_pairs_topology ... ok
+test execution::disclosed::stream::tests::boundaries::pair_arguments_and_wide_words_reject_at_the_primitive_boundary ... ok
+test execution::disclosed::stream::tests::adversarial::terminal_checks_every_particle_limb_exact_cost_budget_and_frame_claim ... ok
+test execution::disclosed::stream::tests::differential::saturated_unselected_dynamic_and_service_data_preserve_selected_derivation ... ok
+test execution::disclosed::stream::tests::differential::canonical_field_word_and_hash_boundaries_match_native ... ok
+test execution::disclosed::stream::tests::differential::all_native_rules_match_finite_dag_across_a_fresh_noun_table_per_event ... ok
+test execution::disclosed::stream::tests::adversarial::checked_metric_overflow_rejects_exponentially_shared_evaluations ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 243 filtered out; finished in 0.05s
+

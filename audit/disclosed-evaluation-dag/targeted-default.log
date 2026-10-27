@@ -1,0 +1,80 @@
+   Compiling strata-core v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/core)
+   Compiling proc-macro2 v1.0.107
+   Compiling strata-proof v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/proof)
+   Compiling strata-ext v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/ext)
+   Compiling strata-compute v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/compute)
+   Compiling strata-nebu v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/nebu/rs)
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling cyber-hemera v0.3.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/hemera/rs)
+   Compiling cyber-lens-core v0.1.2 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/core)
+   Compiling syn v3.0.5
+   Compiling serde_core v1.0.229
+   Compiling cyber-lens-brakedown v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/brakedown)
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling thiserror v2.0.20
+   Compiling serde v1.0.229
+   Compiling libc v0.2.189
+   Compiling heapless v0.7.17
+   Compiling thiserror-impl v2.0.20
+   Compiling serde_derive v1.0.229
+   Compiling strata-jali v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/jali/rs)
+   Compiling strata-kuro v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/kuro/rs)
+   Compiling strata-genies v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/genies/rs)
+   Compiling strata-trop v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/strata/trop/rs)
+   Compiling byteorder v1.5.0
+   Compiling zmij v1.0.23
+   Compiling getrandom v0.3.4
+   Compiling hash32 v0.2.1
+   Compiling cyber-lens-assayer v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/assayer)
+   Compiling cyber-lens-porphyry v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/porphyry)
+   Compiling cyber-lens-binius v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/binius)
+   Compiling cyber-lens-ikat v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/ikat)
+   Compiling cfg-if v1.0.5
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde_json v1.0.151
+   Compiling cobs v0.3.0
+   Compiling cyber-lens v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/lens/src)
+   Compiling cyber-nox v0.3.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/nox/rs)
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling zeroize v1.9.0
+   Compiling postcard v1.1.3
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 14.14s
+     Running unittests src/lib.rs (target/release/deps/zheng-31b6a51cf573cd48)
+
+running 11 tests
+test execution::disclosed::evaluation::tests::adversarial::exact_and_one_below_resource_limits_fail_without_mutation ... ok
+test execution::disclosed::evaluation::tests::adversarial::computed_continuation_binds_both_child_results_as_its_key ... ok
+test execution::disclosed::evaluation::tests::adversarial::equality_and_premise_keys_use_particles_across_duplicate_occurrences ... ok
+test execution::disclosed::evaluation::tests::differential::repeated_prior_premises_count_expanded_occurrences_and_match_observer ... ok
+test execution::disclosed::evaluation::tests::adversarial::outputs_bind_ordered_topology_and_all_root_particle_limbs ... ok
+test execution::disclosed::evaluation::tests::adversarial::premise_keys_arity_order_and_prior_frontier_are_authenticated ... ok
+test execution::disclosed::evaluation::tests::differential::axis_zero_and_hash_have_distinct_native_results_and_logical_step_counts ... ok
+test execution::disclosed::evaluation::tests::adversarial::malformed_formulas_invalid_types_and_inverse_zero_have_no_success_rule ... ok
+test execution::disclosed::evaluation::tests::adversarial::expanded_steps_and_exact_cost_overflow_reject_shared_derivations ... ok
+test execution::disclosed::evaluation::tests::differential::saturated_and_dynamic_unselected_metadata_preserves_cheap_execution ... ok
+test execution::disclosed::evaluation::tests::differential::all_pure_patterns_match_native_values_costs_and_frame_boundaries ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 229 filtered out; finished in 0.01s
+
+     Running tests/disclosed_memory_allocation.rs (target/release/deps/disclosed_memory_allocation-f9dc5e013e1c5de2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/execution_adversarial.rs (target/release/deps/execution_adversarial-f4f020aee24b0b94)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/reaudit_private.rs (target/release/deps/reaudit_private-e3474498f1cf6493)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

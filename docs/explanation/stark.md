@@ -88,7 +88,7 @@ the prover requires FFT/NTT for interpolation — O(N log N) per column. the ver
 
 ### multilinear starks (modern, 2023–2025)
 
-the entire execution trace becomes one multilinear polynomial. constraints are verified via the [[sumcheck]] protocol. Brakedown (as the multilinear lens) opens the commitment at the single point that sumcheck reduces to.
+the entire execution trace becomes one multilinear polynomial. constraints are verified via the [[sumcheck]] protocol. a multilinear polynomial commitment (WHIR, Basefold, Ligero, …) opens the commitment at the single point that sumcheck reduces to. zheng follows this route without being a STARK: it compiles a CCS from the program rather than an AIR over a register trace, commits only the witness, and opens it with [[WHIR]].
 
 ```
 pipeline:
@@ -99,7 +99,7 @@ pipeline:
      each variable has degree ≤ 1
   3. express constraints as CCS (AIR maps directly)
   4. sumcheck reduces ALL constraint checks to ONE evaluation at ONE random point r
-  5. Brakedown opens f(r) — one commitment, one opening
+  5. the multilinear lens opens f(r) — one commitment, one opening
 ```
 
 a multilinear polynomial in k variables:
@@ -126,9 +126,9 @@ example: f(x,y,z) = 3xy + 2xz + yz + x + 5
 2023  SuperSpartan (Setty et al.)       CCS generalization, handles AIR natively
 2024  STIR (Arnon et al.)               improved FRI: rate increases per round
 2024  Circle starks (StarkWare)         starks over Mersenne31 field
-2025  WHIR (legacy) (Arnon et al.)       sub-millisecond verification, multilinear lens
-2025  Whirlaway (LambdaClass)           SuperSpartan + WHIR (legacy) = multilinear stark
-      zheng                             SuperSpartan + recursive Brakedown = current architecture
+2024  WHIR (Arnon et al.)              weighted queries; RS proximity + multilinear lens
+2025  Whirlaway (LambdaClass)           SuperSpartan + WHIR = multilinear stark
+2026  zheng succinct profile            Spartan over Fp3 + WHIR (rate 1/64, k = 4), CCS from the nox program
 ```
 
 see [[zheng]] for the concrete implementation in [[cyber]], [[polynomial-commitments]] for the lens, [[SuperSpartan]] for the IOP, [[sumcheck]] for the core protocol, [[fri-to-whir]] for the lens heritage, [[cryptography]] for the broader field

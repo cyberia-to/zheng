@@ -3,8 +3,12 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! SuperSpartan IOP: prover and verifier.
+//! SuperSpartan: the IOP generic over the challenge field (`iop`), its
+//! verifier half over compressed round polynomials (`reduce`, used by the
+//! succinct profile) and its lens-PCS wrappers (`prover`, `verifier`).
 
+pub mod iop;
+pub mod reduce;
 pub mod prover;
 pub mod verifier;
 

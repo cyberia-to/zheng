@@ -1,5 +1,7 @@
 # zheng audit fix plan — release tier
 
+> superseded: audit of the 0.3 folded trace API, now feature `legacy` (unsound: the fold is never checked) and deleted in phase 5; findings kept as history. see specs/soundness.md for the shipped profiles.
+
 synthesized from three-agent parallel audit (2026-05-17).
 agents covered: ccs/types/transcript, sumcheck/spartan, folding/lib.
 no code changes applied yet. user reviews this plan before fixes begin.
@@ -96,7 +98,7 @@ falls through to `trivial_ccs()` which is the correct handling for unknown tags.
 **problem:** `pub fn fold()` creates `Transcript::new()` on each call. a user
 calling `fold()` N times then `decide()` gets N independent transcripts instead
 of one chained transcript per group. this means beta challenges are not bound to
-the accumulated commitment chain, breaking HyperNova's Fiat-Shamir soundness for
+the accumulated commitment chain, breaking the folding scheme's Fiat-Shamir soundness for
 sequential use. the internal `commit()` function handles this correctly by sharing
 `cur_transcript` across the group (lib.rs:116-134).
 **fix:** either:

@@ -1,0 +1,14 @@
+{
+  "scope": "Read-only independent review of the 13 files bound by frozen-source.json, before separate example-manifest repair",
+  "reviewer": "/root/selfhost_pipeline_review",
+  "result": "No correctness or scope findings",
+  "reviewed": [
+    "Complete 18-case native Cost metadata table and malformed-body fallbacks",
+    "Canonical four-limb Hemera headers, fixed selectors, six unresolved read obligations and all 21 local coherence pairs",
+    "Nonwrapping limb arithmetic and saturation",
+    "Reservation before fallible extension and rejection by ordinary finalization",
+    "Test-only unchecked proof helper and mandatory constant/public coordinate binding",
+    "Independent forged inputs/auxiliary witnesses with updated public premises, canonical atom alias and cap boundaries"
+  ],
+  "qualification": "This read-only review does not substitute for full gate receipts. Final whole-gate results are recorded separately."
+}

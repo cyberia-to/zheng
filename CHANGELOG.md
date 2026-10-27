@@ -1,5 +1,72 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`recursion::wrap`: wrap steps.** The recursive proof's final verifier
+  (`recursion::finalv`, written over `Ops`) proved by wrap levels of the
+  recursion circuit: inner levels (memory argument, committed key, 4-ary
+  trees) and one final level (one word, linear wiring, the key evaluated
+  by the verifier). Field-native batched WHIR (`recursion::whir`), a
+  field-native decider, constraints over any arithmetic compiled into the
+  circuit (`air::num`, `recursion::expr`). Final proof 62.5–62.9 KB from
+  33 to 1.57M cycles, verify 12–15 ms. `audit/wrap-2026-10.md`.
+- **`machine`: the nox machine as one uniform step relation.** A run of any
+  length is a trace of 64-column rows (init entries, one row per
+  continuation-machine step, 32-row hemera permutation blocks for noun
+  digests) with a write-once memory checked by logUp over Fp3; the row
+  relation (the verifier key) is identical for every program. Segments of
+  `2^14` rows share the lookup challenges and link through boundary rows.
+  Agrees with `nox::reduce` on joy's fixtures, Merkle paths and long runs.
+  `specs/machine.md`.
+- **`air`: uniform AIR proving** (zerocheck over the rows, successor
+  polynomial, public columns evaluated by the verifier) down to evaluation
+  claims on the committed words; verifier work independent of the program.
+- **`accumulate`: hash-based accumulation of RS evaluation claims and its
+  decider** (WARP's claim-carrying structure for Reed–Solomon codes with
+  univariate OOD as in ARC; unbounded depth; one WHIR opening decides).
+  `accumulate::ccs` folds statements of one CCS relation into one decider
+  (fold mining). `specs/accumulation.md`.
+- **envelope profile 4**: a machine proof. Measurements:
+  `audit/accumulation-2026-10.md`.
+- **zk profile (`execution::veil`, envelope profile 2 scheme 2).** Succinct
+  proofs of statements with secret inputs: Spartan over Fp3 on the relation
+  plus masking rows, Libra-masked sumchecks, one hiding Reed–Solomon tensor
+  commitment (Ligero geometry, salted leaves) opened by one zero-knowledge
+  linear test. Honest-verifier statistical zero knowledge in the ROM; ≥ 128
+  proven bits by policy. Hash of a secret preimage: 63.9 KB, prove 143 ms,
+  verify 10 ms (4 ms with a cached key) against MPC-in-the-head's 8.9 MB,
+  7.3 s, 3.1 s. Record: `audit/zk-profile-2026-10.md`.
+- **verifying keys (`execution::vk`).** Derived by the verifier only;
+  `verify_with` / `verify_state_with` / `verify_certificate_with` /
+  `veil::verify_with` skip recompilation with a key for the statement's
+  program and reject any other key. Succinct and zk transcripts absorb the
+  key's digest. hash.tri, shipped succinct choice: verify 7.5 → 1.5 ms.
+- **state evidence (`execution::state_evidence`).** zheng authenticates the
+  tables and root leaves of every state read itself.
+
+### Changed
+
+- **state verification takes evidence (breaking).** `verify_certificate`,
+  `verify_v1` (was `verify`), `succinct::verify_state` and
+  `Envelope::verify(Option<&StateEvidence>)` authenticate the evidence under
+  the statement's own root; provers take the evidence and state its root.
+  `StateStatement.context` is gone (no relation can bind a label of a
+  disclosed witness); v1 proofs verify with the context passed explicitly.
+  Envelope profile 3 loses its 32 context bytes; profile 2 gains a scheme
+  byte (1 = MITH, 2 = veil).
+
+- **execution relation: linear forms and native constants.** Additions,
+  MDS layers and bit packing no longer allocate wires; constant subtrees
+  are hashed natively at compile time (the verifier derives the same
+  constants from the same program). Same protocol
+  (`zheng-nox-public-execution-v2`), same linear full-witness verification.
+  The full-round S-box is one degree-7 CCS row (`Op::Pow7`; two extra
+  matrices, multiset `[3;7] − [4]`, only on programs with a hash).
+  `hash.tri`: certificate 294,861 → 15,608 bytes, prove 460 → 36 ms,
+  verify 460 → 30 ms (M4 Max). Record: `audit/compact-relation-2026-10-09.md`.
+
 ## [0.3.3] — 2026-09-09
 
 ### Added

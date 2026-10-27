@@ -23,12 +23,12 @@ the unification matters because a proof system handling CCS handles all three �
 
 ## why CCS matters for zheng
 
-in [[zheng]], [[nox]]'s sixteen reduction patterns produce AIR transition constraints with degrees ranging from 1 (add, sub) to 7 (Poseidon2 hash rounds). classical R1CS can only express degree-2 constraints, requiring high-degree operations to be decomposed into many degree-2 gates — inflating constraint count.
+in [[zheng]], the relation compiler turns a [[nox]] program and the shape of its subject into one CCS whose rows range in degree from 1 (add, sub) to 7 (hemera's Poseidon2 S-box rows). the verifier compiles the same CCS itself and pins the public prefix `(1 ‖ io ‖ cycles)` — the constant wire, inputs, outputs and cost. classical R1CS can only express degree-2 constraints, requiring high-degree operations to be decomposed into many degree-2 gates — inflating constraint count.
 
-CCS represents high-degree constraints natively. pattern 15 (hash, degree 7) costs only field operations in the [[SuperSpartan]] prover — no cryptographic cost increase over degree-1 constraints. the Poseidon2 rounds inside the hash pattern are free in the IOP layer.
+CCS represents high-degree constraints natively. a hash round (degree 7) costs only field operations in the [[SuperSpartan]] prover — no cryptographic cost increase over degree-1 constraints. the Poseidon2 rounds are cheap in the IOP layer.
 
-## CCS and folding
+## CCS and accumulation
 
-[[HyperNova]] folding operates over CCS instances. since CCS already powers [[SuperSpartan]], the folding scheme and the [[zheng]] proof system share the same constraint language. fold a [[cyberlink]] insertion proof? same CCS instance type. fold a rank update? same CCS. fold a cross-shard merge? same CCS. one framework for every proof in the [[zheng]] taxonomy.
+for unbounded programs the nox machine becomes one uniform step relation — one CCS for one reduction step (phase 3, in progress). every step yields Reed–Solomon evaluation claims, and hash-based accumulation (ARC/WARP-style) folds those claims into an accumulator of fixed size, decided by one WHIR opening. the same constraint language serves a single statement (the succinct and zk profiles) and every step of a long computation. folding committed CCS instances by homomorphism, as the 0.3/0.4 design tried, needs a homomorphic commitment that a hash does not give; that path is retired as unsound.
 
 see [[zheng]] for the proof system, [[SuperSpartan]] for the IOP, [[stark]] for the general theory

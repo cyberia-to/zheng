@@ -1,0 +1,54 @@
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/derivation/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 6.92s
+     Running unittests src/lib.rs (target/release/deps/zheng-31b6a51cf573cd48)
+
+running 22 tests
+test execution::disclosed::memory::tests::canonical_atom_and_particle_domains_reject_aliases ... ok
+test execution::disclosed::memory::tests::duplicate_occurrences_preserve_content_identity_and_cost ... ok
+test execution::disclosed::evaluation::tests::adversarial::equality_and_premise_keys_use_particles_across_duplicate_occurrences ... ok
+test execution::disclosed::evaluation::tests::adversarial::premise_keys_arity_order_and_prior_frontier_are_authenticated ... ok
+test execution::disclosed::evaluation::tests::adversarial::outputs_bind_ordered_topology_and_all_root_particle_limbs ... ok
+test execution::disclosed::memory::tests::all_cost_bits_and_dynamic_selector_are_authenticated_even_for_quoted_data ... ok
+test execution::disclosed::evaluation::tests::adversarial::exact_and_one_below_resource_limits_fail_without_mutation ... ok
+test execution::disclosed::evaluation::tests::differential::repeated_prior_premises_count_expanded_occurrences_and_match_observer ... ok
+test execution::disclosed::evaluation::tests::adversarial::computed_continuation_binds_both_child_results_as_its_key ... ok
+test execution::disclosed::memory::tests::views_reject_future_reads_and_bind_every_expected_root_limb ... ok
+test execution::disclosed::memory::tests::ordered_topology_and_strict_prior_references_are_checked_atomically ... ok
+test execution::disclosed::evaluation::tests::differential::axis_zero_and_hash_have_distinct_native_results_and_logical_step_counts ... ok
+test execution::disclosed::evaluation::tests::adversarial::malformed_formulas_invalid_types_and_inverse_zero_have_no_success_rule ... ok
+test execution::disclosed::memory::tests::record_and_buffer_limits_accept_exact_capacity_and_fail_closed_below ... ok
+test execution::disclosed::memory::tests::dynamic_metadata_survives_smaller_branch_arms_and_saturation ... ok
+test execution::disclosed::memory::tests::saturated_u64_costs_do_not_wrap_or_reduce_in_the_field ... ok
+test execution::disclosed::memory::tests::native_headers_and_every_cost_case_are_derived_from_prior_records ... ok
+test execution::disclosed::evaluation::tests::adversarial::expanded_steps_and_exact_cost_overflow_reject_shared_derivations ... ok
+test execution::disclosed::evaluation::tests::differential::canonical_field_boundaries_and_large_valid_word_shifts_match_native ... ok
+test execution::disclosed::evaluation::tests::differential::saturated_and_dynamic_unselected_metadata_preserves_cheap_execution ... ok
+test execution::disclosed::memory::tests::non_saturated_costs_above_the_field_keep_both_limbs_authenticated ... ok
+test execution::disclosed::evaluation::tests::differential::all_pure_patterns_match_native_values_costs_and_frame_boundaries ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 219 filtered out; finished in 0.02s
+
+     Running tests/disclosed_evaluation_allocation.rs (target/release/deps/disclosed_evaluation_allocation-c1b22d8b2f94ea2c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/disclosed_memory_allocation.rs (target/release/deps/disclosed_memory_allocation-f9dc5e013e1c5de2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/execution_adversarial.rs (target/release/deps/execution_adversarial-f4f020aee24b0b94)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/reaudit_private.rs (target/release/deps/reaudit_private-e3474498f1cf6493)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

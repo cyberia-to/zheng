@@ -64,7 +64,7 @@ the full pipeline in VRAM:
 PHASE 1 — COMMIT:
   polynomial evaluations already in VRAM (from nox trace)
   NTT for RS encoding: O(N log N) nebu muls → GPU-parallel
-  Merkle tree (if WHIR) or expander encode (if Brakedown): GPU-parallel
+  hemera Merkle tree over the codeword: GPU-parallel
 
 PHASE 2 — SUMCHECK:
   k = log(N) rounds
@@ -73,12 +73,12 @@ PHASE 2 — SUMCHECK:
   GPU-parallel per evaluation point
 
 PHASE 3 — OPEN:
-  WHIR folding: polynomial halving + hemera tree
-  Brakedown: linear combination of encoded rows
-  both GPU-parallel
+  WHIR folding: fold k = 4 variables per round + hemera tree per round
+  GPU-parallel
 
 OUTPUT:
-  proof (~1-5 KiB) copied to CPU (one small PCIe transfer)
+  proof copied to CPU (one small PCIe transfer; tens of KB —
+  15,921 B measured for one hemera hash, 71,081 B for a 2^20 relation)
 ```
 
 ## concrete performance
@@ -130,8 +130,8 @@ nebu and zheng GPU kernels should follow the same WGSL approach for portability.
 
 ## relation to other proposals
 
-- **Brakedown lens**: sparse matrix multiply is harder to GPU-parallelize than NTT (irregular memory access). if Brakedown replaces WHIR, GPU prover design shifts from NTT-heavy to SpMV-heavy. both are well-studied GPU workloads
-- **proof-carrying computation**: if proving is incremental (fold per step), the GPU pipeline changes from batch-prove to streaming-fold. GPU is less advantageous for sequential folding — CPU may be faster for per-step O(1) folds
+- lens: WHIR won the phase-2 bake-off and ships, so the GPU prover is NTT- and hemera-heavy (Reed–Solomon encoding, Merkle trees). the expander-code (Brakedown) lens is retired; no SpMV-heavy commitment path remains
+- accumulation (phase 3): long computations are proven step by step, each step batching claims with a sumcheck, committing one combined word and opening a few positions. each step is itself an NTT + Merkle workload, so the GPU pipeline becomes a streaming one; whether GPU or CPU wins per step is to be measured
 - **Binius lens**: binary operations are 128× more data-parallel on GPU (128 F₂ elements per word). binary proving on GPU is extremely efficient — the packing advantage multiplies the GPU parallelism advantage
 
 ## open questions

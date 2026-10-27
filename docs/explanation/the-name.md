@@ -53,8 +53,8 @@ credential, no social standing. the proof either verifies or it does not.
 this is the role zheng plays in cyber. when [[nox]] finishes executing a
 program, the result is a claim: "this output follows from this input
 under this program." the claim alone means nothing. zheng transforms the
-claim into a proof — a short string of field elements that any verifier
-can check in under a millisecond. the proof is the evidence. it speaks
+claim into a proof — field elements and hashes that any verifier can
+check without trusting the prover. the proof is the evidence. it speaks
 for itself.
 
 証. correct speech. words that prove correctness. computation made

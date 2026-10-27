@@ -1,5 +1,7 @@
 # finishing minimal zheng: canonical structure + CLI
 
+> superseded: layout work done; the proof-system content of 0.1.0 (Brakedown + homomorphic folding) is now feature `legacy`, unsound, deleted in phase 5 — see soft3 `proposals/proof-system-repair.md`.
+
 status: DONE (both parts implemented, all tests green).
 part 1 — canonical rs/ + cli/ workspace, 5 downstream path deps updated, nox
 Reduction API adaptation. part 2 — `zheng` CLI (run/demo/eval/pack/prove/help)
@@ -71,7 +73,7 @@ zheng/
 5. **add `LICENSE.md`** — link to canonical Cyber license source (per CLAUDE.md
    repo-layout spec; manifests keep the short `license = "Cyber"` field, matching nox).
 6. **add `CHANGELOG.md`** — seed with `0.1.0` (SuperSpartan + Brakedown + sumcheck
-   + HyperNova folding; soundness gaps closed; canonical layout; CLI).
+   + folding — the folding later found unsound; canonical layout; CLI).
 7. **Cargo.lock** — regenerate at workspace root (`cargo build`); delete stale
    top-level lock if it moved.
 8. **downstream sync:** `bbg` sits above zheng in the stack (hemera→lens→nox→zheng→bbg).
@@ -168,7 +170,7 @@ isn't exact yet, print what's measurable (group/step counts) and mark size as
   requires lens to expose canonical encoding (cross-repo, frozen interface).
   its own milestone; `specs/cli.md` notes the reserved `.proof` format.
 - clap / rich arg parsing — hand-rolled matches the stack.
-- proof-size hitting the ~2 KiB spec target — that's release-plan phase 7
+- proof-size target — that's release-plan phase 7 (the old spec target is struck; goal now ≤ 64 KB, see proof-system-repair)
   (benchmarks + optimization), separate from packaging.
 
 ---
