@@ -5,4 +5,5 @@
 # ---
 [workspace]
 members = ["rs", "cli"]
+exclude = [".worktrees"]
 resolver = "3"
