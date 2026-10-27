@@ -14,40 +14,43 @@
 //! accumulator of the legacy fold (unsound; feature `legacy`, removed in
 //! phase 5) and one decider, whatever the program.
 //!
-//! Witness layout (`Z_LEN` = 96, padded to 128 for the lens):
+//! Witness layout (hemera 0.4, 60 rounds; `Z_LEN` = 135, padded to 256
+//! for the lens):
 //!
 //! ```text
-//! z[0..16]   r_t             z[16..32]  r_{t+1}         z[32]  1
-//! z[33..51]  s_0..s_17       pattern selectors, one-hot on r0_t
-//! z[51..76]  u_0..u_24       Poseidon2 round selectors, one-hot on r14_t
-//!                            when s_15 = 1, all zero otherwise
-//! z[76] π    partial-round flag  = Σ_{j=3..18} u_j
-//! z[77] κ    round-counter flag  = s_15 − u_24
-//! z[78] rc   round constant      = Σ_{j=3..18} RC[128+j−3] · u_j
-//! z[79..87]  state_k[8..16]      capacity at row t   (prover-supplied)
-//! z[87..95]  state_{k+1}[8..16]  capacity at row t+1 (prover-supplied)
-//! z[95] y    inv(state_k[0] + rc), the partial-round S-box witness
+//! z[0..16]     r_t             z[16..32]  r_{t+1}         z[32]  1
+//! z[33..51]    s_0..s_17       pattern selectors, one-hot on r0_t
+//! z[51..112]   u_0..u_60       Poseidon2 round selectors, one-hot on r14_t
+//!                              when s_15 = 1, all zero otherwise
+//! z[112] π     partial-round flag  = Σ_{j=5..53} u_j
+//! z[113] κ     round-counter flag  = s_15 − u_60
+//! z[114] rc    round constant      = Σ_{j=5..53} RC[192+j−5] · u_j
+//! z[115..123]  state_k[8..16]      capacity at row t   (prover-supplied)
+//! z[123..131]  state_{k+1}[8..16]  capacity at row t+1 (prover-supplied)
+//! z[131..135]  x², x³, x⁴, x⁷ of x = state_k[0] + rc, the partial-round
+//!              S-box witnesses (degree-2 rows)
 //! ```
 //!
-//! Constraint rows (`NUM_ROWS` = 64):
+//! Constraint rows (`NUM_ROWS` = 128, rows 104..128 empty):
 //!
 //! ```text
-//!  0..18  s_p · (r0 − p) = 0          one row per pattern p
-//!  18     Σ_p s_p − 1 = 0
-//! 19..44  u_k · (r14 − k) = 0         one row per round k ∈ 0..25
-//!  44     Σ_k u_k − s_15 = 0
-//!  45     π − Σ_{j=3..18} u_j = 0
-//!  46     κ − s_15 + u_24 = 0
-//!  47     rc − Σ_j RC_j · u_j = 0
-//! 48..64  pattern rows: every pattern's constraints, each multiplied by
-//!         its gate (s_p, π or κ); rows are shared across patterns because
-//!         exactly one gate is live on any satisfying witness
+//!  0..18   s_p · (r0 − p) = 0          one row per pattern p
+//!  18      Σ_p s_p − 1 = 0
+//! 19..80   u_k · (r14 − k) = 0         one row per round k ∈ 0..61
+//!  80      Σ_k u_k − s_15 = 0
+//!  81      π − Σ_{j=5..53} u_j = 0
+//!  82      κ − s_15 + u_60 = 0
+//!  83      rc − Σ_j RC_j · u_j = 0
+//! 84..104  pattern rows: every pattern's constraints, each multiplied by
+//!          its gate (s_p, π or κ); rows are shared across patterns because
+//!          exactly one gate is live on any satisfying witness (the
+//!          Poseidon2 partial round takes rows 84..104 of slot family 0)
 //! ```
 //!
 //! Soundness of the gating: rows 0..18 force exactly one `s_p` to be
 //! non-zero (two non-zero selectors would need two values of r0) and the
 //! sum row makes it 1, so the pattern terms of every other pattern vanish
-//! identically. Rows 19..44 do the same for `u` under s_15 = 1 and force
+//! identically. Rows 19..80 do the same for `u` under s_15 = 1 and force
 //! `u = 0` under s_15 = 0, so π and κ are 0 on every non-hash row — the
 //! Poseidon2 terms cannot leak into another pattern's rows.
 //!
@@ -63,24 +66,25 @@ use std::sync::OnceLock;
 
 use nebu::Goldilocks;
 
-use hemera::constants::ROUND_CONSTANTS;
+use hemera::constants::{NUM_EXTERNAL, ROUND_CONSTANTS};
 use hemera::field::{Goldilocks as HGold, MATRIX_DIAG_16};
 
 use crate::types::{CCSInstance, CCSWitness, SparseMatrix};
 
 /// Number of nox reduction patterns (tags 0..17).
 pub const NUM_PATTERNS: usize = 18;
-/// Poseidon2 rows per hash block: 24 round rows + the squeeze row (r14 = 24).
-pub const NUM_ROUNDS: usize = 25;
-/// First partial round index (r14 = 3 transitions into hemera partial round 0).
-pub const PARTIAL_FIRST: usize = 3;
+/// Poseidon2 rows per hash block: 60 round rows + the squeeze row (r14 = 60).
+pub const NUM_ROUNDS: usize = hemera::ROUNDS_TOTAL + 1;
+/// First partial round index (r14 = 5 transitions into hemera partial round 0).
+pub const PARTIAL_FIRST: usize = hemera::ROUNDS_F / 2 - 1;
 /// Number of partial rounds.
-pub const NUM_PARTIAL: usize = 16;
+pub const NUM_PARTIAL: usize = hemera::ROUNDS_P;
 
 /// Length of the universal witness before padding.
-pub const Z_LEN: usize = 96;
-/// Rows of the universal instance.
-pub const NUM_ROWS: usize = 64;
+pub const Z_LEN: usize = IDX_Y + 1;
+/// Rows of the universal instance (a power of two for the Spartan IOP).
+pub const NUM_ROWS: usize = 128;
+const _: () = assert!(ROW_PAT + PAT_ROWS <= NUM_ROWS);
 
 /// z-index of register r at row t.
 pub const fn reg_t(r: usize) -> usize {
@@ -101,21 +105,25 @@ pub const fn round_sel(k: usize) -> usize {
     51 + k
 }
 /// z-index of the partial-round flag π.
-pub const IDX_PI: usize = 76;
+pub const IDX_PI: usize = 51 + NUM_ROUNDS;
 /// z-index of the round-counter flag κ.
-pub const IDX_KAPPA: usize = 77;
+pub const IDX_KAPPA: usize = IDX_PI + 1;
 /// z-index of the round constant rc.
-pub const IDX_RC: usize = 78;
+pub const IDX_RC: usize = IDX_PI + 2;
 /// z-index of state_k[8 + i] (capacity at row t).
 pub const fn cap_k(i: usize) -> usize {
-    79 + i
+    IDX_PI + 3 + i
 }
 /// z-index of state_{k+1}[8 + i] (capacity at row t+1).
 pub const fn cap_k1(i: usize) -> usize {
-    87 + i
+    IDX_PI + 11 + i
 }
-/// z-index of the S-box inverse witness y.
-pub const IDX_Y: usize = 95;
+/// z-indices of the S-box witnesses `x²`, `x³`, `x⁴` and the S-box
+/// output `y = x⁷` of `x = state_k[0] + rc`.
+pub const IDX_Y2: usize = IDX_PI + 19;
+pub const IDX_Y3: usize = IDX_Y2 + 1;
+pub const IDX_Y4: usize = IDX_Y2 + 2;
+pub const IDX_Y: usize = IDX_Y2 + 3;
 
 /// z-index of Poseidon2 state_k[i]: rate in the trace registers
 /// (r4-r7 = state[0..4], r10-r13 = state[4..8]), capacity in the aux columns.
@@ -138,13 +146,15 @@ pub const fn sk1(i: usize) -> usize {
 // ── rows ─────────────────────────────────────────────────────────────────────
 
 const ROW_SEL: usize = 0; // + p
-const ROW_SEL_SUM: usize = 18;
-const ROW_ROUND: usize = 19; // + k
-const ROW_ROUND_SUM: usize = 44;
-const ROW_PI: usize = 45;
-const ROW_KAPPA: usize = 46;
-const ROW_RC: usize = 47;
-const ROW_PAT: usize = 48; // + i, i ∈ 0..16
+const ROW_SEL_SUM: usize = NUM_PATTERNS;
+const ROW_ROUND: usize = ROW_SEL_SUM + 1; // + k
+const ROW_ROUND_SUM: usize = ROW_ROUND + NUM_ROUNDS;
+const ROW_PI: usize = ROW_ROUND_SUM + 1;
+const ROW_KAPPA: usize = ROW_PI + 1;
+const ROW_RC: usize = ROW_PI + 2;
+const ROW_PAT: usize = ROW_PI + 3; // + i, i ∈ 0..PAT_ROWS
+/// Pattern rows: the partial round's four S-box rows and 16 matmul rows.
+const PAT_ROWS: usize = 20;
 
 // ── slots ────────────────────────────────────────────────────────────────────
 
@@ -176,9 +186,9 @@ fn neg(x: Goldilocks) -> Goldilocks {
     Goldilocks::ZERO - x
 }
 
-/// The hemera round constant of partial round `pr` (0..16).
+/// The hemera round constant of partial round `pr` (0..48).
 pub fn partial_rc(pr: usize) -> Goldilocks {
-    hg(ROUND_CONSTANTS[128 + pr])
+    hg(ROUND_CONSTANTS[NUM_EXTERNAL + pr])
 }
 
 /// A linear form over z: Σ coeff · z[col].
@@ -264,19 +274,29 @@ fn build() -> CCSInstance {
         rc.push((round_sel(PARTIAL_FIRST + pr), neg(partial_rc(pr))));
     }
     b.put(P, ROW_PI, &pi);
-    b.put(P, ROW_KAPPA, &[(IDX_KAPPA, one()), (sel(15), m1()), (round_sel(24), one())]);
+    b.put(P, ROW_KAPPA, &[(IDX_KAPPA, one()), (sel(15), m1()), (round_sel(NUM_ROUNDS - 1), one())]);
     b.put(P, ROW_RC, &rc);
 
-    // ── Poseidon2 partial round (gate π), slot family 0 on rows 48..64 ──────
-    // Row 0: y · (state_k[0] + rc) − 1 = 0
-    b.prod(ROW_PAT, CDE0, IDX_PI, &[(IDX_Y, one())], &[(sk(0), one()), (IDX_RC, one())]);
-    b.lin(ROW_PAT, A0, B0, IDX_PI, &[(CONST_IDX, m1())]);
-    // Rows 1..16: matmul_internal, sum = state_{k+1}[1] − DIAG[1]·state_k[1]:
+    // ── Poseidon2 partial round (gate π), slot family 0 on rows 84..104 ─────
+    // x = state_k[0] + rc; rows 0..4: y2 = x·x, y3 = y2·x, y4 = y2·y2,
+    // y = y4·y3 (= x⁷), each `gate · l · r − gate · witness = 0`.
+    let x = [(sk(0), one()), (IDX_RC, one())];
+    let sbox = [
+        (IDX_Y2, x.to_vec(), x.to_vec()),
+        (IDX_Y3, vec![(IDX_Y2, one())], x.to_vec()),
+        (IDX_Y4, vec![(IDX_Y2, one())], vec![(IDX_Y2, one())]),
+        (IDX_Y, vec![(IDX_Y4, one())], vec![(IDX_Y3, one())]),
+    ];
+    for (i, (out, l, r)) in sbox.iter().enumerate() {
+        b.prod(ROW_PAT + i, CDE0, IDX_PI, l, r);
+        b.lin(ROW_PAT + i, A0, B0, IDX_PI, &[(*out, m1())]);
+    }
+    // Rows 4..20: matmul_internal, sum = state_{k+1}[1] − DIAG[1]·state_k[1]:
     //   i = 1:  state_{k+1}[0] − DIAG[0]·y − sum = 0
     //   i ≥ 2:  state_{k+1}[i] − DIAG[i]·state_k[i] − sum = 0
     let diag: Vec<Goldilocks> = MATRIX_DIAG_16.iter().map(|&d| hg(d)).collect();
     b.lin(
-        ROW_PAT + 1,
+        ROW_PAT + 4,
         A0,
         B0,
         IDX_PI,
@@ -284,7 +304,7 @@ fn build() -> CCSInstance {
     );
     for i in 2..16 {
         b.lin(
-            ROW_PAT + i,
+            ROW_PAT + 3 + i,
             A0,
             B0,
             IDX_PI,
@@ -292,7 +312,7 @@ fn build() -> CCSInstance {
         );
     }
 
-    // ── pattern gadgets, slot family 1 + {F,G,H,I} on rows 48..64 ───────────
+    // ── pattern gadgets, slot family 1 + {F,G,H,I} on rows 84..100 ──────────
     // 0 axis: r9 − r8 + 1 = 0 (budget decrement).
     b.lin(ROW_PAT, A1, B1, sel(0), &[(reg_t(9), one()), (reg_t(8), m1()), (CONST_IDX, one())]);
     // 1 quote: r7 − r4 = 0.
@@ -385,9 +405,9 @@ pub struct Capacity {
 /// Build the universal witness for the pair (row t, row t+1).
 ///
 /// Selectors, round selectors, flags, the round constant and the S-box
-/// inverse are all derived from the registers — the prover supplies only
+/// witnesses are all derived from the registers — the prover supplies only
 /// the capacity columns (`caps`, needed on hash rows). A tag outside 0..18
-/// or a round index outside 0..25 leaves the one-hot rows unsatisfiable;
+/// or a round index outside 0..61 leaves the one-hot rows unsatisfiable;
 /// the commit-time gate reports such rows.
 pub fn universal_witness(
     regs_t: &[Goldilocks; 16],
@@ -419,7 +439,11 @@ pub fn universal_witness(
             let rc = partial_rc(k - PARTIAL_FIRST);
             z[IDX_PI] = Goldilocks::ONE;
             z[IDX_RC] = rc;
-            z[IDX_Y] = (regs_t[4] + rc).inv();
+            let x = regs_t[4] + rc;
+            z[IDX_Y2] = x * x;
+            z[IDX_Y3] = z[IDX_Y2] * x;
+            z[IDX_Y4] = z[IDX_Y2] * z[IDX_Y2];
+            z[IDX_Y] = z[IDX_Y4] * z[IDX_Y3];
         }
     }
     CCSWitness { z }
@@ -461,7 +485,7 @@ pub fn capacity(state_k: &[Goldilocks; 16], state_k1: &[Goldilocks; 16]) -> Capa
 }
 
 /// The universal witness of one synthetic Poseidon2 transition
-/// state_k → state_{k+1} (round index k, 0..24) — the row shape shared by
+/// state_k → state_{k+1} (round index k, 0..60) — the row shape shared by
 /// the Fiat-Shamir transcript replay and the BBG root chain.
 pub fn poseidon_witness(state_k: &[Goldilocks; 16], state_k1: &[Goldilocks; 16], k: usize) -> CCSWitness {
     let caps = capacity(state_k, state_k1);

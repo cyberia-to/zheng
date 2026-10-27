@@ -95,7 +95,7 @@ fn recorded_run(log_domain: u32, arity: crate::recursion::word::Arity) {
     let (_, p2, _) = generate(&b2, &air, n).unwrap();
     assert_eq!(p.digest(), p2.digest());
     // a tampered cell violates the circuit (or the memory)
-    for (r, c) in [(0usize, gate_out(0)), (b.gates.len() / 4 + 1, BACC), (b.rows() - 1, PY8), (b.rows() - 3, PW + 2)] {
+    for (r, c) in [(0usize, gate_out(0)), (b.gates.len() / 4 + 1, BACC), (b.rows() - 1, PY12), (b.rows() - 4, PW + 2)] {
         let mut bad = t1.clone();
         bad.row_mut(r)[c] += Goldilocks::ONE;
         let t2b = phase2(&bad, &p, alpha, beta);
@@ -182,8 +182,8 @@ fn free_by_design(p: &Pre, r: usize, c: usize) -> bool {
             _ => true,
         };
     }
-    if let Some(ph) = (0..4).find(|&k| on(pre::PERM + k)) {
-        if ph < 3 || c < PRT {
+    if let Some(ph) = (0..PERM_ROWS).find(|&k| on(pre::PERM + k)) {
+        if ph + 1 < PERM_ROWS || c < PRT {
             return false;
         }
         return match c {
@@ -305,3 +305,4 @@ fn the_decomposition_refuses_non_canonical_and_non_boolean_digits() {
     assert!(breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0]), "booleanity refuses a digit 3");
     assert!(!breaks_at(&air, &t, &t2, &p, alpha, beta, &[r0 + 1, r0 + 2, r0 + 3]));
 }
+

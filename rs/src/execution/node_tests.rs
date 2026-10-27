@@ -9,6 +9,19 @@ pub(crate) fn nox_run(subject: &N, formula: &N) -> Result<(N, u64), String> {
 
 /// [`nox_run`], with the node jet registered when `jets`.
 pub(crate) fn nox_run_jets(subject: &N, formula: &N, jets: bool) -> Result<(N, u64), String> {
+    if jets {
+        nox_run_jets_with(subject, formula, |r| jet::register(r))
+    } else {
+        nox_run_jets_with(subject, formula, |_| {})
+    }
+}
+
+/// [`nox_run`] with the jets `register` installs.
+pub(crate) fn nox_run_jets_with(
+    subject: &N,
+    formula: &N,
+    register: impl FnOnce(&mut nox::JetRegistry<{ 1 << 20 }>) + Send + 'static,
+) -> Result<(N, u64), String> {
     const BUDGET: u64 = 1 << 40;
     fn into<const S: usize>(r: &mut nox::Reduction<S>, n: &N) -> nox::Order {
         match n {
@@ -33,9 +46,7 @@ pub(crate) fn nox_run_jets(subject: &N, formula: &N, jets: bool) -> Result<(N, u
             let s = into(&mut r, &subject);
             let f = into(&mut r, &formula);
             let mut registry = nox::JetRegistry::empty();
-            if jets {
-                jet::register(&mut registry);
-            }
+            register(&mut registry);
             let calls = nox::call::NullCalls;
             match nox::reduce_with_registry(
                 &mut r,
@@ -128,8 +139,8 @@ fn the_formula_is_the_node_and_its_cost_is_constant() {
 fn the_formula_fits_a_program() {
     let tokens = crate::execution::ExecutionStatement::encode_program(formula()).unwrap();
     println!("node formula {} nodes", tokens.len());
-    // 2,235 nodes: room for a depth-32 path and its program under 4,096
-    assert!(tokens.len() <= 2_240, "{} nodes", tokens.len());
+    // room for a depth-32 path and its program under 4,096
+    assert!(tokens.len() <= 2_500, "{} nodes", tokens.len());
 }
 
 #[test]
