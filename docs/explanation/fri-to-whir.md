@@ -1,8 +1,8 @@
-> note: this page tells the evolution from FRI to STIR to WHIR. WHIR is the shipped commitment of zheng's succinct profile (rate 1/64, folding factor 4, 24 grinding bits), chosen in the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]]; the detour through "recursive Brakedown" is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the figures below are the papers' published ones; zheng's measured figures are in `audit/succinct-profile-2026-10.md`.
+> note: this page tells the evolution from FRI to STIR to WHIR. WHIR is the shipped commitment of zheng's succinct profile (rate 1/64, lens `rspcs`), chosen in the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]]; the detour through "recursive Brakedown" is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the figures below are the papers' published ones, in their own fields and hashes; zheng's measured figures are in [[zheng/docs/explanation/performance|performance]].
 
 # from FRI to WHIR
 
-the hash-based [[polynomial commitment schemes]] used in [[zheng]] have a lineage. [[FRI]] came first, establishing the paradigm. [[STIR]] refined it. [[WHIR]] refined it further. each generation learned from the last, and each achieved something the previous could not. this is the story of that evolution.
+the hash-based polynomial commitment schemes used in [[zheng]] have a lineage. FRI came first, establishing the paradigm. STIR refined it. [[WHIR]] refined it further. each generation learned from the last, and each achieved something the previous could not. this is the story of that evolution.
 
 ## FRI: the foundation
 
@@ -24,7 +24,7 @@ FRI established what hash-based commitment schemes could achieve: transparent (n
 
 soundness has two parts: the folding challenges (error roughly degree/|F| each — over the 64-bit [[Goldilocks field]] (p = 2⁶⁴ − 2³² + 1) too large for 128 bits, so challenges are drawn from an extension field; zheng uses Fp3) and the queries (each catches a far-from-code word with probability set by the rate and the decoding regime, so tens of queries are needed for 128 bits). the field's multiplicative subgroup of order 2³² enables FFTs up to length 2³² without extension fields — FRI folding operates on native 64-bit arithmetic.
 
-the limitation is in the numbers. FRI operates at a fixed code rate — the ratio of the polynomial degree to the evaluation domain size stays constant across rounds. this rate determines how many queries the verifier needs for a given security level. at 128-bit security, FRI proofs run around 306 KiB with 3.9 ms verification time.
+the limitation is in the numbers. FRI operates at a fixed code rate — the ratio of the polynomial degree to the evaluation domain size stays constant across rounds. this rate determines how many queries the verifier needs for a given security level. in the WHIR paper's comparison (degree 2²⁴, 128-bit security), FRI proofs run around 306 KiB with 3.9 ms verification time.
 
 ## STIR: tightening the rate
 
@@ -39,7 +39,7 @@ STIR:   rate ρ → 2ρ → 4ρ → 8ρ → ... → 1
 
 the mechanics change subtly. instead of folding onto a subdomain (a coset), STIR folds onto a shifted domain chosen to achieve the target rate. the algebraic structure of the [[Goldilocks field]] makes these shifts efficient — the multiplicative group has rich subgroup structure that STIR exploits.
 
-the result: proofs shrink from 306 KiB to 160 KiB at 128-bit security. verification time stays similar at 3.8 ms. the prover does slightly more work per round (the shifting is more complex than simple folding), but proof size nearly halves. for systems where proof size matters — recursive verification, on-chain verification, bandwidth-constrained settings — this is a significant win.
+the result, in the same comparison: proofs shrink from 306 KiB to 160 KiB at 128-bit security. verification time stays similar at 3.8 ms. the prover does slightly more work per round (the shifting is more complex than simple folding), but proof size nearly halves. for systems where proof size matters — recursive verification, on-chain verification, bandwidth-constrained settings — this is a significant win.
 
 the theoretical advance is in the query complexity. FRI queries scale as O(λ · log d) where λ is the security parameter and d the polynomial degree — security and degree are multiplicatively coupled. STIR decouples them: queries scale as O(λ/(−log(1−δ)) + log d), making the degree contribution additive rather than multiplicative. this is what enables smaller proofs.
 
@@ -47,7 +47,7 @@ STIR also introduced a cleaner theoretical framework. the rate schedule is a par
 
 ## WHIR: the synthesis
 
-WHIR (Weights Help Improve Rate) appeared in 2025, from Arnon, Chiesa, Fenzi, and Yogev — completing the trilogy. the key insight: use the algebraic structure of the [[sumcheck protocol]] to make each query round richer.
+WHIR (Weights Help Improve Rate) appeared in 2024 (eprint 2024/1586, EUROCRYPT 2025), from Arnon, Chiesa, Fenzi, and Yogev — completing the trilogy. the key insight: use the algebraic structure of the [[sumcheck protocol]] to make each query round richer.
 
 where STIR improved the rate schedule, WHIR improves what happens within each round. WHIR introduces weight polynomials — functions that reweight the evaluation domain in each round. these weights come from the sumcheck reduction: instead of treating proximity testing and evaluation proving as separate problems, WHIR fuses them.
 
@@ -65,7 +65,7 @@ WHIR round:  fold using α with weight polynomial w(x)
 
 the weight polynomials make each query carry more information. in FRI, a query checks one consistency relation. in WHIR, a query simultaneously checks proximity and contributes to the evaluation proof. this dual purpose means fewer total queries for the same security level.
 
-the numbers tell the story:
+the numbers tell the story (the WHIR paper's comparison, degree 2²⁴, its own field and hash — not zheng measurements):
 
 ```
 scheme    proof size    verify time    security
@@ -75,9 +75,9 @@ STIR      160 KiB       3.8 ms         128-bit
 WHIR      157 KiB       1.0 ms         128-bit
 ```
 
-proof size drops by half from FRI to STIR, and stabilizes at WHIR. verification time drops by nearly 4x from STIR to WHIR. that 1.0 ms verification is faster than [[KZG]] pairing checks — and WHIR achieves this with no trusted setup and post-quantum security.
+proof size drops by half from FRI to STIR, and stabilizes at WHIR. verification time drops by nearly 4x from STIR to WHIR. in that setting WHIR's verifier is as fast as a KZG pairing check — with no trusted setup and post-quantum security.
 
-fast verification also makes a verifier cheap to express as a program. zheng plans a verifier written as a [[nox]] program (in Trident) for composition — an old proof inside a new one, or proofs across domains. it is not used to shrink proofs: in a hash-only world the outer proof carries its own Merkle paths again. constant size for long computations comes from hash-based accumulation of Reed–Solomon claims instead (phase 3, ARC/WARP-style), whose decider is one WHIR opening.
+fast verification also makes a verifier cheap to prove. zheng proves WHIR's verifier field-natively inside its own recursion circuit: each IVC step checks the previous step's WHIR openings, and three wrap levels compress a run of any length to at most 64,213 B ([[zheng/docs/explanation/recursion|recursion]]).
 
 ## the dual nature
 
@@ -111,6 +111,6 @@ this means [[cyber]] can swap its lens without changing any layer above. the pha
 
 the FRI-STIR-WHIR progression is a story of three insights compounding. FRI discovered that hash-based folding can prove proximity. STIR discovered that increasing the rate across rounds tightens proofs. WHIR discovered that weighting queries with sumcheck structure fuses proximity and evaluation into one protocol.
 
-[[zheng]] builds on these insights. the succinct profile — [[SuperSpartan|Spartan]] over Fp3 plus one WHIR opening over Reed–Solomon codes and [[Hemera]] Merkle trees — is transparent and post-quantum, with 128 proven bits ([[zheng/specs/soundness|soundness ledger]]). measured on an Apple M4 Max: 15,921 B and 7.96 ms verification for one hemera hash, 71,081 B and 270 ms for a `2^20`-row relation. the goal is ≤ 64 KB for any nox computation and verification ≤ 1 ms; the size goal is missed by 11 % at `2^20` and the time goal is not met yet (hemera's speed inside the opening, an unstructured Spartan verifier, relation recompilation).
+[[zheng]] builds on these insights. the succinct profile — [[SuperSpartan|Spartan]] over Fp3 plus one WHIR opening over Reed–Solomon codes and [[Hemera]] Merkle trees — is transparent and post-quantum, with ≥ 128 proven bits ([[zheng/specs/soundness|soundness ledger]]). measured on an Apple M4 Max with the shipped device parameters: 16,756 B and under 10 ms verification for one hemera hash, 64,071 B and 310 ms for a depth-32 Merkle membership (soft3 `audit/proof-latency-2026-10.md`). the goal is ≤ 64 KB for any nox computation and verification ≤ 1 ms: one relation meets the size up to `2^18` committed variables and a run of any length meets it through the wrapped profile; no profile meets the time goal yet (hemera inside the opening, an unstructured Spartan verifier, and recompiling the relation).
 
 each generation of lens made this architecture more viable. FRI made it possible. STIR made it compact. WHIR fused evaluation into proximity, so one opening closes the proof.

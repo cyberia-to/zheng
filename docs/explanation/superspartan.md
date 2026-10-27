@@ -12,7 +12,7 @@ a proof system that handles CCS handles all of them simultaneously. zheng proves
 
 ## what matters for cyber: a relation compiled from the program
 
-zheng does not prove a fixed register trace. the relation compiler turns a [[nox]] program and the shape of its subject into one CCS: every operand, intermediate value and output is a wire; field operations, conditionals, word operations and [[hemera]] rounds (degree-7 S-box rows) are CCS rows. the verifier compiles the same CCS from the program itself and places the public prefix `(1 ‖ io ‖ cycles)` — the constant, the inputs and outputs, and the cost — so only the witness half `w` is ever committed. for unbounded programs a uniform step relation (one CCS for one nox reduction step) lands with phase 3.
+zheng does not prove a fixed register trace. the relation compiler turns a [[nox]] program and the shape of its subject into one CCS: every operand, intermediate value and output is a wire; field operations, conditionals, word operations and [[hemera]] rounds (degree-7 S-box rows) are CCS rows. the verifier compiles the same CCS from the program itself and places the public prefix `(1 ‖ io ‖ cycles)` — the constant, the inputs and outputs, and the cost — so only the witness half `w` is ever committed. a nox run of any length uses the nox machine instead (envelope profiles 4–6): one uniform AIR for every program, proved by a sumcheck zerocheck rather than by Spartan's outer sumcheck, then accumulated and recursively composed ([[zheng/docs/explanation/recursion|recursion]]).
 
 [[SuperSpartan]] verifies the compiled CCS via [[sumcheck]]: an outer sumcheck of the CCS degree over the rows, then an inner sumcheck that batches the matrix evaluations into one claim about `w̃`. every challenge is drawn from the cubic extension Fp3.
 
@@ -46,7 +46,7 @@ this is why zheng can afford hemera rounds as degree-7 rows. the Poseidon2 round
 
 plugging in [[WHIR]] gives zheng's succinct profile; plugging in a hiding Ligero-style Reed–Solomon tensor commitment (with Libra-masked sumchecks) gives the zk profile "veil". KZG or Dory would give other instantiations with other trust assumptions. the IOP stays the same.
 
-for [[cyber]], the lens must be transparent, post-quantum and rest on [[hemera]] alone. the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] ran two such lenses — TensorRs (RS tensor code, Ligero geometry) and WHIR — under the same Spartan transcript and fixtures; WHIR (rate 1/64, folding factor 4, 24 grinding bits) won both size classes and ships. the swap needed no change to the constraint system or the sumcheck protocol.
+for [[cyber]], the lens must be transparent, post-quantum and rest on [[hemera]] alone. the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] ran two such lenses — TensorRs (RS tensor code, Ligero geometry) and WHIR — under the same Spartan transcript and fixtures; WHIR won both size classes and ships (rate 1/64; folding and grinding chosen per size by `succinct::device_params`). the swap needed no change to the constraint system or the sumcheck protocol.
 
 ## the composition
 

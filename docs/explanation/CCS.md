@@ -6,7 +6,7 @@ alias: Customizable Constraint Systems
 ---
 # CCS
 
-Customizable Constraint Systems. a unified constraint framework that generalizes [[R1CS]], Plonkish ([[PLONK]]/Halo2), and [[AIR]] into one representation. Setty, Thaler, Wahby (2023).
+Customizable Constraint Systems. a unified constraint framework that generalizes R1CS, Plonkish (PLONK/Halo2), and [[AIR]] into one representation. Setty, Thaler, Wahby (2023).
 
 ```
 CCS instance: (M₁, ..., M_t, S₁, ..., S_q, c₁, ..., c_q)
@@ -29,6 +29,6 @@ CCS represents high-degree constraints natively. a hash round (degree 7) costs o
 
 ## CCS and accumulation
 
-for unbounded programs the nox machine becomes one uniform step relation — one CCS for one reduction step (phase 3, in progress). every step yields Reed–Solomon evaluation claims, and hash-based accumulation (ARC/WARP-style) folds those claims into an accumulator of fixed size, decided by one WHIR opening. the same constraint language serves a single statement (the succinct and zk profiles) and every step of a long computation. folding committed CCS instances by homomorphism, as the 0.3/0.4 design tried, needs a homomorphic commitment that a hash does not give; that path is retired as unsound.
+a single statement (profiles 0–3 and the succinct and zk profiles) is one CCS compiled from its program. a run of any length uses the nox machine instead (`specs/machine.md`, envelope profiles 4–6): one uniform row relation, the same for every program — an AIR in the CCS sense, proved by a sumcheck zerocheck, with no univariate quotient. every segment leaves Reed–Solomon evaluation claims, and hash-based accumulation (`accumulate`, WARP-structured with ARC-style out-of-domain samples) folds them into an accumulator of fixed size, decided by one WHIR opening. folding committed CCS instances by homomorphism, as the retired 0.3 design tried, needs a homomorphic commitment that a hash does not give; that path is unsound and survives only behind the cargo feature `legacy`.
 
 see [[zheng]] for the proof system, [[SuperSpartan]] for the IOP, [[stark]] for the general theory

@@ -33,9 +33,9 @@ reveal whether data has been altered. light exposes what darkness
 conceals.
 
 [[nox]] — the Greek goddess of night. the virtual machine that computes
-in darkness. nox executes programs without revealing their inputs,
-their intermediate states, their internal logic. the computation happens
-in the dark.
+in darkness: with zheng's zero-knowledge profile, a run can be proven
+without revealing its secret inputs or its intermediate states. the
+computation happens in the dark.
 
 zheng — proof. the evidence that emerges from the dark. nox executes
 in silence. zheng speaks afterward, and what it says is correct. 言 + 正.

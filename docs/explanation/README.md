@@ -52,9 +52,9 @@ for formal definitions, see specs/ (soundness per component: [[zheng/specs/sound
 
 | page | topic |
 |------|-------|
-| [[zheng/docs/explanation/stark|stark]] | [[STARKs]] — arithmetization (AIR, R1CS, [[CCS]]), univariate vs multilinear, heritage |
+| [[zheng/docs/explanation/stark|stark]] | STARK systems — arithmetization (AIR, R1CS, [[CCS]]), univariate vs multilinear, heritage; zheng proofs are not STARKs |
 | [[zheng/docs/explanation/CCS|CCS]] | [[CCS|Customizable Constraint Systems]] — why unified constraints matter for zheng and accumulation |
-| [[zheng/docs/explanation/landscape|landscape]] | proof system taxonomy — trusted setup vs transparent, pre-quantum vs post-quantum, [[SNARKs]] vs [[STARKs]] vs [[multilinear STARKs]] |
+| [[zheng/docs/explanation/landscape|landscape]] | proof system taxonomy — trusted setup vs transparent, pre-quantum vs post-quantum, SNARKs vs [[STARKs]] vs [[multilinear STARKs]] |
 
 ### core protocols
 
@@ -62,7 +62,7 @@ for formal definitions, see specs/ (soundness per component: [[zheng/specs/sound
 |------|-------|
 | [[zheng/docs/explanation/sumcheck|sumcheck]] | the heart of the system — reducing exponential verification to logarithmic via the [[sumcheck protocol]] |
 | [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] | the trust anchor — commit to data, prove evaluations, bind the prover to a single polynomial |
-| [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR]], each generation's insight and what it unlocks |
+| [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — FRI to STIR to [[WHIR]], each generation's insight and what it unlocks |
 | [[zheng/docs/explanation/whir|whir]] | the shipped commitment of the succinct profile — protocol, parameters, measured figures |
 | [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] | a retired design: what it was and why it was unsound |
 
@@ -72,14 +72,14 @@ for formal definitions, see specs/ (soundness per component: [[zheng/specs/sound
 |------|-------|
 | [[zheng/docs/explanation/superspartan|superspartan]] | [[CCS]] as universal constraint system — why [[AIR]] matters for [[nox]] and how [[SuperSpartan]] unifies them |
 | [[zheng/docs/explanation/whirlaway|whirlaway]] | the architecture of the succinct profile — how [[sumcheck protocol]], [[WHIR]] and [[SuperSpartan]] compose |
-| [[zheng/docs/explanation/trace-to-proof|trace-to-proof]] | the legacy register trace, and the current pipeline from a [[nox]] program to a zheng proof |
-| [[zheng/docs/explanation/zheng-vs-starks|zheng-vs-starks]] | zheng proofs and [[STARKs]] — shared trust model, different IOP and commitment, measured figures |
+| [[zheng/docs/explanation/trace-to-proof|trace-to-proof]] | from a [[nox]] program to a zheng proof: the compiled relation, the machine trace, and the retired register trace |
+| [[zheng/docs/explanation/zheng-vs-starks|zheng-vs-starks]] | zheng proofs and STARK systems — shared trust model, different IOP and commitment, measured figures |
 
 ### powers
 
 | page | topic |
 |------|-------|
-| [[zheng/docs/explanation/recursion|recursion]] | accumulation (constant size in the number of steps) versus recursion proper (composition only) |
+| [[zheng/docs/explanation/recursion|recursion]] | accumulation, IVC and wrap — how a nox run of any length becomes one proof of constant size |
 | [[zheng/docs/explanation/security|security]] | hash-based assumptions — post-quantum guarantees, the soundness ledger explained, no trusted setup |
 | [[zheng/docs/explanation/performance|performance]] | measured proof sizes and verification times per profile, against the goal |
 | [[zheng/docs/explanation/bbg-integration|bbg-integration]] | how a proof reads [[BBG]] state — state roots, evidence, the QueryProof migration |

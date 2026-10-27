@@ -1,14 +1,14 @@
 # why zheng
 
 the entire cyber stack exists for one purpose: turning computation into
-[[proofs]]. every layer beneath zheng was engineered with this moment in
+proofs. every layer beneath zheng was engineered with this moment in
 mind. [[nebu]] defines the field. [[hemera]] defines the hash. [[nox]]
 defines the virtual machine. zheng is the keystone that locks them
 together — the component that takes a nox program, its inputs and its result and
 produces a cryptographic proof that the program computes that result.
 
 so why build a custom proof system from scratch? why not reach for
-[[Groth16]], [[Plonk]], or one of the existing [[STARK]] implementations?
+Groth16, Plonk, or one of the existing [[STARK]] implementations?
 
 ## the translation tax
 
@@ -43,7 +43,9 @@ zheng is a polynomial proof system built from four parts, each single:
 - one IOP: [[SuperSpartan|Spartan]] [[sumcheck]] over [[CCS]] of any
   degree. the verifier compiles the CCS from the program itself and
   places the constant, the inputs, the outputs and the cost; only the
-  witness is committed.
+  witness is committed. a nox run of any length uses the nox machine
+  instead — one uniform AIR for every program, proved by a sumcheck
+  zerocheck.
 
 the commitment of the succinct profile is [[WHIR]] — a hash-based
 multilinear commitment over Reed–Solomon codes, opened with Merkle paths.
@@ -61,27 +63,30 @@ this combination yields:
 - 128 proven bits per succinct proof ([[zheng/specs/soundness|soundness ledger]])
 - a prover whose IOP streams through the relation with no FFT
 
-measured on an Apple M4 Max (`audit/succinct-profile-2026-10.md`): one
-hemera hash proves in a 15,921 B proof verified in 7.96 ms. the goal is
-any nox computation in ≤ 64 KB, verified in ≤ 1 ms, constant in the
-number of steps — a goal, not yet met.
+measured on an Apple M4 Max: one hemera hash proves in 0.07 s on Metal
+into a 16,756 B proof verified in under 10 ms (soft3
+`audit/proof-latency-2026-10.md`); a run of any length wraps into at
+most 64,213 B, verified in about 2 ms (`audit/ivc-speed-2026-10.md`).
+the goal is any nox computation in ≤ 64 KB, verified in ≤ 1 ms,
+constant in the number of steps: the size is met, the verify time is
+not.
 
 ## why nativity matters
 
 the verifier performs [[Goldilocks]] arithmetic (native to nox), calls
-[[hemera]] (a nox opcode), and evaluates [[multilinear polynomials]] over
-the same field the VM already uses. a verifier written as a nox program —
-the second verifier, in Trident — needs no emulated foreign field. if
-zheng used a curve-based system, a verifier inside nox would emulate a
-256-bit field in a 64-bit VM at hundreds of constraints per
-multiplication.
+[[hemera]] (a nox opcode), and evaluates multilinear polynomials over
+the same field the VM already uses. so a verifier proved inside a zheng
+relation needs no emulated foreign field. if zheng used a curve-based
+system, a verifier inside nox would emulate a 256-bit field in a 64-bit
+VM at hundreds of constraints per multiplication.
 
-that verifier is for composition: an old proof inside a new one, proofs
-across domains. it is not how zheng gets constant size. in a hash-only
-world a proof of a proof carries its own Merkle paths again; constant
-size for long computations comes from hash-based accumulation of
-Reed–Solomon evaluation claims (phase 3, ARC/WARP-style, in progress),
-decided by one WHIR opening.
+this is how zheng gets constant size today: each IVC step runs the
+previous step's verifier as rows of its own relation, over hash-based
+accumulation of Reed–Solomon evaluation claims, and three wrap levels
+compress the result to at most 64,213 B
+([[zheng/docs/explanation/recursion|recursion]]). a verifier written as a
+nox program — the second verifier, in Trident, for composition across
+domains and versions — is roadmap, not built.
 
 ## one field, one hash, one proof
 

@@ -19,10 +19,15 @@ its digest is four field elements (32 bytes). the generic bounds for a
 - classical collision resistance: birthday on p^4 outputs, `p^2 ≈ 2^128`.
 - quantum collision resistance: Brassard–Høyer–Tapp, `p^(4/3) ≈ 2^85`.
 
-these are generic bounds; hemera's parameters are young — hemera 0.4
+these are generic bounds, and hemera's parameters are young, so the
+ledger lists the hash row as conjectured. two versions matter. the crate
+pins cyber-hemera 0.3 (0.3.1: 8 full and 16 partial rounds, the
+inverse S-box in the partial rounds); every gadget, constraint count and
+measurement in zheng today runs it. the frozen material is hemera 0.4
 (hemera#15: x⁷ in every round, 6 + 6 full and 48 partial rounds, frozen
-2026-10-16) is under a public cryptanalysis campaign — so the ledger
-lists the hash row as conjectured. the 32-byte digest is kept; Merkle
+2026-10-16), under a public cryptanalysis campaign; zheng moves to it in
+PR #69/#73, which wait on one owner decision about the 64 KiB gate of
+profile 6 (PR #78 against #79). both keep the 32-byte digest; Merkle
 nodes inside proofs stay 32 bytes.
 
 zheng uses hemera for Merkle trees over Reed–Solomon codewords (the
@@ -36,7 +41,7 @@ field.
 
 ## post-quantum security
 
-pairing-based proof systems ([[Groth16]], [[PLONK]]) rely on the
+pairing-based proof systems (Groth16, PLONK) rely on the
 hardness of discrete logarithms, which Shor's algorithm breaks. zheng
 faces only generic quantum speed-ups: Grover for preimages and BHT for
 collisions. for a 32-byte hemera digest that leaves about 85 bits of
@@ -63,9 +68,10 @@ IOP is never the weak link.
 | profile | soundness | set by |
 |---|---|---|
 | public v3 / state-public v3 | error 0 for the compiled relation: the verifier checks every row of a disclosed witness | the relation compiler (tested, conjectured) |
-| succinct (Spartan + WHIR, rate 1/64, k = 4, 24 grinding bits) | 128.0 proven bits interactive | the WHIR opening, proven up to the Johnson bound |
+| succinct (Spartan + WHIR at rate 1/64; the policy admits only parameter sets proven ≥ 128 bits) | ≥ 128 proven bits interactive, grinding counted | the WHIR opening, proven up to the Johnson bound |
 | zk "veil" | 128.2 proven bits; honest-verifier statistical zero knowledge, zero knowledge in the random-oracle model after Fiat–Shamir | the hiding opening |
 | private MPC-in-the-head (fallback) | 128.1 bits, 219 repetitions | ZKBoo 3-special soundness |
+| machine, IVC, wrapped (profiles 4–6) | every per-step reduction ≥ 128 proven bits with grinding | the zerocheck, memory, accumulation, decider and field-native WHIR rows; the composition is conjectured (below) |
 
 ## Fiat–Shamir soundness
 
@@ -80,12 +86,20 @@ budget, as for every hash-based proof system.
 
 ## what is not yet proven
 
-- the relation compiler (nox program → CCS) is differentially tested
-  against native nox and its malleability analysed, but not proven.
-- hemera's concrete security beyond the generic bounds.
+- the relation compiler (nox program → CCS) and the nox machine
+  relation are differentially tested against native nox and their
+  malleability analysed, but not proven.
+- hemera's concrete security beyond the generic bounds, and with it the
+  binding of a program by its digest (profiles 4–6).
+- the composition of IVC and of the wrap levels: knowledge soundness of a
+  recursively composed Fiat–Shamir argument whose random oracle runs
+  inside the relation has no proof in the random-oracle model — the
+  heuristic every deployed recursive system rests on.
+- the recursion circuit's agreement with the native verifier is tested,
+  not proven.
 
 the release gate of the repair fails on any conjectured row in a
-production profile; these two rows are why that gate is not yet passed.
+production profile; these rows are why that gate is not yet passed.
 
 ## the concentration of trust
 

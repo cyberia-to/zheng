@@ -1,58 +1,55 @@
-# accumulation and recursive composition
+# accumulation, IVC and wrap
 
-two words that zheng's older pages used as one:
+how [[zheng]] turns a [[nox]] run of any length into one proof whose size does not depend on the length. three layers, each built and measured on the current code; the contracts are [[zheng/specs/accumulation|accumulation]], [[zheng/specs/machine|machine]] and [[zheng/specs/recursion|recursion]], the design record is [[soft3/proposals/proof-system-repair|proof-system repair]] §4.
 
-- accumulation — folding *claims* without verifying *proofs*. an accumulator carries one Merkle root and a fixed number of evaluation claims from step to step; no verifier circuit is ever built. this is how [[zheng]] proves an unbounded computation at a size independent of its length. it is the default.
-- recursion — a proof that verifies a proof: [[IVC]] and [[PCD]] proper, with the zheng verifier written as a [[nox]] program. in a hash-only world it does not shrink the final proof — the outer proof carries its own Merkle paths again — so it is a tool for composition, never for size.
+two words the retired 0.3 pages used as one:
 
-this split is settled in the [[soft3/proposals/proof-system-repair|proof-system repair]] (§4). the earlier design — homomorphic folding of committed CCS instances over hemera, with "the accumulator is the proof" and a small fixed decider — never worked: folding by homomorphism needs a homomorphic commitment, and [[hemera]] is a hash. the fold was never checked, and that code stays only behind cargo feature `legacy` (unsound, off by default) until phase 5 deletes it.
+- accumulation — folding claims without verifying proofs. each step batches the evaluation claims of its words into one accumulator (one Merkle root and a fixed number of claims); one decider opens the last accumulator. the accumulator is constant, the proof is not: every step leaves spot-check openings that someone must check.
+- recursion — a proof that verifies a proof. in zheng it is IVC: the verifier of step `i − 1` runs inside the relation of step `i`, so each step's openings are checked and consumed, and only the last step's travel.
 
-## accumulation (phase 3, in progress)
+the retired design — homomorphic folding of committed CCS instances over hemera, with an unchecked fold and a tiny fixed decider — never worked: folding by homomorphism needs a homomorphic commitment, and [[hemera]] is a hash. that code survives only behind the cargo feature `legacy` (unsound, off by default) until phase 5 deletes it.
 
-the nox machine becomes one uniform step relation: one [[CCS]] for one nox reduction step, with continuity and memory arguments between steps (`specs/machine.md`, landing with phase 3). proving a long computation is accumulating its steps:
+## 1. the machine and accumulation (envelope profile 4)
+
+the nox machine is one uniform row relation for every program (`rs/src/machine/`): 64-column rows, one row per continuation-machine step, 32-row hemera permutation blocks for noun digests, a write-once memory checked by logUp over Fp3. it is proved as an AIR by a sumcheck zerocheck (`rs/src/air/`) down to evaluation claims on the committed words. segments of `2^14` rows are accumulated hash-based (`rs/src/accumulate/`, WARP's claim-carrying structure with ARC-style out-of-domain samples):
 
 ```
-for each step i:
-    claims_i  = evaluation claims of step i's relation (Reed–Solomon codewords)
+for each segment i:
+    claims_i  = evaluation claims of segment i's words (Reed–Solomon codewords)
     batch claims_i with the running accumulator by a sumcheck
     commit one combined word (hemera Merkle root)
     sample out-of-domain points, open a few query positions
     acc_i = (root, fixed number of claims)        size independent of i
 
-decider: one WHIR opening of the final accumulator
+decider: one WHIR opening of the last accumulator
 ```
 
-this is hash-based accumulation of Reed–Solomon evaluation claims in the style of ARC (eprint 2024/1731) and WARP (eprint 2025/753): sound up to the list-decoding regime, resting on the random-oracle model only. the accumulator never grows; the decider proof is one opening.
+measured (`audit/accumulation-2026-10.md`): the decider is 44–93 KB, but the whole proof grows with the run — 83 KB at 33 cycles, 146 KB for merkle-32, 384 KB for 16,383 cycles in 3 segments, about 96 KB per `2^14`-row segment. accumulation alone saves openings, not size.
 
-figures: decider proof ≤ 64 KB goal, decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`); verification ≤ 1 ms goal, decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments). accumulation alone does not make the proof constant: every step's openings travel until recursion is built. the goal of the repair is any nox computation → a proof ≤ 64 KB, post-quantum, verified in ≤ 1 ms, constant in the number of steps.
+## 2. IVC (envelope profile 5)
 
-## what accumulation serves
+each `2^15`-row step proves its nox segment and runs, as the recursion circuit inside its own trace, the verifier of the step before: its sumchecks, its Merkle openings over a field-native hemera transcript and field-native WHIR, its accumulation checks. constraint evaluations are deferred as claims and checked once by the final verifier. a proof of any number of steps is the last step's proof, the state it started from and one decider.
 
-| need | shape |
-|---|---|
-| a long nox computation | accumulate every step, decide once |
-| [[fold mining]]: a cluster of tickets becomes one decider before minting | each ticket's claims and the cluster tree are accumulation steps; the root is one decider |
-| a [[light client]] accepts a checkpoint over many epochs | accumulate per epoch, decide at the checkpoint; the checkpoint is the state root plus the decider proof of the accumulator (≤ 64 KB goal, decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`)) |
-| a block of many transactions | the transactions' claims accumulate into one accumulator, one decider |
+measured (`audit/recursion-2026-10.md`, `audit/recursive-envelope-2026-10.md`): 282–285 KB from 33 cycles to 1.57M cycles — constant in the run — with decode and verify in 26.5 ms (hash.tri) and 32.1 ms (merkle-32). one IVC step proves in about 1.1 s on Metal (`audit/ivc-speed-2-2026-10.md`).
 
-none of these needs a proof of a proof.
+## 3. wrap (envelope profile 6)
 
-## recursion proper (composition only)
+the IVC proof's final verifier is itself proved by three wrap levels of the recursion circuit (`rs/src/recursion/wrap/`): two inner levels and one final level at a low rate, whose proof the verifier checks natively. the program is bound by its digest.
 
-the zheng verifier performs [[Goldilocks]] and Fp3 arithmetic, calls [[hemera]] and evaluates multilinear polynomials — all native to nox. so it can be written as a nox program (the second verifier, in Trident, agreeing with the Rust verifier on every fixture), and `verify(π)` can itself be proven.
+measured: the final proof is at most 64,213 B over every transcript (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`), 63,029 B for add.tri, verified in 1.9–2.2 ms with the statement prepared (`audit/ivc-speed-2026-10.md`); the wrap chain proves in 18.9 s on Metal, the whole profile-6 process in 21.9 s (`audit/ivc-speed-2-2026-10.md`). this is the profile that meets the ≤ 64 KB goal for any computation; it does not meet ≤ 1 ms verification, and it runs on aggregators, not on the user's device path.
 
-where the stack uses it:
+## 4. what is proven and what is not
 
-- composition across domains, or across a version boundary (an old proof inside a new one).
-- closing the self-hosting loop: the proof that nox proves nox is an accumulation over the self-hosting trace, with at most one recursion step at the end.
-- the fallback if ARC's prover is too slow or its argument does not close on review: bounded-depth recursion through the Trident verifier, one level at a time — costlier, standard, sound.
+every per-step reduction — zerocheck, shift, memory, accumulation, decider, field-native WHIR — has a proven row in [[zheng/specs/soundness|the soundness ledger]], ≥ 128 bits with grinding. the composition of IVC and of the wrap levels is conjectured: knowledge soundness of a recursively composed Fiat–Shamir argument whose random oracle is evaluated inside the relation has no proof in the random-oracle model — the standard heuristic of every deployed recursive system. the recursion circuit's agreement with the native verifier is tested, not proven.
 
-a recursion step is expensive: the verifier's Merkle paths and hemera calls become a large relation, and the outer proof carries Merkle paths of its own. it is affordable once, never per step. its measured cost does not exist yet.
+## 5. what it serves, and what is not built
 
-## why the old picture was wrong
+| need | shape | status |
+|---|---|---|
+| a long nox computation | profile 6: IVC over the machine, then the wrap chain | built |
+| [[fold mining]]: a cluster of tickets becomes one decider before minting | each ticket's claims and the cluster tree are accumulation steps (`accumulate::ccs` folds statements of one CCS); constant size needs IVC | accumulation built; settlement on it is foculus's, not done |
+| a [[light client]] accepts a checkpoint over many epochs | accumulate per epoch with IVC, decide at the checkpoint | not built |
+| one proof per block | the transactions' proofs aggregated into the block proof | in flight (zheng PR #70) |
+| composition across domains or versions, `verify(verify(π))` | the whole zheng verifier as a nox program — the second verifier, in Trident, agreeing with Rust on every fixture | roadmap (phase 3 of the repair), not built |
 
-- folding a committed instance with a random linear combination needs the commitment to be linear in the committed data. a Merkle root of a codeword is not; the folded commitment could not be checked, and the error vector was prover-chosen.
-- "the proof does not grow" was true of the accumulator's bytes and false of its soundness: an unchecked fold accepts anything.
-- a recursive verifier was never built, so the per-level constraint counts and depth-soundness figures the old pages quoted described nothing.
-
-see [[zheng/specs/soundness|the soundness ledger]] for the bits of every shipped component, [[zheng/docs/explanation/CCS|CCS]] for the constraint language both the step relation and the profiles use.
+see [[zheng/docs/explanation/CCS|CCS]] for the constraint language, [[zheng/docs/explanation/performance|performance]] for every profile's figures.

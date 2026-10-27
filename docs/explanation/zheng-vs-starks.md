@@ -28,9 +28,9 @@ in zheng every one of these parts is single: one field (Goldilocks, [[nebu]], wi
 
 | | typical STARK (Stwo, Plonky3, RISC Zero, Triton) | zheng proofs |
 |---|---|---|
-| arithmetization | AIR: transition constraints over a trace, univariate polynomials over a multiplicative subgroup | [[CCS]] of any degree, compiled by the verifier from the nox program; multilinear polynomials over the Boolean hypercube |
-| IOP | quotient polynomial + DEEP-ALI | Spartan (SuperSpartan): an outer sumcheck of the CCS degree and an inner sumcheck batching the matrix evaluations |
-| commitment / proximity | FRI (some systems: STIR, WHIR) | one multilinear opening by WHIR (rate 1/64, folding factor 4, 24 grinding bits) — the winner of the phase-2 bake-off; a Reed–Solomon tensor code with Ligero geometry (TensorRs) was the loser |
+| arithmetization | AIR: transition constraints over a trace, univariate polynomials over a multiplicative subgroup | one statement: [[CCS]] of any degree, compiled by the verifier from the nox program; a run of any length: one uniform AIR for the nox machine; multilinear polynomials over the Boolean hypercube in both |
+| IOP | quotient polynomial + DEEP-ALI | sumcheck, no quotient: Spartan (SuperSpartan) for a CCS, a zerocheck for the machine AIR |
+| commitment / proximity | FRI (some systems: STIR, WHIR) | one multilinear opening by WHIR (rate 1/64) — the winner of the phase-2 bake-off; a Reed–Solomon tensor code with Ligero geometry (TensorRs) was the loser |
 | what is committed | the whole trace and the quotient | the witness `w` only; the verifier derives the relation and the public prefix `(1 ‖ io ‖ cycles)` itself |
 | challenges | extension field of the base field | Fp3 (`p³ ≈ 2^192`) |
 | zero knowledge | trace randomisation | profile "veil": Libra-masked sumchecks + one hiding Ligero-style RS tensor commitment |
@@ -43,39 +43,44 @@ zheng carries every proof in one envelope, `ZHENGPF1` (magic · version · profi
 
 - public (profile 0) and state-public (profile 3): the witness is disclosed and the verifier checks every CCS row exactly. soundness error 0 for the compiled relation, linear size, not succinct. a STARK has no counterpart; it is the fallback that is sound without any proximity argument.
 - succinct (profile 1): the witness is committed; Spartan over Fp3 plus one WHIR opening. this is the profile comparable to a STARK.
-- zk (profile 2, "veil"): succinct with masking; honest-verifier statistical zero knowledge, zero knowledge in the random-oracle model after Fiat–Shamir.
+- zk (profile 2, "veil"): succinct with masking; honest-verifier statistical zero knowledge, zero knowledge in the random-oracle model after Fiat–Shamir. scheme 1 of the same profile is an MPC-in-the-head fallback with linear size.
+- machine (profile 4), recursive (profile 5) and wrapped (profile 6): a nox run of any length, accumulated, then IVC, then wrapped to constant size (§5).
 
 soundness of every component is in [[zheng/specs/soundness|the soundness ledger]].
 
 ## 4. measured figures
 
-Apple M4 Max, shared machine, `zheng/audit/succinct-profile-2026-10.md` and `zheng/audit/zk-profile-2026-10.md`:
+Apple M4 Max, shared machine; every figure names its audit (zheng `audit/`, unless marked soft3):
 
-| statement | profile | proof | verify | proven bits |
+| statement | profile | proof | verify | source |
 |---|---|---|---|---|
-| `add.tri` | public v3 | 185 B envelope | — | error 0 |
-| `hash.tri` (one hemera hash) | public v3 | 6,463 B envelope | — | error 0 |
-| `hash.tri` | succinct, WHIR | 15,921 B proof / 16,148 B envelope | 7.96 ms | 128 |
-| synthetic relation, 2^20 rows | succinct, WHIR | 71,081 B | 270 ms | 128 |
-| hash of a secret preimage | zk (veil) | 63.9 KB | 10.0 ms (4.1 ms with a cached verifying key) | 128.2 |
+| `hash.tri` (one hemera hash) | public v3 | 6,463 B envelope | linear | `audit/succinct-profile-2026-10.md` |
+| `hash.tri` | succinct, shipped device parameters | 16,756 B | < 10 ms | soft3 `audit/proof-latency-2026-10.md` |
+| Merkle membership, depth 32 | succinct, device parameters | 64,071 B | 310 ms | same |
+| synthetic relation, 2^20 rows | succinct, bake-off parameters (24 grinding bits) | 71,081 B | 270 ms | `audit/succinct-profile-2026-10.md` |
+| hash of a secret preimage | zk (veil) | 63.9 KB | 10.0 ms (4.1 ms with a cached verifying key) | `audit/zk-profile-2026-10.md` |
+| `add.tri`, a run of any length | wrapped (profile 6) | 63,029 B, at most 64,213 B over every transcript | 1.9–2.2 ms | `audit/ivc-speed-2026-10.md` |
 
-for scale, production STARK chains publish proofs of roughly 150 KB to 1 MB (proposal §1). the hash-only WHIR literature reports 56–87 KiB at `2^20` at rate 1/16.
+every succinct, zk and wrapped proof carries ≥ 128 proven bits. for scale, production STARK chains publish proofs of roughly 150 KB to 1 MB (soft3 `proposals/proof-system-repair.md` §1); the hash-only WHIR literature reports 56–87 KiB at `2^20` at rate 1/16.
 
-the goal of the repair: any nox computation → a proof ≤ 64 KB, post-quantum, verify ≤ 1 ms, constant in the number of steps; small statements ≤ 16–20 KB. today the 2^20 relation misses the size goal by 11 %, and verification misses the 1 ms goal at every size — the causes are hemera's speed inside the opening, an unstructured Spartan verifier, and recompiling the relation (a cached verifying key removes the last).
+the goal of the repair: any nox computation → a proof ≤ 64 KB, post-quantum, verify ≤ 1 ms, constant in the number of steps; small statements ≤ 16–20 KB. profile 6 meets the size for a run of any length; one-relation proofs meet it up to `2^18` committed variables. verification misses 1 ms in every profile — the causes are hemera inside the opening, an unstructured Spartan verifier, and recompiling the relation (a cached verifying key removes the last).
 
 ## 5. long computations
 
-a STARK proves a long computation as one long trace, or recursively by verifying proofs inside proofs. zheng's plan (phase 3, in progress, no numbers yet) is hash-based accumulation of Reed–Solomon evaluation claims, ARC/WARP-style: the nox machine becomes one uniform step relation; each step batches its claims with a sumcheck, commits one combined word, samples out-of-domain points and opens a few positions; the accumulator is one root plus a fixed number of claims, independent of the number of steps; the decider is one WHIR opening of the final accumulator. decider proof: ≤ 64 KB goal, decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`); measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
+a STARK proves a long computation as one long trace, or recursively by verifying proofs inside proofs. zheng does the second, hash-only ([[zheng/docs/explanation/recursion|recursion]]):
 
-this replaces the folding of the 0.3/0.4 design, which needs a homomorphic commitment; hemera is a hash, so the stack never had it soundly. recursion proper — a zheng verifier written as a nox program — is kept for composition (across domains, across versions), never for size: in a hash-only world the outer proof carries its own Merkle paths again.
+- the nox machine is one uniform step relation for every program, an AIR proved by a sumcheck zerocheck (profile 4); its segments' Reed–Solomon evaluation claims are accumulated hash-based (WARP-structured, ARC-style out-of-domain samples) and decided by one WHIR opening. accumulation alone leaves every step's openings in the proof: about 96 KB per `2^14`-row segment (`audit/accumulation-2026-10.md`).
+- IVC (profile 5): each step's relation runs the previous step's verifier, so the proof stays at about 285 KB from 33 to 1.57M cycles (`audit/recursion-2026-10.md`).
+- wrap (profile 6): three wrap levels prove the IVC proof's final verifier, down to at most 64,213 B, proved in about 19 s on Metal (`audit/ivc-speed-2-2026-10.md`) — an aggregator's job, not a user device's.
 
-a light-client checkpoint is a state root plus the decider proof of the accumulator: ≤ 64 KB goal; decider 44–93 KB measured (one WHIR opening of an Fp3 word, ℓ = 14…21; `audit/accumulation-2026-10.md`).
+this replaces the folding of the retired 0.3 design, which needed a homomorphic commitment; hemera is a hash, so the stack never had it soundly. the composition of IVC and wrap is a conjectured row of the soundness ledger, the heuristic every deployed recursive system shares.
 
 ## 6. honest assessment
 
 - zheng's succinct and zk profiles are new code with weeks of review, not years of production; STARK provers have years.
 - the relation compiler (program → CCS) is tested against native nox but not proven; it is a conjectured row of the soundness ledger.
-- hemera's 32-byte digest gives 128-bit classical and about 85-bit quantum collision resistance; hemera 0.4 (frozen 2026-10-16) keeps the 32-byte digest. Merkle nodes inside proofs stay 32 bytes.
+- hemera's 32-byte digest gives 128-bit classical and about 85-bit quantum collision resistance. zheng's code and every figure above run hemera 0.3.1; the frozen material is hemera 0.4 (2026-10-16, same 32-byte digest), which zheng adopts in PR #69/#73. Merkle nodes inside proofs stay 32 bytes.
+- the composition of IVC and wrap rests on the recursive Fiat–Shamir heuristic (a conjectured ledger row).
 - the 1 ms verification goal is not met yet.
 
 ## references

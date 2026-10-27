@@ -1,191 +1,53 @@
-> superseded: this page describes the 16-register trace of the 0.3/0.4 folded trace API, now behind cargo feature `legacy` (unsound, off by default, deleted in phase 5); the current pipeline is in the last section and in [[zheng/docs/explanation/whirlaway|whirlaway]].
-
 # trace to proof
 
-the concrete journey from [[nox]] execution to zheng proof. this article bridges the VM and the proof system, showing exactly how computation becomes cryptographic evidence.
+the concrete journey from a [[nox]] execution to a [[zheng]] proof. there are two paths: one statement is compiled into one relation; a run of any length is a trace of the nox machine. both end in sumchecks and one Reed–Solomon opening per committed object; neither uses a quotient polynomial or FRI.
 
-## the execution trace
+## 1. one statement: the compiled relation (profiles 0–3)
 
-when [[nox]] runs a program, it produces a table. each row is one reduction step — one application of a pattern to the current term. the table has 16 columns (registers), indexed 0 through 15:
-
-```
-register  name            role
-────────────────────────────────────────────────────
-r0        pattern         which of the 18 patterns fired
-r1        object_hash     hash of the object being reduced
-r2        formula_hash    hash of the formula being applied
-r3        operand_a       first operand
-r4        operand_b       second operand
-r5        result          output of this reduction step
-r6        focus_before    focus counter at entry
-r7        focus_after     focus counter at exit
-r8        type_tag_a      type of operand_a
-r9        type_tag_b      type of operand_b
-r10       type_tag_out    type of result
-r11       aux_0           auxiliary register (pattern-specific)
-r12       aux_1           auxiliary register (pattern-specific)
-r13       aux_2           auxiliary register (pattern-specific)
-r14       status          step status (running / halted / error)
-r15       step_index      position in the trace
-```
-
-all values are elements of the [[Goldilocks field]] (p = 2^64 - 2^32 + 1). a trace with 1,000 reduction steps is a 1,000 × 16 table of field elements.
-
-## padding to power of two
-
-the [[sumcheck protocol]] operates over the boolean hypercube {0,1}^n, which has 2^n points. the trace must therefore have exactly 2^n rows. if the raw trace has 1,000 rows, it is padded to 1,024 (2^10).
-
-padding rows replicate the final halted state. the pattern register is set to the halted pattern, and all other registers copy the last valid row's values. these padding rows satisfy the AIR constraints trivially: the halted pattern's transition constraint is the identity (every register stays unchanged).
-
-## multilinear encoding
-
-the padded trace (2^n rows × 2^4 columns) becomes a single multilinear polynomial f over n + 4 boolean variables. the encoding works by address:
-
-- variables x₁ through x_n encode the row index in binary
-- variables x_{n+1} through x_{n+4} encode the column index in binary
-
-for any binary assignment (b₁, ..., b_n, c₁, ..., c₄):
-
-```
-f(b₁, ..., b_n, c₁, ..., c₄) = trace[row(b₁...b_n)][col(c₁...c₄)]
-```
-
-the polynomial f is the unique multilinear extension of this table. it agrees with the trace on all 2^{n+4} binary inputs and interpolates smoothly over the full [[Goldilocks field]]. this is the polynomial the legacy path committed to.
-
-## AIR constraints from nox patterns
-
-each of [[nox]]'s 18 patterns contributes a transition constraint — a polynomial equation that must hold between consecutive rows.
-
-## full constraint table
-
-```
-PATTERN → CONSTRAINT                                        │ DEGREE │ CONSTRAINTS
-────────────────────────────────────────────────────────────┼────────┼────────────
-0  axis     navigation through subject tree                │ 1      │ ~depth
-1  quote    output = literal constant                       │ 1      │ 1
-2  compose  chain: eval x, eval y, eval result on x's output│ 1      │ 2
-3  cons     pair two sub-results                            │ 1      │ 2
-4  branch   selector × (next − yes) + (1−sel) × (next − no)│ 2      │ 2
-5  add      out = a + b mod p                               │ 1      │ 1
-6  sub      out = a − b mod p                               │ 1      │ 1
-7  mul      out = a × b mod p                               │ 2      │ 1
-8  inv      out × input = 1 mod p (Fermat verification)    │ 2      │ 1
-9  eq       (a − b) × inv = (a ≠ b), out = 1 − (a ≠ b)    │ 2      │ 1
-10 lt       range decomposition into bits                   │ 1      │ ~64
-11 xor      bit decomposition + XOR per bit                 │ 2      │ ~64
-12 and      bit decomposition + AND per bit                 │ 2      │ ~64
-13 not      bitwise complement                              │ 1      │ ~64
-14 shl      shift via multiplication by 2^n                 │ 2      │ ~64
-15 hash     Poseidon2 round function across rows            │ 7      │ ~1,440
-16 call     inject + dispatch (Layer 1 check verification)  │ varies │ varies
-17 look     BBG polynomial evaluation + opening proof       │ 1      │ 1
-```
-
-[[SuperSpartan]] handles AIR constraints of any degree via [[CCS]]. high-degree constraints (pattern 15: degree 7) cost only field operations in the prover — no cryptographic cost increase over degree-1 constraints. this is the [[CCS]] advantage: the Poseidon2 rounds inside the hash pattern are free in the IOP layer.
-
-three examples spanning different degrees follow.
-
-# pattern 5: add (degree 1)
-
-when r0_t = 5 (the add pattern fires at row t), the result at the next row must be the sum of the operands:
-
-```
-r5_{t+1} = r3_t + r4_t
-```
-
-this is a degree-1 constraint: a linear relation among register values at adjacent rows. the constraint polynomial is C₅(t) = r5_{t+1} - r3_t - r4_t, which equals zero on every row where pattern 5 fires.
-
-# pattern 7: mul (degree 2)
-
-when r0_t = 7 (multiply), the result is the product:
-
-```
-r5_{t+1} = r3_t × r4_t
-```
-
-the constraint polynomial C₇(t) = r5_{t+1} - r3_t × r4_t is degree 2. the multiplication of two register values introduces one degree of non-linearity.
-
-# pattern 15: hash (degree 7)
-
-when r0_t = 15, the row encodes one round of [[hemera]] (Poseidon2). the Poseidon2 round function applies the S-box x^7 to the state, then a linear layer. the constraint spans consecutive rows — the state after applying x^7 and the MDS matrix at row t must equal the state at row t+1.
-
-```
-state_{t+1} = MDS × (state_t)^7
-```
-
-the degree-7 S-box makes this a degree-7 transition constraint. in classical STARKs this would cause a 7x blowup in the quotient polynomial. in [[SuperSpartan]], it costs a few extra field operations per [[sumcheck]] round — no cryptographic penalty.
-
-## boundary constraints
-
-transition constraints govern consecutive rows. boundary constraints pin specific rows to known values.
-
-the input boundary fixes row 0: the initial registers must match the program's input. if the computation adds 3 and 5, then r3_0 = 3 and r4_0 = 5.
-
-the output boundary fixes the last active row: the result register must contain the program's output, and the status register must indicate clean halting.
-
-boundary constraints are point evaluations. they assert that f, evaluated at specific binary coordinates, equals specific field elements. the legacy path proved these as evaluation claims.
-
-## the combined constraint polynomial
-
-the 18 pattern constraints must be combined into a single polynomial. the pattern selector handles this: at each row, only one pattern is active (the value in r0). the combined constraint is:
-
-```
-C(t) = Σ_{p=0}^{17} selector_p(r0_t) × C_p(t)
-```
-
-where selector_p(r0_t) equals 1 when r0_t = p and 0 otherwise. the selector is a polynomial in r0_t constructed via Lagrange interpolation over the 18 pattern values.
-
-if the trace is valid — every pattern was executed correctly — then C(t) = 0 for every row t. the [[sumcheck protocol]] verifies this: the sum of C over all 2^n rows equals zero. [[SuperSpartan]] orchestrates this sumcheck, reducing the exponential sum to a single evaluation point, which the commitment opens.
-
-## focus accounting
-
-every [[nox]] computation has a focus budget. focus is the resource that bounds computation — the analog of gas in other VMs, but deterministic and exact.
-
-each row enforces the focus transition:
-
-```
-r7_t = r6_t - cost(r0_t)
-```
-
-focus_after equals focus_before minus the cost of the pattern that fired. the cost function is fixed per pattern: arithmetic patterns cost 1, hash rounds cost more. this constraint is part of every pattern's AIR — it is enforced universally, regardless of which pattern fires.
-
-when focus reaches zero, the status register transitions to halted and the computation ends cleanly. the boundary constraint on the last row checks that r14 (status) indicates halted and r7 (focus_after) is zero or that r6 (focus_before) was insufficient for the next pattern's cost.
-
-## a concrete example
-
-consider a simple program: add 3 and 5. [[nox]] executes this in one reduction step (plus padding). with initial focus of 10:
-
-```
-row  r0   r3   r4   r5   r6    r7   r14     description
-───────────────────────────────────────────────────────
-  0   5    3    5    0    10    9    run     add: r5 ← r3 + r4
-  1   0    3    5    8     9    9    halt    result in r5, halted
-```
-
-the AIR constraint for row 0: r0 = 5 (add pattern), so C₅ applies. check: r5₁ = 8 = 3 + 5 = r3₀ + r4₀. the constraint is satisfied. focus: r7₀ = 9 = 10 - 1 = r6₀ - cost(5). satisfied.
-
-this 2-row trace is padded to 2^1 = 2 rows (already a power of two). the multilinear polynomial f has 1 + 4 = 5 variables. the legacy path committed to f, ran the sumcheck over 2 rows and opened f once. that opening was never sound: the expander-code commitment had no real opening (see [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]).
-
-## the current pipeline
-
-the shipped profiles do not prove a register trace. the relation compiler turns the nox program and the shape of its subject into one [[CCS]]; the verifier compiles the same CCS and places `z[0] = 1`, the inputs, the outputs and the cost itself.
+the relation compiler turns the nox program and the shape of its subject into one [[CCS]]: every operand, intermediate value and output is a wire; field operations, conditionals, word operations and [[hemera]] rounds are rows, of degree 1 to 7. the verifier compiles the same CCS from the same program and places `z[0] = 1`, the inputs, the outputs and the cost itself, so a proof can only fill the free witness positions.
 
 ```
 nox program + statement (io, cycles)
     → relation compiler → CCS (verifier and prover alike)
     → prover fills the witness w
-    → public profile: disclose w; the verifier checks every row exactly
-    → succinct profile: commit w̃ (Reed–Solomon + hemera Merkle root)
+    → public profile (0, 3): disclose w; the verifier checks every row exactly
+    → succinct profile (1): commit w̃ (Reed–Solomon + hemera Merkle root)
         → Spartan over Fp3 (outer + inner sumcheck) → point r
         → one WHIR opening of w̃(r)
-    → zk profile "veil": masked sumchecks + one hiding RS tensor opening
+    → zk profile "veil" (2): masked sumchecks + one hiding RS tensor opening
 ```
 
-the add example above is `add.tri`: its public certificate is a 185 B envelope; its succinct proof uses the same CCS with the witness committed. long programs will be proven step by step: one uniform step relation per nox reduction, accumulated (phase 3).
+one hemera hash of a digest costs about 2,700 constrained wires, because nox hashes nouns structurally (every atom decomposed into 64 bits); one relation is capped at `2^20` rows. `hash.tri` gives a 6,463 B public certificate and a 16,756 B succinct proof (`audit/succinct-profile-2026-10.md`; soft3 `audit/proof-latency-2026-10.md`).
+
+## 2. a run of any length: the machine trace (profiles 4–6)
+
+`nox::reduce` on any program becomes a trace of one fixed row relation ([[zheng/specs/machine|machine]]): 64 phase-1 columns, 15 phase-2 columns, 2 challenges, degree 8, 604 constraints, the same for every program and input — so the verifier's key does not depend on the program.
+
+```
+[0, P)            INIT    one init entry per row: the program and subject DAG
+[P, P + M)        machine one row per continuation-machine step, the last one TERM
+[P + M, start)    PAD
+[start, N)        PERM    32-row blocks: one hemera permutation each
+```
+
+- memory is write-once: atoms, pairs, continuation frames, digests and state reads are tuples checked by a logUp argument over Fp3, so every read equals a written value.
+- each evaluation row carries one of sixteen opcode flags and adds nox's cost for that opcode, so the statement's cycle count is enforced row by row.
+- the statement enters through public columns the verifier evaluates itself: the init region, the phases of the permutation blocks, hemera's round constants, the output digest and `cycles`.
+- the PERM blocks are hemera 0.3.1's permutation (4 + 4 full rounds, 16 partial rounds), the version the crate pins; the frozen hemera 0.4 re-cuts the block in the draft sweep zheng#69/#73.
+
+the trace is cut into segments of `2^14` rows. each segment is committed as Reed–Solomon codewords under hemera Merkle trees and proved by a sumcheck zerocheck over its rows plus a successor (shift) argument linking consecutive rows; what is left are evaluation claims on the committed words. those claims are accumulated (profile 4), checked inside the next step (IVC, profile 5), and wrapped to at most 64,213 B (profile 6) — see [[zheng/docs/explanation/recursion|recursion]].
+
+## multilinear encoding
+
+both paths commit tables the same way. a table of `2^n` rows and `2^m` columns is one multilinear polynomial in `n + m` boolean variables: the first `n` address the row, the last `m` the column, and the polynomial is the unique multilinear extension that agrees with the table on every binary input. padding to a power of two lets the [[sumcheck protocol]] range over the full hypercube `{0,1}^{n+m}`. a constraint that must hold on every row becomes a claim that a polynomial vanishes on the hypercube; a random `eq` weight turns it into a sum, and sumcheck reduces the sum to one evaluation at a random point of Fp3, which the commitment opens.
+
+## the retired register trace
+
+the 0.3 design proved a fixed 16-register trace (one row per reduction, one column per register, a selector over 18 pattern constraints) by folding it into an accumulator and opening it with an expander-code commitment. the fold was never checked, the statement was unbound and the commitment had no real opening ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). that code survives only behind the cargo feature `legacy` (unsound, off by default) until phase 5 deletes it.
 
 ## references
 
 - see [[whirlaway]] for the architecture of the succinct profile
-- see [[superspartan]] for the IOP that verifies constraints
+- see [[superspartan]] for the IOP that verifies a compiled relation
 - see [[nox]] for the VM specification and pattern definitions
-- see [[hemera]] for the Poseidon2 hash used in pattern 15 and in every Merkle commitment
+- see [[hemera]] for the Poseidon2 hash used in the relation and in every Merkle commitment

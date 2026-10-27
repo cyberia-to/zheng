@@ -55,7 +55,7 @@ Spartan's outer sumcheck reduces "every CCS row holds" to one random point; the 
 
 ### open
 
-WHIR proves `w̃(r) = v`: rounds of folding with out-of-domain samples and in-domain queries, each query authenticated by a Merkle path. zheng ships rate 1/64, folding factor 4, 24 grinding bits — 128 proven bits.
+WHIR proves `w̃(r) = v`: rounds of folding with out-of-domain samples and in-domain queries, each query authenticated by a Merkle path. zheng ships rate 1/64 with folding factor 4 up to `2^16` committed variables and 5 above, and 16–24 grinding bits by size (`succinct::device_params`) — ≥ 128 proven bits at every size.
 
 ### verify
 
@@ -63,13 +63,13 @@ the verifier checks the sumcheck messages against the running claims, recomputes
 
 ## measured
 
-Apple M4 Max, shared machine, `audit/succinct-profile-2026-10.md`: one hemera hash (`hash.tri`) — 15,921 B proof, verify 7.96 ms; a synthetic `2^20`-row relation — 71,081 B, verify 270 ms. the goal of the repair is ≤ 64 KB for any nox computation and verify ≤ 1 ms; neither is met at `2^20` yet. most of the proof is the opening's Merkle paths, most of the verify time is hemera inside the opening, the unstructured Spartan verifier, and recompiling the relation.
+Apple M4 Max, shared machine. shipped device parameters (soft3 `audit/proof-latency-2026-10.md`): one hemera hash (`hash.tri`) — 16,756 B, verify under 10 ms; Merkle membership at depth 32 — 64,071 B, verify 310 ms. bake-off parameters, 24 grinding bits (`audit/succinct-profile-2026-10.md`): `hash.tri` 15,921 B, verify 7.96 ms; a synthetic `2^20`-row relation 71,081 B, verify 270 ms. the goal of the repair is ≤ 64 KB for any nox computation and verify ≤ 1 ms; one relation stays under 64 KB up to `2^18` committed variables, and verification misses 1 ms at every size. most of the proof is the opening's Merkle paths, most of the verify time is hemera inside the opening, the unstructured Spartan verifier, and recompiling the relation.
 
 ## Whirlaway in context
 
 the name reflects the composition: WHIR provides the polynomial commitment, SuperSpartan the IOP, the sumcheck protocol drives both. zheng's instantiation is [[Goldilocks field]] arithmetic from [[nebu]], Poseidon2 hashing from [[hemera]], the nox relation compiler, Fp3 challenges, and a public prefix the verifier places itself.
 
-what Whirlaway does not give is constant size for unbounded computations. zheng gets that from a separate layer: hash-based accumulation of Reed–Solomon evaluation claims (ARC/WARP-style, phase 3, in progress), whose decider is one WHIR opening of the final accumulator. a verifier written as a nox program is planned for composition only — in a hash-only world a proof of a proof carries its own Merkle paths again and does not get smaller.
+what Whirlaway does not give is constant size for unbounded computations. zheng gets that from separate layers on the nox machine: hash-based accumulation of Reed–Solomon evaluation claims (profile 4), IVC with the previous step's verifier inside each step (profile 5), and three wrap levels down to at most 64,213 B (profile 6) — see [[zheng/docs/explanation/recursion|recursion]].
 
 ## the PCS lineage
 

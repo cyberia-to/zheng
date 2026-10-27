@@ -6,7 +6,7 @@ alias: Weights Help Improving Rate
 ---
 # WHIR
 
-WHIR (Weights Help Improving Rate) is the polynomial commitment of zheng's succinct profile (envelope profile 1): the winner of the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] for both size classes, shipped at rate 1/64, folding factor k = 4, 24 grinding bits. it was also zheng's first lens; the expander-code commitment that briefly replaced it is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the implementation lives in [[lens]] (`Whir`, PCS id 1; contract `lens/specs/whir.md`).
+WHIR (Weights Help Improving Rate) is the polynomial commitment of zheng's succinct profile (envelope profile 1): the winner of the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] for both size classes, shipped at rate 1/64 (parameters below). it is also the decider of the machine profile and, run field-natively, the opening inside the recursion circuit (profiles 4–6). it was zheng's first lens; the expander-code commitment that briefly replaced it is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the implementation lives in [[lens]] (`Whir`, PCS id 1; contract `lens/specs/whir.md`).
 
 Weights Help Improving Rate. an interactive oracle proof of proximity for constrained Reed-Solomon codes that simultaneously serves as a multilinear polynomial commitment scheme. Arnon, Chiesa, Fenzi, Yogev (EUROCRYPT 2025). ePrint 2024/1586.
 
@@ -97,37 +97,28 @@ number of queries per round: security_bits / log₂(1/ρ). at 100-bit security w
 
 ## parameters
 
-zheng ships one parameter set for both size classes (lens `WhirConfig`, Johnson-bound decoding):
+the succinct profile's default prover (`succinct::device_params`, lens `WhirConfig`, Johnson-bound decoding); the bake-off set `succinct::params_for` is the same with folding 4 and 24 grinding bits at every size:
 
 | parameter | value |
 |---|---|
 | rate ρ | 1/64 |
-| folding factor k | 4 |
-| grinding | 24 bits |
+| folding factor k | 4 up to `2^16` committed variables, 5 above |
+| grinding | 16 bits up to `2^17`, 22 at `2^18`, 24 beyond — the least that keeps the proof ≤ 64 KB |
 | challenge and evaluation field | Fp3 over [[Goldilocks field|Goldilocks]] (p³ ≈ 2^192) |
 | hash | [[hemera]] (Poseidon2 over Goldilocks), Merkle trees and Fiat–Shamir |
 | proven soundness | ≥ 128 bits, round-by-round, grinding included (the policy rejects any set below 128) |
 
-measured inside the succinct profile (Apple M4 Max, shared machine, `audit/succinct-profile-2026-10.md`): one hemera hash (`hash.tri`, 2^10 committed slots) — 15,921 B proof, 7.96 ms verify; synthetic 2^20-row relation — 71,081 B, 270 ms verify. the goal of the repair is ≤ 64 KB and verify ≤ 1 ms; neither is met at 2^20 yet. bit-flip scans: 0 accepted.
+measured inside the succinct profile (Apple M4 Max, shared machine): with the device parameters, one hemera hash (`hash.tri`, 2^10 committed slots) — 16,756 B, verify under 10 ms; Merkle membership at depth 32 (2^18) — 64,071 B, 310 ms (soft3 `audit/proof-latency-2026-10.md`). with the bake-off parameters, `hash.tri` — 15,921 B, 7.96 ms; a synthetic 2^20-row relation — 71,081 B, 270 ms (`audit/succinct-profile-2026-10.md`). the goal of the repair is ≤ 64 KB and verify ≤ 1 ms; one relation misses 64 KB above 2^18 and every size misses 1 ms. bit-flip scans: 0 accepted.
 
 ## performance comparison
 
-published figures from the WHIR paper (its own hash and field, not hemera; not zheng measurements). at d = 2²⁴, 128-bit security:
+published figures from the WHIR paper, eprint 2024/1586 (its own hash and field, not hemera; not zheng measurements). at d = 2²⁴, 128-bit security:
 
 | scheme | argument size | verifier hashes | verification time |
 |---|---|---|---|
-| [[FRI]] | 306 KiB | 5,600 | 3.9 ms |
-| [[STIR]] | 160 KiB | 2,600 | 3.8 ms |
+| FRI | 306 KiB | 5,600 | 3.9 ms |
+| STIR | 160 KiB | 2,600 | 3.8 ms |
 | WHIR | 157 KiB | 2,700 | 1.0 ms |
-
-at 100-bit security:
-
-| scheme | argument size | verification time | setup |
-|---|---|---|---|
-| KZG | 48 bytes | 2.4 ms | trusted |
-| PST | ~200 bytes | 3.6 ms | trusted |
-| BaseFold | 7.95 MiB | 24 ms | none |
-| WHIR | 101 KiB | 290 μs | none |
 
 ## properties
 
@@ -139,49 +130,15 @@ at 100-bit security:
 | field | any with large multiplicative subgroup |
 | soundness | mutual correlated agreement |
 
-## verification circuit decomposition
+## WHIR inside a proof
 
-for the planned verifier written as a [[nox]] program (in Trident, for composition only). the counts below are early estimates for a 100-bit, rate-1/2 configuration, not measurements of the shipped parameters. inside nox, WHIR_verify decomposes into two jets:
+WHIR's verifier is proved today, not planned: the recursion circuit runs a field-native WHIR (`rs/src/recursion/whir/`: a duplex transcript over hemera's permutation, 4-ary field-native Merkle trees, batched openings) as rows of each IVC step and of each wrap level, and the final wrap level's proof is checked natively ([[zheng/specs/recursion|recursion]], `audit/recursion-2026-10.md`). its soundness rows are in [[zheng/specs/soundness|the soundness ledger]] § field-native WHIR.
 
-```
-merkle_verify(root, leaf, path, index)
-  d × 1,440 constraints per depth-d path
-
-fri_fold(poly_layer, challenge)        // nox jet
-  N/2 constraints per folding round
-```
-
-full WHIR_verify:
-
-```
-1. Fiat-Shamir: derive challenges from transcript
-   → hemera hashes (~22 cycles per challenge)
-
-2. per folding round (log(N) rounds):
-   a. merkle_verify: check evaluation query paths
-   b. fri_fold: fold polynomial with round challenge
-   c. sumcheck round: weight polynomial combination (~10 constraints)
-
-3. final check: verify folded polynomial is constant
-```
-
-estimated constraints for N = 2^16, 100-bit security:
-
-| component | calls | constraints |
-|---|---|---|
-| Fiat-Shamir (hemera) | ~16 hashes | ~19,200 |
-| merkle_verify | ~50 paths × depth 16 | ~240,000 |
-| fri_fold | 16 rounds, geometric sum | ~32,768 |
-| sumcheck rounds | 16 | ~160 |
-| total | | ~292,000 |
-
-without jets (pure Layer 1): ~2,900,000 constraints (10×).
-
-## design notes
+## design notes (ideas, not built)
 
 ### WHIR-compressed Merkle proofs
 
-standard [[hemera]] Merkle proof for depth 20: 1,280 bytes. WHIR alternative: commit each tree level as a multilinear polynomial, open at queried positions.
+a binary [[hemera]] Merkle path of depth 20 carries 20 sibling digests, 640 bytes. WHIR alternative: commit each tree level as a multilinear polynomial, open at queried positions.
 
 ```
 encoding: f_ℓ(b₁, ..., b_ℓ) = hash of node reached by path bits b₁...b_ℓ
@@ -206,9 +163,5 @@ vs full re-commit: O(N log N) hashes
 ```
 
 domain sizing strategy: start at 2^10, double when 75% full. amortized O(1) per insertion.
-
-### composed WHIR_verify jet
-
-a single jet combining merkle_verify + fri_fold + Fiat-Shamir could cut the in-circuit verifier by a constant factor (estimate, unmeasured). it trades ISA complexity for the cost of a composition step; recursion does not shrink proofs in a hash-only world, so this matters only where a proof is verified inside another.
 
 see [[polynomial-commitments]] for the commitment abstraction, [[sumcheck]] for the weight polynomial mechanism, [[verifier]] for the full zheng verification algorithm, [[whirlaway]] for the architecture
