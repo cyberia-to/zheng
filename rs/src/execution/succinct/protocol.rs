@@ -79,6 +79,17 @@ pub(crate) struct Layout {
 impl Layout {
     /// `pins` must hold `(0, 1)` and be strictly increasing.
     pub fn new(instance: &CCSInstance, pins: &[(usize, Goldilocks)]) -> Result<Self, String> {
+        Self::build(instance, pins, false)
+    }
+
+    /// [`Self::new`] with every free column no matrix reads dropped, not
+    /// only those past the last read one (veil-W's layout: the free half
+    /// holds read wires only, so the masks fit beside them).
+    pub fn compact(instance: &CCSInstance, pins: &[(usize, Goldilocks)]) -> Result<Self, String> {
+        Self::build(instance, pins, true)
+    }
+
+    fn build(instance: &CCSInstance, pins: &[(usize, Goldilocks)], compact: bool) -> Result<Self, String> {
         if pins.first() != Some(&(0, Goldilocks::ONE))
             || pins.windows(2).any(|w| w[0].0 >= w[1].0)
             || pins.last().is_some_and(|&(i, _)| i >= instance.num_cols)
@@ -94,16 +105,31 @@ impl Layout {
             .max()
             .unwrap_or(0)
             .min(instance.num_cols);
+        let read: Vec<bool> = if compact {
+            let mut r = vec![false; referenced];
+            for m in &instance.matrices {
+                for &(c, v) in m.entries.iter().flatten() {
+                    if v != Goldilocks::ZERO && c < referenced {
+                        r[c] = true;
+                    }
+                }
+            }
+            r
+        } else {
+            vec![true; referenced]
+        };
         let mut pinned = pins.iter().map(|&(i, _)| i).peekable();
         let mut free = 0usize;
         let mut slots = Vec::with_capacity(referenced);
-        for col in 0..referenced {
+        for (col, &is_read) in read.iter().enumerate() {
             if pinned.peek() == Some(&col) {
                 pinned.next();
                 slots.push(None);
-            } else {
+            } else if is_read {
                 slots.push(Some(free));
                 free += 1;
+            } else {
+                slots.push(None);
             }
         }
         let vars = free

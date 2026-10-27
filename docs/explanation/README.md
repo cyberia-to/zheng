@@ -65,6 +65,7 @@ for formal definitions, see specs/ (soundness per component: [[zheng/specs/sound
 | [[zheng/docs/explanation/fri-to-whir|fri-to-whir]] | the PCS evolution — [[FRI]] to [[STIR]] to [[WHIR]], each generation's insight and what it unlocks |
 | [[zheng/docs/explanation/whir|whir]] | the shipped commitment of the succinct profile — protocol, parameters, measured figures |
 | [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] | a retired design: what it was and why it was unsound |
+| [[zheng/docs/explanation/zk-small|zk-small]] | gate G1 — zero knowledge in ~46 KB: WHIR with a masked round 0 (veil-W), every attempt with numbers |
 
 ### architecture
 
