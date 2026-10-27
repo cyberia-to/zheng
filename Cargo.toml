@@ -7,3 +7,11 @@
 members = ["rs", "cli"]
 exclude = [".worktrees"]
 resolver = "3"
+
+# The soft3 release train runs `cargo test --locked` in rs/ as the stack-zheng gate.
+# Unoptimized, the proving tests ran past its 900 s (rehearsal 40286177469: 267 ok, 0 failed,
+# timeout). At opt-level 3 the gate finished in 987 s of its own 1800 s budget (soft3#298,
+# rehearsal 40307972588). Debug assertions and overflow checks stay on (the dev defaults).
+# Profiles of a non-root manifest are ignored, so consumers of zheng are unaffected.
+[profile.dev]
+opt-level = 3
