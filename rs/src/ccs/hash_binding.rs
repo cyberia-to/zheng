@@ -94,11 +94,11 @@ pub fn build_hash_binding_steps_from_trace(
         // Round rows: post-round state k lands in r4-r7 / r10-r13, r14 = k.
         for (k, row) in block[..BLOCK_ROWS - 1].iter().enumerate() {
             let st = &states[k];
-            for j in 0..4 {
-                steps.push(eq_step(st[j], reg(row, 4 + j)));
+            for (j, &s) in st[..4].iter().enumerate() {
+                steps.push(eq_step(s, reg(row, 4 + j)));
             }
-            for j in 0..4 {
-                steps.push(eq_step(st[4 + j], reg(row, 10 + j)));
+            for (j, &s) in st[4..8].iter().enumerate() {
+                steps.push(eq_step(s, reg(row, 10 + j)));
             }
             steps.push(eq_step(Goldilocks::new(k as u64), reg(row, 14)));
         }
@@ -107,11 +107,11 @@ pub fn build_hash_binding_steps_from_trace(
         // budget decrement of the whole block.
         let sq = &block[BLOCK_ROWS - 1];
         let last = &states[BLOCK_ROWS - 2];
-        for j in 0..4 {
-            steps.push(eq_step(last[j], reg(sq, 4 + j)));
+        for (j, &s) in last[..4].iter().enumerate() {
+            steps.push(eq_step(s, reg(sq, 4 + j)));
         }
-        for j in 0..4 {
-            steps.push(eq_step(last[4 + j], reg(sq, 10 + j)));
+        for (j, &s) in last[4..8].iter().enumerate() {
+            steps.push(eq_step(s, reg(sq, 10 + j)));
         }
         steps.push(eq_step(
             Goldilocks::new((BLOCK_ROWS - 1) as u64),

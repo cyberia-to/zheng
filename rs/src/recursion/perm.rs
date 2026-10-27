@@ -106,9 +106,9 @@ pub fn permute_many_local(states: &mut [[Goldilocks; WIDTH]]) {
 /// recomputing: a cache of a pure function — a hit is the permutation's
 /// output whatever proof put it there. Bounded: cleared past
 /// [`MEMO_CAP`] entries.
-static MEMO: std::sync::Mutex<
-    Option<std::collections::HashMap<[u64; WIDTH], [Goldilocks; WIDTH], MemoHash>>,
-> = std::sync::Mutex::new(None);
+static MEMO: std::sync::Mutex<Option<MemoMap>> = std::sync::Mutex::new(None);
+
+type MemoMap = std::collections::HashMap<[u64; WIDTH], [Goldilocks; WIDTH], MemoHash>;
 
 /// Entries the cache holds at most (a final proof's parse adds ≈ 3,000).
 pub const MEMO_CAP: usize = 1 << 16;

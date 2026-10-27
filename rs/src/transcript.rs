@@ -289,7 +289,12 @@ pub fn decode_fields(bytes: &[u8]) -> Option<Vec<Goldilocks>> {
     if !bytes.len().is_multiple_of(8) {
         return None;
     }
-    bytes.chunks_exact(8).map(decode_field).collect()
+    bytes
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| decode_field(c))
+        .collect()
 }
 
 /// Encode a SumcheckPoly: 1-byte degree + (degree+1) field elements.
@@ -311,8 +316,10 @@ pub fn decode_sumcheck_poly(bytes: &[u8]) -> Option<(SumcheckPoly, usize)> {
         return None;
     }
     let coeffs = bytes[1..end]
-        .chunks_exact(8)
-        .map(decode_field)
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| decode_field(c))
         .collect::<Option<Vec<_>>>()?;
     Some((SumcheckPoly { degree, coeffs }, end))
 }

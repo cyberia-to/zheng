@@ -165,7 +165,7 @@ fn the_shipped_final_key_ledger_columns_graph_and_wiring() {
         assert_eq!(k.gc.eval(&ins), k.g.eval(&ins));
     }
     // wiring: slot closing = per-cell, at the opening's |α| = ℓ − fv
-    let n = k.params.n as usize;
+    let n = k.params.n;
     let pre_vars = k.cfg.wc.num_vars - k.cfg.wc.final_vars;
     let lambda = e();
     let alpha: Vec<Fp3> = (0..pre_vars).map(|_| e()).collect();

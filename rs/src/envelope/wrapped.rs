@@ -127,7 +127,8 @@ fn final_slot() -> &'static Mutex<Option<Arc<WrapKey>>> {
 
 /// The whole chain's keys, derived once per process (the prover's).
 pub fn chain_keys() -> Result<Arc<Vec<Arc<WrapKey>>>, String> {
-    static C: OnceLock<Mutex<Option<Arc<Vec<Arc<WrapKey>>>>>> = OnceLock::new();
+    type Keys = Arc<Vec<Arc<WrapKey>>>;
+    static C: OnceLock<Mutex<Option<Keys>>> = OnceLock::new();
     let slot = C.get_or_init(|| Mutex::new(None));
     let mut g = slot.lock().expect("wrap keys");
     if let Some(c) = g.as_ref() {

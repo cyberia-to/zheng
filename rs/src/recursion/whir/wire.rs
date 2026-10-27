@@ -93,6 +93,9 @@ fn openings(w: &mut Writer, open: &[Vec<LeafOpening>], ext: &[bool], depth: usiz
     }
 }
 
+/// One tree's opening: `(is_ext, symbols per distinct leaf, siblings)`.
+type Tree = (bool, Vec<Vec<Fp3>>, Vec<Digest>);
+
 /// A round's openings as read: query leaves and, per tree, the distinct
 /// leaves' symbols and the multi-opening's siblings (not yet expanded).
 struct RawOpenings {
@@ -100,7 +103,7 @@ struct RawOpenings {
     distinct: Vec<usize>,
     depth: usize,
     arity: Arity,
-    trees: Vec<(bool, Vec<Vec<Fp3>>, Vec<Digest>)>,
+    trees: Vec<Tree>,
 }
 
 fn read_openings(
@@ -150,7 +153,7 @@ fn read_openings(
 /// Expand every round's multi-openings (their trees in parallel: each
 /// expansion hashes its distinct leaves and the nodes they reach).
 fn expand_all(raws: Vec<RawOpenings>) -> R<Vec<Vec<Vec<LeafOpening>>>> {
-    let jobs: Vec<(usize, &RawOpenings, &(bool, Vec<Vec<Fp3>>, Vec<Digest>))> = raws
+    let jobs: Vec<(usize, &RawOpenings, &Tree)> = raws
         .iter()
         .enumerate()
         .flat_map(|(i, ro)| ro.trees.iter().map(move |t| (i, ro, t)))

@@ -50,13 +50,13 @@ fn refused(st: &MachineStatement, honest: &IvcProof, p: &IvcProof, what: &str) {
     let Ok(b) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| p.to_bytes(&k))) else {
         return;
     };
-    if let Ok(q) = IvcProof::from_bytes(&b, |lr| ivc::key(&w, lr as usize)) {
-        if &q != honest {
-            assert!(
-                ivc::verify(st, &q, &w).is_err(),
-                "{what}: accepted after the wire"
-            );
-        }
+    if let Ok(q) = IvcProof::from_bytes(&b, |lr| ivc::key(&w, lr as usize))
+        && &q != honest
+    {
+        assert!(
+            ivc::verify(st, &q, &w).is_err(),
+            "{what}: accepted after the wire"
+        );
     }
 }
 

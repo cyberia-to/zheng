@@ -45,8 +45,10 @@ pub fn load(dir: &Path, id: [u64; 2]) -> Option<Vec<Vec<Digest>>> {
         let s = b.get(at..at + 8 * n)?;
         at += 8 * n;
         Some(
-            s.chunks_exact(8)
-                .map(|c| u64::from_le_bytes(c.try_into().expect("8")))
+            s.as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| u64::from_le_bytes(*c))
                 .collect(),
         )
     };
@@ -62,7 +64,9 @@ pub fn load(dir: &Path, id: [u64; 2]) -> Option<Vec<Vec<Digest>>> {
             return None;
         }
         levels.push(
-            v.chunks_exact(4)
+            v.as_chunks::<4>()
+                .0
+                .iter()
                 .map(|d| core::array::from_fn(|i| Goldilocks::new(d[i])))
                 .collect(),
         );

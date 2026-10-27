@@ -102,24 +102,24 @@ fn inputs(arena: &Reduction<1024>, candidate: Order) -> Vec<u64> {
     if let Data::Pair { left, right } = arena.get(candidate).unwrap().inner {
         rows[1] = record(arena, left);
         rows[2] = record(arena, right);
-        if let Some(tag) = arena.atom_value(left) {
-            if let Data::Pair { left: a, right: b } = arena.get(right).unwrap().inner {
-                match tag.as_u64() {
-                    2 | 3 | 5 | 6 | 7 | 9 | 10 | 11 | 12 | 14 | 17 => {
-                        rows[3] = record(arena, a);
-                        rows[4] = record(arena, b);
-                    }
-                    16 => rows[3] = record(arena, a),
-                    4 => {
-                        rows[4] = record(arena, b);
-                        if let Data::Pair { left: y, right: n } = arena.get(b).unwrap().inner {
-                            rows[3] = record(arena, a);
-                            rows[5] = record(arena, y);
-                            rows[6] = record(arena, n);
-                        }
-                    }
-                    _ => {}
+        if let Some(tag) = arena.atom_value(left)
+            && let Data::Pair { left: a, right: b } = arena.get(right).unwrap().inner
+        {
+            match tag.as_u64() {
+                2 | 3 | 5 | 6 | 7 | 9 | 10 | 11 | 12 | 14 | 17 => {
+                    rows[3] = record(arena, a);
+                    rows[4] = record(arena, b);
                 }
+                16 => rows[3] = record(arena, a),
+                4 => {
+                    rows[4] = record(arena, b);
+                    if let Data::Pair { left: y, right: n } = arena.get(b).unwrap().inner {
+                        rows[3] = record(arena, a);
+                        rows[5] = record(arena, y);
+                        rows[6] = record(arena, n);
+                    }
+                }
+                _ => {}
             }
         }
     }

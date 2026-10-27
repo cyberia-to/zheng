@@ -107,12 +107,10 @@ pub(crate) fn read_limb(bytes: &[u8], k: usize) -> Goldilocks {
 
 fn de_goldilocks(bytes: &[u8]) -> Vec<Goldilocks> {
     bytes
-        .chunks_exact(8)
-        .map(|c| {
-            let mut buf = [0u8; 8];
-            buf.copy_from_slice(c);
-            Goldilocks::new(u64::from_le_bytes(buf))
-        })
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| Goldilocks::new(u64::from_le_bytes(*c)))
         .collect()
 }
 

@@ -311,8 +311,8 @@ pub fn build_look_steps_from_trace(
             let ns = row.r()[5] as usize;
             let leaf = lo.leaves.dims.get(ns).ok_or(CommitError::LookBinding)?;
             let cb = lo.commitment.as_bytes();
-            for k in 0..4 {
-                steps.push(eq_step(leaf[k], verifier_steps::read_limb(cb, k)));
+            for (k, &limb) in leaf.iter().take(4).enumerate() {
+                steps.push(eq_step(limb, verifier_steps::read_limb(cb, k)));
             }
 
             // (5) the root recomputed from the leaves matches the trace registers

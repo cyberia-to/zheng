@@ -203,10 +203,10 @@ fn noncanonical_atom_alias_rejects_after_forged_digest_and_public_premises_are_u
             .iter()
             .enumerate()
             .filter_map(|(offset, op)| {
-                if let Op::Bit(input, bit) = op {
-                    if *input == value_wire {
-                        return Some((2 + INPUT_FIELDS + offset, F::new((alias >> bit) & 1)));
-                    }
+                if let Op::Bit(input, bit) = op
+                    && *input == value_wire
+                {
+                    return Some((2 + INPUT_FIELDS + offset, F::new((alias >> bit) & 1)));
                 }
                 None
             })

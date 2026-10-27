@@ -28,7 +28,7 @@ pub(crate) fn prove(
     let mut point = Vec::with_capacity(n);
     for _ in 0..n {
         let (mut h0, mut h2) = (Fp3::ZERO, Fp3::ZERO);
-        for (ap, bp) in a.chunks_exact(2).zip(b.chunks_exact(2)) {
+        for (ap, bp) in a.as_chunks::<2>().0.iter().zip(b.as_chunks::<2>().0.iter()) {
             h0 += ap[0] * bp[0];
             h2 += (ap[1] + ap[1] - ap[0]) * (bp[1] + bp[1] - bp[0]);
         }
@@ -59,7 +59,7 @@ pub(crate) fn verify(
     }
     let mut claim = sigma;
     let mut point = Vec::with_capacity(n);
-    for p in msgs.chunks_exact(2) {
+    for p in msgs.as_chunks::<2>().0 {
         t.absorb_fp3(p[0]);
         t.absorb_fp3(p[1]);
         let alpha = t.squeeze_fp3();

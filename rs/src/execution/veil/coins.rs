@@ -91,9 +91,9 @@ impl Coins {
         let seed = Zeroizing::new(seed);
         let bytes = Zeroizing::new(hemera::derive_key(CONTEXT, seed.as_ref()));
         let mut key = Zeroizing::new([0u64; 4]);
-        for (k, chunk) in key.iter_mut().zip(bytes.chunks_exact(8)) {
+        for (k, chunk) in key.iter_mut().zip(bytes.as_chunks::<8>().0) {
             // hemera digests carry canonical lanes; no reduction, no branch
-            *k = u64::from_le_bytes(chunk.try_into().expect("8 bytes"));
+            *k = u64::from_le_bytes(*chunk);
         }
         Self { key }
     }
@@ -152,7 +152,9 @@ impl Coins {
     /// The first `n` `Fp3` elements of stream `label` (three bases each).
     pub fn exts(&self, label: Label, n: usize) -> Vec<Fp3> {
         self.bases(label, 3 * n)
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| Fp3::new(c[0], c[1], c[2]))
             .collect()
     }

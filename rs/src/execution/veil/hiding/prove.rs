@@ -88,7 +88,9 @@ pub(crate) fn commit(
     let n = config.n();
     let flat = coins.bases(label::SALT, n * SALT);
     let salts: Vec<[Goldilocks; SALT]> = flat
-        .chunks_exact(SALT)
+        .as_chunks::<SALT>()
+        .0
+        .iter()
         .map(|s| core::array::from_fn(|i| s[i]))
         .collect();
     lap("salts");

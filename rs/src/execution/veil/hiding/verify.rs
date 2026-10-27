@@ -68,7 +68,7 @@ pub(crate) fn verify(
     let bytes: Vec<Vec<u8>> = proof
         .columns
         .chunks_exact(tr)
-        .zip(proof.salts.chunks_exact(SALT))
+        .zip(proof.salts.as_chunks::<SALT>().0)
         .map(|(c, s)| column_bytes(c, s))
         .collect();
     let leaves: Vec<(&[u8], usize)> = bytes

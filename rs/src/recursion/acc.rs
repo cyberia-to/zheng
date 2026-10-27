@@ -98,7 +98,7 @@ pub fn verify<O: Ops>(
     let vals: Vec<O::V> = all.iter().map(|c| c.value()).collect();
     let mut claim = gm::combine(o, &gp, &vals);
     let mut rho = Vec::with_capacity(vars);
-    for pair in pf.sumcheck.chunks_exact(2) {
+    for pair in pf.sumcheck.as_chunks::<2>().0 {
         let h0 = t.absorb_free_ext(o, pair[0]);
         let h2 = t.absorb_free_ext(o, pair[1]);
         let a = t.squeeze_ext(o);

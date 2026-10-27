@@ -70,8 +70,8 @@ fn anatomy(p: &SuccinctProof<Whir>, vars: usize) -> (usize, usize, usize, usize,
     }
     digests.extend(w.rounds.iter().map(|r| r.root));
     for d in digests {
-        for c in d.as_bytes().chunks_exact(8) {
-            limbs.push(u64::from_le_bytes(c.try_into().unwrap()));
+        for c in d.as_bytes().as_chunks::<8>().0 {
+            limbs.push(u64::from_le_bytes(*c));
         }
     }
     let varint = limbs.iter().map(|&v| leb(v)).sum();

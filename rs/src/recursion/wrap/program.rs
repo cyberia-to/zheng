@@ -17,6 +17,9 @@ use crate::recursion::state::ClaimV;
 use crate::recursion::whir;
 use crate::recursion::word::Digest;
 
+/// A row's used slots: `(slot, cells as (op, value))`.
+type RowSlots = Vec<(usize, Vec<(u8, Fp3)>)>;
+
 /// The verifier a wrap circuit runs, with the proof it checks.
 pub enum Inner<'a> {
     /// The IVC final verifier on a recursive proof.
@@ -472,7 +475,7 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
     let mut kappa = vec![Vec::new(); rows * SLOTS];
     let key = |x: Fp3| [x.c0.as_u64(), x.c1.as_u64(), x.c2.as_u64()];
     // every used slot's cells, per row (rows are independent: threads)
-    let slots_of = |r: usize| -> Vec<(usize, Vec<(u8, Fp3)>)> {
+    let slots_of = |r: usize| -> RowSlots {
         let p = pre.row(r);
         if p[pc::MEM] != one {
             return Vec::new();
@@ -501,7 +504,7 @@ pub(super) fn wiring(pre: &trace::Pre) -> Wiring {
         .map_or(1, |n| n.get())
         .min(16);
     let chunk = rows.div_ceil(threads);
-    let per_row: Vec<Vec<(usize, Vec<(u8, Fp3)>)>> = std::thread::scope(|sc| {
+    let per_row: Vec<RowSlots> = std::thread::scope(|sc| {
         let hs: Vec<_> = (0..rows)
             .step_by(chunk)
             .map(|lo| {
