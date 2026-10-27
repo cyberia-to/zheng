@@ -5,7 +5,7 @@ edition = "2024"
 description = "proof system: Spartan IOP over Fp3 + sumcheck + WHIR PCS, hash-only (hemera)"
 license-file = "LICENSE"
 repository = "https://github.com/cyberia-to/zheng"
-keywords = ["zk", "sumcheck", "brakedown", "cyber"]
+keywords = ["zk", "sumcheck", "whir", "post-quantum", "cyber"]
 categories = ["cryptography"]
 
 [dependencies]

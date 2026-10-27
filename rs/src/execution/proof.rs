@@ -97,7 +97,7 @@ fn transcript(
     statement: &[u8],
     public: &[(usize, Goldilocks)],
 ) -> Transcript {
-    // Retired profile: reproduce the 0.4.0 challenge rule so v2 public and
+    // Retired profile: reproduce the first-limb (v1) challenge rule so v2 public and
     // v1 state artifacts stay verifiable for one release.
     let mut t = Transcript::new_v1();
     t.absorb(b"zheng-direct-ccs-public-full-columns-v1");

@@ -86,7 +86,7 @@ impl Transcript {
         }
     }
 
-    /// A transcript that reproduces the 0.4.0 challenge rule, for verifying
+    /// A transcript that reproduces the first-limb (v1) challenge rule, for verifying
     /// retired artifacts (direct public v2 / state v1 proofs, the legacy
     /// path) for one release. New proofs use [`Transcript::new`].
     pub fn new_v1() -> Self {
@@ -97,7 +97,7 @@ impl Transcript {
     }
 
     /// Create a transcript for recursive (inner) proofs. Legacy only;
-    /// reproduces the 0.4.0 challenge rule.
+    /// reproduces the first-limb (v1) challenge rule.
     #[cfg(feature = "legacy")]
     pub fn new_recursive() -> Self {
         let mut hasher = Hasher::new();
