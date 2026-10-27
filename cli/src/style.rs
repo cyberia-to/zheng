@@ -42,6 +42,10 @@ pub fn banner(color: bool) -> String {
     o.push_str(&l(W, "  証 — native proof system for soft3\n"));
     o.push('\n');
     o.push_str(&l(GR, "  execution proofs: joy prove · joy verify\n"));
+    o.push_str(&l(
+        GR,
+        "  this binary drives the legacy folded API only (unsound; removed in phase 5)\n",
+    ));
     o
 }
 
@@ -56,7 +60,7 @@ pub fn help(color: bool) -> String {
     o.push_str(
         "  zheng demo  hash                                       legacy hash trace statement\n",
     );
-    o.push_str("  zheng eval                                             commit/open/verify a polynomial\n");
+    o.push_str("  zheng eval                                             legacy Brakedown commit/open/verify\n");
     o.push_str(
         "  zheng pack  -e '<formula>' … -o <file>                 write a program capsule\n",
     );
@@ -67,7 +71,7 @@ pub fn help(color: bool) -> String {
     ));
     o.push('\n');
     o.push_str(&g(
-        "  output renders to the terminal; piped, it is a tape chunk stream.\n",
+        "  output renders to the terminal; piped, it is a tade chunk stream.\n",
     ));
     o.push_str(&g(
         "  exit: 0 verified · 1 prover/verifier error · 2 usage error\n",
