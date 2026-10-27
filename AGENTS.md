@@ -531,7 +531,7 @@ feature does before building it, you do not understand it yet.
 
 ## knowledge graph
 
-this repo is a subgraph of `~/git/cyber/`. files with YAML
+this repo is a subgraph of `~/cyber/cyber/`. files with YAML
 frontmatter (tags, crystal-type, crystal-domain, stake) are
 nodes in the cyber knowledge graph. preserve frontmatter in
 all files that have it — it is not decoration.
@@ -542,56 +542,93 @@ all files that have it — it is not decoration.
 
 ## what zheng is
 
-zheng (証 — proof/evidence) is the native proof system for soft3/cyber.
-zheng proofs are not STARKs (no AIR, no FRI): one field (Goldilocks, Fp3
-challenges), one hash (hemera), one code (Reed–Solomon), one IOP (Spartan
-over CCS). Every proof travels in the `ZHENGPF1` envelope. Profiles:
-public certificate v3 (0) and state-public v3 (3) — exact row checks of a
-disclosed witness; succinct (1) — Spartan over Fp3 + one WHIR opening;
-zk "veil" (2) — masked Spartan + a hiding RS tensor opening, with the
-MPC-in-the-head protocol as fallback; machine proof (4) — accumulation,
-landing with phase 3 (`specs/accumulation.md`, `specs/machine.md`).
-Bits per component: `specs/soundness.md`. Measured numbers live in
-`audit/` (succinct-profile-2026-10.md, zk-profile-2026-10.md); quote only
-those, or a goal labelled as a goal (≤ 64 KB, verify ≤ 1 ms, constant in
-steps). The folded SuperSpartan/Brakedown API (feature `legacy`) is
-unsound and removed in phase 5 — never describe it as current. Joy owns
-runtime orchestration; Trisha owns Triton/Neptune separately. Private
-MPC-in-the-head proof costs are linear and security follows the explicit
-assumptions in `specs/native-private-ccs.md`; never transfer another
-profile's timing or security claims to a different backend.
+zheng (証 — proof/evidence) is the native proof system for soft3/cyber:
+zheng proofs, hash-only and post-quantum. one field (Goldilocks committed,
+its cubic extension Fp3 for every challenge), one hash (hemera), one code
+(Reed–Solomon), one IOP (Spartan over CCS, sumcheck); the nox machine of
+profiles 4–6 is a uniform AIR proved by a sumcheck zerocheck — no FRI, no
+univariate quotient. never call zheng proofs STARKs. every proof travels
+in the `ZHENGPF1` envelope:
+
+| profile | name | where |
+|---|---|---|
+| 0 | public certificate v3 — exact row check of a disclosed witness | `execution::certificate` |
+| 1 | succinct — Spartan over Fp3 + one WHIR opening | `execution::succinct` |
+| 2 | zk — scheme 2 veil (masked Spartan + hiding RS tensor opening), scheme 1 MPC-in-the-head (fallback, linear) | `execution::veil`, `execution::zk` |
+| 3 | state-public v3 — profile 0 plus reads authenticated under the state root | `execution::state` |
+| 4 | machine — nox machine, accumulated per segment, one WHIR decider; grows with segments | `machine`, `accumulate` |
+| 5 | recursive — IVC, constant in steps | `recursion::ivc` |
+| 6 | wrapped — profile 5's final verifier proved by wrap levels, ≤ 64,213 B | `recursion::wrap` |
+
+bits per component: `specs/soundness.md` (conjectured rows remain, so the
+repair's release gate is not passed). measured numbers live in `audit/`
+(index `audit/README.md`; the ground truth of the 2026-10-27 promotion is
+`audit/consistency-2026-10-27.md`); quote only those, with their command
+and revision, or a goal labelled as a goal (≤ 64 KB, verify ≤ 1 ms,
+constant in steps — verify ≤ 1 ms is met by no profile today). never
+quote the retired 0.3 figures (kilobyte-sized constant proofs,
+microsecond verification). the folded trace API (feature `legacy`:
+commit/open/verify/fold/decide, universal CCS, phi, the Brakedown wire) is
+unsound and removed in phase 5 — never describe it as current. design
+record: soft3 `proposals/proof-system-repair.md`. joy owns runtime
+orchestration; trisha owns Triton/Neptune separately. MPC-in-the-head
+costs are linear and its security follows `specs/native-private-ccs.md`;
+never transfer one profile's timing or security claims to another.
+
+## hemera version — state it plainly
+
+the crate pins `cyber-hemera` 0.3 (0.3.1: 4 + 4 full rounds, 16 partial
+rounds with the inverse S-box). the frozen material is hemera 0.4
+(hemera#15: x⁷ in every round, 6 + 6 + 48 rounds); zheng moves to it in
+the draft sweep #69/#73, which waits on the L3b decision (#78 vs #79).
+every gadget, constraint count and measurement on master is hemera 0.3.1.
+never present 0.4 constants as what zheng proves today.
+
+## the stand — building
+
+zheng builds against sibling path dependencies (`../../<repo>` from `rs/`
+and `cli/`). master needs the hemera 0.3 revisions of the siblings; the
+tips of nox `release/0.4` and lens `release/0.2` already require hemera
+0.4. the exact revisions and commands are in README.md § build; a task
+checkout lives at `~/cyber/zheng/.worktrees/<task>/zheng` beside its own
+siblings (the root `Cargo.toml` excludes `.worktrees`). gates before a
+push: `cargo test --locked --workspace`, `cargo clippy --locked
+--workspace --all-targets --features
+zheng/legacy,zheng/serde,zheng/test-hooks,zheng-cli/legacy -- -D
+warnings`, `cargo fmt --check`.
 
 ## components
 
 ```
-SuperSpartan    IOP for CCS (Customizable Constraint Systems)
-                constraints of any degree via sumcheck, challenges in Fp3
-                one commitment, one opening per proof
-
-WHIR            multilinear PCS over Reed–Solomon (lens), hemera Merkle trees
-                shipped for the succinct profile: rate 1/64, folding 4,
-                24 grinding bits; hash.tri verify 7.96 ms (goal ≤ 1 ms)
-                transparent, post-quantum (hash-only)
-
-sumcheck        core interactive proof protocol
-                reduces N-term sum to log(N) rounds
-                used by both SuperSpartan and LogUp
+Spartan (SuperSpartan)  IOP for CCS, constraints of any degree via sumcheck,
+                        challenges in Fp3; one commitment, one opening
+WHIR (lens rspcs)       multilinear PCS over Reed–Solomon, hemera Merkle trees;
+                        profile 1 uses succinct::device_params (rate 1/64,
+                        folding 4/5, 16–24 grinding bits), machine/IVC/wrap
+                        keys use succinct::params_for (folding 4, 24 bits)
+AIR + zerocheck         the nox machine's uniform step relation (air/, machine/)
+accumulation            WARP-structured RS claims with ARC-style OOD (accumulate/)
+recursion               IVC (profile 5) and wrap levels (profile 6) (recursion/)
+sumcheck                generic over the challenge field (Goldilocks | Fp3)
 ```
 
 ## companion repos
 
 | repo | path | role |
 |------|------|------|
-| nebu | `~/git/nebu/` | Goldilocks field arithmetic |
-| hemera | `~/git/hemera/` | hash function (Poseidon2) |
-| nox | `~/git/nox/` | VM (execution traces) |
-| zheng | `~/git/zheng/` | proof system (this repo) |
-| lens | `~/git/lens/` | polynomial commitment (5 lenses) |
-| mudra | `~/git/mudra/` | crypto primitives (KEM, dCTIDH, TFHE, threshold) |
-| bbg | `~/git/bbg/` | authenticated state (Big Badass Graph) |
-| cyber | `~/git/cyber/` | knowledge graph (parent subgraph) |
+| strata (nebu) | `~/cyber/strata/` | Goldilocks field arithmetic |
+| hemera | `~/cyber/hemera/` | hash (Poseidon2 over Goldilocks) |
+| nox | `~/cyber/nox/` | VM: programs, reduction, the semantics the relation compiles |
+| lens | `~/cyber/lens/` | polynomial commitments (rspcs: WHIR, TensorRs) and GPU backends (cyber-lens-gpu) |
+| tade | `~/cyber/tade/` | the CLI's chunk stream (crate `tade`) |
+| honeycrisp | `~/cyber/honeycrisp/` | Metal through aruminium (lens GPU backend) |
+| joy | `~/cyber/joy/` | `joy prove` / `joy verify`, the runtime face of the profiles |
+| bbg | `~/cyber/bbg/` | authenticated state; `QueryProof` still on a lens Brakedown commitment |
+| mudra | `~/cyber/mudra/` | crypto primitives (KEM, signatures, bridge proofs) |
+| cyber | `~/cyber/cyber/` | knowledge graph (parent subgraph) |
 
-lens was extracted from zheng. the PCS trait and its specs (WHIR, TensorRs, Brakedown for state tables, and the research lenses Binius, Ikat, Isogeny, Tropical) live in ~/git/lens/. zheng depends on lens for polynomial commitment.
+lens was extracted from zheng: the PCS trait and its specs (WHIR,
+TensorRs, Brakedown for bbg's state tables, research lenses) live in lens.
 
 ## do not touch zones
 
