@@ -1,192 +1,55 @@
-# recursive proof composition
+# accumulation, IVC and wrap
 
-the most powerful property of [[zheng]] is that its verifier is a [[nox]]
-program. a nox program can be proved by zheng. therefore: prove the act
-of verification, and the result is a new proof — one that attests to the
-correctness of another proof. this is recursion. it is the mechanism that
-makes everything scale.
+how [[zheng]] turns a [[nox]] run of any length into one proof whose size does not depend on the length. three layers, each built and measured on the current code; the contracts are [[zheng/specs/accumulation|accumulation]], [[zheng/specs/machine|machine]] and [[zheng/specs/recursion|recursion]], the design record is [[soft3/proposals/proof-system-repair|proof-system repair]] §4.
 
-## the core idea
+two words the retired 0.3 pages used as one:
 
-a [[nox]] execution trace records every step of a computation. zheng
-takes that trace and produces a proof that the computation was performed
-correctly. the verifier checks the proof in sub-millisecond time.
+- accumulation — folding claims without verifying proofs. each step batches the evaluation claims of its words into one accumulator (one Merkle root and a fixed number of claims); one decider opens the last accumulator. the accumulator is constant, the proof is not: every step leaves spot-check openings that someone must check.
+- recursion — a proof that verifies a proof. in zheng it is IVC: the verifier of step `i − 1` runs inside the relation of step `i`, so each step's openings are checked and consumed, and only the last step's travel.
 
-now: the verifier itself is a computation. it performs [[Goldilocks]]
-field arithmetic, calls [[hemera]] for Fiat-Shamir challenges, evaluates
-low-degree polynomials. all of these are native nox operations. so the
-verifier can be written as a nox program, executed, traced, and proved
-by zheng.
+the retired design — homomorphic folding of committed CCS instances over hemera, with an unchecked fold and a tiny fixed decider — never worked: folding by homomorphism needs a homomorphic commitment, and [[hemera]] is a hash. that code survives only behind the cargo feature `legacy` (unsound, off by default) until phase 5 deletes it.
+
+## 1. the machine and accumulation (envelope profile 4)
+
+the nox machine is one uniform row relation for every program (`rs/src/machine/`): 64-column rows, one row per continuation-machine step, 32-row hemera permutation blocks for noun digests, a write-once memory checked by logUp over Fp3. it is proved as an AIR by a sumcheck zerocheck (`rs/src/air/`) down to evaluation claims on the committed words. segments of `2^14` rows are accumulated hash-based (`rs/src/accumulate/`, WARP's claim-carrying structure with ARC-style out-of-domain samples):
 
 ```
-proof_A = zheng.prove(computation)
-proof_B = zheng.prove(zheng.verify(proof_A))
+for each segment i:
+    claims_i  = evaluation claims of segment i's words (Reed–Solomon codewords)
+    batch claims_i with the running accumulator by a sumcheck
+    commit one combined word (hemera Merkle root)
+    sample out-of-domain points, open a few query positions
+    acc_i = (root, fixed number of claims)        size independent of i
+
+decider: one WHIR opening of the last accumulator
 ```
 
-proof_B attests that proof_A was valid. anyone who checks proof_B knows
-that the original computation was correct, without ever seeing proof_A
-or the original trace. the recursion can continue: prove the verification
-of proof_B to get proof_C, and so on, to arbitrary depth.
+measured (`audit/accumulation-2026-10.md`): the decider is 44–93 KB, but the whole proof grows with the run — 83 KB at 33 cycles, 146 KB for merkle-32, 384 KB for 16,383 cycles in 3 segments, about 96 KB per `2^14`-row segment. accumulation alone saves openings, not size.
 
-each recursion level costs approximately 70,000 constraints when [[nox]]
-uses jets (hardware-accelerated primitives for hemera hashing and field
-operations). without jets, the cost rises to roughly 600,000 constraints.
-the constraint count is fixed regardless of what the original computation
-was — a trivial identity proof and a massive neural network inference
-both compress to the same verification cost at the next recursion level.
+## 2. IVC (envelope profile 5)
 
-## self-verification theorem
+each `2^15`-row step proves its nox segment and runs, as the recursion circuit inside its own trace, the verifier of the step before: its sumchecks, its Merkle openings over a field-native hemera transcript and field-native WHIR, its accumulation checks. constraint evaluations are deferred as claims and checked once by the final verifier. a proof of any number of steps is the last step's proof, the state it started from and one decider.
 
-the zheng verifier requires four operations. all are [[nox]]-native:
+measured (`audit/recursion-2026-10.md`, `audit/recursive-envelope-2026-10.md`): 282–285 KB from 33 cycles to 1.57M cycles — constant in the run — with decode and verify in 26.5 ms (hash.tri) and 32.1 ms (merkle-32). one IVC step proves in about 1.1 s on Metal (`audit/ivc-speed-2-2026-10.md`).
 
-| verifier operation | nox patterns used | why it works |
+## 3. wrap (envelope profile 6)
+
+the IVC proof's final verifier is itself proved by three wrap levels of the recursion circuit (`rs/src/recursion/wrap/`): two inner levels and one final level at a low rate, whose proof the verifier checks natively. the program is bound by its digest.
+
+measured: the final proof is at most 64,213 B over every transcript (`wrap::tests::the_shipped_final_proof_is_at_most_64_kib_over_every_transcript`), 63,029 B for add.tri, verified in 1.9–2.2 ms with the statement prepared (`audit/ivc-speed-2026-10.md`); the wrap chain proves in 18.9 s on Metal, the whole profile-6 process in 21.9 s (`audit/ivc-speed-2-2026-10.md`). this is the profile that meets the ≤ 64 KB goal for any computation; it does not meet ≤ 1 ms verification, and it runs on aggregators, not on the user's device path.
+
+## 4. what is proven and what is not
+
+every per-step reduction — zerocheck, shift, memory, accumulation, decider, field-native WHIR — has a proven row in [[zheng/specs/soundness|the soundness ledger]], ≥ 128 bits with grinding. the composition of IVC and of the wrap levels is conjectured: knowledge soundness of a recursively composed Fiat–Shamir argument whose random oracle is evaluated inside the relation has no proof in the random-oracle model — the standard heuristic of every deployed recursive system. the recursion circuit's agreement with the native verifier is tested, not proven.
+
+## 5. what it serves, and what is not built
+
+| need | shape | status |
 |---|---|---|
-| field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks]] is the native field |
-| hash computation | 15 (hash) / hash jet | [[hemera]] IS the nox hash |
-| [[sumcheck]] verification | 5, 7, 9 (field ops only) | sumcheck is pure arithmetic |
-| Brakedown opening verification | 15 + 4 (conditionals), poly_eval / merkle_verify / fri_fold jets | commitment paths + polynomial eval |
+| a long nox computation | profile 6: IVC over the machine, then the wrap chain | built |
+| [[fold mining]]: a cluster of tickets becomes one decider before minting | each ticket's claims and the cluster tree are accumulation steps (`accumulate::ccs` folds statements of one CCS); constant size needs IVC | accumulation built; settlement on it is foculus's, not done |
+| a [[light client]] accepts a checkpoint over many epochs | accumulate per epoch with IVC, decide at the checkpoint | not built |
+| one proof per block | the transactions' proofs aggregated into the block proof | in flight (zheng PR #70) |
+| composition across domains or versions, `verify(verify(π))` | the whole zheng verifier as a nox program — the second verifier, in Trident, agreeing with Rust on every fixture | roadmap (phase 3 of the repair), not built |
 
-no external primitive enters the verification loop. the verifier is closed under the same instruction set that produced the original proof. consequence: `verify(proof)` can itself be proven, and `verify(verify(proof))` too, to arbitrary depth.
-
-## why recursion matters
-
-without recursion, verification cost grows linearly with the number of
-computations. a block containing 1000 transactions requires 1000 separate
-proof verifications. a light client syncing 10,000 blocks needs 10,000
-verification passes. the work scales with the data, which defeats the
-purpose of succinct proofs.
-
-with recursion, 1000 transaction proofs aggregate into one proof. verify
-that one proof, and you know all 1000 transactions were valid. a light
-client receives a single epoch proof covering thousands of blocks and
-verifies it in under a millisecond. the verification cost becomes O(1)
-regardless of how much computation the proof covers.
-
-## three aggregation patterns
-
-different workloads call for different recursion topologies.
-
-### tree aggregation
-
-block proofs use binary tree aggregation. given N transaction proofs,
-pair them: verify proof_1 and proof_2 together, producing a combined
-proof. verify proof_3 and proof_4, producing another. pair the results.
-continue until one proof remains.
-
-```
-level 0:  p₁  p₂  p₃  p₄  p₅  p₆  p₇  p₈
-level 1:   p₁₂    p₃₄    p₅₆    p₇₈
-level 2:     p₁₂₃₄        p₅₆₇₈
-level 3:         p₁₂₃₄₅₆₇₈
-```
-
-the tree has O(log N) depth. each level performs N/2 pair-verifications
-in parallel. the total work is O(N) verifications, but the latency is
-O(log N) — and every level can be parallelized across multiple provers.
-
-### sequential folding
-
-epoch proofs aggregate blocks that arrive in sequence. tree aggregation
-works here too, but folding is more efficient for sequential data.
-
-folding defers verification. instead of fully verifying each proof at
-every step, a folding scheme like [[HyperNova]] absorbs each new proof
-with one field operation and one hash. the accumulated "folded instance"
-grows by a constant amount per step. at the end of the epoch, one
-expensive decider proof verifies the entire folded sequence.
-
-for N blocks in an epoch, full recursion costs N × 70,000 constraints.
-folding costs N × (one field op + one hash) plus one final decider of
-~70,000 constraints. the savings compound: for an epoch of 1000 blocks,
-folding avoids roughly 999 × 70,000 = 69,930,000 constraints.
-
-### DAG merging
-
-cross-shard proofs form directed acyclic graphs. different validators
-produce proofs for different shards. these proofs may depend on each
-other — a transaction on shard A may reference state proved by shard B.
-DAG merging verifies the dependency graph by recursively proving the
-verification of proofs from multiple sources, respecting the partial
-order of dependencies.
-
-## folding over CCS
-
-[[HyperNova]] implements folding over [[CCS]] (customizable constraint
-systems). this is a natural fit for zheng because [[SuperSpartan]]
-already uses CCS as its constraint representation. a single constraint
-language serves both the proof system and the folding scheme — there is
-no translation layer between them.
-
-CCS generalizes R1CS, PLONKish arithmetization, and AIR constraints into
-one framework. folding over CCS means zheng can fold any constraint type
-that SuperSpartan can prove. the generality is free: it comes from the
-algebraic structure of CCS rather than from additional protocol
-complexity.
-
-## folding in practice
-
-consider the [[cybergraph]] state machine across an epoch:
-
-```
-epoch starts with state commitment S₀
-
-  block 1: insert 1000 cyberlinks
-    fold each insertion into accumulator
-    acc₁ = fold(fold(...fold(acc₀, link₁)..., link₁₀₀₀))
-    cost: 1000 field ops + 1000 hashes ≈ microseconds
-
-  block 2: insert 800 cyberlinks
-    acc₂ = fold(acc₁, block₂_insertions)
-
-  ...
-
-  block E: last block of epoch
-    acc_E = fold(acc_{E-1}, block_E_insertions)
-    π_epoch = zheng(decider(acc_E))    ← one proof, ~70K constraints
-
-S₁ = apply(S₀, π_epoch)  — state transition is one proof verification
-```
-
-the epoch proof guarantees: every [[cyberlink]] insertion was valid (correct [[neuron]], sufficient stake, fresh nullifier), every state update was consistent (index updates, focus recomputation), and conservation laws held across every transaction. one proof. one verification. all of it.
-
-## what recursion enables
-
-O(1) block verification. a validator produces a block proof by
-tree-aggregating all transaction proofs. other validators check the
-block by verifying one proof instead of re-executing every transaction.
-
-light client sync via epoch proofs. a light client connecting to the
-network receives a single proof covering the entire current epoch. one
-sub-millisecond verification replaces downloading and checking thousands
-of block headers.
-
-off-chain computation with on-chain integrity. any computation that can
-run in [[nox]] can be proved by zheng and verified on-chain. the chain
-stores the proof, not the computation. machine learning inference, data
-processing, complex business logic — all happen off-chain, all
-verifiable on-chain.
-
-delivery proof chains. in the [[cyber]] network, messages traverse
-multiple hops between nodes. each hop produces a proof of correct
-forwarding. the chain of hop proofs folds into a single delivery proof
-that attests the message traveled the entire path faithfully. each hop
-adds roughly 60,000 constraints; folding reduces the marginal cost per
-hop to one field operation and one hash.
-
-neural network inference verification. a model runs in nox, producing
-an execution trace. zheng proves the trace. the proof attests that a
-specific model with specific weights produced a specific output for a
-specific input. recursive composition allows batching: prove 100
-[[inferences]], aggregate into one proof, verify once.
-
-## the recursive horizon
-
-the compression is absolute. take any computation expressible in nox —
-unbounded in size, unbounded in complexity. prove it. the proof is
-~157 KiB. verify the proof. the verification is a fixed-size
-computation: ~70,000 constraints, ~70 ms proving time, sub-millisecond
-verification. compose, aggregate, fold. the final proof is still
-~157 KiB. the final verification is still sub-millisecond.
-
-compute anything. prove it. compress it. verify it once. this is what
-recursion gives [[zheng]], and what zheng gives [[cyber]].
+see [[zheng/docs/explanation/CCS|CCS]] for the constraint language, [[zheng/docs/explanation/performance|performance]] for every profile's figures.

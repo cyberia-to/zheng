@@ -6,230 +6,194 @@ alias: zheng API, prover API, verifier API
 ---
 # api
 
-five entry points: **commit**, **open**, **verify**, **fold**, **decide**.
+the public API proves and verifies nox executions. the prover runs the program itself; the verifier recompiles the relation from the statement and never runs nox. every proof can travel as one `ZHENGPF1` envelope. protocols: [[execution]]; bounds: [[soundness]].
 
-## execution model (two phases)
-
-zheng proofs require two separate steps:
-
-**phase 1 — execution (nox):** run the computation and collect the trace.
+## public certificate v3 (envelope profile 0)
 
 ```rust
-use nox::{reduce, Order, NounId, NullCalls, VecTrace};
+use zheng::execution::{certify_execution, verify_certificate, verify_certificate_with};
 
-let mut order = Order::<65536>::new();
-// ... build object and formula nouns ...
-let mut tracer = VecTrace::default();
-let outcome = reduce(&mut order, object, formula, budget, &NullCalls, &mut tracer);
-// tracer.0 now contains one TraceRow per reduce() call
+let (statement, certificate) = certify_execution(&program, &input, budget)?;
+verify_certificate(&statement, &certificate)?;              // recompiles the CCS
+verify_certificate_with(&statement, &certificate, &vk)?;    // cached verifying key
 ```
 
-**phase 2 — proving (zheng):** encode the trace and produce a proof.
+`ExecutionStatement`: flat canonical program, public input atoms, output atoms, reduction count, budget. `Certificate`: the free witness positions in index order. exact check, error 0 for the compiled relation; linear size, witness disclosed.
+
+## state-public v3 (envelope profile 3)
 
 ```rust
-let proof = zheng::commit(&tracer, &hash_aux, &axis_openings, &look_openings, &statement, &params)?;
+use zheng::execution::state::certify_state_execution;
+
+let (statement, certificate) =
+    certify_state_execution(&program, &input, budget, root_in_subject, &evidence)?;
+statement.verify_certificate(&certificate, &evidence)?;
 ```
 
-nox produces the trace; zheng consumes it. the two phases are independent — run nox with any `CallProvider`, pass the resulting `&[TraceRow]` to zheng.
+`StateStatement` adds the state root, the root-in-subject flag and one `PublicLookup` per read site. the verifier authenticates `StateEvidence` under the statement's own root before pinning any read.
 
-## commit
+## succinct (envelope profile 1)
 
-```
-zheng::commit(
-  trace:          &nox::VecTrace,
-  hash_aux:       &[HashAux],        one per Poseidon2 hash block (the sponge rate)
-  axis_openings:  &[AxisOpening],    one per prover-active axis row
-  look_openings:  &[LookOpening],    one per look row
-  statement:      &Statement,
-  params:         &ProofParams,
-) -> Result<TraceProof, CommitError>
-```
+```rust
+use zheng::execution::succinct;
 
-turns every consecutive trace pair into a witness of the universal step instance ([[constraints]]), appends the replayed Fiat-Shamir Poseidon2 rounds of each opening and the BBG root chain as further universal rows, folds them all into ONE [[HyperNova]] accumulator, folds the opening bindings (degree-1 eq steps) into a second accumulator when there are any, and closes each with one [[decider]] under a shared linkage digest.
-
-returns:
-- `TraceProof { universal, binding: Option<_> }` on success — two groups at most, ~4 KiB, independent of trace length
-- `CommitError::FocusExhausted` if the trace exceeds the statement's focus bound
-- `CommitError::StatementMismatch` if input_hash/output_hash do not bind the first/last rows
-- `CommitError::StepUnsatisfied(t)` if trace pair t violates its pattern's constraint, carries an unknown tag or an out-of-range hash round — commit refuses to prove what the verifier could not see through the relaxed fold
-- `CommitError::HashBinding` / `AxisBinding` / `LookBinding` if an opening does not bind to the trace
-- `CommitError::TraceOverflow` if openings/hints do not match the trace or the trace has fewer than two rows
-
-## open
-
-```
-zheng::open(
-  proof:      &Proof,
-  point:      &[GoldilocksElement],
-  params:     &ProofParams,
-) -> Result<Opening, OpenError>
+let (statement, proof) = succinct::prove_default(&program, &input, budget)?;   // WHIR, device_params by size
+let key = succinct::ProvingKey::new(&program, input.len())?;                  // held key: compile once per program
+let (statement, proof) = succinct::prove_with_key(&key, &program, &input, budget, succinct::device_params)?;
+let (statement, proof) = succinct::prove::<P>(&params, &program, &input, budget)?;
+succinct::verify::<P>(&statement, &proof)?;
+succinct::verify_with::<P>(&statement, &proof, Some(&vk))?;
+succinct::prove_state::<P>(&params, &program, &input, budget, root_in_subject, &evidence)?;
+succinct::verify_state::<P>(&statement, &proof, &evidence)?;
 ```
 
-produces a Brakedown opening at the sumcheck output point. the opening proves that the committed polynomial evaluates to the claimed value at the given point. current opening is `TensorMerkle`: authenticated columns with Merkle paths, size growing with trace size. a Merkle-free O(log N + λ) recursive opening was designed but is blocked on a soundness gap — see [[recursive-brakedown]] in roadmap/.
+`P: SuccinctPcs` is the lens PCS (`Whir`, id 1 — shipped; `TensorRs`, id 2, the bake-off loser, still decodable). `prove_default` / `prove_with_key` take `succinct::device_params` (rate 1/64; folding 4 up to 2^16 committed variables and 5 above; grinding 16 bits up to 2^17, 22 at 2^18, 24 beyond); `succinct::params_for` is the fixed set (rate 1/64, folding 4, 24 grinding bits) the machine, IVC and wrap keys build on. `succinct::admit` rejects any parameter set lens proves below 128 bits. measured with device parameters: hash.tri 16,756 B, merkle-32 64,071 B (soft3 `audit/proof-latency-2026-10.md`); at `params_for`: hash.tri 16,148 B envelope, verify 7.96 ms; 2^20 relation 71,081 B ([bake-off](../audit/succinct-profile-2026-10.md)).
 
-## verify
+## zk (envelope profile 2)
 
-```
-zheng::verify(
-  proof:      &Proof,
-  statement:  &Statement,
-  params:     &ProofParams,
-) -> Result<(), VerifyError>
-```
+```rust
+use zheng::execution::veil;
 
-checks the proof against the public statement. pure computation: field arithmetic + ~3 [[hemera]] calls. no access to the original trace or witness.
-
-| parameter | type | description |
-|---|---|---|
-| proof | Proof | the proof to verify |
-| statement | Statement | program hash, input/output hashes, focus bound |
-| params | ProofParams | must match prover's params |
-
-returns:
-- `Ok(())` on valid proof
-- `VerifyError::SumcheckFailed(round)` if sumcheck consistency check fails
-- `VerifyError::EvaluationMismatch` if claimed evaluation disagrees with constraints
-- `VerifyError::LensFailed` if Brakedown opening verification rejects
-
-## fold
-
-```
-zheng::fold(
-  accumulator: &Accumulator,
-  instance:    &CCSInstance,
-  witness:     &CCSWitness,
-) -> Result<Accumulator, FoldError>
+let (statement, proof) = veil::prove(&program, &public_input, &secret, budget)?;
+veil::verify(&statement, &proof)?;
+veil::verify_with(&statement, &proof, Some(&vk))?;
+let envelope = zheng::envelope::prove_zk(&program, &public_input, &secret, budget, context)?;
 ```
 
-absorbs one proof instance into the running accumulator using [[HyperNova]] folding over [[CCS]]. cost: ~30 field operations + one [[hemera]] hash. the primary composition mechanism — preferred for blocks, epochs, and cross-shard merging.
+`PrivateStatement`: program, public inputs, outputs, cycles, budget. `veil::prove_relation` / `verify_relation` serve callers that derive their own relation (joy's private state queries). `execution::zk::{prove, verify}` is the MPC-in-the-head fallback (scheme 1, linear size). measured: secret-preimage hash 63.9 KB, verify 10.0 ms, 4.1 ms with a cached key ([zk profile](../audit/zk-profile-2026-10.md)).
 
-| parameter | type | description |
-|---|---|---|
-| accumulator | Accumulator | running folded state (or Accumulator::empty() for first fold) |
-| instance | CCSInstance | the CCS instance from a proof |
-| witness | CCSWitness | the CCS witness from a proof |
+## verifying keys
 
-## decide
+```rust
+use zheng::execution::VerifyingKey;
 
-```
-zheng::decide(
-  accumulator: &Accumulator,
-  params:      &ProofParams,
-) -> Result<Proof, DecideError>
+let vk = VerifyingKey::for_execution(&statement)?;   // or for_state
+vk.program_key(); vk.digest();
 ```
 
-produces a final proof from the accumulated folds. runs SuperSpartan + sumcheck + Brakedown verification on the folded CCS instance. cost today is dominated by `TensorMerkle` Merkle-path checks — see [[performance]] for the ~70,000-constraint (with jets) / ~600,000 (without) breakdown. ~825 constraints was the target under a Merkle-free recursive opening; that opening is blocked (see [[recursive-brakedown]] in roadmap/). called once at the end of a folding sequence.
+derived by the verifier only — no constructor from parts, no deserialiser. `digest` = hemera tree root of the relation encoding; succinct and zk transcripts absorb it, so a proof is bound to its relation. a key whose program key differs from the statement's is rejected.
 
-## data types
+## envelope
 
-### Proof
+```rust
+use zheng::envelope::Envelope;
 
-```
-Proof {
-  commitment:            [u8; 32],
-  sumcheck_polynomials:  Vec<Vec<GoldilocksElement>>,
-  evaluation_value:      GoldilocksElement,
-  pcs_opening:           BrakedownProof,
-}
+let bytes = envelope.to_bytes();
+let envelope = Envelope::from_bytes(&bytes)?;   // canonical decoding only
+envelope.verify(evidence.as_ref())?;            // runs the profile's verifier
 ```
 
-size grows with trace size — `pcs_opening` is a `TensorMerkle` opening (authenticated columns + Merkle paths), not the constant-size Merkle-free opening a Merkle-free lens would give. see [[performance]] for measured examples (e.g. 594,224 bytes for a 75-line trace, `audit/private-execution-release.md`). ~2 KiB constant was the target size under the blocked Merkle-free recursive opening (see [[recursive-brakedown]] in roadmap/).
+`Envelope::{Public, Succinct, Zk, StatePublic, Machine, Recursive, Wrapped}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge, ProgramMismatch}`. profile 4 (machine proof, [[accumulation]], [[machine]]); API: `machine::{prove, verify}`, `Envelope::Machine`; not constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 
-### Statement
+### the program of profiles 4–6
 
-```
-Statement {
-  program_hash:  [u8; 32],       // hemera hash of the nox program
-  input_hash:    [u8; 32],       // hemera hash of public inputs
-  output_hash:   [u8; 32],       // hemera hash of public outputs
-  focus_bound:   u64,            // maximum focus consumed
-}
-```
+the statement of profiles 4, 5 and 6 binds the program by its digest, not
+its tokens:
 
-### ProofParams
-
-```
-ProofParams {
-  security_level:  SecurityLevel,    // Sec100 or Sec128
-  lens_backend:    LensBackend,      // Brakedown (default) or Binius
-  max_trace_log:   u32,             // log_2 of maximum trace rows (default: 20)
-}
-
-enum LensBackend {
-  Brakedown,   // primary: expander-graph codes, TensorMerkle-authenticated (Goldilocks)
-  Binius,      // binary: F_2 tower (2 of 14 nox languages)
-}
+```rust
+let digest = zheng::machine::program_digest(&tokens);  // hemera, domain zheng-nox-program-v1, over the canonical tokens
+let env = Envelope::from_bytes_for(&bytes, &tokens)?;  // another program's envelope: ProgramMismatch, before the proof is parsed or a key built
+env.verify_program(&tokens, evidence.as_ref())?;       // digest checked first, then the proof against the full statement
 ```
 
-### Accumulator
+`MachinePublic { program: [u8; 32], input, output, cycles, budget, state }`
+travels; the verifier is given the program out of band
+(`MachinePublic::with_program` checks the digest and rebuilds the
+`MachineStatement`). `Envelope::verify` refuses profiles 4–6 (no
+program); `verify_program` on profiles 0–3 checks the statement's own
+program equals the one given. `MachineStatement::bytes` (v2) carries the
+same digest in place of the tokens, so the machine transcript, the IVC
+statement digest and every wrap level's public digest commit to the
+32 bytes the envelope shows; the verifier still derives the init entries
+from the program it is given. profile 1 keeps its tokens (its relation is
+compiled from the statement's program and its envelope codec is shared
+with profiles 0, 2, 3).
 
-```
-Accumulator {
-  committed_instance:  CCSInstance,     prover state, never on the wire
-  witness_commitment:  [u8; 32],
-  error_evals:         [GoldilocksElement; m]   one per constraint row
-  step_count:          u64,
-}
-```
+profile 4 body: `format u8 = MACHINE_FORMAT (2)` · WHIR header (8 B) ·
+statement · `MachineProof::to_bytes` (the rest).
 
-### TraceProof
+### recursive (envelope profile 5)
 
-```
-TraceProof {
-  universal:  ProofGroup,               every Layer-1 row, instance = universal_ccs()
-  binding:    Option<ProofGroup>,       opening bindings, instance = eq_instance()
-}
-ProofGroup { proof: Proof, accumulator: Accumulator }
-```
+```rust
+use zheng::envelope::recursive;
 
-the verifier derives each group's instance from its position; a proof never names its own instance.
-
-## usage patterns
-
-### single proof
-
-```
-let proof = zheng::commit(&trace, &hash_aux, &[], &[], &statement, &params)?;
-zheng::verify(&proof, &statement, &params)?;
+let envelope = recursive::prove(&program, &input, budget, &recursive::params())?; // Envelope::Recursive
+let bytes = envelope.to_bytes();
+Envelope::from_bytes_for(&bytes, &tokens)?.verify_program(&tokens, None)?;  // key derived once per process, then cached
 ```
 
-### block composition (fold)
+body:
 
-```
-let mut acc = Accumulator::empty();
-for tx in block.transactions() {
-  let (instance, witness) = tx.to_ccs();
-  acc = zheng::fold(&acc, &instance, &witness)?;  // ~30 field ops each
-}
-let block_proof = zheng::decide(&acc, &params)?;   // ~70,000 constraints with jets, once
-```
-
-### epoch composition (fold)
-
-```
-let mut acc = Accumulator::empty();
-for block in epoch.blocks() {
-  for tx in block.transactions() {
-    let (instance, witness) = tx.to_ccs();
-    acc = zheng::fold(&acc, &instance, &witness)?;
-  }
-}
-let epoch_proof = zheng::decide(&acc, &params)?;   // one decider for entire epoch
+```text
+format     u8      RECURSIVE_FORMAT = 3 (2: the program by its digest; 3: every IVC tree 4-ary)
+params     8 B     WHIR header; decoding admits only recursive::ADMITTED
+                   (rate 1/16 — the shipped recursive::params() — or 1/64;
+                   folding 4, 24 grinding bits, steps of 2^15 rows)
+statement  32 B    the program's digest, then inputs, output tokens,
+                   cycles, budget, state (bool; root, reads) — the machine
+                   statement, exactly as profile 4
+proof      varint n ≤ MAX_PROOF_BYTES (1 MiB), then n bytes of
+           IvcProof::to_bytes: u8 log_rows · u64 start · u64 segments ·
+           chain · state · step · accumulation step · decider; fixed-width
+           LE, every limb a canonical Goldilocks value (< p)
 ```
 
-### proof-carrying computation
+decoding refuses a wrong format byte, a header outside the admitted sets, a step size other than the set's (checked before any key is derived), a proof that does not fill its length exactly, and trailing bytes after it (`rs/tests/recursive_envelope.rs`). the proof binds the whole statement, budget included (`MachineStatement::bytes` enters the step context). no serde: envelopes travel as bytes (no profile derives serde).
 
-```
-let mut acc = Accumulator::empty();
-let mut state = initial_state;
-for step in computation.steps() {
-  let (result, trace_row) = nox::reduce(&state, &step);
-  acc = zheng::fold_row(&acc, &trace_row, &prev_row)?;  // ~30 ops per step
-  prev_row = trace_row;
-  state = result;
-}
-// proof is ready — no separate proving phase
-let proof = zheng::decide(&acc, &params)?;
+a statement that reads state is verified as in profile 4: `verify_program(&tokens, Some(&evidence))` authenticates every read before it becomes an init entry (`machine::authenticate_state`, shared by profiles 4–6).
+
+### wrapped (envelope profile 6)
+
+```rust
+use zheng::envelope::wrapped;
+
+let envelope = wrapped::prove(&program, &input, budget)?;    // Envelope::Wrapped: IVC, then the wrap chain
+let envelope = wrapped::wrap_recursive(&statement, &ivc)?;  // or wrap an existing recursive proof
+let bytes = envelope.to_bytes();
+Envelope::from_bytes_for(&bytes, &tokens)?.verify_program(&tokens, None)?; // final key: cached, installed, or derived over pinned roots
 ```
 
-see [[verifier]] for the verification algorithm, [[transcript]] for Fiat-Shamir construction, [[constraints]] for AIR encoding, [[recursion]] for composition protocol, [[lens]] for polynomial commitment
+body:
+
+```text
+format     u8      WRAPPED_FORMAT = 6 (2: the program by its digest; 3: the
+                   chain wrap::SHIPPED, final-level message digests; 4: the
+                   final level at 26 grinding bits; 5: inner keys over the
+                   base field; 6: the IVC at rate 1/8 under 4-ary trees)
+chain      8 B     the IVC WHIR header (rate 1/8, ivc::SHIPPED_RATE; 16
+                   grinding bits, ivc::SHIPPED_POW)
+           u8 L    wrap levels (3), then per level 8 B WHIR header and
+                   u8 mode (0 inner, 1 final); decoding admits only
+                   wrapped::chain() = wrap::SHIPPED "4i:16,7i:22,9f:26":
+                   1/16 inner, 16 grinding bits · 1/128 inner, 22 ·
+                   1/512 final, 26 (folding 4)
+statement          the machine statement (program digest), exactly as
+                   profiles 4 and 5
+proof      varint n ≤ MAX_PROOF_BYTES (65,536 = wrap::MAX_FINAL_BYTES; the
+           admitted key's bound is 64,213 B), then n bytes of
+           FinalProof::to_bytes: u8 log_rows · u64 start · u64 segments ·
+           chain · the deferred nox-public claim (point, value) · the
+           final wrap proof; fixed-width LE, canonical limbs (< p)
+```
+
+decoding refuses a wrong format byte, any chain other than the admitted one, a step size other than 2^15 (all before any key is built), a proof that does not fill its length exactly, and trailing bytes (`rs/tests/wrapped_envelope.rs`). the final proof binds the whole statement: the IVC statement digest enters the public values `X` every wrap level outputs.
+
+keys: the prover derives the chain once per process (`wrapped::chain_keys`; the inner levels commit their keys — minutes, ~30 GB) and checks the inner levels' key roots against `wrapped::INNER_ROOTS`. the verifier needs the IVC key and the final level's key only (`wrapped::final_key`): derived over the pinned roots without committing the inner keys, or installed from a key bundle. a derived IVC key of profile 5 or 6 is used only if its key-word root is pinned (`recursive::KEY_ROOTS`; `recursive::pinned_key`): a key derived under a faulty prover backend is refused.
+
+### key bundles (`envelope::keys`)
+
+```rust
+use zheng::envelope::{keys, Profile};
+
+let bundle = keys::export(Profile::Wrapped)?;   // the layouts of the keys a verifier needs
+keys::install(&bundle)?;                        // a later process: rebuild them, no derivation
+```
+
+a bundle is `"ZHKEYS01" · profile u8 · (varint length, key layout)…` — profile 5: the IVC key; profile 6: the IVC key, then the final wrap key. a key layout (`recursion::vkey`) is what derivation computes: WHIR header, sizes, output row, the key words' root, the fixed columns (sparse, canonical); everything else is rebuilt from it. `install` accepts a bundle only if its digest (hemera, domain `zheng-recursion-key-layout-v1`) equals `keys::pinned(profile)`, the digest of the derived keys (`rs/tests/keys.rs`); a stale or tampered bundle is refused before it is parsed and the caller derives. keys never travel with proofs.
+
+## retired and legacy
+
+- public v2 (`prove_execution` / `verify_execution`, `DirectProof`) and state v1 (`prove_state_execution` / `StateStatement::verify_v1`) are read for one release.
+- the folded trace API — `commit`, `open`, `verify_eval`, `verify`, `fold`, `decide`, `TraceProof`, `Accumulator`, the universal CCS, phi — compiles only with the cargo feature `legacy`, off by default. it is unsound (the fold is unchecked, the statement unbound, the constant wire free, the Brakedown code distance unproven; [[decider]] §soundness) and is removed in phase 5. its former size and cost figures were never measured on a sound construction and are withdrawn. `commit` refuses recursive axis/look openings (`CommitError::UnsupportedRecursiveOpening`).
+
+see [[verifier]] for what each verifier checks, [[transcript]] for Fiat–Shamir, [[constraints]] for the CCS format.

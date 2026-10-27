@@ -1,0 +1,48 @@
+   Compiling strata-nebu v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/strata/nebu/rs)
+   Compiling cyber-hemera v0.3.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/hemera/rs)
+   Compiling cyber-lens-core v0.1.2 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/core)
+   Compiling cyber-lens-brakedown v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/brakedown)
+   Compiling strata-jali v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/strata/jali/rs)
+   Compiling cyber-lens-assayer v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/assayer)
+   Compiling cyber-lens-binius v0.1.1 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/binius)
+   Compiling cyber-lens-porphyry v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/porphyry)
+   Compiling cyber-lens-ikat v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/ikat)
+   Compiling cyber-lens v0.2.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/lens/src)
+   Compiling cyber-nox v0.3.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/nox/rs)
+   Compiling zheng v0.4.0 (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/zheng/rs)
+    Finished `release` profile [optimized] target(s) in 8.76s
+     Running unittests src/lib.rs (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/target/release/deps/zheng-785652fae9271980)
+
+running 11 tests
+test execution::disclosed::memory::tests::compact_values_preserve_canonicality_prior_order_limits_and_root_binding ... ok
+test execution::disclosed::memory::tests::duplicate_occurrences_preserve_content_identity_and_cost ... ok
+test execution::disclosed::memory::tests::canonical_atom_and_particle_domains_reject_aliases ... ok
+test execution::disclosed::memory::tests::all_cost_bits_and_dynamic_selector_are_authenticated_even_for_quoted_data ... ok
+test execution::disclosed::memory::tests::views_reject_future_reads_and_bind_every_expected_root_limb ... ok
+test execution::disclosed::memory::tests::ordered_topology_and_strict_prior_references_are_checked_atomically ... ok
+test execution::disclosed::memory::tests::record_and_buffer_limits_accept_exact_capacity_and_fail_closed_below ... ok
+test execution::disclosed::memory::tests::saturated_u64_costs_do_not_wrap_or_reduce_in_the_field ... ok
+test execution::disclosed::memory::tests::dynamic_metadata_survives_smaller_branch_arms_and_saturation ... ok
+test execution::disclosed::memory::tests::native_headers_and_every_cost_case_are_derived_from_prior_records ... ok
+test execution::disclosed::memory::tests::non_saturated_costs_above_the_field_keep_both_limbs_authenticated ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 226 filtered out; finished in 0.01s
+
+     Running tests/disclosed_memory_allocation.rs (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/target/release/deps/disclosed_memory_allocation-f2214be90d629cc1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/execution_adversarial.rs (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/target/release/deps/execution_adversarial-46b8d14818175077)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/reaudit_private.rs (/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/proof/zheng/target/release/deps/reaudit_private-ba0aa7de4430bdc4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+

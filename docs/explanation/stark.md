@@ -8,7 +8,7 @@ alias: starks, STARK, STARKs, Scalable Transparent Arguments of Knowledge, multi
 
 Scalable Transparent Argument of Knowledge. a proof system where a prover convinces a verifier that a computation was performed correctly — transparent setup, post-quantum security, hash-only assumption.
 
-Ben-Sasson, Bentov, Horesh, Riabzev (2018). the foundation of verifiable computation in [[cyber]], [[Ethereum]] L2s (StarkNet, Polygon), and [[Celestia]].
+Ben-Sasson, Bentov, Horesh, Riabzev (2018). the foundation of transparent verifiable computation in [[Ethereum]] L2s (StarkNet, Polygon) and in zkVMs (RISC Zero, Stwo, Triton). [[zheng]], the proof system of [[cyber]], shares the STARK trust model — transparent, hash-only, post-quantum — and is not a STARK: it has no FRI and no quotient polynomial (see [[zheng/docs/explanation/zheng-vs-starks|zheng-vs-starks]]).
 
 ## properties
 
@@ -16,7 +16,7 @@ Ben-Sasson, Bentov, Horesh, Riabzev (2018). the foundation of verifiable computa
 |---|---|
 | trusted setup | none (transparent) |
 | post-quantum | yes (hash-only security) |
-| proof size | 60–200 KB |
+| proof size | tens of KB to about 1 MB; production chains publish 150 KB – 1 MB |
 | prover | quasi-linear O(n log n) |
 | verifier | polylogarithmic O(log² n) |
 | security assumption | collision-resistant hash function |
@@ -45,11 +45,11 @@ BOUNDARY CONSTRAINTS
   "column[0] at last row = program_output"
 ```
 
-AIR constraints can have any degree (commonly 2–8). used by StarkWare/CAIRO, ethstark, Winterfell, Miden, [[cyber]].
+AIR constraints can have any degree (commonly 2–8). used by StarkWare/CAIRO, ethstark, Winterfell, Miden — and, proved by a sumcheck zerocheck instead of a quotient, by the nox machine of zheng's profiles 4–6 (`zheng/specs/machine.md`).
 
 ### R1CS — Rank-1 Constraint System
 
-the native arithmetization for [[SNARKs]]. each constraint has the form `(a · w) × (b · w) = (c · w)` where w is the witness vector and a, b, c are coefficient vectors. degree-2 only. used by Groth16, Spartan, Nova. natural for arithmetic circuits, less natural for sequential VM execution.
+the native arithmetization for SNARKs. each constraint has the form `(a · w) × (b · w) = (c · w)` where w is the witness vector and a, b, c are coefficient vectors. degree-2 only. used by Groth16, Spartan, Nova. natural for arithmetic circuits, less natural for sequential VM execution.
 
 ### CCS — Customizable Constraint Systems
 
@@ -72,7 +72,7 @@ a proof system handling CCS handles all three — including AIR. [[SuperSpartan]
 
 ### univariate starks (classical, 2018)
 
-the original construction. each trace column is interpolated into a univariate polynomial, constraints are checked via polynomial composition and division by a zerofier (vanishing polynomial), and [[FRI]] proves the quotient has bounded degree.
+the original construction. each trace column is interpolated into a univariate polynomial, constraints are checked via polynomial composition and division by a zerofier (vanishing polynomial), and FRI proves the quotient has bounded degree.
 
 ```
 pipeline:
@@ -88,7 +88,7 @@ the prover requires FFT/NTT for interpolation — O(N log N) per column. the ver
 
 ### multilinear starks (modern, 2023–2025)
 
-the entire execution trace becomes one multilinear polynomial. constraints are verified via the [[sumcheck]] protocol. Brakedown (as the multilinear lens) opens the commitment at the single point that sumcheck reduces to.
+the entire execution trace becomes one multilinear polynomial. constraints are verified via the [[sumcheck]] protocol. a multilinear polynomial commitment (WHIR, Basefold, Ligero, …) opens the commitment at the single point that sumcheck reduces to. zheng follows this route without being a STARK: a single statement is a CCS compiled from the program, of which only the witness is committed and opened with [[WHIR]]; a run of any length is the nox machine, one AIR over 64-column rows proved by a sumcheck zerocheck, accumulated and recursively composed (profiles 4–6). neither path uses FRI or a quotient.
 
 ```
 pipeline:
@@ -99,7 +99,7 @@ pipeline:
      each variable has degree ≤ 1
   3. express constraints as CCS (AIR maps directly)
   4. sumcheck reduces ALL constraint checks to ONE evaluation at ONE random point r
-  5. Brakedown opens f(r) — one commitment, one opening
+  5. the multilinear lens opens f(r) — one commitment, one opening
 ```
 
 a multilinear polynomial in k variables:
@@ -126,9 +126,9 @@ example: f(x,y,z) = 3xy + 2xz + yz + x + 5
 2023  SuperSpartan (Setty et al.)       CCS generalization, handles AIR natively
 2024  STIR (Arnon et al.)               improved FRI: rate increases per round
 2024  Circle starks (StarkWare)         starks over Mersenne31 field
-2025  WHIR (legacy) (Arnon et al.)       sub-millisecond verification, multilinear lens
-2025  Whirlaway (LambdaClass)           SuperSpartan + WHIR (legacy) = multilinear stark
-      zheng                             SuperSpartan + recursive Brakedown = current architecture
+2024  WHIR (Arnon et al.)              weighted queries; RS proximity + multilinear lens
+2025  Whirlaway (LambdaClass)           SuperSpartan + WHIR = multilinear stark
+2026  zheng succinct profile            Spartan over Fp3 + WHIR (rate 1/64), CCS from the nox program
 ```
 
 see [[zheng]] for the concrete implementation in [[cyber]], [[polynomial-commitments]] for the lens, [[SuperSpartan]] for the IOP, [[sumcheck]] for the core protocol, [[fri-to-whir]] for the lens heritage, [[cryptography]] for the broader field

@@ -21,12 +21,12 @@ pub mod universal;
 pub mod verifier_steps;
 
 pub use hash_binding::build_hash_binding_steps_from_trace;
-pub use particle::{replay_states, HashAux};
-pub use root::{build_root_steps, compress4, root_from_leaves, root_to_bytes, RootLeaves};
+pub use particle::{HashAux, replay_states};
+pub use root::{RootLeaves, build_root_steps, compress4, root_from_leaves, root_to_bytes};
 pub use selector::constraint_eval;
 pub use transcript::build_transcript_steps;
 pub use universal::{
-    universal_ccs, universal_witness, Capacity, CONST_IDX, NUM_ROWS, Z_LEN, reg_t, reg_t1,
+    CONST_IDX, Capacity, NUM_ROWS, Z_LEN, reg_t, reg_t1, universal_ccs, universal_witness,
 };
 pub use verifier_steps::{eq_instance, eq_step, verifier_steps};
 
@@ -181,9 +181,16 @@ pub fn build_axis_steps_from_trace(
     let mut opening_idx = 0;
     for row in trace {
         if row.r()[0] == 0 && row.r()[11..15].iter().any(|&v| v != 0) {
-            let ao = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            let ao = openings
+                .get(opening_idx)
+                .ok_or(CommitError::TraceOverflow)?;
             let row_start = steps.len();
-            steps.extend(verifier_steps(&ao.commitment, &ao.point, ao.value, &ao.opening));
+            steps.extend(verifier_steps(
+                &ao.commitment,
+                &ao.point,
+                ao.value,
+                &ao.opening,
+            ));
 
             {
                 // (2) the opened commitment is the one the trace row carries
@@ -205,11 +212,17 @@ pub fn build_axis_steps_from_trace(
                 }
 
                 // (4) the opened value is the result particle nox produced
-                steps.push(eq_step(ao.value, Goldilocks::new(row.r()[7]).canonicalize()));
+                steps.push(eq_step(
+                    ao.value,
+                    Goldilocks::new(row.r()[7]).canonicalize(),
+                ));
             }
 
             // Strictness gate: every step for this axis row must hold now.
-            if steps[row_start..].iter().any(|(i, w)| !selector::is_satisfied(i, w)) {
+            if steps[row_start..]
+                .iter()
+                .any(|(i, w)| !selector::is_satisfied(i, w))
+            {
                 return Err(CommitError::AxisBinding);
             }
             opening_idx += 1;
@@ -271,12 +284,22 @@ pub fn build_look_steps_from_trace(
     let mut chained_roots: Vec<[Goldilocks; 4]> = Vec::new();
     for row in trace {
         if row.r()[0] == 17 {
-            let lo = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            let lo = openings
+                .get(opening_idx)
+                .ok_or(CommitError::TraceOverflow)?;
             let row_start = steps.len();
-            steps.extend(verifier_steps(&lo.commitment, &lo.point, lo.value, &lo.opening));
+            steps.extend(verifier_steps(
+                &lo.commitment,
+                &lo.point,
+                lo.value,
+                &lo.opening,
+            ));
 
             // (2) the opened value is the value nox used
-            steps.push(eq_step(lo.value, Goldilocks::new(row.r()[7]).canonicalize()));
+            steps.push(eq_step(
+                lo.value,
+                Goldilocks::new(row.r()[7]).canonicalize(),
+            ));
 
             // (3) the opening point is the corner of the cell index nox read
             let idx = row.r()[6];
@@ -288,8 +311,8 @@ pub fn build_look_steps_from_trace(
             let ns = row.r()[5] as usize;
             let leaf = lo.leaves.dims.get(ns).ok_or(CommitError::LookBinding)?;
             let cb = lo.commitment.as_bytes();
-            for k in 0..4 {
-                steps.push(eq_step(leaf[k], verifier_steps::read_limb(cb, k)));
+            for (k, &limb) in leaf.iter().take(4).enumerate() {
+                steps.push(eq_step(limb, verifier_steps::read_limb(cb, k)));
             }
 
             // (5) the root recomputed from the leaves matches the trace registers
@@ -301,9 +324,18 @@ pub fn build_look_steps_from_trace(
                 chained_roots.push(root);
             }
             steps.push(eq_step(root[0], Goldilocks::new(row.r()[4]).canonicalize()));
-            steps.push(eq_step(root[1], Goldilocks::new(row.r()[11]).canonicalize()));
-            steps.push(eq_step(root[2], Goldilocks::new(row.r()[12]).canonicalize()));
-            steps.push(eq_step(root[3], Goldilocks::new(row.r()[13]).canonicalize()));
+            steps.push(eq_step(
+                root[1],
+                Goldilocks::new(row.r()[11]).canonicalize(),
+            ));
+            steps.push(eq_step(
+                root[2],
+                Goldilocks::new(row.r()[12]).canonicalize(),
+            ));
+            steps.push(eq_step(
+                root[3],
+                Goldilocks::new(row.r()[13]).canonicalize(),
+            ));
 
             // (6) the recomputed root is the public statement root
             if *bbg_root == [0u8; 32] {
@@ -314,7 +346,10 @@ pub fn build_look_steps_from_trace(
             }
 
             // Strictness gate: every binding for this look must hold now.
-            if steps[row_start..].iter().any(|(i, w)| !selector::is_satisfied(i, w)) {
+            if steps[row_start..]
+                .iter()
+                .any(|(i, w)| !selector::is_satisfied(i, w))
+            {
                 return Err(CommitError::LookBinding);
             }
             opening_idx += 1;
@@ -340,9 +375,13 @@ pub fn build_axis_transcript_steps(
     let mut opening_idx = 0;
     for row in trace {
         if row.r()[0] == 0 && row.r()[11..15].iter().any(|&v| v != 0) {
-            let ao = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            let ao = openings
+                .get(opening_idx)
+                .ok_or(CommitError::TraceOverflow)?;
             steps.extend(build_transcript_steps(
-                &ao.transcript_seed, &ao.commitment, &ao.opening,
+                &ao.transcript_seed,
+                &ao.commitment,
+                &ao.opening,
             ));
             opening_idx += 1;
         }
@@ -365,9 +404,13 @@ pub fn build_look_transcript_steps(
     let mut opening_idx = 0;
     for row in trace {
         if row.r()[0] == 17 {
-            let lo = openings.get(opening_idx).ok_or(CommitError::TraceOverflow)?;
+            let lo = openings
+                .get(opening_idx)
+                .ok_or(CommitError::TraceOverflow)?;
             steps.extend(build_transcript_steps(
-                &lo.transcript_seed, &lo.commitment, &lo.opening,
+                &lo.transcript_seed,
+                &lo.commitment,
+                &lo.opening,
             ));
             opening_idx += 1;
         }
@@ -388,7 +431,11 @@ pub fn axis_eval_point(addr: u64) -> Vec<Goldilocks> {
     let bits = 63 - addr.leading_zeros();
     (0..bits)
         .map(|i| {
-            if (addr >> i) & 1 == 1 { Goldilocks::ONE } else { Goldilocks::ZERO }
+            if (addr >> i) & 1 == 1 {
+                Goldilocks::ONE
+            } else {
+                Goldilocks::ZERO
+            }
         })
         .collect()
 }
@@ -406,9 +453,7 @@ pub fn axis_eval_point(addr: u64) -> Vec<Goldilocks> {
 ///   polynomial as `dims[ns]`, every other leaf zero. The program's look object
 ///   must carry `root_from_leaves(&solo)` in its root limbs — see
 ///   [`standalone_root`].
-pub fn look_openings_from_provider(
-    provider: &nox::BrakedownLookProvider,
-) -> Vec<LookOpening> {
+pub fn look_openings_from_provider(provider: &nox::BrakedownLookProvider) -> Vec<LookOpening> {
     use lens::brakedown::Brakedown;
     use lens::{Lens, Transcript as LensTranscript};
 
@@ -426,38 +471,45 @@ pub fn look_openings_from_provider(
         look_commitment_limb(cb, 3),
     ];
 
-    nox_openings.into_iter().map(|nox_op| {
-        let idx = nox_op.key.as_u64() as usize;
-        // LSB-first binary decomposition: point[j] = bit j of idx.
-        // Brakedown folds pairs (evals[2i], evals[2i+1]) using bit 0 first —
-        // same convention as axis_eval_point and lens/brakedown opening.
-        let point: Vec<Goldilocks> = (0..k)
-            .map(|j| {
-                if (idx >> j) & 1 == 1 { Goldilocks::ONE } else { Goldilocks::ZERO }
-            })
-            .collect();
-        // Deterministic transcript seed per (commitment, namespace, key): prevents
-        // Fiat-Shamir reuse across different openings of the same polynomial.
-        let seed = {
-            let mut s = [0u8; 32];
-            s[..8].copy_from_slice(&nox_op.key.as_u64().to_le_bytes());
-            s[8..16].copy_from_slice(&nox_op.namespace.as_u64().to_le_bytes());
-            s[16..].copy_from_slice(&cb[0..16]);
-            s
-        };
-        let mut lt = LensTranscript::new(&seed);
-        let opening = Brakedown::open(poly, &point, &mut lt);
+    nox_openings
+        .into_iter()
+        .map(|nox_op| {
+            let idx = nox_op.key.as_u64() as usize;
+            // LSB-first binary decomposition: point[j] = bit j of idx.
+            // Brakedown folds pairs (evals[2i], evals[2i+1]) using bit 0 first —
+            // same convention as axis_eval_point and lens/brakedown opening.
+            let point: Vec<Goldilocks> = (0..k)
+                .map(|j| {
+                    if (idx >> j) & 1 == 1 {
+                        Goldilocks::ONE
+                    } else {
+                        Goldilocks::ZERO
+                    }
+                })
+                .collect();
+            // Deterministic transcript seed per (commitment, namespace, key): prevents
+            // Fiat-Shamir reuse across different openings of the same polynomial.
+            let seed = {
+                let mut s = [0u8; 32];
+                s[..8].copy_from_slice(&nox_op.key.as_u64().to_le_bytes());
+                s[8..16].copy_from_slice(&nox_op.namespace.as_u64().to_le_bytes());
+                s[16..].copy_from_slice(&cb[0..16]);
+                s
+            };
+            let mut lt = LensTranscript::new(&seed);
+            let opening = Brakedown::open(poly, &point, &mut lt);
 
-        LookOpening {
-            commitment,
-            point,
-            value: nox_op.value,
-            opening,
-            transcript_seed: seed.to_vec(),
-            leaves: RootLeaves::solo(nox_op.namespace.as_u64() as usize, commitment_limbs),
-            namespace: nox_op.namespace,
-        }
-    }).collect()
+            LookOpening {
+                commitment,
+                point,
+                value: nox_op.value,
+                opening,
+                transcript_seed: seed.to_vec(),
+                leaves: RootLeaves::solo(nox_op.namespace.as_u64() as usize, commitment_limbs),
+                namespace: nox_op.namespace,
+            }
+        })
+        .collect()
 }
 
 /// The root limbs a standalone-provider program must carry in its look object:
@@ -482,13 +534,17 @@ fn look_commitment_limb(bytes: &[u8], k: usize) -> Goldilocks {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nox::TraceRow;
     use lens::brakedown::{Brakedown, MultilinearPoly};
     use lens::{Lens, Transcript as LensTranscript};
+    use nox::TraceRow;
 
     #[test]
     fn witness_has_correct_length() {
-        let w = universal_witness(&row_regs(&TraceRow::default()), &row_regs(&TraceRow::default()), None);
+        let w = universal_witness(
+            &row_regs(&TraceRow::default()),
+            &row_regs(&TraceRow::default()),
+            None,
+        );
         assert_eq!(w.z.len(), Z_LEN);
         assert_eq!(w.z[CONST_IDX], Goldilocks::ONE);
     }
@@ -525,7 +581,7 @@ mod tests {
         // addr=5 (binary 101): bits 0..1 below MSB = [1, 0]
         let pt = axis_eval_point(5);
         assert_eq!(pt.len(), 2);
-        assert_eq!(pt[0], Goldilocks::ONE);  // bit 0
+        assert_eq!(pt[0], Goldilocks::ONE); // bit 0
         assert_eq!(pt[1], Goldilocks::ZERO); // bit 1
     }
 
@@ -552,7 +608,10 @@ mod tests {
         assert!(steps.is_empty(), "no commitment, no opening steps");
 
         let poly = MultilinearPoly::new(
-            [1u64, 2, 3, 4].iter().map(|&v| Goldilocks::new(v)).collect()
+            [1u64, 2, 3, 4]
+                .iter()
+                .map(|&v| Goldilocks::new(v))
+                .collect(),
         );
         let commitment = Brakedown::commit(&poly);
         let point = vec![Goldilocks::ZERO, Goldilocks::ZERO];
@@ -562,7 +621,10 @@ mod tests {
             Brakedown::open(&poly, &point, &mut lt)
         };
         let unused = AxisOpening {
-            commitment, point, value, opening,
+            commitment,
+            point,
+            value,
+            opening,
             transcript_seed: b"axis-test".to_vec(),
         };
         assert!(
@@ -576,17 +638,28 @@ mod tests {
 
     #[test]
     fn look_openings_from_provider_correct_value_and_count() {
-        use nox::{BrakedownLookProvider, LookProvider};
-        use lens::brakedown::MultilinearPoly;
         use crate::ccs::selector::is_satisfied;
+        use lens::brakedown::MultilinearPoly;
+        use nox::{BrakedownLookProvider, LookProvider};
 
         // 4-element polynomial: evals[0..3] = 10, 20, 30, 40
-        let evals: Vec<Goldilocks> = [10u64, 20, 30, 40].iter().map(|&v| Goldilocks::new(v)).collect();
+        let evals: Vec<Goldilocks> = [10u64, 20, 30, 40]
+            .iter()
+            .map(|&v| Goldilocks::new(v))
+            .collect();
         let provider = BrakedownLookProvider::new(MultilinearPoly::new(evals));
 
         // Simulate two look calls (key=0 and key=2)
-        let _ = provider.look(provider.commitment_field(), Goldilocks::ZERO, Goldilocks::new(0));
-        let _ = provider.look(provider.commitment_field(), Goldilocks::ZERO, Goldilocks::new(2));
+        let _ = provider.look(
+            provider.commitment_field(),
+            Goldilocks::ZERO,
+            Goldilocks::new(0),
+        );
+        let _ = provider.look(
+            provider.commitment_field(),
+            Goldilocks::ZERO,
+            Goldilocks::new(2),
+        );
 
         let openings = look_openings_from_provider(&provider);
         assert_eq!(openings.len(), 2);
@@ -622,7 +695,7 @@ mod tests {
         key: u64,
         root: [Goldilocks; 4],
     ) -> Vec<TraceRow> {
-        use nox::{reduce, Reduction, VecTrace};
+        use nox::{Reduction, VecTrace, reduce};
         let g = Goldilocks::new;
         let mut ar = Reduction::<1024>::new();
         // object [[l0 | [l1 | [l2 | l3]]] | rest]
@@ -648,10 +721,13 @@ mod tests {
 
     #[test]
     fn look_steps_bind_value_point_leaf_and_root() {
-        use nox::BrakedownLookProvider;
         use crate::ccs::selector::is_satisfied;
+        use nox::BrakedownLookProvider;
 
-        let evals: Vec<Goldilocks> = [10u64, 20, 30, 40].iter().map(|&v| Goldilocks::new(v)).collect();
+        let evals: Vec<Goldilocks> = [10u64, 20, 30, 40]
+            .iter()
+            .map(|&v| Goldilocks::new(v))
+            .collect();
         let provider = BrakedownLookProvider::new(MultilinearPoly::new(evals));
         let root = standalone_root(&provider, 0);
         let root_bytes = root_to_bytes(&root);
@@ -668,7 +744,10 @@ mod tests {
         }
         assert_eq!(rows.len(), 14 * 24, "one root chain of 14 compressions");
         for (i, wit) in rows.iter().enumerate() {
-            assert!(is_satisfied(universal_ccs(), wit), "root row {i} unsatisfied");
+            assert!(
+                is_satisfied(universal_ccs(), wit),
+                "root row {i} unsatisfied"
+            );
         }
 
         // Wrong root in the program object (the pre-fix convention: raw
@@ -682,7 +761,10 @@ mod tests {
         let trace = run_look(&provider, 0, 2, fake_root);
         let openings = look_openings_from_provider(&provider);
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings, &root_bytes), Err(CommitError::LookBinding)),
+            matches!(
+                build_look_steps_from_trace(&trace, &openings, &root_bytes),
+                Err(CommitError::LookBinding)
+            ),
             "commitment-as-root claim went unnoticed"
         );
 
@@ -691,7 +773,10 @@ mod tests {
         let mut openings = look_openings_from_provider(&provider);
         openings[0].value = Goldilocks::new(31);
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings, &root_bytes), Err(CommitError::LookBinding)),
+            matches!(
+                build_look_steps_from_trace(&trace, &openings, &root_bytes),
+                Err(CommitError::LookBinding)
+            ),
             "value tamper went unnoticed"
         );
 
@@ -700,7 +785,10 @@ mod tests {
         let mut openings = look_openings_from_provider(&provider);
         openings[0].leaves.dims[0] = [Goldilocks::new(1); 4];
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings, &root_bytes), Err(CommitError::LookBinding)),
+            matches!(
+                build_look_steps_from_trace(&trace, &openings, &root_bytes),
+                Err(CommitError::LookBinding)
+            ),
             "leaf tamper went unnoticed"
         );
 
@@ -711,7 +799,10 @@ mod tests {
         let mut wrong_root = root_bytes;
         wrong_root[0] ^= 1;
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings, &wrong_root), Err(CommitError::LookBinding)),
+            matches!(
+                build_look_steps_from_trace(&trace, &openings, &wrong_root),
+                Err(CommitError::LookBinding)
+            ),
             "statement root mismatch went unnoticed"
         );
 
@@ -719,7 +810,10 @@ mod tests {
         let trace = run_look(&provider, 0, 2, root);
         let openings = look_openings_from_provider(&provider);
         assert!(
-            matches!(build_look_steps_from_trace(&trace, &openings, &[0u8; 32]), Err(CommitError::LookBinding)),
+            matches!(
+                build_look_steps_from_trace(&trace, &openings, &[0u8; 32]),
+                Err(CommitError::LookBinding)
+            ),
             "look against the zero-root sentinel went unnoticed"
         );
     }

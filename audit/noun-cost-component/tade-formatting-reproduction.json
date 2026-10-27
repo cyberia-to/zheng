@@ -1,0 +1,78 @@
+{
+  "scope": "Reproduce accidental formatter output from previously documented clean Tade Git blobs before reversing only that patch",
+  "utc": "2026-09-28T04:45:18.915571+00:00",
+  "prior_clean_receipt": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/zheng/audit/native-private/README.md",
+  "prior_clean_receipt_sha256": "506ce4a7b15779dfc5e925607889c4a22268ebdc176a7a621bb29c229bb97984",
+  "head": "c1d81c75725df0a666c36d81ef33c3a60eb007f3",
+  "formatter": "rustfmt 1.9.0",
+  "checks": [
+    {
+      "path": "impl/rust/src/bin/tade.rs",
+      "argv": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true"
+      ],
+      "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+      "stdin_git_sha256": "49e66f13a77836a0a6380d771b9e95ebaac18b12f52bf9cf5175404d052240a5",
+      "exit_code": 0,
+      "stderr": "",
+      "stdout_sha256": "67656fdd512ba2de6eca7a65c6847be08da3dfb4115c8a4877e97f0bf793ba30",
+      "actual_sha256": "67656fdd512ba2de6eca7a65c6847be08da3dfb4115c8a4877e97f0bf793ba30",
+      "exact_match": true
+    },
+    {
+      "path": "impl/rust/src/lib.rs",
+      "argv": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true"
+      ],
+      "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+      "stdin_git_sha256": "7039484866d4122b4f965f7d2dc03c32f53fdd9d840dbb88466f07bd914ec3bc",
+      "exit_code": 0,
+      "stderr": "",
+      "stdout_sha256": "8f0520c3aa811c4a1158ff91590251f4b3beaf39bcd01a34c6b7607b1c6fb997",
+      "actual_sha256": "8f0520c3aa811c4a1158ff91590251f4b3beaf39bcd01a34c6b7607b1c6fb997",
+      "exact_match": true
+    },
+    {
+      "path": "impl/rust/src/molecule.rs",
+      "argv": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true"
+      ],
+      "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+      "stdin_git_sha256": "39175a708c2f92b88f9c08bdd221730c565b3b50f852391d0db4202b6cf354a6",
+      "exit_code": 0,
+      "stderr": "",
+      "stdout_sha256": "9778ffc30fe1af68a24d92936ef473edf53522052eba36019fbecd9f428a8c6e",
+      "actual_sha256": "9778ffc30fe1af68a24d92936ef473edf53522052eba36019fbecd9f428a8c6e",
+      "exact_match": true
+    },
+    {
+      "path": "impl/rust/tests/nested_roundtrip.rs",
+      "argv": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true"
+      ],
+      "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-native-private/tade",
+      "stdin_git_sha256": "7e716edc849652f3c3e8d308c9759ba2fbadcccb2201f0822670bf96fcca3a96",
+      "exit_code": 0,
+      "stderr": "",
+      "stdout_sha256": "64d348f33e488c5c7d7d9b55de4cdbd869e5db9dfeedb8aedcf6a2ca76674a5f",
+      "actual_sha256": "64d348f33e488c5c7d7d9b55de4cdbd869e5db9dfeedb8aedcf6a2ca76674a5f",
+      "exact_match": true
+    }
+  ]
+}

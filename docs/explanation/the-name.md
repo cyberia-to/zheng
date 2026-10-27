@@ -33,9 +33,9 @@ reveal whether data has been altered. light exposes what darkness
 conceals.
 
 [[nox]] — the Greek goddess of night. the virtual machine that computes
-in darkness. nox executes programs without revealing their inputs,
-their intermediate states, their internal logic. the computation happens
-in the dark.
+in darkness: with zheng's zero-knowledge profile, a run can be proven
+without revealing its secret inputs or its intermediate states. the
+computation happens in the dark.
 
 zheng — proof. the evidence that emerges from the dark. nox executes
 in silence. zheng speaks afterward, and what it says is correct. 言 + 正.
@@ -53,8 +53,8 @@ credential, no social standing. the proof either verifies or it does not.
 this is the role zheng plays in cyber. when [[nox]] finishes executing a
 program, the result is a claim: "this output follows from this input
 under this program." the claim alone means nothing. zheng transforms the
-claim into a proof — a short string of field elements that any verifier
-can check in under a millisecond. the proof is the evidence. it speaks
+claim into a proof — field elements and hashes that any verifier can
+check without trusting the prover. the proof is the evidence. it speaks
 for itself.
 
 証. correct speech. words that prove correctness. computation made

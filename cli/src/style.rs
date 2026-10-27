@@ -21,7 +21,11 @@ pub const X: &str = "\x1b[0m"; // reset
 
 /// Color `s` with `col` when `color`, else return it plain.
 pub fn paint(color: bool, col: &str, s: &str) -> String {
-    if color { format!("{col}{s}{X}") } else { s.to_string() }
+    if color {
+        format!("{col}{s}{X}")
+    } else {
+        s.to_string()
+    }
 }
 
 /// The gradient ZHENG mark + tagline + spec block (ANSI Shadow font).
@@ -35,9 +39,13 @@ pub fn banner(color: bool) -> String {
     o.push_str(&l(C, "   ███╔╝  ██╔══██║██╔══╝  ██║╚██╗██║██║   ██║\n"));
     o.push_str(&l(B, "  ███████╗██║  ██║███████╗██║ ╚████║╚██████╔╝\n"));
     o.push_str(&l(M, "  ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝ ╚═════╝ \n"));
-    o.push_str(&l(W, "  証 — proof system · SuperSpartan · Brakedown\n"));
+    o.push_str(&l(W, "  証 — native proof system for soft3\n"));
     o.push('\n');
-    o.push_str(&l(GR, "  zero trusted setup · post-quantum · sub-ms verify\n"));
+    o.push_str(&l(GR, "  execution proofs: joy prove · joy verify\n"));
+    o.push_str(&l(
+        GR,
+        "  this binary drives the legacy folded API only (unsound; removed in phase 5)\n",
+    ));
     o
 }
 
@@ -46,15 +54,27 @@ pub fn help(color: bool) -> String {
     let g = |s: &str| paint(color, GR, s);
     let mut o = banner(color);
     o.push('\n');
-    o.push_str("  zheng run   -e '<formula>' [--object N] [--budget B]   prove + verify a formula\n");
-    o.push_str("  zheng demo  hash                                       prove a Poseidon2 hash\n");
-    o.push_str("  zheng eval                                             commit/open/verify a polynomial\n");
-    o.push_str("  zheng pack  -e '<formula>' … -o <file>                 write a program capsule\n");
-    o.push_str("  zheng prove <file>                                     prove a program capsule\n");
+    o.push_str(
+        "  zheng run   -e '<formula>' [--object N] [--budget B]   legacy trace statement check\n",
+    );
+    o.push_str(
+        "  zheng demo  hash                                       legacy hash trace statement\n",
+    );
+    o.push_str("  zheng eval                                             legacy Brakedown commit/open/verify\n");
+    o.push_str(
+        "  zheng pack  -e '<formula>' … -o <file>                 write a program capsule\n",
+    );
+    o.push_str("  zheng prove <file>                                     legacy trace proof for a capsule\n");
     o.push('\n');
-    o.push_str(&g("  zheng help                                             print this help\n"));
+    o.push_str(&g(
+        "  zheng help                                             print this help\n",
+    ));
     o.push('\n');
-    o.push_str(&g("  output renders to the terminal; piped, it is a tape chunk stream.\n"));
-    o.push_str(&g("  exit: 0 verified · 1 prover/verifier error · 2 usage error\n"));
+    o.push_str(&g(
+        "  output renders to the terminal; piped, it is a tade chunk stream.\n",
+    ));
+    o.push_str(&g(
+        "  exit: 0 verified · 1 prover/verifier error · 2 usage error\n",
+    ));
     o
 }

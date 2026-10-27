@@ -6,186 +6,100 @@ alias: zheng verifier, verification algorithm
 ---
 # verifier
 
-the standalone verifier algorithm for [[zheng]]. accepts a proof and a public statement, returns accept or reject. the verifier is a [[nox]] program — it runs inside the same VM that produced the original trace, enabling recursive proof composition.
+what a [[zheng]] verifier does, profile by profile. every proof arrives in the `ZHENGPF1` envelope; `Envelope::verify(state)` decodes it canonically and dispatches on the profile byte. the byte-level protocols are in [[execution]]; the bits each check carries are in the [[soundness]] ledger.
 
-the Lens opening today is [[Brakedown]] with `TensorMerkle` authentication: every queried codeword column carries a Merkle path against the commitment root. proof size scales with trace size — see [[performance]] for measured numbers. a Merkle-free recursive opening (constant ~2 KiB) was designed but is blocked on a soundness gap; see [[recursive-brakedown]] in roadmap/ and `lens` issue #6.
+the old verifier this page used to describe — a 16-register trace, a recursive Brakedown opening claimed to need no hashing, a recursion tier counted in constraints — belongs to the legacy folded trace API (feature `legacy`, unsound, removed in phase 5). nothing below depends on it.
 
-## algorithm
+## common to every profile
+
+the verifier never trusts the prover for the relation. from the statement it derives:
+
+1. the subject shape (input length, Joy reverse-cons order, trailing zero);
+2. the CCS, by recompiling the public program (`execution::relation`) — or takes it from a verifying key whose program key matches the statement's (`execution::vk`; keys are derived by the verifier only, never deserialised);
+3. the pinned coordinates: `z[0] = 1`, the public inputs, the outputs and the cost wire, and for state statements every read's active flag, root limbs, namespace, key and value.
+
+the prover can only influence the free (witness) positions. a pinned value is never read from the proof.
+
+## profile 0 — public certificate v3
 
 ```
-VERIFY(commitment C, statement S, proof pi) -> accept/reject:
-
-  1. INIT TRANSCRIPT
-     T = transcript_init(DOMAIN_SEP)
-     T.absorb(S)
-     T.absorb(C)
-
-  2. SUMCHECK VERIFICATION (k rounds, k = n + 4)
-     claim_0 = 0  (constraints must sum to zero)
-     for i in 1..k:
-       g_i = pi.sumcheck_polynomials[i]
-       assert g_i(0) + g_i(1) = claim_{i-1}
-       T.absorb(g_i)
-       r_i = T.squeeze()
-       claim_i = g_i(r_i)
-
-  3. EVALUATION CHECK
-     r = (r_1, ..., r_k)
-     v = pi.evaluation_value
-     assert claim_k = constraint_eval(v, r, S)
-
-  4. LENS VERIFICATION
-     assert Brakedown_verify(C, r, v, pi.pcs_opening)
-     (TensorMerkle: per-column Merkle path check against the commitment root,
-      plus the row-combination consistency check against the encoding)
-
+VERIFY_CERTIFICATE(statement S, certificate c) -> accept/reject:
+  R  = compile(S.program, shape(S))            // or the verifying key's relation
+  z  = [1] ‖ pinned(S) placed by the verifier
+  fill the free positions from c, in index order; reject a trailing zero,
+       a value ≥ p, or more values than free positions
+  pad with zeros
+  for every row of R: assert row(z) = 0        // exact, no challenge
   return accept
 ```
 
-step 2 is pure field arithmetic. step 4 authenticates each queried column against the commitment root via Merkle path, then checks encoding consistency — this is where hashing dominates the verifier's cost (see [[performance]]).
+soundness error 0 for the compiled relation; size and verification are linear in the witness, and the witness is disclosed. measured: hash.tri 6,463 B (`audit/succinct-profile-2026-10.md`).
 
-## constraint evaluation
+## profile 3 — state-public v3
 
-step 3 checks that the sumcheck's final claim equals `constraint_eval(v, r, S)`. this function reconstructs the constraint polynomial's evaluation at the random point r chosen during sumcheck, using the prover-supplied register evaluation v.
+as profile 0, preceded by authentication of the reads' `StateEvidence`: the 14 root leaves fold to the statement's `state_root` (`compress4`), every carried table matches its leaf, and every active read is answered from the authenticated tables before it is pinned. no caller authenticates anything on zheng's behalf.
 
-### register layout
-
-the trace table has 16 registers per row:
-
-| register | meaning |
-|---|---|
-| r0 | pattern tag (which of the 17 nox patterns this row executes) |
-| r1, r2 | operand hashes (left, right) |
-| r3, r4 | inputs (immediate values or dereferenced operands) |
-| r5 | result |
-| r6 | focus_before (focus counter entering this step) |
-| r7 | focus_after (focus counter leaving this step) |
-| r8-r13 | auxiliary (pattern-specific intermediate values) |
-| r14 | status (0 = running, 1 = halted, 2 = error) |
-| r15 | step (row index, starting from 0) |
-
-the prover commits to the multilinear extension of each register column. `v` is the vector of all 16 register evaluations at the random point r: `v[j] = f_j(r)` where `f_j` is the multilinear extension of register column j over the boolean hypercube.
-
-### selector polynomials
-
-each pattern p in {0, 1, ..., 16} has a Lagrange selector polynomial:
+## profile 1 — succinct
 
 ```
-selector_p(x) = product_{q != p} (x - q) / (p - q)
+VERIFY_SUCCINCT(statement S, proof π) -> accept/reject:
+  R, p = compile(S) relabelled to z' = (w ‖ p)       // p computed by the verifier
+  admit(π.pcs_id, π.params, ℓ)                         // proven lens bits ≥ 128
+  T = Transcript::new; absorb "zheng-succinct-v1", "zheng-vk" ‖ vk.digest ‖ S, pcs header, ℓ, m
+  absorb π.root
+  τ ← T (Fp3)
+  outer sumcheck: log m rounds, degree d + 1, Fp3 challenges ρ_x
+       (round polynomials without c_1; the verifier restores it from the running claim)
+  absorb the t matrix evaluations; γ ← T
+  inner sumcheck: ℓ + 1 rounds, degree 2 → point (r_0, r')
+  lens transcript seeded by one squeeze of T
+  assert claim = weight · ((1 − r_0)·v + r_0·p̃(r'))     // weight from R, p̃ from S
+  assert PCS.verify(π.root, ℓ, r', v, π.opening)        // one WHIR opening
+  return accept
 ```
 
-evaluated at `v[0]` (the pattern tag register at point r), `selector_p(v[0])` is 1 when the pattern tag equals p and 0 otherwise. this demultiplexes the single constraint evaluation into the correct pattern.
+shipped PCS: WHIR at rate 1/64. the default prover (`succinct::device_params`) folds by 4 up to 2^16 committed variables and by 5 above, and grinds 16 bits up to 2^17, 22 at 2^18, 24 beyond; `succinct::params_for` (folding 4, 24 grinding bits) is the fixed set the machine, IVC and wrap keys build on. the verifier reads the parameters from the proof and admits any set lens proves at ≥ 128 bits. measured with device parameters (soft3 `audit/proof-latency-2026-10.md`): hash.tri 16,756 B, verify < 10 ms; Merkle membership depth 32 64,071 B, verify 310 ms; at `params_for` (`audit/succinct-profile-2026-10.md`): hash.tri 16,148 B envelope, verify 7.96 ms; synthetic 2^20 relation 71,081 B, verify 270 ms. the verify goal (≤ 1 ms) is not met yet: hemera speed in the opening, the unstructured Spartan verifier and the relation recompile dominate; a cached verifying key removes the recompile.
 
-### pattern constraints
+## profile 2 — zk (veil)
 
-each pattern p defines a constraint polynomial `C_p` over the register values. for example:
+as profile 1 on the masked relation (`veil::pad`), with Libra masks on both sumchecks and the opening replaced by one zero-knowledge linear test on a hiding RS tensor commitment (`veil::hiding`, masking rows, salted leaves). the verifier computes the pinned contribution `P` itself and checks one opened functional. 128.2 proven bits; honest-verifier statistical ZK, ZK in the ROM after Fiat–Shamir. measured (`audit/zk-profile-2026-10.md`): secret-preimage hash 63.9 KB, verify 10.0 ms (4.1 ms with a cached verifying key). scheme 1 (MPC-in-the-head, `ZHMITH01`) remains the linear-size fallback.
 
-- pattern 5 (add): `C_5(v) = v[3] + v[4] - v[5]` (inputs sum to result)
-- pattern 7 (mul): `C_7(v) = v[3] * v[4] - v[5]` (inputs multiply to result)
-- pattern 8 (inv): `C_8(v) = v[3] * v[5] - 1` (input times result is one)
-- pattern 15 (hash): `C_15(v) = hemera(v[3], v[4]) - v[5]` (hash of inputs equals result)
+## profile 4 — machine proof
 
-all 17 patterns contribute, but the selector zeroes out every pattern except the active one.
+accumulation ([[accumulation]], [[machine]]): the nox machine is one uniform step relation; the prover accumulates RS evaluation claims step by step (ARC/WARP-style), and the verifier checks every step and the final accumulator with one WHIR opening. not constant in the number of steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`); decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments).
 
-### the formula
+## profile 5 — recursive proof (IVC)
 
-```
-constraint_eval(v, r, S) = eq(r_row, r) * sum_{p=0}^{16} selector_p(v[0]) * C_p(v)
-```
+the nox run proven by incrementally verifiable computation (`recursion.md`): each 2^15-row step's circuit verifies the previous step, so the proof is the last step's proof, the state it started from, its accumulation step and one decider — constant in the number of steps. the verifier admits only the parameter sets of `envelope::recursive::ADMITTED` (WHIR rate 1/16 or 1/64, folding 4, 24 grinding bits, steps of 2^15 rows; every ledger row ≥ 128 bits), derives the circuit key of that set once per process (`ivc::key`, cached), prepares the statement side (`ivc::prepare`), verifies the step natively, checks the final state against this run (context, pre-commitment chain, step count, cyclic boundary), the three deferred claims, and the decider.
 
-where:
+## the program of profiles 4–6
 
-- `r_row` is the row-dimension component of r (the first n variables, where 2^n is the number of trace rows)
-- `eq(r_row, r)` is the multilinear equality polynomial: `eq(a, b) = product_i (a_i * b_i + (1 - a_i)(1 - b_i))`, which ties the sumcheck reduction to the specific evaluation point
-- the sum over p combines all 17 pattern constraints, weighted by selectors
-- `C_p(v)` evaluates pattern p's constraint using the register values at r
+the statement carries the program's digest (`machine::program_digest`:
+hemera over the canonical tokens). the verifier is given the program out of
+band and checks its digest against the statement's before anything else
+(`Envelope::from_bytes_for` refuses another program's envelope before the
+proof is parsed; `verify_program` checks it again before any key work),
+then derives the init entries from it. the transcripts commit to the same
+digest (`MachineStatement::bytes` v2).
 
-the sumcheck protocol reduces the claim "the constraint polynomial sums to zero over the boolean hypercube" to a single evaluation at a random point. `constraint_eval` computes that single evaluation. if the prover is honest, every row satisfies its pattern constraint, the sum is zero, and this evaluation matches `claim_k`.
+## profile 6 — wrapped proof
 
-### boundary constraints
+the profile-5 proof's final verifier, proved by three wrap levels of the recursion circuit (`recursion.md` § wrap): the final proof is the recursive proof's header, the deferred nox-public claim and one final-mode wrap proof — ≤ 64,213 B over every transcript (the gate is 64 KiB by key), constant in the number of steps. the verifier admits only the chain of `envelope::wrapped::chain()` (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`: the IVC at rate 1/8 with 16 grinding bits over 2^15-row steps and 4-ary trees; wrap 1/16 inner with 16 grinding bits, 1/128 inner with 22, 1/512 final with 26; every ledger row ≥ 128 bits), prepares the statement side under the proof's header (`ivc::prepare`, IVC key cached), evaluates the deferred claim against the statement's columns, recomputes the public digest `X` and verifies the final wrap natively (`wrap::verify_statement`). the final key is cached per process; a fresh process derives it over the inner levels' pinned key roots (`wrapped::INNER_ROOTS`) or installs it from a pinned key bundle (`envelope::keys`). measured (`audit/ivc-speed-2026-10.md`): add.tri final proof 63,029 B, verify 1.9–2.2 ms with the statement prepared and keys loaded.
 
-boundary constraints enforce the public statement S at specific trace positions. these are point evaluations at binary coordinates (vertices of the hypercube):
+## recursion
 
-- at row 0: `f_14(0, 0, ..., 0) = 0` (status is running), `f_15(0, 0, ..., 0) = 0` (step counter starts at zero)
-- at the final row: `f_14(1, 1, ..., 1) = 1` (status is halted)
-- program hash: the commitment to the opcode column must match `S.program_hash`
-- input/output: `f_3(0, ..., 0) = S.input_hash` and `f_5(last_row) = S.output_hash`
-- focus bound: `f_6(0, ..., 0) - f_7(last_row) <= S.focus_bound`
+inside zheng, the step verifier and the final verifier already run as circuits (profiles 5 and 6, [[recursion]]): constancy comes from IVC — the accumulation verifier inside the step relation — and the size from the wrap chain. the whole verifier as a nox program (the Trident second verifier) is not built; it is for composition — a statement about proofs across domains or versions — never for size.
 
-boundary constraints are folded into the same sumcheck by adding them as additional terms with their own random combiners (drawn from the transcript).
-
-### relationship to sumcheck
-
-the sumcheck protocol (step 2) starts with `claim_0 = 0` because a valid trace satisfies all constraints on every row, so the constraint polynomial sums to zero over the hypercube. after k rounds of interaction, the verifier holds a random point r and a final claim `claim_k`. step 3 asserts `claim_k = constraint_eval(v, r, S)`: the reduced claim equals the actual constraint evaluation at r. step 4 then verifies (via Brakedown) that v is the correct evaluation of the committed polynomials at r. together, steps 3 and 4 complete the sumcheck verification — step 3 checks algebraic consistency, step 4 checks that the prover did not lie about v.
-
-## cost breakdown
-
-the verifier uses `TensorMerkle` Brakedown: every queried column is authenticated by a Merkle path against the commitment root, so hashing — not field arithmetic — dominates. see [[performance]] for the full component breakdown; summary:
-
-| configuration | constraints | description |
-|---|---|---|
-| Layer 1 only (no jets) | ~600,000 | Merkle verification is ~83% of this |
-| with jets | ~70,000 | `merkle_verify` jet gives Merkle checks a 10× reduction |
-
-a Merkle-free design (recursive Brakedown, targeting ~825 constraints generic / ~89 with algebraic Fiat-Shamir) was analyzed but is blocked on a soundness gap in the recursive opening — see [[recursive-brakedown]] in roadmap/ and `lens` issue #6. those numbers are the target if that gap closes, not the current cost.
-
-## nox pattern decomposition
-
-every verifier operation maps to native [[nox]] patterns:
-
-| verifier operation | nox patterns | why native |
-|---|---|---|
-| field arithmetic | 5 (add), 6 (sub), 7 (mul), 8 (inv) | [[Goldilocks field]] is the native field |
-| hash computation | 15 (hash) / hash jet | [[hemera]] — Fiat-Shamir only, ~3 calls |
-| [[sumcheck]] verification | 5, 7, 9 | pure field arithmetic |
-| [[Brakedown]] Lens opening verification | 5, 7, 15 (hash) / hash jet | Merkle path checks per queried column, plus a field-arithmetic encoding-consistency check |
-
-no external primitive enters the verification loop. the verifier is closed under the nox instruction set. consequence: verify(proof) can itself be proven, and verify(verify(proof)) too, to arbitrary depth.
-
-Brakedown opening verification with `TensorMerkle` is hash-dominated: each queried column needs a Merkle path checked against the commitment root. hemera is used both for that and for the Fiat-Shamir transcript.
-
-## input/output format
+## input format
 
 ```
-INPUTS (public):
-  commitment:  [u8; 32]              // hemera digest
-  statement:   Statement {
-    program_hash: [u8; 32],           // hash of the nox program
-    input_hash:   [u8; 32],           // hash of public inputs
-    output_hash:  [u8; 32],           // hash of public outputs
-    focus_bound:  u64,                // maximum focus consumed
-  }
-
-PROOF:
-  sumcheck_polynomials: Vec<Vec<GoldilocksElement>>,
-  evaluation_value:     GoldilocksElement,
-  pcs_opening:          BrakedownProof,
-
-OUTPUT:
-  accept / reject
+ENVELOPE:
+  magic    "ZHENGPF1"
+  version  u16 LE (1)
+  profile  u8  (0 public, 1 succinct, 2 zk, 3 state-public, 4 machine, 5 recursive,
+           6 wrapped)
+  body     canonical: shortest LEB128, field values < p, flags 0|1,
+           lengths bounded before allocation, no trailing bytes
 ```
 
-## verification time
-
-| security level | verification time |
-|---|---|
-| 100-bit | ~290 μs |
-| 128-bit | ~1.0 ms |
-
-see [[performance]] for the derivation. verification time is dominated by Merkle-path checks over the queried columns, not by the trace size directly — but proof size (and so the number of columns to check) does grow with trace size, unlike the constant-size claim a Merkle-free lens would give.
-
-## recursive verification
-
-when the verifier runs as a nox program, its execution trace can be proven by zheng. the recursive proof attests that a previous proof was valid.
-
-```
-proof_A = zheng.prove(computation)            // ~|C| constraints
-proof_B = zheng.prove(zheng.verify(proof_A))  // ~70,000 constraints (with jets)
-proof_C = zheng.prove(zheng.verify(proof_B))  // ~70,000 constraints (with jets)
-```
-
-each recursion level costs ~70,000 constraints with jets (~600,000 without) — see [[performance]]. `commit` currently rejects axis/look openings for recursive composition (`CommitError::UnsupportedRecursiveOpening`); the native decider path works, recursive composition beyond that is release-blocked.
-
-with HyperNova folding, recursive composition drops further: ~30 field ops + 1 hemera hash per fold step, with one decider proof at the end. see [[recursion]] for folding-first composition.
-
-see [[transcript]] for Fiat-Shamir construction, [[sumcheck]] for the core protocol, [[Brakedown]] for the Lens opening verification, [[constraints]] for the AIR format, [[nox]] for the VM
+see [[execution]] for each body, [[transcript]] for Fiat–Shamir, [[sumcheck]] for the core protocol, [[constraints]] for the CCS format, [[soundness]] for the bounds.

@@ -3,7 +3,7 @@
 // crystal-type: source
 // crystal-domain: comp
 // ---
-//! Program capsule: a nox program serialized as one [[tape]] chunk.
+//! Program capsule: a nox program serialized as one [[tade]] chunk.
 //!
 //! A raw execution trace has no public reconstruction path (`TraceRow` columns
 //! are crate-private), so the capsule stores the *program* — formula text,
@@ -12,7 +12,7 @@
 //! Encoding: `(sigil::BAR, render::STRUCT)` chunk whose payload is
 //! `encode_nested` of `kv` pairs in fixed order (formula, object, budget).
 
-use tape::{encode_nested, kv, read_kv, render, sigil, Chunk, Reader};
+use tade::{Chunk, Reader, encode_nested, kv, read_kv, render, sigil};
 
 /// A nox program: what to run and with how much budget.
 pub struct Program {
@@ -21,7 +21,7 @@ pub struct Program {
     pub budget: u64,
 }
 
-/// Serialize a program to capsule bytes (one tape chunk frame).
+/// Serialize a program to capsule bytes (one tade chunk frame).
 pub fn encode(p: &Program) -> Vec<u8> {
     let payload = encode_nested(&[
         kv("formula", Chunk::text(&p.formula)),
@@ -44,9 +44,17 @@ pub fn decode(bytes: &[u8]) -> Result<Program, String> {
     };
 
     let formula = get("formula")?;
-    let object = get("object")?.parse::<u64>().map_err(|e| format!("bad object: {e}"))?;
-    let budget = get("budget")?.parse::<u64>().map_err(|e| format!("bad budget: {e}"))?;
-    Ok(Program { formula, object, budget })
+    let object = get("object")?
+        .parse::<u64>()
+        .map_err(|e| format!("bad object: {e}"))?;
+    let budget = get("budget")?
+        .parse::<u64>()
+        .map_err(|e| format!("bad budget: {e}"))?;
+    Ok(Program {
+        formula,
+        object,
+        budget,
+    })
 }
 
 #[cfg(test)]
@@ -55,7 +63,11 @@ mod tests {
 
     #[test]
     fn capsule_roundtrips() {
-        let p = Program { formula: "[15 [1 42]]".to_string(), object: 0, budget: 1000 };
+        let p = Program {
+            formula: "[15 [1 42]]".to_string(),
+            object: 0,
+            budget: 1000,
+        };
         let bytes = encode(&p);
         let back = decode(&bytes).unwrap();
         assert_eq!(back.formula, p.formula);
@@ -65,6 +77,6 @@ mod tests {
 
     #[test]
     fn decode_rejects_garbage() {
-        assert!(decode(b"not a tape frame at all").is_err() || decode(b"").is_err());
+        assert!(decode(b"not a tade frame at all").is_err() || decode(b"").is_err());
     }
 }

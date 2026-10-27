@@ -1,0 +1,115 @@
+[
+  {
+    "name": "default",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "--workspace",
+      "--release",
+      "--locked",
+      "--offline",
+      "--",
+      "--test-threads=2"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/zheng",
+    "started_ns": 1790904600059291000,
+    "ended_ns": 1790904608350916000,
+    "exit_code": 0,
+    "warning_count": 0,
+    "log_sha256": "1026f2146d43a5978cf41dc62754154459233c6a8e0712840e204e43f7ce7900",
+    "test_summaries": [
+      "test result: ok. 230 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.78s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.41s",
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "name": "component-all-features",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--release",
+      "--locked",
+      "--offline",
+      "--all-features",
+      "disclosed::memory",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/zheng",
+    "started_ns": 1790904608351156000,
+    "ended_ns": 1790904618781927000,
+    "exit_code": 0,
+    "warning_count": 0,
+    "log_sha256": "5ae08216491dde6d3383156cb8a5ac7dacdd8cb1d15b3ab592f7eafdf9ca152e",
+    "test_summaries": [
+      "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 226 filtered out; finished in 0.01s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s",
+      "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "name": "allocation-all-features",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--release",
+      "--locked",
+      "--offline",
+      "--all-features",
+      "--test",
+      "disclosed_memory_allocation",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/zheng",
+    "started_ns": 1790904618782122000,
+    "ended_ns": 1790904618821636000,
+    "exit_code": 0,
+    "warning_count": 0,
+    "log_sha256": "a9fd93bb32bc8fe0bf7e19c01aea4b7c10eb025bf34d572d59dc0d0d1182f853",
+    "test_summaries": [
+      "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+    ]
+  },
+  {
+    "name": "check",
+    "command": [
+      "/Users/master/.cargo/bin/rustup",
+      "run",
+      "1.89.0",
+      "cargo",
+      "check",
+      "--workspace",
+      "--all-targets",
+      "--release",
+      "--locked",
+      "--offline",
+      "--all-features"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-finalization-20261002/stream/zheng",
+    "started_ns": 1790904618821783000,
+    "ended_ns": 1790904620261743000,
+    "exit_code": 0,
+    "warning_count": 0,
+    "log_sha256": "df662302d88d2e0c0971fcb4d62d0c019af5568c36e6bf5481b1bc996fad869e",
+    "test_summaries": []
+  }
+]

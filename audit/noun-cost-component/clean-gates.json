@@ -1,0 +1,147 @@
+[
+  {
+    "name": "clean-base-default",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--release",
+      "--locked",
+      "--offline",
+      "--",
+      "--test-threads=4"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:42:32.032634+00:00",
+    "exit_code": 101,
+    "end": "2026-09-28T04:42:37.911429+00:00",
+    "wall_seconds": 5.878620583040174,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-base-default.log",
+    "log_sha256": "1f92073c124f78510f25dd1e7c56847d1ef885f5e419da341356cd4faab4fc47"
+  },
+  {
+    "name": "clean-check-all",
+    "argv": [
+      "cargo",
+      "check",
+      "--workspace",
+      "--all-targets",
+      "--all-features",
+      "--release",
+      "--locked",
+      "--offline"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:42:37.913291+00:00",
+    "exit_code": 0,
+    "end": "2026-09-28T04:42:39.833271+00:00",
+    "wall_seconds": 1.919992708018981,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-check-all.log",
+    "log_sha256": "eaf2211e0a163dde5e637757faad922e1451e9a128aa3eb9f8293617437d5707"
+  },
+  {
+    "name": "clean-test-default-targets",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--lib",
+      "--bins",
+      "--tests",
+      "--release",
+      "--locked",
+      "--offline",
+      "--",
+      "--test-threads=4"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:42:39.833532+00:00",
+    "exit_code": 0,
+    "end": "2026-09-28T04:42:49.584157+00:00",
+    "wall_seconds": 9.750729541992769,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-test-default-targets.log",
+    "log_sha256": "364103993883d22d023d8afb34e73d485d824ecdaf1d5266c607b1133fd5d35c"
+  },
+  {
+    "name": "clean-test-default-doc",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--doc",
+      "--release",
+      "--locked",
+      "--offline"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:42:49.585417+00:00",
+    "exit_code": 0,
+    "end": "2026-09-28T04:42:49.715328+00:00",
+    "wall_seconds": 0.12992499995743856,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-test-default-doc.log",
+    "log_sha256": "243c1eb4bec08e5b20089eb86ec55d4209b36230a20050f000abfe8e0199aa17"
+  },
+  {
+    "name": "clean-test-all-features",
+    "argv": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--release",
+      "--locked",
+      "--offline",
+      "--all-features",
+      "--",
+      "--test-threads=4"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:42:49.715593+00:00",
+    "exit_code": 0,
+    "end": "2026-09-28T04:51:11.879429+00:00",
+    "wall_seconds": 502.12847029196564,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-test-all-features.log",
+    "log_sha256": "49350c3e089147b8e77464bd692b23cbb470000c10e5390147707ec773665fa4"
+  },
+  {
+    "name": "clean-component-serde",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "zheng",
+      "--release",
+      "--locked",
+      "--offline",
+      "--features",
+      "serde",
+      "node_cost_tests",
+      "--",
+      "--nocapture"
+    ],
+    "cwd": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/family/zheng",
+    "env": {
+      "CARGO_TARGET_DIR": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/target-clean"
+    },
+    "start": "2026-09-28T04:51:11.879711+00:00",
+    "exit_code": 0,
+    "end": "2026-09-28T04:51:17.870367+00:00",
+    "wall_seconds": 5.990640000032727,
+    "log": "/Users/master/cyber/.worktrees/selfhost-0.4-full-bootstrap/measurements/node-cost/clean-component-serde.log",
+    "log_sha256": "6e9af307de70d954c4b517f65576828e0e4d345e7887e00218f4ccf898a33db9"
+  }
+]

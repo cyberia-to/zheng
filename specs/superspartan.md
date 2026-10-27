@@ -21,7 +21,7 @@ witness:      z ∈ F^n   (z = (1, x, w) where x is public input, w is private w
 satisfiability: Σⱼ cⱼ · ∏_{i ∈ Sⱼ} Mᵢ · z = 0
 ```
 
-CCS generalizes R1CS, Plonkish, and AIR. zheng uses the AIR encoding: each matrix M selects a register value at the current row (t) or next row (t+1). for example, the constraint r5_{t+1} = r3_t + r4_t (pattern 5, add) becomes:
+CCS generalizes R1CS, Plonkish, and AIR. zheng's shipped relation compiler ([[execution]]) emits a wire-level CCS per program (linear forms, a degree-7 row for hemera's S-box); the nox machine is proved by the AIR zerocheck of `rs/src/air` instead ([[machine]]). the legacy universal step ([[constraints]], feature `legacy`) used the AIR encoding: each matrix M selects a register value at the current row (t) or next row (t+1). for example, the constraint r5_{t+1} = r3_t + r4_t (pattern 5, add) becomes:
 
 ```
 M₁ selects r5 at row t+1:  M₁[t, :] · z = r5_{t+1}
@@ -86,22 +86,23 @@ constraint degree affects only field operation count in the prover (step 6), not
 
 | parameter | value |
 |---|---|
-| field | [[Goldilocks field]] (p = 2^64 − 2^32 + 1) |
-| PCS | [[Brakedown]] (multilinear mode) |
-| m | 2^n trace rows (up to 2^32) |
-| n | 16 registers (2^4 columns) |
-| t | number of constraint matrices (pattern-dependent) |
-| max degree | 7 (pattern 15: Poseidon2 round) |
+| field | [[Goldilocks field]] (p = 2^64 − 2^32 + 1) for the witness; Fp3 for every challenge |
+| PCS | WHIR over Reed–Solomon with hemera Merkle trees ([[lens]] `Whir`, id 1); `TensorRs` (id 2) decodable |
+| m | CCS rows of the compiled relation (`MAX_RELATION` = 2^20) |
+| n | committed witness variables `ℓ` (the verifier places the pinned half itself) |
+| t | number of constraint matrices (5 at hash.tri) |
+| max degree | 7 (the hemera S-box row) |
 | Fiat-Shamir | [[hemera]] sponge (see [[transcript]]) |
 
-the CCS matrices are sparse: each [[nox]] pattern touches at most 6 registers per row. sparsity determines the constant factor in the O(t · N) prover cost.
+the CCS matrices are sparse: linear forms allocate no wires and constants are hashed at compile time. sparsity determines the constant factor in the O(t · N) prover cost. this is the succinct profile (envelope profile 1, `spartan::iop`, `execution::succinct`); the zk profile runs it on a masked relation ([[execution]]).
 
 ## soundness
 
 | parameter | value |
 |---|---|
 | IOP soundness error | O(max_degree · log(m) / |F|) per sumcheck |
-| with Goldilocks (|F| ≈ 2^64) | negligible for practical trace sizes |
-| composition with Brakedown | total soundness = IOP error + PCS soundness error |
+| with Fp3 challenges (|F| = p³ ≈ 2^192) | ≤ 2^-173 at `m = 2^20` (the [[soundness]] ledger) |
+| with Goldilocks challenges (|F| ≈ 2^64) | 2^-56 at `m = 2^20` — too small for 128 bits; no profile uses it |
+| composition with the PCS | total soundness = IOP error + PCS soundness error (128.0 bits, set by WHIR) |
 
-see [[sumcheck]] for the core protocol, [[polynomial-commitment]] for the PCS, [[constraints]] for CCS encoding of nox patterns, [[CCS]] for the constraint framework, [[zheng]] for the full architecture
+see [[sumcheck]] for the core protocol, [[polynomial-commitments]] for the PCS, [[constraints]] for CCS encoding of nox patterns, [[CCS]] for the constraint framework, [[zheng]] for the full architecture

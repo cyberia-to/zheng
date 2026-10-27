@@ -82,8 +82,8 @@ after computing gᵢ, the prover receives challenge rᵢ and folds the table: ea
 
 ## role in cyber
 
-in the [[zheng]] pipeline, sumcheck replaces the zerofier division step of classical univariate starks. [[SuperSpartan]] uses sumcheck to verify AIR constraints: the sum of constraint polynomials over all trace rows must be zero. sumcheck reduces this to evaluating the trace polynomial at one random point, which [[Brakedown]] opens.
+in the [[zheng]] pipeline, sumcheck replaces the zerofier division of univariate systems: no quotient polynomial is committed. [[SuperSpartan]] uses sumcheck to verify the CCS of a compiled relation, and the machine's AIR zerocheck (`rs/src/air`) uses it over the trace rows: the `eq`-weighted sum of the constraint polynomials must be zero. sumcheck reduces this to evaluating the committed polynomial at one random point, which the PCS opens (WHIR, [[lens]]). challenges are drawn from Fp3.
 
 sumcheck also appears in LogUp lookup arguments for cross-index consistency in the [[cybergraph]] (see [[bbg-integration]]).
 
-see [[zheng]] for the full proof pipeline, [[SuperSpartan]] for the IOP, [[polynomial-commitment]] for the PCS
+see [[zheng]] for the full proof pipeline, [[SuperSpartan]] for the IOP, [[polynomial-commitments]] for the PCS

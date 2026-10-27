@@ -6,7 +6,9 @@ status: draft
 ---
 # ring-aware FHE proving
 
-specialized constraint encoding and jet library for proving FHE bootstrapping operations. not a third prover — the IOP (SuperSpartan + sumcheck) and composition (HyperNova) are unchanged. the ring structure of R_q is exploited at the constraint level through ring-structured CCS encodings and dedicated jets.
+> superseded: drafted against the retired homomorphic-folding composition and the expander-code lens; composition now means hash-based accumulation of Reed–Solomon claims (phase 3 of the [[soft3/proposals/proof-system-repair|proof-system repair]]), and its per-step costs are not measured yet.
+
+specialized constraint encoding and jet library for proving FHE bootstrapping operations. not a third prover — the IOP (SuperSpartan + sumcheck) and composition (hash-based accumulation, phase 3) are unchanged. the ring structure of R_q is exploited at the constraint level through ring-structured CCS encodings and dedicated jets.
 
 depends on [[goldilocks-fhe]]: mudra choosing q = Goldilocks prime makes all R_q operations native nebu NTT.
 
@@ -21,7 +23,7 @@ TFHE bootstrapping refreshes ciphertext noise. four phases, each with a differen
 | key switching | matrix × vector over F_p | F_p (matrix) | Ten |
 | modulus switching | rescale coefficients | F_p (field) | Tri |
 
-bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (Brakedown or Binius). HyperNova folds across boundaries.
+bootstrapping is a cross-language computation. each phase proves in its native algebra via the appropriate lens backend (Reed–Solomon/WHIR over Goldilocks; Binius for F₂ remains research). the phases meet in one accumulator: each phase's evaluation claims are accumulated, and one decider closes the whole bootstrapping.
 
 ## where generic proving wastes work
 
@@ -69,11 +71,11 @@ generic:     per-operation range check
              n coefficients × m operations = 64nm constraints
 
 ring-aware:  running noise accumulator
-             fold noise bound through computation
+             accumulate the noise bound through the computation
              check once at end (decider)
-             cost: ~30 field ops per fold step
+             cost per step: one accumulation step (not yet measured)
 
-savings:     ~64nm / (30m) = ~2n per operation
+savings:     per-coefficient range checks replaced by one running bound
 ```
 
 ## jet library
@@ -98,30 +100,30 @@ fhe_bootstrap jets:
     cost: O(N × levels) binary constraints (1 each in F₂)
 
   noise_track(noise_bound, operation):
-    fold noise bound into running accumulator
+    accumulate the noise bound into the running accumulator
     check at bootstrapping boundary
-    cost: ~30 field ops per fold
+    cost: one accumulation step (not yet measured)
 ```
 
 ## cross-language bootstrapping flow
 
 ```
-step 1: gadget_decomp(ct)          → Bt (F₂, Binius)
-         fold into accumulator       ~766 F_p constraints
+step 1: gadget_decomp(ct)          → Bt (F₂, Binius — research)
+         accumulate claims
 
-step 2: blind_rotation(decomposed)  → Wav (F_p, Brakedown, ring-aware)
+step 2: blind_rotation(decomposed)  → Wav (F_p, RS/WHIR, ring-aware)
          ntt_batch jet               ~n × N constraints (batched)
-         fold into accumulator       ~766 F_p constraints
+         accumulate claims
 
-step 3: key_switch(rotated, ks)     → Ten (F_p, Brakedown)
+step 3: key_switch(rotated, ks)     → Ten (F_p, RS/WHIR)
          key_switch jet              ~k × log(N) constraints
-         fold into accumulator       ~766 F_p constraints
+         accumulate claims
 
-step 4: mod_switch(switched)        → Tri (F_p, Brakedown)
+step 4: mod_switch(switched)        → Tri (F_p, RS/WHIR)
          ~N constraints              (coefficient rescaling)
-         fold into accumulator       ~766 F_p constraints
+         accumulate claims
 
-total composition overhead: ~3,064 F_p constraints (4 boundary crossings)
+composition overhead: four accumulation steps (cost not yet measured)
 total computation: dominated by step 2 (blind rotation)
 ```
 
@@ -130,18 +132,18 @@ total computation: dominated by step 2 (blind rotation)
 computing hemera homomorphically (FHE-friendly hashing) is a separate concern from proving FHE:
 
 ```
-hemera multiplicative depth: 40 (x⁻¹ S-box, 16 partial rounds)
-FHE noise growth:               5.4× less per hemera evaluation
+hemera multiplicative depth: 180 (hemera 0.4: x⁷ in every round, 60 rounds × depth 3)
+FHE noise growth:               to re-derive for 0.4 (5.4× was the 0.3 inverse layer)
 bootstraps needed:              fewer → faster overall pipeline
 ```
 
-the ring-aware jets prove that a hemera evaluation under FHE was computed correctly. hemera's reduced depth means the noise tracking accumulator triggers bootstrapping less often.
+the ring-aware jets prove that a hemera evaluation under FHE was computed correctly. the depth sets how often the noise tracking accumulator triggers bootstrapping.
 
 ## open questions
 
-1. **ring-structured CCS formalization**: encoding R_q operations as CCS matrices with ring structure. the "batched NTT" constraint needs a concrete CCS representation showing where the savings come from
-2. **permutation argument for automorphisms**: LogUp permutation check in the key switching context. the permutation is algebraically structured (Galois group) — can this structure reduce the LogUp cost further?
-3. **noise model precision**: the running noise accumulator tracks worst-case noise. if the actual noise is much lower (typical case), the accumulator over-provisions. adaptive noise tracking (tighten bounds when actual noise is measured) would improve throughput
-4. **multi-key FHE**: bootstrapping with multiple keys (threshold FHE for multi-party computation). each key introduces a separate automorphism group. jet recognition across key boundaries
+1. ring-structured CCS formalization: encoding R_q operations as CCS matrices with ring structure. the "batched NTT" constraint needs a concrete CCS representation showing where the savings come from
+2. permutation argument for automorphisms: LogUp permutation check in the key switching context. the permutation is algebraically structured (Galois group) — can this structure reduce the LogUp cost further?
+3. noise model precision: the running noise accumulator tracks worst-case noise. if the actual noise is much lower (typical case), the accumulator over-provisions. adaptive noise tracking (tighten bounds when actual noise is measured) would improve throughput
+4. multi-key FHE: bootstrapping with multiple keys (threshold FHE for multi-party computation). each key introduces a separate automorphism group. jet recognition across key boundaries
 
-see [[goldilocks-fhe]] for parameter choice, [[binius-pcs]] for binary gadget decomposition, [[proof-horizons]] for composition strategy
+see [[goldilocks-fhe]] for parameter choice, lens `specs/binary-tower.md` for the binary track (research, out of the stack), [[accumulation]] for composition

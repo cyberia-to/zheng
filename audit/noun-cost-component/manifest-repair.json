@@ -1,0 +1,6 @@
+{
+  "base": "c753f5ae055d3f4a43847877521f119d3b40dd39",
+  "file": "rs/Cargo.toml",
+  "sha256": "bdc301d45a6202266fdebc48d550742a4cac75013eb356d3c77b34b5e58ce0d2",
+  "diff": "diff --git a/rs/Cargo.toml b/rs/Cargo.toml\nindex 69e8781..730606e 100644\n--- a/rs/Cargo.toml\n+++ b/rs/Cargo.toml\n@@ -26,3 +26,7 @@ serde = [\"dep:serde\", \"nebu/serde\", \"lens/serde\"]\n [dev-dependencies]\n serde_json = \"1\"\n postcard = { version = \"1\", features = [\"alloc\"] }\n+\n+[[example]]\n+name = \"legacy_wire_cost\"\n+required-features = [\"serde\"]\n"
+}

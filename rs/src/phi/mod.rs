@@ -7,7 +7,8 @@
 //!
 //! Implements the core of [[provable consensus]]: sparse matrix-vector
 //! multiply as multi-row CCS, then diffusion / springs / heat / combine as
-//! compositions of SpMV, folded over iterations into a HyperNova accumulator.
+//! compositions of SpMV, folded over iterations into a legacy-fold
+//! accumulator (unsound; feature `legacy`, removed in phase 5).
 //!
 //! Domain-sized graphs (ε-support, not planetary N) are the intended prove
 //! target — same localization foculus uses for finality. Planetary 1.4B
