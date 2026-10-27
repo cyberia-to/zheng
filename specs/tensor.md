@@ -6,16 +6,18 @@ alias: tensor trace compression, tensor compression, streaming sumcheck
 ---
 # tensor
 
-tensor decomposition of structured nox traces. prover memory: O(N) → O(√N). prover time: O(N log N) → O(N) streaming. mobile devices become first-class provers.
+> proposal, not built: no code in `rs/src` implements tensor compression; the numbers below are estimates. the "hemera-native commitment" section is not a sound PCS (see there).
+
+tensor decomposition of structured nox traces. target: prover memory O(N) → O(√N), prover time O(N log N) → O(N) streaming, so mobile devices prove long traces.
 
 ## the observation
 
 nox traces have structure the prover currently ignores:
 
-1. **pattern repetition**: same pattern type in consecutive rows (64 rows of inv, 300 rows of hash). constraint selectors are locally constant
-2. **tree locality**: axis traversals follow tree paths. parent-child relationships span adjacent rows
-3. **column sparsity**: most patterns use 3-4 of 16 registers. unused registers are zero or carry-forward
-4. **memoization hits**: repeated sub-computations produce identical trace fragments
+1. pattern repetition: same pattern type in consecutive rows (64 rows of inv, 300 rows of hash). constraint selectors are locally constant
+2. tree locality: axis traversals follow tree paths. parent-child relationships span adjacent rows
+3. column sparsity: most patterns use 3-4 of 16 registers. unused registers are zero or carry-forward
+4. memoization hits: repeated sub-computations produce identical trace fragments
 
 ## tensor decomposition
 
@@ -64,18 +66,20 @@ total: r × N ≈ 32N hashes (vs N log N for standard Merkle-based PCS)
 for N = 2²⁰: 32M vs 20M hashes — comparable, but streaming
 ```
 
+a flat hash of the factors cannot be opened at one position: an opening against `C` would need every factor, and a column check against a flat hash is satisfiable by a prover who never touches `C` (soft3 `proposals/proof-system-repair.md` §A). a sound tensor commitment keeps a Merkle tree per factor (a local opening costs Θ(log n) digests in a hash-only system) and opens through the shipped Reed–Solomon PCS ([[lens]] WHIR); the hash counts above are a lower bound, not the cost of that commitment.
+
 ## mobile proving
 
 with O(√N) memory, a phone with 4 GB RAM can prove:
 - N = 2³⁰ traces (1B steps): needs ~32 × √(2³⁰) ≈ 1 MB
 - versus standard: 16 GB (impossible on phone)
 
-combined with accumulation (`accumulation.md`, `machine.md`, phase 3): the nox machine is one uniform step relation, and each step's Reed–Solomon evaluation claims are accumulated hash-based (batched by a sumcheck, one combined word committed, out-of-domain samples, a few query openings). the accumulator is one root plus a fixed number of claims, so the prover never materializes the full trace and its memory is bounded by the step relation plus the accumulator; the decider is one WHIR opening at the end. measured prover memory and time on a phone: not measured (desktop: 2^14-row segments, ~3 GB resident for a 1.57M-cycle run, `audit/accumulation-2026-10.md`).
+combined with accumulation ([[accumulation]], [[machine]], built): the nox machine is one uniform step relation, and each step's Reed–Solomon evaluation claims are accumulated hash-based (batched by a sumcheck, one combined word committed, out-of-domain samples, a few query openings). the accumulator is one root plus a fixed number of claims, so the prover never materializes the full trace and its memory is bounded by the step relation plus the accumulator; the decider is one WHIR opening at the end. measured prover memory and time on a phone: not measured (desktop: 2^14-row segments, ~3 GB resident for a 1.57M-cycle run, `audit/accumulation-2026-10.md`).
 
 ## open questions
 
-1. **empirical tensor rank**: what is r for real nox workloads? cyberlink insertion (many hemera hashes → pattern 15 dominates → low rank?), recursive verification (mixed patterns → higher rank?), tri-kernel SpMV (regular structure → low rank?)
-2. **rank bound guarantee**: is r ≤ 32 provable for nox traces, or only empirically observed? a theoretical bound would strengthen the claim
-3. **checkpointing strategy**: √N checkpoints at equal intervals, or adaptive placement at pattern boundaries? pattern-aware checkpointing may reduce re-execution cost
+1. empirical tensor rank: what is r for real nox workloads? cyberlink insertion (many hemera hashes → pattern 15 dominates → low rank?), recursive verification (mixed patterns → higher rank?), tri-kernel SpMV (regular structure → low rank?)
+2. rank bound guarantee: is r ≤ 32 provable for nox traces, or only empirically observed? a theoretical bound would strengthen the claim
+3. checkpointing strategy: √N checkpoints at equal intervals, or adaptive placement at pattern boundaries? pattern-aware checkpointing may reduce re-execution cost
 
-see [[sumcheck]] for the base protocol, `accumulation.md` for step-by-step accumulation, [[binius]] for binary workloads
+see [[sumcheck]] for the base protocol, [[accumulation]] for step-by-step accumulation, [[binius]] for binary workloads

@@ -25,9 +25,9 @@ squeeze (wide rule, Transcript::new):
   limb_j = (24 XOF bytes as a 192-bit integer) mod p           // one per output limb
 ```
 
-`squeeze_challenge` returns one Goldilocks limb; `squeeze_fp3` returns three limbs as an element of Fp3 = F_p[t]/(t³ − t − 1). each limb is within `p / 2^192 < 2^-128` of uniform (exactly uniform for hemera's canonical-limb output). every production profile — succinct, zk (veil) — draws its challenges with `squeeze_fp3`: the challenge set has `p³ ≈ 2^192` elements.
+`squeeze_challenge` returns one Goldilocks limb; `squeeze_fp3` returns three limbs as an element of Fp3 = F_p[t]/(t³ − t − 1). each limb is within `p / 2^192 < 2^-128` of uniform (exactly uniform for hemera's canonical-limb output). every production profile — succinct, zk (veil) — draws its challenges with `squeeze_fp3`: the challenge set has `p³ ≈ 2^192` elements. the machine, IVC and wrap proofs (profiles 4–6) run a field-native transcript instead (`recursion::sponge`: an overwrite duplex over hemera's permutation whose challenges are output limbs, exactly uniform on F_p, so a circuit can recompute it; [[recursion]], [[soundness]] § recursion).
 
-`Transcript::new_v1` reproduces the 0.4.0 rule (the first 8 bytes of one 32-byte squeeze, Goldilocks challenges) only to read retired artifacts (public v2, state v1) and the legacy path for one release. Goldilocks challenges give `≈ 2^-56` sumcheck soundness at 2^20 — too small for any 128-bit claim, which is why the production profiles use Fp3.
+`Transcript::new_v1` reproduces the earlier challenge rule (the first 8 bytes of one 32-byte squeeze, Goldilocks challenges) only to read retired artifacts (public v2, state v1) and the legacy path for one release. Goldilocks challenges give `≈ 2^-56` sumcheck soundness at 2^20 — too small for any 128-bit claim, which is why the production profiles use Fp3.
 
 ## domain separation
 
@@ -66,7 +66,7 @@ round polynomials travel without their linear coefficient; the verifier restores
 | digest | 32 bytes (4 limbs): 2^128 classical collision (birthday on p²), ~2^85 quantum (BHT) |
 | domain separation | per-phase prefix absorb |
 
-hemera 0.4 (hemera#15, frozen 2026-10-16) keeps the 32-byte digest; longer identity digests stay recorded as an option in hemera's specs. in-proof Merkle nodes stay 32 bytes.
+this crate pins hemera 0.3.1; the frozen hemera 0.4 (hemera#15, 2026-10-16; zheng's move to it is the draft sweep zheng#69 / #73) keeps the 32-byte digest; longer identity digests stay recorded as an option in hemera's specs. in-proof Merkle nodes stay 32 bytes.
 
 ## soundness
 

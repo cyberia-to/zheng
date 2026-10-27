@@ -186,7 +186,7 @@ or zero-knowledge claim automatically. Actual compiler census and bounded
 measurements decide whether either representation meets the workload limits.
 
 Joy integration binds exact program, structured subject, output topology,
-compiler JOB1 and extracted ART1. The full [SH7 gate](../../../trident/reference/self-hosting.md#sh7-native-proof-relation)
+compiler JOB1 and extracted ART1. The full [SH7 gate](https://github.com/cyberia-to/trident/blob/release/0.4/reference/self-hosting.md#sh7-native-proof-relation)
 requires production dispatch, the actual SH3/SH4 workload, complete bindings,
 declared limits, measurements and independent adversarial verification; a small
 pilot alone is insufficient. Proofs of both complete frozen self-builds are SH8.

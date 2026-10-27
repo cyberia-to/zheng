@@ -2,11 +2,11 @@
 tags: cyber, cip
 crystal-type: entity
 crystal-domain: cyber
-alias: stark verification, nox starks, stark proofs, proof system, cyber proofs
+alias: proof types, proof taxonomy, proof system, cyber proofs
 ---
 # proofs
 
-every action in [[cyber]] produces a [[zheng]] proof. one proof system. one hash. one field. the table below catalogs every proof type the protocol generates.
+every action in [[cyber]] produces a [[zheng]] proof. one proof system. one hash. one field. the table below catalogs every proof type the protocol generates. the constraint counts are design estimates, not measurements, and count a hemera permutation at ~1,440 constraints (the frozen hemera 0.4); this crate's gadgets are hemera 0.3.1 (~736 a permutation) until the sweep zheng#69 / #73 lands. measured profiles: [the profile table](README.md).
 
 ```
 PROOF TAXONOMY
@@ -39,7 +39,7 @@ execution             │ correct execution          │ nox program ran correct
 data structures       │ Merkle inclusion           │ element exists in tree                   │ ~9,600
                       │ polynomial inclusion       │ element exists in committed polynomial   │ ~1,000
                       │ non-membership             │ element is absent from set               │ ~3,000
-                      │ Brakedown low-degree        │ committed polynomial has bounded degree  │ ~10,000
+                      │ PCS low-degree (WHIR)       │ committed polynomial has bounded degree  │ ~10,000
 ──────────────────────┼───────────────────────────┼─────────────────────────────────────────┼────────────
 storage &             │ storage                    │ content bytes exist on specific node     │ ~5,000
 availability          │ size                       │ claimed content size matches actual bytes │ ~2,000
@@ -67,7 +67,7 @@ Property          │ SNARK         │ zheng (multilinear)
 ──────────────────┼───────────────┼─────────────────────
 Trusted setup     │ Required      │ NOT REQUIRED
 Quantum resistant │ No            │ Yes
-Proof size        │ ~200 bytes    │ 16.1-71 KB measured
+Proof size        │ ~200 bytes    │ 16.8–64 KB measured (profile 1 hash.tri to Merkle depth 32; profile 6 ≤ 64,213 B)
 Security basis    │ Discrete log  │ Hash only
 Field compatible  │ Specific      │ Any (Goldilocks)
 Prover (constr.)  │ O(N log N)    │ O(N) linear
@@ -86,14 +86,15 @@ nox execution → trace (2ⁿ steps × registers)
   → verifier: check sumcheck transcript + PCS_verify(C, r, v, π)
 ```
 
-the [[nox]] VM's sixteen reduction patterns map to AIR transition constraints — each pattern becomes a polynomial equation relating register state before and after a reduction step. [[SuperSpartan]] handles AIR natively via CCS (Customizable Constraint Systems), with linear-time prover and logarithmic-time verifier.
+the [[nox]] VM's reduction patterns map to AIR transition constraints — each pattern becomes a polynomial equation relating register state before and after a reduction step. [[SuperSpartan]] handles AIR natively via CCS (Customizable Constraint Systems), with linear-time prover and logarithmic-time verifier.
 
 see [[zheng]] for the concrete implementation (AIR from nox, constraint budget, Hemera as zheng hash, recursive composition, BBG integration). see [[stark]] for the general architecture (AIR, CCS, SuperSpartan, Whirlaway).
 
 ### self-verification
 
 ```
-THEOREM: The zheng verifier for nox is expressible as a nox program.
+CLAIM: the zheng verifier for nox is expressible as a nox program
+(the Trident second verifier; not built).
 
 zheng verification requires:
   1. Field arithmetic (patterns 5, 7, 8)
@@ -101,15 +102,16 @@ zheng verification requires:
   3. Sumcheck verification (patterns 5, 7, 9 — field ops only)
   4. WHIR opening verification (pattern 15 for Merkle paths + conditionals + poly_eval)
 
-All are nox-native. QED.
+All are nox-native.
 
 CONSEQUENCE:
   verify(proof) can itself be proven
-  This enables recursive proof composition
-  (constant size in the number of steps comes from accumulation, not from this)
+  This enables composition across domains and versions
+  (constant size in the number of steps comes from IVC — the accumulation
+   verifier inside the step relation, profiles 5 and 6 — not from this)
 ```
 
-the system closes on itself. no trusted external verifier remains.
+built today: the step verifier and the final verifier as circuits of the recursion (profiles 5 and 6, [[recursion]]). the whole verifier as a nox program is roadmap (soft3 `proposals/proof-system-repair.md` §3–4).
 
 ### verifier complexity
 
@@ -124,16 +126,18 @@ zheng VERIFIER COMPONENTS       │ Layer 1 only │ With Layer 3 jets
 ────────────────────────────────┼──────────────┼──────────────────
 TOTAL                           │   ~600,000   │   ~70,000
 
-~8.5× reduction. This cost is CONSTANT regardless of what was proven.
-Layer 3 jets make recursive composition practical.
+estimates for a verifier as a nox program (not built), ~8.5× with jets;
+the cost is the same whatever was proven.
 ```
 
 ### recursive composition
 
 ```
 Level 0: Prove computation C → proof π₀
-Level 1: Prove verify(π₀) → proof π₁ (goal ≤ 64 KB; built as IVC over the nox machine, `recursion.md`: measured ≈ 283 KB constant in steps, `audit/recursion-2026-10.md`)
-Level 2: Prove verify(π₁) → proof π₂ (same size)
+Level 1: Prove verify(π₀) → proof π₁ (built as IVC over the nox machine,
+         profile 5, constant in steps; the wrap chain, profile 6, makes it
+         ≤ 64,213 B over every transcript — recursion.md)
+Level 2: Prove verify(π₁) → proof π₂ (same size; composition — not built)
 
 AGGREGATION:
   N transactions → N proofs
@@ -152,7 +156,7 @@ neuron_secret → Hemera(neuron_secret) = neuron_address
 auth = zheng_proof(∃ x : Hemera(x) = neuron_address)
 ```
 
-the preimage proof costs ~1,440 constraints. the full lock script verification (with [[nox]] jets) costs ~70,000 constraints. programmable lock scripts extend this to multisig, timelocks, delegation, and recovery — all via the same mechanism.
+the preimage proof costs ~1,440 constraints (one hemera 0.4 permutation). the full lock script verification (with [[nox]] jets) costs ~70,000 constraints. programmable lock scripts extend this to multisig, timelocks, delegation, and recovery — all via the same mechanism.
 
 see [[cyber/identity]] for the full specification.
 
@@ -160,8 +164,8 @@ see [[cyber/identity]] for the full specification.
 
 a [[neuron]] proves it is valid, has sufficient [[stake]], and has not double-linked — without revealing which neuron it is. the circuit (~13,000 constraints) covers:
 
-1. identity: `Hemera(secret) ∈ neuron_set` (~1,000 via Brakedown evaluation)
-2. stake: `stake(Hemera(secret)) ≥ weight` (~1,000 via Brakedown evaluation)
+1. identity: `Hemera(secret) ∈ neuron_set` (~1,000 via a PCS evaluation)
+2. stake: `stake(Hemera(secret)) ≥ weight` (~1,000 via a PCS evaluation)
 3. nullifier: `nullifier == Hemera(secret ∥ source ∥ target)` (~1,440)
 4. freshness: `nullifier ∉ spent_set` (~3,000 via SWBF check)
 
@@ -180,7 +184,7 @@ the graph sees edges and weights. the graph does not see authors. see [[cyber/id
 π_chain = zheng(verify(π₁) ∧ verify(π₂) ∧ verify(π₃) ∧ verify(π_B))
 ```
 
-one proof (goal ≤ 64 KB; not measured — needs recursion, not built) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
+one proof (goal ≤ 64 KB; not built — no delivery statement is defined; the constant-size machinery is profile 6) covers the entire route. O(1) verification regardless of hop count. the sender publishes π_chain as a [[particle]] in the [[cybergraph]]. anyone can verify delivery happened. no one can read the message or learn the route.
 
 relays earn [[focus]] for proven delivery. no proof, no payment.
 
@@ -213,7 +217,7 @@ state root update            │ ~9,600       │ ~1,000
 completeness (nothing hidden)│ impossible   │ ~10,000
 ```
 
-polynomial commitments use [[Brakedown]] as a multilinear PCS. Brakedown proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[zheng]] pipeline itself.
+polynomial commitments use WHIR (Reed–Solomon codes, hemera Merkle trees; [[lens]]) as a multilinear PCS; bbg's `QueryProof` still rides the legacy Brakedown opening until it migrates (soft3 `proposals/proof-system-repair.md` §5, phase 2). PCS proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[zheng]] pipeline itself.
 
 ## storage and availability proofs
 
@@ -311,7 +315,7 @@ a [[cyberank]] distribution π* is a simulation-proof of collective [[relevance]
 
 ## location proofs
 
-[[proof_of_location]] provides cryptographically verifiable geolocation without trusted anchors, GPS, or certificate authorities. the construction uses RTT measurements across declared transmission media, [[verifiable delay functions]], and [[Merkle]] causal clocks. nodes self-organize into a 3D coordinate embedding via multidimensional scaling, calibrated to Earth's circumference.
+[[proof of location]] provides cryptographically verifiable geolocation without trusted anchors, GPS, or certificate authorities. the construction uses RTT measurements across declared transmission media, [[verifiable delay functions]], and [[merklezation|Merkle]] causal clocks. nodes self-organize into a 3D coordinate embedding via multidimensional scaling, calibrated to Earth's circumference.
 
 | proof | what it guarantees | mechanism |
 |---|---|---|
@@ -319,9 +323,9 @@ a [[cyberank]] distribution π* is a simulation-proof of collective [[relevance]
 | medium declaration | link uses claimed transmission medium | RTT consistency cross-check against canonical propagation speeds |
 | observer bootstrap | absolute coordinates from single origin | one observer asserts position (A1), spherical constraint forces unique embedding |
 
-[[sybil attacks|Sybil]] resistance is physical: faking RTT consistency with a dense global mesh across multiple media is impossible. economic enforcement via latency-weighted relay fees makes honest reporting a [[dominant strategy]] [[equilibrium]] — stronger than [[nash equilibrium]].
+[[sybil attacks|Sybil]] resistance is physical: faking RTT consistency with a dense global mesh across multiple media is impossible. economic enforcement via latency-weighted relay fees makes honest reporting a dominant strategy [[equilibrium]] — stronger than nash equilibrium.
 
-see [[proof_of_location]] for the full specification.
+see [[proof of location]] for the full specification.
 
 ## the proof stack
 
@@ -334,14 +338,14 @@ see [[proof_of_location]] for the full specification.
 │                     inference, anonymity, storage,       │
 │                     range, ownership                     │
 ├─────────────────────────────────────────────────────────┤
-│  recursive          proof aggregation, composition       │
-│                     O(1) verification for O(N) proofs    │
+│  recursive          IVC + wrap chain (profiles 5, 6);    │
+│                     ≤ 64,213 B for any number of steps   │
 ├─────────────────────────────────────────────────────────┤
 │  IOP               SuperSpartan (CCS/AIR via sumcheck)  │
 │                     linear-time prover, log-time verifier│
 ├─────────────────────────────────────────────────────────┤
 │  PCS               WHIR (multilinear, lens)             │
-│                     hash.tri: 16.1 KB, 7.96 ms verify    │
+│                     hash.tri: 16.8 KB, verify < 10 ms    │
 ├─────────────────────────────────────────────────────────┤
 │  primitives         Hemera (hash), nox (VM),             │
 │                     Goldilocks field (arithmetic)        │
@@ -350,4 +354,4 @@ see [[proof_of_location]] for the full specification.
 
 one hash. one VM. one field. one IOP. one PCS. every proof in [[cyber]] — from a single [[cyberlink]] to a chained delivery receipt to a trillion-parameter neural network inference — reduces to: run a [[nox]] program, commit the witness via WHIR, verify constraints via [[sumcheck]], produce a [[zheng]] proof.
 
-see [[cyber/identity]] for authentication and anonymity, [[cyber/communication]] for delivery proofs, [[proof_of_location]] for anchor-free geolocation, [[BBG]] for polynomial commitment architecture, [[trident]] for verifiable AI, [[cybics]] for proof by simulation, [[cyber/security]] for formal guarantees
+see [[cyber/identity]] for authentication and anonymity, [[cyber/communication]] for delivery proofs, [[proof of location]] for anchor-free geolocation, [[BBG]] for polynomial commitment architecture, [[trident]] for verifiable AI, [[cybics]] for proof by simulation, [[cyber/security]] for formal guarantees

@@ -51,7 +51,7 @@ public selected cost, not worst-case cost.
 ## Complete statement binding
 
 R1CS/CCS alone is homogeneous: an all-zero vector satisfies its rows. A complete
-statement **must additionally pin coordinate zero to one**, zero coordinate to
+statement must additionally pin coordinate zero to one, zero coordinate to
 zero, all input coordinates, selected cost, and every output carrier tag and
 payload under the same witness commitment. `verify_witness` does those checks
 and evaluates every matrix row; it is a transparent local checker, not a proof.
@@ -75,7 +75,7 @@ commitment integration, and proof-level adversarial tests.
 
 ## Structural identity consumers
 
-Structural identity uses **the existing native Hemera**, not a replacement hash
+Structural identity uses the existing native Hemera, not a replacement hash
 or altered parameters. Each atom payload has a constrained canonical 64-bit
 decomposition: Boolean bits reconstruct the field value, and high32=0xffffffff
 requires low32=0, excluding the alternate representatives at or above p.
@@ -87,14 +87,15 @@ left/right digest limbs in lanes0..7 with FLAG_PARENT=2 in lane9. Native nox
 uses is_root=false: FLAG_ROOT is deliberately not set even for the top noun.
 
 Every permutation uses Hemera's 16-lane linear layers, pinned round constants,
-the pinned profile's rounds — hemera 0.3 when this contract was written:
+the pinned profile's rounds — hemera 0.3.1, the version this crate pins:
 eight full x^7 rounds and sixteen inverse partial rounds, inverse at zero
-constrained to zero; hemera 0.4 (frozen 2026-10-16) has twelve full and
-forty-eight partial x^7 rounds and no inverse witness. No runtime native hash call supplies unconstrained witness
+constrained to zero; the frozen hemera 0.4 (2026-10-16, zheng's draft sweep
+zheng#69 / #73) has twelve full and forty-eight partial x^7 rounds and no
+inverse witness. No runtime native hash call supplies unconstrained witness
 digest values; native code is used only for fixed linear-layer coefficients.
 
 A fixed atom/pair tag chooses that digest construction. A symbolic tag computes
-both alternatives and selects **all four** coordinates under the constrained tag.
+both alternatives and selects all four coordinates under the constrained tag.
 Absent child carriers stay canonical atom-zero. Stable carrier IDs and operand
 wire identities memoize repeated symbolic hashing; caches depend on neither
 witness values nor claimed output. Existing gate/node limits still apply, so a
@@ -103,7 +104,7 @@ large otherwise valid noun may fail compilation with Limit.
 Axis0 returns [[h0 h1] [h2 h3]], activity-masked as every other result. Pattern15
 evaluates its argument and adds a plain permutation of its structural digest in
 lanes0..3, all other lanes zero; its own native cost is25. Equality evaluates both
-nouns and returns0 iff **all four structural digest limbs match**, otherwise1.
+nouns and returns0 iff all four structural digest limbs match, otherwise1.
 Each limb difference has a constrained nonzero bit; their Boolean OR produces
 the inequality result. This follows native identity semantics even for atoms,
 without substituting field-value equality or comparing only digest limb0.
@@ -130,7 +131,7 @@ any canonical32-bit shift amount >=32 produces0 (it is not reduced modulo32).
 All result carriers remain activity-masked. These range/type failures follow
 native execution semantics, not compile-time shape rejection.
 
-Opcode2 is supported when its RHS formula is **syntactically `[1 continuation]`**.
+Opcode2 is supported when its RHS formula is syntactically `[1 continuation]`.
 The left formula is evaluated on the original subject; `continuation` is then
 compiled against that actual symbolic result, including its optional topology.
 The RHS quote is a verifier-known constant with cost1; no prover-chosen formula

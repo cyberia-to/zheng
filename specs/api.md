@@ -37,7 +37,9 @@ statement.verify_certificate(&certificate, &evidence)?;
 ```rust
 use zheng::execution::succinct;
 
-let (statement, proof) = succinct::prove_default(&program, &input, budget)?;   // WHIR, shipped parameters
+let (statement, proof) = succinct::prove_default(&program, &input, budget)?;   // WHIR, device_params by size
+let key = succinct::ProvingKey::new(&program, input.len())?;                  // held key: compile once per program
+let (statement, proof) = succinct::prove_with_key(&key, &program, &input, budget, succinct::device_params)?;
 let (statement, proof) = succinct::prove::<P>(&params, &program, &input, budget)?;
 succinct::verify::<P>(&statement, &proof)?;
 succinct::verify_with::<P>(&statement, &proof, Some(&vk))?;
@@ -45,7 +47,7 @@ succinct::prove_state::<P>(&params, &program, &input, budget, root_in_subject, &
 succinct::verify_state::<P>(&statement, &proof, &evidence)?;
 ```
 
-`P: SuccinctPcs` is the lens PCS (`Whir`, id 1 — shipped; `TensorRs`, id 2). `succinct::params_for` gives the shipped WHIR parameters (rate 1/64, folding factor 4, 24 grinding bits). `succinct::admit` rejects any parameter set lens proves below 128 bits. measured: hash.tri 16,148 B envelope, verify 7.96 ms; 2^20 relation 71,081 B ([bake-off](../audit/succinct-profile-2026-10.md)).
+`P: SuccinctPcs` is the lens PCS (`Whir`, id 1 — shipped; `TensorRs`, id 2, the bake-off loser, still decodable). `prove_default` / `prove_with_key` take `succinct::device_params` (rate 1/64; folding 4 up to 2^16 committed variables and 5 above; grinding 16 bits up to 2^17, 22 at 2^18, 24 beyond); `succinct::params_for` is the fixed set (rate 1/64, folding 4, 24 grinding bits) the machine, IVC and wrap keys build on. `succinct::admit` rejects any parameter set lens proves below 128 bits. measured with device parameters: hash.tri 16,756 B, merkle-32 64,071 B (soft3 `audit/proof-latency-2026-10.md`); at `params_for`: hash.tri 16,148 B envelope, verify 7.96 ms; 2^20 relation 71,081 B ([bake-off](../audit/succinct-profile-2026-10.md)).
 
 ## zk (envelope profile 2)
 
@@ -81,7 +83,7 @@ let envelope = Envelope::from_bytes(&bytes)?;   // canonical decoding only
 envelope.verify(evidence.as_ref())?;            // runs the profile's verifier
 ```
 
-`Envelope::{Public, Succinct, Zk, StatePublic, Machine, Recursive, Wrapped}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge, ProgramMismatch}`. profile 4 (machine proof) lands with accumulation (`accumulation.md`, `machine.md`, phase 3 in this release); API: `machine::{prove, verify}`, `Envelope::Machine`; goal ≤ 64 KB, constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
+`Envelope::{Public, Succinct, Zk, StatePublic, Machine, Recursive, Wrapped}`; `EnvelopeError::{BadMagic, UnsupportedVersion, UnknownProfile, Truncated, TrailingBytes, NonCanonical, TooLarge, ProgramMismatch}`. profile 4 (machine proof, [[accumulation]], [[machine]]); API: `machine::{prove, verify}`, `Envelope::Machine`; not constant in steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`).
 
 ### the program of profiles 4–6
 
@@ -123,7 +125,7 @@ Envelope::from_bytes_for(&bytes, &tokens)?.verify_program(&tokens, None)?;  // k
 body:
 
 ```text
-format     u8      RECURSIVE_FORMAT = 2 (2: the program by its digest)
+format     u8      RECURSIVE_FORMAT = 3 (2: the program by its digest; 3: every IVC tree 4-ary)
 params     8 B     WHIR header; decoding admits only recursive::ADMITTED
                    (rate 1/16 — the shipped recursive::params() — or 1/64;
                    folding 4, 24 grinding bits, steps of 2^15 rows)
@@ -154,15 +156,21 @@ Envelope::from_bytes_for(&bytes, &tokens)?.verify_program(&tokens, None)?; // fi
 body:
 
 ```text
-format     u8      WRAPPED_FORMAT = 2 (2: the program by its digest)
-chain      8 B     the IVC WHIR header (recursive::params(): rate 1/16)
+format     u8      WRAPPED_FORMAT = 6 (2: the program by its digest; 3: the
+                   chain wrap::SHIPPED, final-level message digests; 4: the
+                   final level at 26 grinding bits; 5: inner keys over the
+                   base field; 6: the IVC at rate 1/8 under 4-ary trees)
+chain      8 B     the IVC WHIR header (rate 1/8, ivc::SHIPPED_RATE; 16
+                   grinding bits, ivc::SHIPPED_POW)
            u8 L    wrap levels (3), then per level 8 B WHIR header and
                    u8 mode (0 inner, 1 final); decoding admits only
-                   wrapped::chain(): 1/64 inner · 1/256 inner, 30 grinding
-                   bits · 1/256 final, 30 grinding bits (folding 4)
+                   wrapped::chain() = wrap::SHIPPED "4i:16,7i:22,9f:26":
+                   1/16 inner, 16 grinding bits · 1/128 inner, 22 ·
+                   1/512 final, 26 (folding 4)
 statement          the machine statement (program digest), exactly as
                    profiles 4 and 5
-proof      varint n ≤ MAX_PROOF_BYTES (128 KiB), then n bytes of
+proof      varint n ≤ MAX_PROOF_BYTES (65,536 = wrap::MAX_FINAL_BYTES; the
+           admitted key's bound is 64,213 B), then n bytes of
            FinalProof::to_bytes: u8 log_rows · u64 start · u64 segments ·
            chain · the deferred nox-public claim (point, value) · the
            final wrap proof; fixed-width LE, canonical limbs (< p)

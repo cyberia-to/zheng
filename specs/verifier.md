@@ -33,7 +33,7 @@ VERIFY_CERTIFICATE(statement S, certificate c) -> accept/reject:
   return accept
 ```
 
-soundness error 0 for the compiled relation; size and verification are linear in the witness, and the witness is disclosed. measured: hash.tri 6,463 B envelope.
+soundness error 0 for the compiled relation; size and verification are linear in the witness, and the witness is disclosed. measured: hash.tri 6,463 B (`audit/succinct-profile-2026-10.md`).
 
 ## profile 3 — state-public v3
 
@@ -58,15 +58,15 @@ VERIFY_SUCCINCT(statement S, proof π) -> accept/reject:
   return accept
 ```
 
-shipped PCS: WHIR, rate 1/64, folding factor 4, 24 grinding bits; 128 proven bits, set by the PCS. measured (`audit/succinct-profile-2026-10.md`): hash.tri 16,148 B envelope, verify 7.96 ms; synthetic 2^20 relation 71,081 B, verify 270 ms. the verify goal (≤ 1 ms) is not met yet: hemera speed in the opening, the unstructured Spartan verifier and the relation recompile dominate; a cached verifying key removes the recompile.
+shipped PCS: WHIR at rate 1/64. the default prover (`succinct::device_params`) folds by 4 up to 2^16 committed variables and by 5 above, and grinds 16 bits up to 2^17, 22 at 2^18, 24 beyond; `succinct::params_for` (folding 4, 24 grinding bits) is the fixed set the machine, IVC and wrap keys build on. the verifier reads the parameters from the proof and admits any set lens proves at ≥ 128 bits. measured with device parameters (soft3 `audit/proof-latency-2026-10.md`): hash.tri 16,756 B, verify < 10 ms; Merkle membership depth 32 64,071 B, verify 310 ms; at `params_for` (`audit/succinct-profile-2026-10.md`): hash.tri 16,148 B envelope, verify 7.96 ms; synthetic 2^20 relation 71,081 B, verify 270 ms. the verify goal (≤ 1 ms) is not met yet: hemera speed in the opening, the unstructured Spartan verifier and the relation recompile dominate; a cached verifying key removes the recompile.
 
 ## profile 2 — zk (veil)
 
 as profile 1 on the masked relation (`veil::pad`), with Libra masks on both sumchecks and the opening replaced by one zero-knowledge linear test on a hiding RS tensor commitment (`veil::hiding`, masking rows, salted leaves). the verifier computes the pinned contribution `P` itself and checks one opened functional. 128.2 proven bits; honest-verifier statistical ZK, ZK in the ROM after Fiat–Shamir. measured (`audit/zk-profile-2026-10.md`): secret-preimage hash 63.9 KB, verify 10.0 ms (4.1 ms with a cached verifying key). scheme 1 (MPC-in-the-head, `ZHMITH01`) remains the linear-size fallback.
 
-## profile 4 — machine proof (phase 3)
+## profile 4 — machine proof
 
-lands with accumulation (`accumulation.md`, `machine.md`, in progress in this release): the nox machine is one uniform step relation; the prover accumulates RS evaluation claims step by step (ARC/WARP-style), and the verifier checks the final accumulator with ONE WHIR opening. goal: ≤ 64 KB, verify ≤ 1 ms, constant in the number of steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`); decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments).
+accumulation ([[accumulation]], [[machine]]): the nox machine is one uniform step relation; the prover accumulates RS evaluation claims step by step (ARC/WARP-style), and the verifier checks every step and the final accumulator with one WHIR opening. not constant in the number of steps; measured: the decider is 44–93 KB, but without recursion the whole proof grows with the steps — 83 KB (33 cycles), 146 KB (merkle-32), 384 KB (16,383 cycles, 3 segments), ~96 KB per 2^14-row segment (`audit/accumulation-2026-10.md`); decider verify 3.1–4.6 ms measured (hash.tri, merkle-32; whole machine proof 5–40 ms, linear in segments).
 
 ## profile 5 — recursive proof (IVC)
 
@@ -84,11 +84,11 @@ digest (`MachineStatement::bytes` v2).
 
 ## profile 6 — wrapped proof
 
-the profile-5 proof's final verifier, proved by three wrap levels of the recursion circuit (`recursion.md` § wrap): the final proof is the recursive proof's header, the deferred nox-public claim and one final-mode wrap proof — ≤ 64 KB, constant in the number of steps. the verifier admits only the chain of `envelope::wrapped::chain()` (IVC at 1/16 over 2^15-row steps; wrap 1/64 inner, 1/256 inner, 1/256 final, 30 grinding bits on the last two; every ledger row ≥ 128 bits), prepares the statement side under the proof's header (`ivc::prepare`, IVC key cached), evaluates the deferred claim against the statement's columns, recomputes the public digest `X` and verifies the final wrap natively (`wrap::verify_statement`). the final key is cached per process; a fresh process derives it over the inner levels' pinned key roots (`wrapped::INNER_ROOTS`) or installs it from a pinned key bundle (`envelope::keys`).
+the profile-5 proof's final verifier, proved by three wrap levels of the recursion circuit (`recursion.md` § wrap): the final proof is the recursive proof's header, the deferred nox-public claim and one final-mode wrap proof — ≤ 64,213 B over every transcript (the gate is 64 KiB by key), constant in the number of steps. the verifier admits only the chain of `envelope::wrapped::chain()` (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`: the IVC at rate 1/8 with 16 grinding bits over 2^15-row steps and 4-ary trees; wrap 1/16 inner with 16 grinding bits, 1/128 inner with 22, 1/512 final with 26; every ledger row ≥ 128 bits), prepares the statement side under the proof's header (`ivc::prepare`, IVC key cached), evaluates the deferred claim against the statement's columns, recomputes the public digest `X` and verifies the final wrap natively (`wrap::verify_statement`). the final key is cached per process; a fresh process derives it over the inner levels' pinned key roots (`wrapped::INNER_ROOTS`) or installs it from a pinned key bundle (`envelope::keys`). measured (`audit/ivc-speed-2026-10.md`): add.tri final proof 63,029 B, verify 1.9–2.2 ms with the statement prepared and keys loaded.
 
 ## recursion
 
-a zheng verifier can be written as a nox program and proven (the Trident verifier). that is composition — proving a statement about proofs — and never the way proofs get small: size and constancy come from accumulation, not from re-proving verifiers.
+inside zheng, the step verifier and the final verifier already run as circuits (profiles 5 and 6, [[recursion]]): constancy comes from IVC — the accumulation verifier inside the step relation — and the size from the wrap chain. the whole verifier as a nox program (the Trident second verifier) is not built; it is for composition — a statement about proofs across domains or versions — never for size.
 
 ## input format
 

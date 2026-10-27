@@ -7,6 +7,8 @@ status: draft
 
 # φ* SpMV circuit (zheng)
 
+> legacy: `rs/src/phi` compiles only with the cargo feature `legacy` and proves by the retired fold/decide path, which is unsound ([[soundness]] § retired). a φ* proof on the shipped profiles is not built: the SpMV would be a nox program (or a compiled relation) proved by profile 1, or by profiles 5/6 for long iterations.
+
 implements the algebraic core of foculus [[provable consensus]]: sparse
 matrix-vector multiply as multi-row CCS, then tri-kernel iteration proven
 by folding diffusion SpMVs.
@@ -33,7 +35,7 @@ constraint row `r`:
 single matrix `M`, multiset `{0}`, coeff `1` → `M·z = 0`.  
 `num_rows` / `num_cols` padded to powers of two for SuperSpartan outer sumcheck.
 
-prove: fold one CCS instance → decide → `Proof`.  
+prove (legacy): fold one CCS instance → decide → `Proof`.  
 verify: re-check host SpMV, CCS satisfaction, SuperSpartan transcript.
 
 ## tri-kernel step (host + diffusion proofs)

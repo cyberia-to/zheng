@@ -38,7 +38,7 @@ Profile v3: the prover supplies the witness values at every non-pinned
 position in index order, with the trailing zeros of the power-of-two padding
 removed (`Certificate`). The verifier places `z[0] = 1`, the inputs, the
 outputs and the cost wire itself, fills the remaining positions from the
-certificate, pads with zeros and checks **every CCS row exactly**. It rejects a
+certificate, pads with zeros and checks every CCS row exactly. It rejects a
 certificate with a trailing zero, a value at or above p, or more values than
 the relation has free positions below its last referenced column. There is no
 commitment, sumcheck or challenge: soundness rests on the relation compiler
@@ -49,7 +49,7 @@ honest witness (`certificate::malleability`).
 Retired v2: a direct Spartan proof with a `PublicTensor` commitment and a
 complete authenticated evaluation table; the verifier authenticates all columns
 and checks the same rows. Its transcript binds the canonical statement,
-dimensions, full relation and public coordinate mapping and uses the 0.4.0
+dimensions, full relation and public coordinate mapping and uses the earlier
 challenge rule (`Transcript::new_v1`) so that existing artifacts still verify.
 Program terms use tagged flat prefix encoding. Public vector limits apply during
 deserialization.
@@ -77,7 +77,7 @@ The node jet. `execution::node::formula()` is a pure Layer-1 nox formula
 on the subject `[[L R] flags]` (`L`, `R` digest nouns `[[a b] [c d]]`,
 `flags` an atom) whose reduction is `permute(L ‖ R ‖ 0 ‖ flags ‖ 0⁶)[0..4]`
 as a digest noun: hemera's `tree::hash_node` (`flags` 2 interior, 3 root),
-the step of `hemera::merkle` paths. Its partial-round inverse is
+the step of `hemera::merkle` paths. Its partial-round inverse (hemera 0.3.1, the version this crate pins) is
 `x^(p−2)` by square-and-multiply over the exponent's runs of equal bits
 (31 ones, a zero, 32 ones), so every branch in it tests a constant of
 the formula and its cost is `node::COST` = 39,818 cycles for every input.
@@ -140,8 +140,8 @@ Every verifier of a state statement (`verify_certificate`, `verify_v1`,
 leaves fold to the statement's `state_root` (`compress4`, the first four
 elements of the hemera permutation over `[acc ‖ leaf ‖ 0⁸]`, from the IV
 `["bbg-root", 0, 0, 0]`), and every table the evidence carries matches its
-leaf (the lens Brakedown commitment of its fields zero-padded to a power of
-two; header `[2, len, entries]`, so a table with appended zeros has another
+leaf (the lens `Brakedown::commit` digest of its fields zero-padded to a power of
+two — bbg's table digest, never opened; header `[2, len, entries]`, so a table with appended zeros has another
 header). Then the verifier recompiles the relation for the subject shape,
 answers every active read from the authenticated tables (field `key` of
 table `namespace`), pins the active flag of every read and the root limbs,
@@ -225,12 +225,18 @@ Policy (`succinct::admit`): the parameters must be in range (WHIR rate 1/2 …
 rate 1/2 … 1/64, grinding ≤ 32), ask for a target of at least 128 bits, and
 lens's proven `security_bits(params, ℓ)` must be ≥ 128. The prover refuses
 the same parameters. The composed bound is in the [soundness ledger](soundness.md).
-The shipped choice (`succinct::prove_default` / `params_for`, used by `joy
-prove --succinct`) is WHIR at rate 1/64, folding factor 4, 24 grinding bits,
-Johnson decoding, final polynomial ≤ 2^8, for both size classes — the
-smallest ≥ 128-bit proof in the bake-off
-(`audit/succinct-profile-2026-10.md`). A verifier admits any in-range
-parameters that meet the policy, not only the shipped ones.
+The shipped choice is WHIR at rate 1/64 with Johnson decoding and a final
+polynomial ≤ 2^8. `succinct::params_for` fixes folding factor 4 and 24
+grinding bits — the smallest ≥ 128-bit proof of the bake-off
+(`audit/succinct-profile-2026-10.md`) and the set the machine, IVC and wrap
+keys build on. The default prover (`succinct::prove_default`,
+`prove_with_key`, used by `joy prove --succinct`) takes
+`succinct::device_params`: folding factor 4 up to 2^16 committed variables
+and 5 above, grinding 16 bits up to 2^17, 22 at 2^18 and 24 beyond — the
+least grinding that keeps the proof ≤ 64 KB up to 2^18, at ≥ 128 proven
+bits at every size (zheng#64; soft3 `audit/proof-latency-2026-10.md`). A
+verifier admits any in-range parameters that meet the policy, not only
+the shipped ones.
 
 Body (profile 1): PCS id (u8), its parameter header (WHIR 8 bytes, TensorRs
 6), statement kind (0 execution, 1 state), the statement in the profile-0 or

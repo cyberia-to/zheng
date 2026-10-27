@@ -6,8 +6,9 @@ alias: nox machine, uniform step relation
 ---
 # the nox machine — one step relation for nox runs of any length
 
-`rs/src/machine/` (relation), `rs/src/air/` (protocol). Phase 3 of the
-proof-system repair (soft3 `proposals/proof-system-repair.md` §3,
+`rs/src/machine/` (relation), `rs/src/air/` (protocol); proved alone as
+envelope profile 4 and inside the IVC of profiles 5 and 6 ([[recursion]]).
+Phase 3 of the proof-system repair (soft3 `proposals/proof-system-repair.md` §3,
 "unbounded programs"); the requirements it answers are
 `audit/general-nox-relation-review.md` § "complete computed-formula
 support".
@@ -66,6 +67,12 @@ The init DAG is canonical: post-order over program then subject,
 structurally equal nouns share one id; then one `STATE` entry per read;
 ids `1..=P`.
 
+The PERM block is hemera 0.3.1's permutation (`machine::hemera`: 4 + 4 full
+rounds and 16 partial rounds with an inverse witness, `ROUNDS` = 24 round
+phases in a 32-row block), the version this crate pins. The frozen hemera
+0.4 (60 rounds of x⁷) re-cuts the block — four partial rounds a row — on
+the draft sweep zheng#69 / #73, not on this branch.
+
 ### memory
 
 A write-once table of tuples `(tag, key, p0, p1, p2, p3)` (`layout.rs`):
@@ -83,7 +90,7 @@ and `ABASE` are written only by permutation blocks that recompute them,
 so every such write is correct (by induction over the acyclic noun DAG)
 and duplicates are harmless.
 
-**logUp** (phase 2, challenges `α, β ∈ K`): slot `s` has the committed
+logUp (phase 2, challenges `α, β ∈ K`): slot `s` has the committed
 inverse `h_s = 1/(α − enc_s)`, `enc = tag + β·key + β²·p0 + … + β⁵·p3`;
 the cyclic running sum `S' = S + Σ_s (read_s − write_s·M_s)·h_s` starts at
 zero on row 0 and closes at zero; `M_s` (free on writes) counts the
@@ -97,7 +104,7 @@ Schwartz–Zippel in `β`, degree 5).
 State `(OBJ, X, K, D, CYC, ALLOC)`: subject, formula / value, the top
 frame id (0 = empty), depth, cycles, next id.
 
-- **EVAL** `(obj, fml, K, d)`: read `PAIR(fml) = (tid, body)`,
+- EVAL `(obj, fml, K, d)`: read `PAIR(fml) = (tid, body)`,
   `ATOM(tid) = t`; one of 16 opcode flags: axis, quote, compose, cons,
   branch, add, sub, mul, inv, eq, hash, lt, not, call, look with nox tag
   `t`, and `WORD` with `t ∈ {11, 12, 14}` (xor, and, shl); `(d − 1001)` has
@@ -110,7 +117,7 @@ frame id (0 = empty), depth, cycles, next id.
   evaluate `body`; quote returns `body`; axis reads `ATOM(body) = a`:
   `a = 1` returns `obj`, `a = 0` reads `DIG(obj)` and builds `hash_data`,
   `a ≥ 2` walks.
-- **RET** `(val, K)`: `K = 0` is TERM (reads `DIG(val)` = the statement's
+- RET `(val, K)`: `K = 0` is TERM (reads `DIG(val)` = the statement's
   output digest, `CYC = cycles`, no machine row follows); otherwise read
   the frame `K` under the tag of the row's frame flag (B1, B2 arithmetic
   and B2 word carry the frame's op in a column; the tag `64 + op` /
@@ -132,7 +139,7 @@ frame id (0 = empty), depth, cycles, next id.
   `hash_data`; `UINV` writes `y` with `y·u = 1`; `CALL1` reads
   `ATOM(val)` (the tag is an atom), then witness rows; `CALL2` reads
   `ATOM(val) = 0` (the check accepted) and returns the frame's witness.
-- **AXW** walks from the root, one level per row, the most significant
+- AXW walks from the root, one level per row, the most significant
   path bit first: `X` is the address of the node so far (`X' = 2X + c`,
   `node' = c ? r : l` from `PAIR(node)`), `D` the target; the walk ends
   when `2X + c = D`. A counter bounds the walk to 63 levels (`(cnt −
@@ -142,7 +149,7 @@ frame id (0 = empty), depth, cycles, next id.
   low bit set" (running AND over steps 0..30, OR over steps 31..62, an
   indicator of `cnt = 30` switching between them). Every canonical
   address `2 ≤ a < p` is covered.
-- **WBIT** (32 AUX rows per word opcode or lt): four remainders peeled one
+- WBIT (32 AUX rows per word opcode or lt): four remainders peeled one
   bit per row (`R = bit + 2·R'`, zero after the last row, a counter with
   indicators of `cnt = 0` and `cnt = 31` fixes exactly 32 rows), so each
   starts below `2^32` with its binary digits as bits. xor / and / not:
@@ -155,11 +162,11 @@ frame id (0 = empty), depth, cycles, next id.
   (high half all ones ⇒ low half zero, on the last row), the comparison
   from the low bit on both halves (the last differing bit decides), result
   `1 − [u < w]`. A word operand `≥ 2^32` has no peel (nox: type error).
-- **LOOK** (AUX): reads `PAIR(OBJ) = (R, rest)` and `DIG(R)` = the
+- LOOK (AUX): reads `PAIR(OBJ) = (R, rest)` and `DIG(R)` = the
   constant digest of `[r0 [r1 [r2 r3]]]`, so the subject carries the
   statement's root at axes 4, 10, 22, 23 (hemera collision resistance,
   as eq); writes the value atom.
-- **witness** (AUX, after CALL1): `WATOM` writes `ATOM(new; v)` (any
+- witness (AUX, after CALL1): `WATOM` writes `ATOM(new; v)` (any
   `v`) and pushes `CELL(new'; new, sp)`; `WPAIR` pops two cells, writes
   `PAIR(new; l, r)` and pushes it; `WJOIN` reads the only cell (`next =
   0`), writes `PAIR(new; w, obj)` and `CALL2(new'; w, 0, 0, parent)` and
@@ -167,7 +174,7 @@ frame id (0 = empty), depth, cycles, next id.
   the stack pointer is a state column, so every popped cell is one an
   earlier witness row pushed: the witness is a finite, acyclic noun built
   in post-order, children before parents.
-- **HDA / HDB**: `hash_data(h)` = four atoms then three pairs, ids
+- HDA / HDB: `hash_data(h)` = four atoms then three pairs, ids
   `ALLOC..ALLOC+6`.
 
 Sequencing: machine rows chain until TERM; every machine row fixes the

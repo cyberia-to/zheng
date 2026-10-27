@@ -7,8 +7,11 @@ alias: accumulation, accumulate, decider
 # accumulation
 
 Hash-based accumulation of evaluation claims on Reed–Solomon codewords,
-and its decider (`rs/src/accumulate/`). It replaces `folding` (HyperNova
-over hemera, unsound: the fold was never checked — `decider.md`).
+and its decider (`rs/src/accumulate/`), carried as envelope profile 4 and,
+inside the step relation, by the IVC of profiles 5 and 6 ([[recursion]]).
+It replaces the legacy `folding` module (a homomorphic fold over hemera,
+which a hash cannot support; unsound: the fold was never checked —
+`decider.md`).
 
 ## objects
 
@@ -19,14 +22,14 @@ Goldilocks, rate `ρ = 2^{-r}`, `K = Fp3`, symbol `s` = `f̂(ω^s)`, leaves
 = folding cosets. A word committed with `Whir::commit` (base symbols) or
 `Whir::commit_ext` (Fp3 symbols) is a word of `C`.
 
-- **claim** `(z, y)`: the message multilinear `f` of the word (monomial
+- claim `(z, y)`: the message multilinear `f` of the word (monomial
   coefficients of `f̂`) satisfies `f(z) = y`, `z ∈ K^ℓ` in lens order. An
   in-domain value `û(x) = y` is the claim `(pow(x), y)`, `pow(x) =
   (x, x², x⁴, …)`.
-- **instance** `(root, ext, claims)`; relaxed relation `R̃_δ`: the
+- instance `(root, ext, claims)`; relaxed relation `R̃_δ`: the
   committed word is `δ`-close to a codeword whose message satisfies every
   claim; strict relation: it is such a codeword.
-- **accumulator**: an instance with Fp3 symbols and exactly `1 + s + t`
+- accumulator: an instance with Fp3 symbols and exactly `1 + s + t`
   claims (`AccConfig::acc_claims`).
 
 `δ` and the list bound are those of the regime lens derives for WHIR's
@@ -69,17 +72,17 @@ of the accumulation transcript.
 
 ## what was implemented, against the papers
 
-- **ARC** (Bünz–Mishra–Nguyen–Wang, eprint 2024/1731, §6 Construction
+- ARC (Bünz–Mishra–Nguyen–Wang, eprint 2024/1731, §6 Construction
   6.3) accumulates RS proximity claims by a combined word, OOD samples and
   in-domain queries, and turns the in-domain answers into *quotient*
   constraints with degree correction (`Combine`, Lemma 3.9) and a `Fill`
   message; its NP accumulation (§7) carries two oracles.
-- **WARP** (Bünz–Chiesa–Fenzi–Wang, eprint 2025/753) avoids quotients:
+- WARP (Bünz–Chiesa–Fenzi–Wang, eprint 2025/753) avoids quotients:
   the in-domain and OOD answers stay as multilinear evaluation claims
   carried by the accumulator (§2.4, Construction 7.2 "codeword
   batching"), and the claims of several words are batched by a sumcheck
   before the words are combined (§6 "twin constraint pseudo-batching").
-- **This implementation** is WARP's claim-carrying structure instantiated
+- This implementation is WARP's claim-carrying structure instantiated
   for Reed–Solomon codes: the claims are evaluation claims on the
   message multilinear (WHIR's view of an RS word), out-of-domain samples
   are univariate (`ĝ(ζ)`, as in ARC §2.1 and WHIR) instead of WARP's
@@ -125,7 +128,7 @@ The decider adds the `γ` and sumcheck rows with `m = 1` and WHIR's own
 round-by-round bound at `(whir, ℓ)` for an Fp3 word (lens `security_bits`,
 ≥ 128 by the profile policy).
 
-**Fresh words.** Every word committed by a prover outside a step (the AIR's
+Fresh words. Every word committed by a prover outside a step (the AIR's
 phase-1 and phase-2 words, a CCS statement's witness) answers
 `fresh_ood(whir, ℓ)` out-of-domain samples right after its root is
 absorbed, before any challenge it feeds (WHIR Lemma 4.25, as in WHIR
@@ -135,7 +138,7 @@ rounds that read the word (zerocheck, column reduction, logUp, Spartan)
 reason about one codeword and carry no list factor. The answers are
 claims of the word's instance.
 
-**Composition.** A proof is one transcript: AIR rounds, `S` steps, one
+Composition. A proof is one transcript: AIR rounds, `S` steps, one
 decider. Without grinding (the interactive protocol) every round is below
 `2^-128` except the two ground ones: the combination round errs with up
 to `2^{-(128 − comb_pow(m))}` and the positions round with up to

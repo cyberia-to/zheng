@@ -23,12 +23,12 @@ checked by the next step's circuit and only the last step's travel.
 
 ## objects
 
-- **parameters** (`Params`): WHIR parameters of every committed word
+- parameters (`Params`): WHIR parameters of every committed word
   (profile 6: rate 1/8, 16 grinding bits — `ivc::SHIPPED_RATE`,
   `SHIPPED_POW`), the step size `2^n` rows (`n = 15`), `ℓ = n + 6` variables per word, the
   accumulation configuration for four input words (`AccConfig::derive`
   with `m = 4`).
-- **words**: Reed–Solomon codewords in WHIR's round-0 layout (lens
+- words: Reed–Solomon codewords in WHIR's round-0 layout (lens
   `LeafLayout`) under a field-native hemera Merkle tree: a leaf is the
   duplex sponge (tag `LEAF`) over its symbols, every IVC tree 4-ary
   (`params::ARITY`: a node is the truncated permutation of its four
@@ -42,14 +42,14 @@ checked by the next step's circuit and only the last step's travel.
   and drops the values; an opening recomputes its leaf from the
   coefficients. The commitment is the same; the prover holds the
   coefficients and the tree, not the codeword.
-- **transcript**: an overwrite duplex sponge over hemera's permutation,
+- transcript: an overwrite duplex sponge over hemera's permutation,
   rate 9 lanes (three Fp3), capacity 7 lanes with a domain tag; an Fp3
   item never straddles a block; challenges are output limbs (no byte
   reduction); an index is the low bits of a limb `v ≠ p − 1`
   (`p − 1 = 2^32·(2^32 − 1)`, so `v mod 2^k`, `k ≤ 32`, is exactly
   uniform); grinding absorbs a nonce and requires the low bits of the next
   limb to be zero.
-- **state** (`StateV`): context digest, steps verified, chain of
+- state (`StateV`): context digest, steps verified, chain of
   pre-committed roots, the first segment's first row and the last verified
   segment's successor (nox columns), the accumulator (root, `(ρ, v)`, OOD
   claims, spot claims `(ω^s, y)`), three deferred claims.
@@ -71,19 +71,20 @@ challenges) and the circuit's (below, with the step's `(α_V, β_V)`).
 
 Four row kinds over the 49 + 54 circuit columns:
 
-- **ARITH**: four gates a row, `out = qm·x·(y + qs·z) + qa·x + qb·y +
+- ARITH: four gates a row, `out = qm·x·(y + qs·z) + qa·x + qb·y +
   qc·z + qk` over Fp3, each a compute, an assertion (`out` unused, the
   value must be zero when `live`) or a free witness;
-- **PERM**: a hemera permutation in four rows (input and states after
+- PERM: a hemera permutation in four rows (input and states after
   rounds 0, 1; after rounds 2, 3 and the 16 partial-round inverses; after
   rounds 20–22; the output) — 160 constraints of degree ≤ 8 — the hemera
-  0.3 layout; hemera 0.4 (frozen 2026-10-16: 60 x⁷ rounds, no inverse
-  witness) needs a re-cut PERM block, pending the code sweep; the input
+  0.3.1 layout this crate pins; the frozen hemera 0.4 (60 x⁷ rounds, no
+  inverse witness) needs a re-cut PERM block, done on the draft sweep
+  zheng#69 / #73 and not on this branch; the input
   of a block is fixed by flags on the row before it: rate lanes kept,
   zeroed or bound to memory; capacity chained, fresh with a tag, or a
   Merkle node whose current digest comes from the previous output and
   whose direction bit is a memory read;
-- **BITS**: a canonical 64-bit decomposition in four rows of 16 bits
+- BITS: a canonical 64-bit decomposition in four rows of 16 bits
   (`hi = 2^32 − 1 ⇒ lo = 0`);
 - padding.
 
@@ -262,7 +263,7 @@ so `ℓ = 20`) fixes the inner level's rate: a lower rate adds queries the
 final circuit verifies; the base-field key (a key leaf of 6 permutations
 instead of 11) makes 1/128 fit — 16,230 of 16,384 rows; the final rate and grinding fix the
 proof's bytes (`examples/wrap_plan`, `examples/wrap_chain` plan a chain
-without proving). **Size gate.** The outermost proof's size is bounded by construction,
+without proving). Size gate. The outermost proof's size is bounded by construction,
 not measured: every message shape is fixed by the final key and a
 multi-opening of `q` leaves carries at most `Σ_levels (a·n_{l+1} − n_l)`
 siblings with `n_l = min(q, nodes at level l)` (`whir::wire::max_siblings`,
@@ -312,6 +313,11 @@ is conjectured, as for every deployed recursive proof system.
 
 - the deferred nox-public claim evaluated in the circuit (it travels in
   the final proof: `n + 37` Fp3).
+- the second verifier: the whole verifier as a nox program in Trident,
+  agreeing with Rust on every fixture (soft3
+  `proposals/proof-system-repair.md` §3, phase 3; trident `lib/std/zheng`).
+- the verify goal: ≤ 1 ms; profile 6 verifies in 1.9–2.2 ms with its keys
+  loaded (`audit/ivc-speed-2026-10.md`).
 
 ## envelope
 
