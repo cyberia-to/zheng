@@ -67,10 +67,10 @@ impl Setup {
     pub fn half(&self) -> usize {
         1 << self.layout.vars
     }
-    fn mask1(&self) -> usize {
+    pub(crate) fn mask1(&self) -> usize {
         Mask::entries(self.log_m, self.degree)
     }
-    fn mask2(&self) -> usize {
+    pub(crate) fn mask2(&self) -> usize {
         Mask::entries(self.layout.vars, 2)
     }
     pub fn entries(&self) -> usize {
@@ -86,7 +86,7 @@ impl Setup {
         }
     }
     /// The functional of the final claim.
-    fn functional(&self, a0: Fp3, r: &[Fp3], lambda: Fp3, rho_x: &[Fp3], rho2: Fp3) -> Functional {
+    pub(crate) fn functional(&self, a0: Fp3, r: &[Fp3], lambda: Fp3, rho_x: &[Fp3], rho2: Fp3) -> Functional {
         let start = self.half();
         let w1 = libra::weights(rho_x, self.degree, lambda);
         let w2 = libra::weights(r, 2, rho2);
@@ -116,20 +116,20 @@ fn pcs_transcript(t: &mut Transcript) -> LensTranscript {
 }
 
 /// `eq(τ, ρ_x)`: τ_j pairs with ρ_x[log m − 1 − j] (see `reduce`).
-fn eq_tau_rho(tau: &[Fp3], rho_x: &[Fp3]) -> Fp3 {
+pub(crate) fn eq_tau_rho(tau: &[Fp3], rho_x: &[Fp3]) -> Fp3 {
     tau.iter()
         .zip(rho_x.iter().rev())
         .fold(Fp3::ONE, |acc, (&t, &r)| acc * (t * r + (Fp3::ONE - t) * (Fp3::ONE - r)))
 }
 
-fn gate(instance: &CCSInstance, v: &[Fp3]) -> Fp3 {
+pub(crate) fn gate(instance: &CCSInstance, v: &[Fp3]) -> Fp3 {
     instance.multisets.iter().zip(&instance.coeffs).fold(Fp3::ZERO, |acc, (set, &c)| {
         acc + Fp3::from_base(c) * set.iter().fold(Fp3::ONE, |p, &i| p * v[i])
     })
 }
 
 /// `P = Σ_i γ^i Σ_row eq(ρ_x, row) Σ_{pinned c} M_i[row][c]·p(c)`.
-fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
+pub(crate) fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
     let rho_rev: Vec<Fp3> = rho_x.iter().rev().copied().collect();
     let eq_row = eq_evals(&rho_rev);
     let half = s.half();
@@ -155,7 +155,7 @@ fn pinned_part(s: &Setup, rho_x: &[Fp3], gamma: Fp3) -> Fp3 {
 }
 
 /// `A(0, r) = Σ_i γ^i M̃'_i(ρ_x, (0, r))`.
-fn free_weight(s: &Setup, rho_x: &[Fp3], gamma: Fp3, r: &[Fp3]) -> Fp3 {
+pub(crate) fn free_weight(s: &Setup, rho_x: &[Fp3], gamma: Fp3, r: &[Fp3]) -> Fp3 {
     let point: Vec<Fp3> = core::iter::once(Fp3::ZERO).chain(r.iter().copied()).collect();
     let red = Reduction {
         point,

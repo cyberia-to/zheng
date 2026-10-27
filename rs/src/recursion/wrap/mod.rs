@@ -58,6 +58,8 @@ mod tests;
 
 pub use program::{Inner, derive_key_ivc, derive_key_ivc_at, derive_key_wrap, derive_key_wrap_at, derive_shape, derive_shape_ivc, public_digest, public_digest_native};
 pub use prove::prove;
+pub(crate) use program::{derive_key_with, dummy_proof};
+pub(crate) use prove::prove_with;
 pub use verify::{check_shape, threads as verifier_threads, verify};
 
 use lens::WhirParams;

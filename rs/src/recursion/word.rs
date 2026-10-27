@@ -70,6 +70,20 @@ fn tree(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
     levels
 }
 
+/// A field-native Merkle tree over leaf digests (`2^k` of them): its
+/// levels, the leaves first and the root last (the hiding commitment of
+/// `veil::rec` hashes its salted columns into one).
+pub(crate) fn tree_of(digests: Vec<Digest>, arity: Arity) -> Vec<Vec<Digest>> {
+    assert!(digests.len().is_power_of_two());
+    tree(digests, arity)
+}
+
+/// The sibling path of leaf `j` in a [`tree_of`] tree.
+pub(crate) fn path_in(levels: &[Vec<Digest>], arity: Arity, j: usize) -> Vec<Digest> {
+    let log = levels[0].len().trailing_zeros() as usize;
+    path_of(levels, arity, j, log, |_| unreachable!("a held leaf level"))
+}
+
 /// The path of leaf `j`: per level its siblings in child order.
 /// The path of leaf `j` (`2^log` leaves): per level its siblings in child
 /// order. A streamed word keeps no leaf level (`levels[0]` empty): its
