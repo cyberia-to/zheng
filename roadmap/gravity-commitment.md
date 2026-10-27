@@ -2,7 +2,7 @@
 tags: cyber, cip
 crystal-type: process
 crystal-domain: cyber
-status: accepted
+status: draft
 date: 2026-03-17
 origin: proof-horizons.md horizon 4
 ---
@@ -46,7 +46,7 @@ an opening's size and verify time grow with the layer's variable count
 no figure is claimed until measured on the shipped parameters.
 ```
 
-for scale, the one measured WHIR opening at this time: a 2^10-slot witness opens inside a 15,921 B succinct proof verified in 7.96 ms, and a 2^20 relation in 71,081 B and 270 ms (`audit/succinct-profile-2026-10.md`). a hash-only opening carries Merkle paths, so a hot layer is cheaper than a cold one by a constant factor, not by orders of magnitude.
+for scale, the measured WHIR openings of the succinct profile (`audit/succinct-profile-2026-10.md`, rate 1/64, folding 4, 24 grinding bits, hemera 0.3.1): a 2^10-slot witness opens inside a 15,921 B proof verified in 7.96 ms, a 2^20 relation in 71,081 B and 270 ms. a hash-only opening carries Merkle paths, so a hot layer is cheaper than a cold one by a constant factor, not by orders of magnitude.
 
 ## application to bbg
 
@@ -61,16 +61,16 @@ the proof system adapts to the information structure of the data. important fact
 
 the weight function maps positions to priority layers. natural choices:
 
-- **π (cyberank)**: direct attention measure. highest-π particles in hot layer
-- **access frequency**: empirical query rate. cached in CozoDB
-- **stake-weighted**: neuron stake determines layer. higher-stake neurons verify faster
+- π (cyberank): direct attention measure. highest-π particles in hot layer
+- access frequency: empirical query rate. cached in CozoDB
+- stake-weighted: neuron stake determines layer. higher-stake neurons verify faster
 
 the weight function is committed alongside the polynomial. weight changes (π updates) require re-layering — but the polynomial VALUES don't change, only their layer assignment.
 
 ## open questions
 
-1. **weight stability**: if π changes significantly between epochs, the layered structure must be re-committed. cost: one full re-encoding per epoch. acceptable if epochs are long (hours/days)
-2. **soundness per layer**: each layer has different degree bounds. Schwartz-Zippel analysis must account for the weakest layer (highest degree). 2²⁰ degree over |F| ≈ 2⁶⁴ would leave only about 44 bits per round, so challenges must come from Fp3 (|F| ≈ 2^192), as in every zheng profile
-3. **cross-layer queries**: querying a position that moved between layers requires opening the new layer. the verifier must know which layer contains the position — committed in the weight map
+1. weight stability: if π changes significantly between epochs, the layered structure must be re-committed. cost: one full re-encoding per epoch. acceptable if epochs are long (hours/days)
+2. soundness per layer: each layer has different degree bounds. Schwartz-Zippel analysis must account for the weakest layer (highest degree). 2²⁰ degree over |F| ≈ 2⁶⁴ would leave only about 44 bits per round, so challenges must come from Fp3 (|F| ≈ 2^192), as in every zheng profile
+3. cross-layer queries: querying a position that moved between layers requires opening the new layer. the verifier must know which layer contains the position — committed in the weight map
 
-see [[zheng-2]] for integrated architecture, [[algebraic-extraction]] for batch opening
+see [[soft3/proposals/proof-system-repair|proof-system repair]] for the shipped commitment and [[lens]] for the PCS trait

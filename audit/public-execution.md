@@ -80,7 +80,7 @@ with secret inputs fails and creates no certificate.
 
 Local binaries, source fixtures, certificates, exact commands, logs and
 SHA-256 checksums are retained in
-[`joy/target/public-execution-20260911`](../../joy/target/public-execution-20260911).
+`joy/target/public-execution-20260911` (a build directory, not kept; link removed 2026-10-27).
 These ignored build artifacts are development evidence, not published releases.
 The earlier migration candidates retain their original legacy semantics.
 

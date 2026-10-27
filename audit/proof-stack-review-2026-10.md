@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # proof stack — adversarial review before release/0.4, 2026-10-13
 
+note (2026-10-27): the `.stands/` checkouts named below were removed in the cleanup of 2026-10-16; the revisions they held are named here, the directories are gone.
+
 Review of the deltas not covered by the #52/#53/#56/#58 reviews: zheng #60
 `feat/proof-stack` (bd244aa: #57 profile-6 envelope with the program bound
 by digest, #59 GPU prover backends, the 26-bit size gate) and #61

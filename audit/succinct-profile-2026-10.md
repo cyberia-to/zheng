@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # succinct profile and PCS bake-off — 2026-10-09
 
+superseded (2026-10-27): the shipped choice below (`succinct::params_for`, 24 grinding bits) is no longer what the default prover uses — `succinct::prove_default` takes `succinct::device_params` (zheng#64: 16 grinding bits up to 2^17, folding 5 above 2^16); its figures are in soft3 `audit/proof-latency-2026-10.md` §3.
+
 Work package E of the proof-system repair (soft3
 `proposals/proof-system-repair.md`, §3 design, §5 phase 2). The succinct
 profile (`zheng::execution::succinct`, envelope profile 1) proves the public

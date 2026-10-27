@@ -141,9 +141,9 @@ the ring-aware jets prove that a hemera evaluation under FHE was computed correc
 
 ## open questions
 
-1. **ring-structured CCS formalization**: encoding R_q operations as CCS matrices with ring structure. the "batched NTT" constraint needs a concrete CCS representation showing where the savings come from
-2. **permutation argument for automorphisms**: LogUp permutation check in the key switching context. the permutation is algebraically structured (Galois group) — can this structure reduce the LogUp cost further?
-3. **noise model precision**: the running noise accumulator tracks worst-case noise. if the actual noise is much lower (typical case), the accumulator over-provisions. adaptive noise tracking (tighten bounds when actual noise is measured) would improve throughput
-4. **multi-key FHE**: bootstrapping with multiple keys (threshold FHE for multi-party computation). each key introduces a separate automorphism group. jet recognition across key boundaries
+1. ring-structured CCS formalization: encoding R_q operations as CCS matrices with ring structure. the "batched NTT" constraint needs a concrete CCS representation showing where the savings come from
+2. permutation argument for automorphisms: LogUp permutation check in the key switching context. the permutation is algebraically structured (Galois group) — can this structure reduce the LogUp cost further?
+3. noise model precision: the running noise accumulator tracks worst-case noise. if the actual noise is much lower (typical case), the accumulator over-provisions. adaptive noise tracking (tighten bounds when actual noise is measured) would improve throughput
+4. multi-key FHE: bootstrapping with multiple keys (threshold FHE for multi-party computation). each key introduces a separate automorphism group. jet recognition across key boundaries
 
-see [[goldilocks-fhe]] for parameter choice, [[binius-pcs]] for binary gadget decomposition, [[proof-horizons]] for composition strategy
+see [[goldilocks-fhe]] for parameter choice, lens `specs/binary-tower.md` for the binary track (research, out of the stack), [[accumulation]] for composition

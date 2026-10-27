@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # wrap fast verifier — adversarial review, 2026-10-10
 
+note (2026-10-27): the `.stands/` checkouts named below were removed in the cleanup of 2026-10-16; the revisions they held are named here, the directories are gone.
+
 Review of zheng #58 (`feat/wrap-fastverify` 379eda2, extended to
 5d7c959 in §5, stacked on #56
 `feat/wrap` 606cda1): streamed commitments, key words committed once per

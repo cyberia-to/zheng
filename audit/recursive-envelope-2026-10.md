@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # recursive envelope (profile 5) — 2026-10-09
 
+superseded (2026-10-27): the profile-5 sizes below predate the 4-ary IVC paths of `ivc-speed-2026-10.md` (hash.tri 518,905 B there).
+
 Contract: `specs/api.md` § recursive (envelope profile 5),
 `specs/verifier.md` § profile 5. Code: `rs/src/envelope/recursive.rs`.
 

@@ -7,6 +7,8 @@ crystal-domain: crypto
 
 superseded by hemera 0.4 (2026-10-16): the hemera figures below (x⁻¹ partial rounds, 8 + 16 rounds, 144 constants, ~736 constraints) describe the 0.3 record; the frozen profile is x⁷ in every round, 6 + 6 + 48 rounds, 240 constants, ~1,440 constraints — `hemera/audit/profile-0.4-2026-10.md`.
 
+note (2026-10-27): the `.stands/` checkouts named below were removed in the cleanup of 2026-10-16; the revisions they held are named here, the directories are gone.
+
 Owner directive (2026-10-14): proving ≤ 1 s. User-device proofs take the
 fast path (profile 1, another branch); this round owns the recursive
 path — the IVC step per segment and the profile-6 wrap chain. Targets:

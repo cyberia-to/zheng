@@ -6,6 +6,8 @@ date: 2026-10-14
 ---
 # fast path 2 — the last ≤ 1 s gaps, 2026-10-14
 
+note (2026-10-27): the `.stands/` checkouts named below were removed in the cleanup of 2026-10-16; the revisions they held are named here, the directories are gone.
+
 Follow-up of soft3 `audit/proof-latency-2026-10.md` (zheng#64, lens#25).
 That audit left three gaps on the user-device path: (a) Merkle membership
 at depth 32 (1.13 s cold / 0.61 s warm on Metal, 64,071 B, 22 grinding

@@ -1,5 +1,7 @@
 # wrapped envelope (profile 6) and key layouts — 2026-10-10
 
+superseded (2026-10-27): the shipped chain is now `4i:16,7i:22,9f:26` (zheng#61; `proof-stack-review-2026-10.md`), with prove times of `ivc-speed-2-2026-10.md` (wrap chain 18.9 s on Metal); the envelope layout below is unchanged.
+
 Contract: `specs/api.md` § wrapped, § key bundles; `specs/verifier.md`
 § profile 6; `specs/recursion.md` § envelope, § key layouts.
 

@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # recursion (IVC over the nox machine) — 2026-10-09
 
+superseded (2026-10-27): the IVC proof shape has changed since (4-ary paths, rate 1/8: 518,905 B for hash.tri, `ivc-speed-2026-10.md`); the constant-size proof is the wrap chain's, ≤ 64,213 B (`proof-stack-review-2026-10.md`).
+
 Work package of the proof-system repair (soft3
 `proposals/proof-system-repair.md` §4, the release-blocking piece): proofs
 of nox runs whose size does not depend on the run's length. Contract:

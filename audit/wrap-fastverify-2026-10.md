@@ -5,6 +5,8 @@ crystal-domain: crypto
 ---
 # wrap chain — prover memory and time, verifier time, 2026-10-10
 
+superseded (2026-10-27): the chain `4i:16,8i,9f:24` below became `4i:16,7i:22,9f:26` (zheng#61, `proof-stack-review-2026-10.md`). the `.stands/` checkouts named below were removed in the cleanup of 2026-10-16; the revisions they held are named here, the directories are gone.
+
 Follow-up to `audit/wrap-2026-10.md` (zheng #56, `feat/wrap` 606cda1).
 Goals: the final proof verifies in ≤ 1 ms, stays ≤ 64 KB, every ledger
 row ≥ 128 bits (grinding priced; interactive figures stated); the wrap
