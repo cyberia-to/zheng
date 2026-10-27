@@ -1,6 +1,6 @@
 # axis (pattern 0) + look (pattern 17): verifier_steps() integration
 
-> superseded: written for the 0.3/0.4 folded trace API (feature `legacy`, unsound, deleted in phase 5); its size and decider figures are struck below. the uniform step relation and accumulation are replanned in soft3 `proposals/proof-system-repair.md` (phase 3, zheng specs/machine.md).
+> superseded: written for the 0.3/0.4 folded trace API (feature `legacy`, unsound, deleted in phase 5); its size and decider figures are struck below. the uniform step relation and accumulation are replanned in soft3 `proposals/proof-system-repair.md` (phase 3, zheng specs/machine.md). status of the repair: `roadmap/README.md` (2026-10-27).
 
 ## status: approved 2026-09-07 — part of trident soft3-release M4
 

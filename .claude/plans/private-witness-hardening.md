@@ -1,5 +1,7 @@
 # Private witness audit follow-up
 
+status (2026-10-27): implemented and merged in zheng#36 (`fix/0.4-private-witness-hardening`); kept as the record of the plan.
+
 Scope: the concrete findings in `audit/soft3-reaudit/proof-review.md`.
 
 1. State the local timing/cache and incomplete memory-erasure boundaries in

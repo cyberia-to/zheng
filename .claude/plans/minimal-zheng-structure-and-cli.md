@@ -1,6 +1,6 @@
 # finishing minimal zheng: canonical structure + CLI
 
-> superseded: layout work done; the proof-system content of 0.1.0 (Brakedown + homomorphic folding) is now feature `legacy`, unsound, deleted in phase 5 — see soft3 `proposals/proof-system-repair.md`.
+> superseded: layout work done; the proof-system content of 0.1.0 (Brakedown + homomorphic folding) is now feature `legacy`, unsound, deleted in phase 5 — see soft3 `proposals/proof-system-repair.md`. status of the repair: `roadmap/README.md` (2026-10-27).
 
 status: DONE (both parts implemented, all tests green).
 part 1 — canonical rs/ + cli/ workspace, 5 downstream path deps updated, nox
@@ -28,7 +28,7 @@ zheng/
   Cargo.toml        # [package] name = "zheng"
   Cargo.lock
   src/              # lib.rs + modules
-  specs/ docs/ roadmap/ .claude/ CLAUDE.md README.md .github/
+  specs/ docs/ roadmap/ .claude/ AGENTS.md README.md .github/
 ```
 
 nox and hemera both use a `[workspace]` at the top with `rs/` (library) and
@@ -48,7 +48,7 @@ zheng/
   cli/
     Cargo.toml      # [package] name = "zheng-cli", [[bin]] name = "zheng"
     src/main.rs
-  specs/ docs/ roadmap/ .claude/ CLAUDE.md README.md LICENSE.md CHANGELOG.md
+  specs/ docs/ roadmap/ .claude/ AGENTS.md README.md LICENSE.md CHANGELOG.md
 ```
 
 ### steps
@@ -70,7 +70,7 @@ zheng/
    `[[bin]] name = "zheng"`, `path = "src/main.rs"`; depends on
    `zheng = { path = "../rs" }`, `nox = { path = "../../nox/rs", features = ["brakedown"] }`,
    `nebu = { package = "strata-nebu", path = "../../strata/nebu/rs" }`.
-5. **add `LICENSE.md`** — link to canonical Cyber license source (per CLAUDE.md
+5. **add `LICENSE.md`** — link to canonical Cyber license source (per AGENTS.md
    repo-layout spec; manifests keep the short `license = "Cyber"` field, matching nox).
 6. **add `CHANGELOG.md`** — seed with `0.1.0` (SuperSpartan + Brakedown + sumcheck
    + folding — the folding later found unsound; canonical layout; CLI).
@@ -106,7 +106,7 @@ serialization is deferred (see below).
 
 ### spec first
 
-per CLAUDE.md ("spec before code"), write `specs/cli.md` (canonical CLI
+per AGENTS.md ("spec before code"), write `specs/cli.md` (canonical CLI
 reference: commands, flags, exit codes, trace file format) BEFORE implementing.
 
 ### commands (minimal set)
@@ -151,7 +151,7 @@ stack). `main.rs` dispatches on `argv[1]`; each command a small fn. split into
 
 `report.rs` prints: number of CCS groups, per-group step count, estimated proof
 size (bytes), verify result, wall-clock for commit + verify. honest numbers
-only — no fabricated metrics (CLAUDE.md honesty). if proof-size estimation
+only — no fabricated metrics (AGENTS.md honesty). if proof-size estimation
 isn't exact yet, print what's measurable (group/step counts) and mark size as
 "est." explicitly.
 

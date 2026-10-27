@@ -1,6 +1,6 @@
 # zheng audit fix plan — release tier
 
-> superseded: audit of the 0.3 folded trace API, now feature `legacy` (unsound: the fold is never checked) and deleted in phase 5; findings kept as history. see specs/soundness.md for the shipped profiles.
+> superseded: audit of the 0.3 folded trace API, now feature `legacy` (unsound: the fold is never checked) and deleted in phase 5; findings kept as history. see specs/soundness.md for the shipped profiles. status of the repair: `roadmap/README.md` (2026-10-27).
 
 synthesized from three-agent parallel audit (2026-05-17).
 agents covered: ccs/types/transcript, sumcheck/spartan, folding/lib.

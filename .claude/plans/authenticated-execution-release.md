@@ -1,5 +1,7 @@
 # Authenticated execution release requirements
 
+> superseded: the 2026-09-11 requirements for the Brakedown-backed public execution path; the public certificate v3 (envelope profile 0) and the proof-system repair replaced that route — see soft3 `proposals/proof-system-repair.md`, specs/execution.md and specs/soundness.md; status of the repair: `roadmap/README.md` (2026-10-27).
+
 Status: execution-proof implementation authorized by the owner on 2026-09-11;
 production release remains blocked until the stated gates pass. Findings from the
 2026-09-11 Trident/Warrior audit. The wire repair is implemented separately;

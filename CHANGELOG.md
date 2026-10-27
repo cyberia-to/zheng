@@ -1,6 +1,81 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0] — unreleased (master since 2026-10-27; not on crates.io)
+
+The proof-system repair (soft3 `proposals/proof-system-repair.md`): the
+0.3.x folded proof is retired behind a feature, and every proof the default
+build makes or checks travels in one envelope with a profile byte. Line
+`release/0.4` (zheng#35 … #75) was promoted into `master` on 2026-10-27;
+the receipt is `audit/consistency-2026-10-27.md`. crates.io stops at
+0.3.1: 0.3.2 and 0.3.3 below were recorded here and never published.
+
+### Summary — what 0.4.0 contains against 0.3.x
+
+- **One envelope, `ZHENGPF1`** (magic, version, profile byte, canonical
+  body), seven profiles: 0 public certificate v3, 1 succinct, 2 zk (scheme 1
+  MPC-in-the-head, scheme 2 veil), 3 state-public v3, 4 machine proof
+  (accumulation), 5 recursive proof (IVC), 6 wrapped proof. (#46, #47, #48,
+  #49, #51, #60)
+- **Statement binding (phase 1, #46, #47).** The verifier recompiles the
+  CCS from the public program and places the public prefix itself
+  (`z[0] = 1`, inputs, outputs, cycles); verifying keys (`execution::vk`)
+  are derived by the verifier only and their digest is absorbed. Attack
+  fixtures `forged-io`, `forged-program`, `zeroed-constant`,
+  `meaningless-witness` are rejected (`rs/tests/attack_fixtures.rs`).
+- **Fp3 challenges.** Sumcheck and Spartan are generic over the challenge
+  field (`field::ChallengeField`); `Transcript::squeeze_fp3`.
+- **The soundness ledger** (`specs/soundness.md`): one row per
+  production component — assumption, bits, proven or conjectured, test
+  (#47; the proposal's stale-claim rows closed in #50).
+- **Succinct profile (#48):** Spartan over Fp3 and one WHIR opening of the
+  committed witness (lens `rspcs`); TensorRs lost the bake-off and stays
+  decodable. `succinct::device_params` (#64) is the default prover's choice.
+- **zk:** veil (Libra-masked Spartan + one hiding Reed–Solomon tensor
+  commitment, #49) and the native MPC-in-the-head backend `ZHMITH01` (#35,
+  hardened in #36).
+- **State evidence (#49):** zheng authenticates every state read's tables
+  and root leaves itself.
+- **The nox machine and accumulation (#51, #52):** one uniform step
+  relation for any program; hash-based accumulation of Reed–Solomon claims
+  and one WHIR decider; `accumulate::ccs` folds statements of one CCS into
+  one decider.
+- **Recursion (#53, #56, #58, #61, #63, #65):** IVC over the machine
+  (profile 5) and the wrap chain to a final proof ≤ 64,213 B over every
+  transcript (profile 6, chain `4i:16,7i:22,9f:26`), program bound by digest.
+- **Prover backends (#59, #62):** proving runs on lens's CPU, Metal and
+  WebGPU backends with the same proof bytes; verifiers make no backend
+  calls.
+- **Fast path (#64, #66):** held proving keys (`ProvingKey`), one relation
+  up to 2^20 rows, the hemera node jet (one permutation per Merkle level,
+  `execution::node`), veil held keys and counter-mode prover coins.
+- **Disclosed components (#39 – #43):** experimental noun/Cost relation,
+  disclosed noun memory, evaluation DAG and semantic stream (receipts in
+  `audit/`).
+- **The retired fold is gated.** The 0.3.x folded trace API (`commit`,
+  `open`, `verify_eval`, `verify`, `fold`, `decide`), the universal CCS,
+  `folding`, φ* SpMV and the `zheng` CLI compile only with the feature
+  `legacy`, off by default. It is unsound and is removed in phase 5.
+- **Since the promotion (master, 2026-10-27):** the root workspace excludes
+  `.worktrees`; `[profile.dev] opt-level = 3` (G10b, the change of #77);
+  rustfmt over `rs` and `cli`; clippy clean with `-D warnings` on every
+  target and feature.
+
+### Known — not in 0.4.0
+
+- **hemera 0.3.1.** The crate pins `cyber-hemera` 0.3 and every gadget,
+  layout, golden and figure is on hemera 0.3.1. The frozen material is
+  hemera 0.4 (hemera#15, frozen 2026-10-16); the move is zheng#69/#73
+  (draft), whose 64 KiB final-proof bound waits for the owner's L3b decision
+  (#78 keeps 64 KiB, #79 raises the gate to 72 KiB).
+- **Verify ≤ 1 ms is met by no profile** (profile 1 under 10 ms at
+  hash.tri; profile 6 5.3–5.7 ms on one thread).
+- **Conjectured ledger rows remain:** the relation compiler, the hash, the
+  program binding by digest, and the IVC and wrap compositions.
+- **The legacy path is still in the tree** until phase 5, together with
+  TensorRs decoding.
+- **Siblings on release lines.** 0.4.0 builds against nox 0.3.0
+  (`release/0.4`) and cyber-lens 0.2.0 (`release/0.2`), neither on
+  crates.io.
 
 ### Added
 

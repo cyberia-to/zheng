@@ -1,6 +1,6 @@
 # zheng: release-grade implementation plan
 
-> superseded: plan for the 0.3/0.4 folded trace API, now behind feature `legacy` (unsound) and deleted in phase 5; its spec targets were never real. current plan: soft3 `proposals/proof-system-repair.md`; bits per component: specs/soundness.md; measured figures: audit/succinct-profile-2026-10.md.
+> superseded: plan for the 0.3/0.4 folded trace API, now behind feature `legacy` (unsound) and deleted in phase 5; its spec targets were never real. current plan: soft3 `proposals/proof-system-repair.md`; bits per component: specs/soundness.md; measured figures: audit/succinct-profile-2026-10.md. status of the repair: `roadmap/README.md` (2026-10-27).
 
 ## goal
 
