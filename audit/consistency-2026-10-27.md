@@ -3,6 +3,7 @@ tags: zheng, audit, release, consistency
 crystal-type: report
 crystal-domain: comp
 date: 2026-10-27
+runs: 2026-10-29
 ---
 # consistency of master with the proof-system repair — 2026-10-27
 
@@ -68,16 +69,112 @@ each claim of the repair scheme, where the repository states it, where the code 
 
 ## 4. the three runs
 
-the runs check origin/master after the push; their record is the next commit of this page.
+three runs, 2026-10-29, each from fresh clones of origin/master at c54a5a7 (the promotion merge 4068e9c, #80, plus one docs commit; code identical to a076137), on the stand of §2. the first attempt of 2026-10-27 at 4068e9c was cut off by an API outage (run 1 stalled in `fast_path` and was stopped by its time limit) and is not counted; its completed steps agreed with the runs below.
+
+### 4.1 run (a): build, test, clippy, the README's commands
+
+`python3 audit/tools/consistency_run.py <n> <zheng-repo>` executes README.md § build of origin/master verbatim: `mkdir`, seven `git clone`s, six `git -C … checkout <rev>`, then from `zheng/`:
+
+```
+cargo build --release --locked
+cargo test --locked --workspace
+cargo clippy --locked --workspace --all-targets --features zheng/legacy,zheng/serde,zheng/test-hooks,zheng-cli/legacy -- -D warnings
+cargo run --release --locked -p zheng --example fast_path -- hash.tri merkle-16 merkle-32
+ZHENG_PROFILES=1,4,5,6 cargo run --release --locked -p zheng --example envelope_profiles -- hash.tri
+```
+
+(the last with `ZHENG_ENVELOPE_DIR` added to keep the envelopes). every command exited 0 in every run; no clone was left modified (`Cargo.lock` unchanged under `--locked`).
+
+| run | start → end (UTC) | load 1-min at start → end | build | test | clippy | fast_path | envelope_profiles | tests passed / failed / ignored |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 12:48:03 → 13:09:22 | 7.0 → 80.6 | 8.7 s | 816.4 s | 11.6 s | 41.0 s | 170.9 s | 394 / 0 / 19 (28 binaries) |
+| 2 | 13:09:27 → 13:25:05 | 74.6 → 66.1 | 7.3 s | 588.4 s | 9.4 s | 26.1 s | 108.3 s | 394 / 0 / 19 |
+| 3 | 13:25:08 → 13:39:27 | 61.6 → 46.0 | 7.0 s | 529.0 s | 9.3 s | 26.5 s | 86.0 s | 394 / 0 / 19 |
+
+clippy reported no warning of zheng or zheng-cli (the only warnings are cyber-hemera's manifest lint name and the `block` crate's future-incompatibility note, both outside this repository).
+
+measurements, CPU backend (the machine was shared; load as above, so times vary ±60 % between runs and are upper bounds; sizes are deterministic):
+
+| profile · fixture | envelope | run 1 prove / verify | run 2 | run 3 |
+|---|---|---|---|---|
+| 1 · hash.tri | 16,791 B | 43.4 ms / 5.70 ms | 40.2 / 5.08 | 41.3 / 5.02 |
+| 1 · merkle-16 | 60,077 B | 1,110.6 ms / 198.2 ms | 667.8 / 164.0 | 643.5 / 159.1 |
+| 1 · merkle-32 | 63,594 B | 2,326.1 ms / 399.2 ms | 1,391.4 / 307.2 | 1,368.0 / 312.0 |
+| 4 · hash.tri | 96,083 B | 13.8 s / 8.49 ms | 8.4 s / 6.73 | 7.5 s / 5.15 |
+| 5 · hash.tri | 407,947 B | 20.1 s / 15.74 ms | 14.1 s / 11.90 | 10.7 s / 9.61 |
+| 6 · hash.tri | 62,687 B | 135.9 s / 10.39 ms | 84.7 s / 7.47 | 66.9 s / 5.53 |
+
+(profile 1 verify from `fast_path`; profiles 4–6 verify = decode + verify median of 5 from `envelope_profiles`.) bits for profile 1: 128.08 / 128.08 / 128.04 with grinding, 112.08 / 112.08 / 106.04 without, in every run.
+
+determinism: the four envelopes are byte-identical across the three runs and equal to the measurement of 2026-10-27 at a076137 (§3):
+
+| envelope | SHA-256 (runs 1, 2, 3 and 2026-10-27) |
+|---|---|
+| hash.tri.p1.zheng | f3fd3651303217c31930aaf4d0abdcc6677508cfd4fe48372555d426508ae44e |
+| hash.tri.p4.zheng | f87d55ef08bc5daf6f3bac9b9c162279a63ca5c382668f38bd20cf6076611671 |
+| hash.tri.p5.zheng | 9e8348ebd3dcadc69066e09b43ae554869d3daf8631621cceb420851ce7dce32 |
+| hash.tri.p6.zheng | 5c989d51f432d4dac82b9c5d6178e6d51dc4b0dca12dc053c2b885c0ab7d616b |
+
+### 4.2 run (b): links
+
+`python3 audit/tools/links.py <zheng-checkout> --graph <the directory holding the sibling repos>` over each run's clone (graph `~/cyber`): relative links must resolve inside the checkout; wiki-links must name a page of the checkout or of a sibling repository that exists (a repo, a path, a page name or a frontmatter alias). result in all three clones: 663 links, 0 unresolved. during the sweep (2026-10-27) the forks unlinked 45 wiki-links to pages that exist nowhere in the graph and fixed the rest.
+
+### 4.3 run (c): stale and banned terms
+
+- soft3 `scripts/stale-proof-claims.nu --root <dir holding only the clone>` (soft3 at its 2026-10-29 checkout): `0 hits — the ledger is closed`, all three clones. before the sweep the merged tree had 22 hits in 6 files.
+- `sh audit/tools/terms.sh <zheng-checkout>` (identical counts in all three clones at c54a5a7; this page, which quotes the terms, adds its own hits from the commit that records the runs), each remaining hit read and kept for the reason given:
+
+| term | hits | why they stay |
+|---|---|---|
+| STARK | 41 | other systems (Stwo, Triton, RISC Zero, Trisha), page titles and aliases, and sentences saying zheng proofs are not STARKs; none names zheng a STARK |
+| Brakedown | 155 | the `legacy` feature, history, bbg's table digest, dated audits, the CHANGELOG |
+| "2 KB" | 10 | substrings of other figures (52 KB, 12 KB, 62 KB …); no 2 KB claim |
+| "2 KiB" | 3 | substrings of "72 KiB" (the L3b option) |
+| "100 ns" | 0 | — |
+| sub-millisecond | 2 | two audit receipts stating such claims are absent |
+| 0.3.3 | 4 | CHANGELOG history and this page |
+| CLAUDE.md | 1 | this page (the file is gone; AGENTS.md is the only instruction file) |
+| `[[tape]]`, `tape::` | 0 | — |
+| release/0.4 | 30 | dated audits' stands, the CHANGELOG and README naming the promotion, the sibling table (nox `release/0.4`), a trident URL |
+| the 0.3 fold scheme's name | 1 | CHANGELOG history (allow-listed by the stale gate) |
+| the retired opening's claim to need no authentication paths | 0 | — |
+| "no AIR" | 1 | this page, quoting the removed sentence |
+
 
 ## 5. pull requests and branches
 
-the triage of the open pull requests is recorded with the runs.
+merged: #80 (`promote/release-0.4-into-master` → `master`, merge 4068e9c, 2026-10-27), then c54a5a7 (docs) and this page's record pushed to master directly by the owner's authorization; `release/0.4` fast-forwarded to master each time (no divergence).
+
+closed on 2026-10-27, each with a note naming what superseded it (branches kept: not contained in master):
+
+| PR | what it was | superseded by |
+|---|---|---|
+| #20 `launch/5-fold-order-independence` | fold either order (`folding/decide.rs`) | the legacy fold is behind `legacy` and goes in phase 5; accumulation replaced it |
+| #21 `launch/10-p1-signal-content-leak` | audit: the signal wire names the author | soft3 `proposals/privacy-frozen.md` §1.6 (speaking is spending); the finding is about cybergraph/foculus, not zheng |
+| #22 `launch/scan-zheng-clean-build` | clean build; TensorMerkle gap | README § build (pinned stand), the `.worktrees` exclude, these three runs; TensorMerkle is legacy |
+| #26 `launch/89-fold-root-replay-assert` | legacy look-opening replay | `ccs` is legacy; reads are authenticated by `execution::state_evidence` |
+| #29 `launch/150-phi-star-graph-commit-binding` | φ* graph commit binding | φ* SpMV is legacy; no shipped profile proves φ* |
+| #34 `launch/40-sumcheck-degree-check` | round-polynomial degree check | the shipped verifiers read compressed rounds through `spartan::reduce::decompress`, which fixes each round's degree from the verifier's own instance; the patched `SpartanVerifier` serves only retired paths |
+| #44 `docs/proving-link` | phi-spmv links `tru/specs/proving.md` | the target does not exist on tru master; phi-spmv is a legacy page |
+
+open, in flight (status comment posted on each on 2026-10-27; all are drafts; bases `release/0.4` = master, or the sweep branch):
+
+| PR | status | what it needs |
+|---|---|---|
+| #69 | zheng on hemera 0.4, the dependents sweep (one commit, never built alone) | carried by #73 |
+| #73 | #69 under a CI stand (train row L3): builds, one failing test (the 64 KiB final-proof bound under hemera 0.4) | the owner's L3b decision, then a merge of master (mechanical except `machine/layout.rs`) |
+| #78 / #79 | L3b: keep the 64 KiB gate with final level `10f:32:5` (#78) or raise it to 72 KiB with `9f:26:5` (#79) | the owner's decision; due 2026-10-29 12:00 UTC per #77, not recorded on either PR at 13:40 UTC |
+| #77 | dev profile opt-level 3 (G10b) | already on master (78f6d94); redundant once #73 merges master |
+| #67 | veil-W (G1): zk profile with a WHIR opening, SPEND ~46.5 KB, measured on hemera 0.3 | independent review, re-measure on hemera 0.4 |
+| #70 | block aggregation (G2): one proof per block | in flight |
+
+remote branches: deleted 2026-10-27 because fully contained in master — `chore/0.2.0`, `docs/l5a-carry`, `docs/universal-step-ccs-plan`, `feat/axis-openings`, `feat/hash-openings`, `feat/look-root`, `feat/proof-serde`, `feat/universal-step-ccs`, `fix/fold-step-witness-gate`, `fix/group-by-structure`, `fix/tade-path`, `fix/unchecked-wire-bytes`, `fix/witness-off-the-wire`, `promote/release-0.4-into-master`. kept (not contained): the heads of the open PRs and the sweep stack (`ci/hemera-0.4-sweep`, `feat/hemera-0.4`, `feat/zk-small`, `feat/block-aggregate`, `fix/g10b-dev-profile`, `l3b/option-i-64kib`, `l3b/option-ii-raised-gate`, `l3b/common`, `fix/l3a-hygiene`, `fix/g10b-test-profile`, `chore/l5a-tade-rename`), CI diagnostics (`diag/g10b-no-fail-fast`, `diag/l3-sweep-failures`, `diag/l3-sweep-fix`, `diag/l3b-frontier`, `diag/l3b-frontier-2`, `diag/l3b-options`, `diag/l5a-76-cli`), the closed PRs' heads and the unPRed September `launch/*` asserts (`launch/184-…`, `233-…`, `80-…`, `84-…`, `85-…`, `93-…`, `99-…`, all against the legacy path), `fix/warrior-release`, `docs/proving-link`.
 
 ## 6. what is still red
 
 - hemera 0.4, the frozen material, is not in master (#69/#73); one test fails under it until the L3b decision (#78 / #79).
-- verify ≤ 1 ms: no profile meets it (profile 1 4.9 ms at hash.tri, profile 6 5.4 ms on this run).
+- verify ≤ 1 ms: no profile meets it (profile 1 5.0–5.7 ms at hash.tri, profile 6 5.5–10.4 ms in the runs of §4).
+- the L3b decision (#78 / #79) was due 2026-10-29 12:00 UTC and is not recorded on the PRs.
 - conjectured ledger rows keep the repair's release gate shut.
 - phase 5 (deletion of the legacy path) and the Trident second verifier are not done.
 - master builds only against pinned sibling revisions on release lines (§2); it rejoins the siblings' tips with the hemera 0.4 sweep.

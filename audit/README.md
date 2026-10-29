@@ -74,4 +74,5 @@ checking the IOP:
 
 - `tools/joy_table.sh`, `tools/warm_table.sh` — `joy prove` / `joy verify` tables per backend (cold and warm), used by soft3 `audit/proof-latency-2026-10.md` and `fast-path-2-2026-10.md`.
 - `tools/tree.py` — the main thread's call tree from macOS `sample` output.
+- `tools/consistency_run.py`, `tools/links.py`, `tools/terms.sh` — the three runs of [consistency-2026-10-27.md](consistency-2026-10-27.md): a fresh stand running README § build verbatim, the link check, the banned-term sweep; each takes the repository as an argument.
 - `ivc-speed/ledger.py` — independent recomputation of the rebalanced field-native WHIR ledgers, used by `ivc-speed-2026-10.md`.
