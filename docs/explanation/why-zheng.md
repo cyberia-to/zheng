@@ -66,7 +66,7 @@ this combination yields:
 measured on an Apple M4 Max: one hemera hash proves in 0.07 s on Metal
 into a 16,756 B proof verified in under 10 ms (soft3
 `audit/proof-latency-2026-10.md`); a run of any length wraps into at
-most 64,213 B, verified in about 2 ms (`audit/ivc-speed-2026-10.md`).
+most 64,213 B, verified in 2–6 ms (`audit/ivc-speed-2026-10.md`, `audit/consistency-2026-10-27.md`).
 the goal is any nox computation in ≤ 64 KB, verified in ≤ 1 ms,
 constant in the number of steps: the size is met, the verify time is
 not.

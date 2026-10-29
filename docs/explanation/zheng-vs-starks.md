@@ -70,7 +70,7 @@ the goal of the repair: any nox computation → a proof ≤ 64 KB, post-quantum,
 a STARK proves a long computation as one long trace, or recursively by verifying proofs inside proofs. zheng does the second, hash-only ([[zheng/docs/explanation/recursion|recursion]]):
 
 - the nox machine is one uniform step relation for every program, an AIR proved by a sumcheck zerocheck (profile 4); its segments' Reed–Solomon evaluation claims are accumulated hash-based (WARP-structured, ARC-style out-of-domain samples) and decided by one WHIR opening. accumulation alone leaves every step's openings in the proof: about 96 KB per `2^14`-row segment (`audit/accumulation-2026-10.md`).
-- IVC (profile 5): each step's relation runs the previous step's verifier, so the proof stays at about 285 KB from 33 to 1.57M cycles (`audit/recursion-2026-10.md`).
+- IVC (profile 5): each step's relation runs the previous step's verifier, so the proof is constant in the run: 282–285 KB from 33 to 1.57M cycles with binary trees (`audit/recursion-2026-10.md`), 407,947 B at hash.tri in the shipped shape with 4-ary trees (`audit/consistency-2026-10-27.md`).
 - wrap (profile 6): three wrap levels prove the IVC proof's final verifier, down to at most 64,213 B, proved in about 19 s on Metal (`audit/ivc-speed-2-2026-10.md`) — an aggregator's job, not a user device's.
 
 this replaces the folding of the retired 0.3 design, which needed a homomorphic commitment; hemera is a hash, so the stack never had it soundly. the composition of IVC and wrap is a conjectured row of the soundness ledger, the heuristic every deployed recursive system shares.

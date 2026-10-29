@@ -13,8 +13,9 @@
 | synthetic relation, 2^20 rows | 1, succinct, bake-off parameters | 71,081 B | 270 ms | same |
 | hash of a secret preimage | 2, zk "veil" | 63.9 KB | 10.0 ms (4.1 ms with a cached verifying key) | `audit/zk-profile-2026-10.md` |
 | 33 cycles … 16,383 cycles | 4, machine (accumulation) | 83 KB … 384 KB, ~96 KB per `2^14`-row segment | 5.4–40 ms | `audit/accumulation-2026-10.md` |
-| `hash.tri`, merkle-32 | 5, recursive (IVC) | 284,950 / 285,303 B, constant in the run | 26.5 / 32.1 ms | `audit/recursive-envelope-2026-10.md` |
+| `hash.tri` | 5, recursive (IVC), rate 1/16, 4-ary trees | 407,947 B, constant in the run | 9.5 ms | `audit/consistency-2026-10-27.md` (binary trees were 284,950 B, `audit/recursive-envelope-2026-10.md`) |
 | `add.tri` | 6, wrapped | 63,029 B; at most 64,213 B over every transcript | 1.9–2.2 ms (statement prepared) | `audit/ivc-speed-2026-10.md` |
+| `hash.tri` | 6, wrapped | 62,687 B envelope | 5.4 ms (decode + verify, loaded machine) | `audit/consistency-2026-10-27.md` |
 
 every succinct, zk and recursive proof carries ≥ 128 proven bits with grinding counted; the derivations are in [[zheng/specs/soundness|the soundness ledger]].
 
@@ -27,7 +28,7 @@ the succinct profile's opening is WHIR, which won the phase-2 bake-off against a
 any nox computation → a proof ≤ 64 KB, post-quantum (hash-only), verified in ≤ 1 ms, constant in the number of steps; small statements ≤ 16–20 KB; every proof a user device makes in ≤ 1 s. where the measurements stand against it:
 
 - size: one-relation proofs fit 64 KB up to Merkle depth 32 (`2^18` committed variables) and miss it above; a run of any length fits it through profile 6 (≤ 64,213 B). one hash (16,756 B) sits just above the 16 KB stretch target.
-- verification: not met by any profile. profile 6 verifies in about 2 ms, one-relation proofs in milliseconds to hundreds of milliseconds by size. the causes: hemera inside the WHIR opening (most of the verifier's work is Merkle paths), an unstructured Spartan verifier, and recompiling the relation on every verification — a cached verifying key removes the last.
+- verification: not met by any profile. profile 6 verifies in 2–6 ms, one-relation proofs in milliseconds to hundreds of milliseconds by size. the causes: hemera inside the WHIR opening (most of the verifier's work is Merkle paths), an unstructured Spartan verifier, and recompiling the relation on every verification — a cached verifying key removes the last.
 - proving on the user's device: met on Metal for every product-shaped statement up to Merkle depth 16, cold and warm (hash.tri 0.07 s, depth 16 0.48 s; soft3 `audit/proof-latency-2026-10.md`); depth 32 takes 1.13 s cold. the wrap chain of profile 6 takes about 19 s on Metal and runs on aggregators, off the user's path (`audit/ivc-speed-2-2026-10.md`).
 
 ## prover time

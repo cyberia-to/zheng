@@ -30,7 +30,7 @@ measured (`audit/accumulation-2026-10.md`): the decider is 44–93 KB, but the w
 
 each `2^15`-row step proves its nox segment and runs, as the recursion circuit inside its own trace, the verifier of the step before: its sumchecks, its Merkle openings over a field-native hemera transcript and field-native WHIR, its accumulation checks. constraint evaluations are deferred as claims and checked once by the final verifier. a proof of any number of steps is the last step's proof, the state it started from and one decider.
 
-measured (`audit/recursion-2026-10.md`, `audit/recursive-envelope-2026-10.md`): 282–285 KB from 33 cycles to 1.57M cycles — constant in the run — with decode and verify in 26.5 ms (hash.tri) and 32.1 ms (merkle-32). one IVC step proves in about 1.1 s on Metal (`audit/ivc-speed-2-2026-10.md`).
+measured with binary trees (`audit/recursion-2026-10.md`, `audit/recursive-envelope-2026-10.md`): 282–285 KB from 33 cycles to 1.57M cycles — constant in the run — with decode and verify in 26.5 ms (hash.tri) and 32.1 ms (merkle-32). the shipped shape (rate 1/16, 4-ary trees) gives 407,947 B at hash.tri, decode and verify 9.5 ms (`audit/consistency-2026-10-27.md`). one IVC step proves in about 1.1 s on Metal (`audit/ivc-speed-2-2026-10.md`).
 
 ## 3. wrap (envelope profile 6)
 
