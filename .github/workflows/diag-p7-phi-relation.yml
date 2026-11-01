@@ -1,0 +1,119 @@
+# DIAGNOSTIC — never merged, never a PR (soft3 director plan, row P7).
+# What tru's epoch-engine phi* would cost as a relation zheng proves soundly:
+# the cost of its primitive operations (qmul, one sparse row of length L) as
+# nox programs proven by the nox machine (rs/tests/phi_relation.rs). Measures
+# trace rows, proof size, prove time and verify time on x86_64 CPU, aarch64
+# Linux CPU, macOS aarch64 CPU, and macOS aarch64 with ZHENG_THREADS=1. Every
+# sibling is pinned by full SHA: hemera, lens, nox, strata, tade, honeycrisp.
+name: diag-p7-phi-relation
+
+on:
+  push:
+    branches: [diag/p7-phi-relation]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  HEMERA_REF: 8559b52f480ebb6fdd0a25dec16ba27747da9cab
+  LENS_REF: d6dcc3f2ad2186466d639518f71cecf6fb928d96
+  NOX_REF: 41ba24f275950c22c46206c5fa73fcdb82dc44ec
+  STRATA_REF: 5ef0c84d155ef07f9a6f33ec0ee4db6b20896bc3
+  TADE_REF: 778dc6f7fa1bf1176d436a27686e8393c8f81db7
+  HONEYCRISP_REF: 595ce26265e52365b23a502c19215f6de8a11758
+
+jobs:
+  measure:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x86_64
+            os: ubuntu-24.04
+            threads: ""
+            backend: ""
+          - label: linux-aarch64
+            os: ubuntu-24.04-arm
+            threads: ""
+            backend: ""
+          - label: macos-aarch64-cpu
+            os: macos-15
+            threads: ""
+            backend: ""
+          # the spec'd Metal row: single-threaded, so the veil prover's per-row
+          # encode takes the backend path (it stays on the CPU at this size;
+          # the Merkle leaves and the grinding reach the device)
+          - label: macos-aarch64-metal
+            os: macos-15
+            threads: "1"
+            backend: metal
+          # extra: the same backend with every thread (unset)
+          - label: macos-aarch64-metal-mt
+            os: macos-15
+            threads: ""
+            backend: metal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zheng
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/strata
+          path: strata
+          ref: ${{ env.STRATA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/hemera
+          path: hemera
+          ref: ${{ env.HEMERA_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/lens
+          path: lens
+          ref: ${{ env.LENS_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/nox
+          path: nox
+          ref: ${{ env.NOX_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/tade
+          path: tade
+          ref: ${{ env.TADE_REF }}
+      - uses: actions/checkout@v4
+        with:
+          repository: cyberia-to/honeycrisp
+          path: honeycrisp
+          ref: ${{ env.HONEYCRISP_REF }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: record the GPU
+        if: runner.os == 'macOS'
+        run: system_profiler SPDisplaysDataType || true
+      - name: phi_relation
+        working-directory: zheng
+        env:
+          MATRIX_THREADS: ${{ matrix.threads }}
+          MATRIX_BACKEND: ${{ matrix.backend }}
+        run: |
+          set -o pipefail
+          # ZHENG_THREADS stays unset unless the matrix row sets it
+          if [ -n "$MATRIX_THREADS" ]; then export ZHENG_THREADS="$MATRIX_THREADS"; fi
+          # ZHENG_BACKEND stays unset (the CPU backend) unless the row sets it
+          if [ -n "$MATRIX_BACKEND" ]; then export ZHENG_BACKEND="$MATRIX_BACKEND"; fi
+          cargo test --release -p zheng --test phi_relation -- --nocapture --test-threads=1 2>&1 | tee ../phi_relation-${{ matrix.label }}.txt
+      - name: Cargo.lock
+        if: always()
+        working-directory: zheng
+        run: |
+          git diff --stat -- Cargo.lock || true
+          cp Cargo.lock ../Cargo.lock-${{ matrix.label }} || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p7-${{ matrix.label }}
+          path: |
+            phi_relation-${{ matrix.label }}.txt
+            Cargo.lock-${{ matrix.label }}
