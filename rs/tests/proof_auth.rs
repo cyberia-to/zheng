@@ -44,6 +44,25 @@
 //! same hash of four PUBLIC inputs is the cross-check (`certify_execution`;
 //! the last input sits at the subject's head, so it is given `[k3 k2 k1 k0]`),
 //! and so is native nox reducing the hash of the constant 8-list.
+//!
+//! AUTH1 as written (second test, line prefix `P5-AUTH1 `). The key is a
+//! tagged noun, not a bare limb list:
+//!
+//!   key noun = [[t0 [t1 [t2 t3]]] [s0 [s1 [s2 [s3 s4]]]]]
+//!   auth_key(s) = pattern 15 of that noun
+//!
+//! `TAG` = the 24 bytes `soft3/chain/auth-key/v1\0` as four little-endian
+//! atoms of 7, 7, 7 and 3 bytes (t0..t3); the 32-byte secret `s` is five
+//! little-endian limbs of 7, 7, 7, 7 and 4 bytes (s0..s4). Every atom is
+//! below 2^56, so canonical Goldilocks with no rejection. Pattern 15 is the
+//! structural digest of the noun (`hash_atom` / `hash_pair`) and then one
+//! plain permutation; the relation compiler constrains every permutation and
+//! hashes constant subtrees natively, so the quoted TAG subtree costs nothing.
+//! After five secret pushes the limbs sit at axes 2, 6, 14, 30, 62 (limb i at
+//! `2^(i+2) - 2`, one right step per earlier push, then one left). The
+//! context is `hemera(b"soft3/chain/auth/v1\0" || chain || tx_core)` with
+//! `chain = hemera(b"pussy")`. Cross-checks: secret program, public-input
+//! program, and native nox hashing of the noun plus the one permutation.
 mod common;
 
 use common::parse;
@@ -327,6 +346,291 @@ fn proof_authorized_transaction_binds_the_digest_and_is_measured() {
     let threads = std::env::var("ZHENG_THREADS").unwrap_or_else(|_| "unset".into());
     println!(
         "P5 arch={} os={} ZHENG_THREADS={threads} backend={backend} key_limbs=4 proof_B={proof_med},{lo},{hi} \
+         envelope_B={env_med} prove_ms={:.1} verify_cold_ms={cold:.3} verify_cached_ms={cached:.3} \
+         flips_accepted={accepted}",
+        std::env::consts::ARCH,
+        std::env::consts::OS,
+        median(prove_ms),
+    );
+    assert_eq!(accepted, 0, "a bit flip was accepted");
+}
+
+// ---- AUTH1 as written -------------------------------------------------------
+
+const TAG: &[u8; 24] = b"soft3/chain/auth-key/v1\0";
+const CONTEXT_PREFIX: &[u8] = b"soft3/chain/auth/v1\0";
+
+/// Little-endian integers of consecutive 7-byte chunks (the last may be short).
+fn limbs7(bytes: &[u8]) -> Vec<u64> {
+    bytes
+        .chunks(7)
+        .map(|c| {
+            let mut b = [0u8; 8];
+            b[..c.len()].copy_from_slice(c);
+            u64::from_le_bytes(b)
+        })
+        .collect()
+}
+
+fn atom(v: u64) -> ExecutionNoun {
+    ExecutionNoun::Atom(v)
+}
+fn pair(a: ExecutionNoun, b: ExecutionNoun) -> ExecutionNoun {
+    ExecutionNoun::Pair(Box::new(a), Box::new(b))
+}
+/// `[x0 [x1 [... [x_{n-2} x_{n-1}]]]]`.
+fn nest(items: &[u64]) -> ExecutionNoun {
+    match items {
+        [only] => atom(*only),
+        [first, rest @ ..] => pair(atom(*first), nest(rest)),
+        [] => unreachable!(),
+    }
+}
+/// The key noun `[[t0 [t1 [t2 t3]]] [s0 [s1 [s2 [s3 s4]]]]]`.
+fn key_noun(s: &[u8; 32]) -> ExecutionNoun {
+    pair(nest(&limbs7(TAG)), nest(&limbs7(s)))
+}
+
+/// The structural digest of a noun (nox `hash_atom` / `hash_pair`).
+fn noun_digest(n: &ExecutionNoun) -> nox::data::Digest {
+    match n {
+        ExecutionNoun::Atom(v) => nox::data::hash_atom(nebu::Goldilocks::new(*v)),
+        ExecutionNoun::Pair(a, b) => nox::data::hash_pair(&noun_digest(a), &noun_digest(b)),
+    }
+}
+
+/// Native `auth_key`: pattern 15 of the key noun, i.e. the noun's structural
+/// digest absorbed (zero-padded to the rate) by one hemera permutation, the
+/// first four state elements squeezed.
+fn auth_key(s: &[u8; 32]) -> [u64; 4] {
+    let digest = noun_digest(&key_noun(s));
+    let mut rate = [hemera::field::Goldilocks::new(0); 8];
+    for i in 0..4 {
+        rate[i] = hemera::field::Goldilocks::new(digest[i].as_u64());
+    }
+    let mut sponge = hemera::StepSponge::absorb(&rate);
+    let mut last = [hemera::field::Goldilocks::new(0); 16];
+    while !sponge.done() {
+        last = sponge.step();
+    }
+    [
+        last[0].as_canonical_u64(),
+        last[1].as_canonical_u64(),
+        last[2].as_canonical_u64(),
+        last[3].as_canonical_u64(),
+    ]
+}
+
+/// The formula building the key noun: `[3 [[1 TAG-subtree] <cons of 5 axes>]]`.
+fn auth_hash_of_axes() -> String {
+    let tag = limbs7(TAG);
+    let axes: Vec<String> = [2u64, 6, 14, 30, 62]
+        .iter()
+        .map(|a| format!("[0 {a}]"))
+        .collect();
+    format!(
+        "[15 [3 [[1 [{} [{} [{} {}]]]] {}]]]",
+        tag[0],
+        tag[1],
+        tag[2],
+        tag[3],
+        cons_list(&axes)
+    )
+}
+
+/// The auth key of five SECRET limbs, read in order s0..s4.
+fn auth_program_secret() -> ExecutionNoun {
+    let secret = "[16 [[1 0] [1 0]]]".to_string();
+    let mut items = vec![secret; 5];
+    items.push("[0 1]".to_string());
+    parse(&format!(
+        "[2 [{} [1 {}]]]",
+        cons_list(&items),
+        auth_hash_of_axes()
+    ))
+}
+
+/// The same hash of five PUBLIC inputs (the subject is `[s0 [s1 [s2 [s3 [s4 0]]]]]`).
+fn auth_program_public() -> ExecutionNoun {
+    parse(&auth_hash_of_axes())
+}
+
+/// `hemera(b"soft3/chain/auth/v1\0" || chain || tx_core)`.
+fn auth_context(chain: &[u8; 32], tx_core: &[u8]) -> [u8; 32] {
+    let mut m = CONTEXT_PREFIX.to_vec();
+    m.extend_from_slice(chain);
+    m.extend_from_slice(tx_core);
+    *hemera::hash(&m).as_bytes()
+}
+
+#[test]
+fn auth1_tagged_key_binds_the_statement_and_is_measured() {
+    let (backend, device) = match std::env::var("ZHENG_BACKEND") {
+        Ok(choice) => cyber_lens_gpu::install(choice.parse::<cyber_lens_gpu::Choice>().unwrap())
+            .unwrap_or_else(|e| panic!("backend `{choice}`: {e}")),
+        Err(_) => ("cpu", "default".to_string()),
+    };
+    println!("backend: {backend} ({device})");
+
+    // the 32-byte secret: spread bytes, every 7-byte window distinct
+    let mut secret = [0u8; 32];
+    for (i, b) in secret.iter_mut().enumerate() {
+        *b = (i as u8).wrapping_mul(37).wrapping_add(11) ^ 0xA5;
+    }
+    let limbs = limbs7(&secret);
+    assert_eq!(limbs.len(), 5);
+    assert!(limbs.iter().all(|&l| l < 1 << 56));
+    assert_eq!(limbs7(TAG).len(), 4);
+
+    // the auth key, three ways
+    let program = auth_program_secret();
+    let public_input = [limbs[4], limbs[3], limbs[2], limbs[1], limbs[0]];
+    let (public, _) = certify_execution(&auth_program_public(), &public_input, BUDGET).unwrap();
+    assert_eq!(public.public_output.len(), 4, "a 4-limb auth key");
+    assert_eq!(
+        public.public_output,
+        auth_key(&secret).to_vec(),
+        "the compiled hash equals the native structural digest plus one permutation"
+    );
+
+    let chain = *hemera::hash(b"pussy").as_bytes();
+    let tx_core: &[u8] = b"\x02\x01transfer 42 tokens from account A to account B, nonce 7";
+    let other_core: &[u8] = b"\x02\x01transfer 4200 tokens from account A to account C, nonce 7";
+    let context_bytes = auth_context(&chain, tx_core);
+    let other_context = auth_context(&chain, other_core);
+    assert_ne!(context_bytes, other_context);
+
+    // prove
+    let reps = 11;
+    let (mut prove_ms, mut proof_sizes, mut env_sizes) = (vec![], vec![], vec![]);
+    let mut last = None;
+    for _ in 0..reps {
+        let t = Instant::now();
+        let envelope = prove_zk(&program, &[], &limbs, BUDGET, context_bytes).unwrap();
+        prove_ms.push(ms(t));
+        proof_sizes.push(veil_len(&envelope));
+        env_sizes.push(envelope.to_bytes().len());
+        last = Some(envelope);
+    }
+    let envelope = last.unwrap();
+    let bytes = envelope.to_bytes();
+    let Envelope::Zk {
+        statement,
+        context,
+        proof: ZkProof::Veil(proof),
+    } = envelope.clone()
+    else {
+        panic!("a veil zk envelope")
+    };
+    assert_eq!(context, context_bytes);
+    assert_eq!(
+        statement.execution.public_output, public.public_output,
+        "the proof's auth key is the public-input auth key"
+    );
+    assert_eq!(Envelope::from_bytes(&bytes).unwrap(), envelope);
+
+    // d. nothing of the secret in the statement or the envelope
+    assert!(
+        statement.execution.public_input.is_empty(),
+        "no public input"
+    );
+    let bound = zk_statement_bytes(&statement, &context);
+    for (name, hay) in [("envelope", &bytes), ("statement", &bound)] {
+        for (i, l) in limbs.iter().enumerate() {
+            let le = l.to_le_bytes();
+            assert!(
+                !hay.windows(8).any(|w| w == &le[..]),
+                "secret limb s{i} appears in the {name}"
+            );
+        }
+        for w7 in secret.windows(7) {
+            assert!(
+                !hay.windows(7).any(|w| w == w7),
+                "a 7-byte window of the secret appears in the {name}"
+            );
+        }
+    }
+
+    // verify: cold, and with a cached key through the bound entry point
+    envelope.verify(None).unwrap();
+    let vk = VerifyingKey::for_execution(&statement.execution).unwrap();
+    veil::verify_bound(&statement, &proof, Some(&vk), &bound).unwrap();
+    let cold = median(
+        (0..21)
+            .map(|_| {
+                let t = Instant::now();
+                envelope.verify(None).unwrap();
+                ms(t)
+            })
+            .collect(),
+    );
+    let cached = median(
+        (0..21)
+            .map(|_| {
+                let t = Instant::now();
+                veil::verify_bound(&statement, &proof, Some(&vk), &bound).unwrap();
+                ms(t)
+            })
+            .collect(),
+    );
+    println!(
+        "{:?}",
+        veil::report(&statement, &veil::HidingParams::default()).unwrap()
+    );
+
+    // a. another tx_core does not verify
+    let moved = Envelope::Zk {
+        statement: statement.clone(),
+        context: other_context,
+        proof: ZkProof::Veil(proof.clone()),
+    };
+    assert!(moved.verify(None).is_err(), "other context accepted");
+    assert!(
+        veil::verify_bound(
+            &statement,
+            &proof,
+            Some(&vk),
+            &zk_statement_bytes(&statement, &other_context)
+        )
+        .is_err(),
+        "other context accepted (cached key)"
+    );
+
+    // b. another auth key does not verify, in any of its four limbs
+    for limb in 0..4 {
+        let mut forged = statement.clone();
+        forged.execution.public_output[limb] ^= 1;
+        let e = Envelope::Zk {
+            statement: forged,
+            context,
+            proof: ZkProof::Veil(proof.clone()),
+        };
+        assert!(e.verify(None).is_err(), "forged auth key limb {limb} accepted");
+    }
+
+    // c. 64 single-bit flips spread evenly over the envelope
+    let flips = 64usize;
+    let mut accepted = 0usize;
+    for i in 0..flips {
+        let (byte, bit) = (i * bytes.len() / flips, (i % 8) as u32);
+        let mut bad = bytes.clone();
+        bad[byte] ^= 1u8 << bit;
+        if Envelope::from_bytes(&bad).is_ok_and(|e| e.verify(None).is_ok()) {
+            eprintln!("accepted flip: byte {byte} bit {bit}");
+            accepted += 1;
+        }
+    }
+
+    let (lo, hi) = (
+        *proof_sizes.iter().min().unwrap(),
+        *proof_sizes.iter().max().unwrap(),
+    );
+    let sizes_f = |v: &[usize]| v.iter().map(|&x| x as f64).collect::<Vec<_>>();
+    let proof_med = median(sizes_f(&proof_sizes)) as usize;
+    let env_med = median(sizes_f(&env_sizes)) as usize;
+    let threads = std::env::var("ZHENG_THREADS").unwrap_or_else(|_| "unset".into());
+    println!(
+        "P5-AUTH1 arch={} os={} ZHENG_THREADS={threads} backend={backend} key=tagged5x7 proof_B={proof_med},{lo},{hi} \
          envelope_B={env_med} prove_ms={:.1} verify_cold_ms={cold:.3} verify_cached_ms={cached:.3} \
          flips_accepted={accepted}",
         std::env::consts::ARCH,
