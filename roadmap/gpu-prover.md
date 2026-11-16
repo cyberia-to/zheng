@@ -10,7 +10,7 @@ a single GPU pipeline that takes a nox trace and produces a zheng proof without 
 
 ## what exists (master, 2026-10-27)
 
-the prover backends of phase P of the [[soft3/proposals/proof-system-repair|proof-system repair]] exist: one backend trait at [[lens]] (hemera permutations, grinding, coset NTT, Merkle levels), a Metal backend through [[honeycrisp]] on Apple Silicon and a WebGPU backend through wgpu (crate `cyber-lens-gpu`), the CPU as the fallback. zheng picks one with `ZHENG_BACKEND=cpu|metal|webgpu|auto` in its examples and benches. every backend produces the same proof bytes (SHA-1 equal per fixture), and verifiers make no backend calls (`audit/proof-stack-review-2026-10.md`).
+the prover backends of phase P of the [[soft3/projects/proof-system-repair|proof-system repair]] exist: one backend trait at [[lens]] (hemera permutations, grinding, coset NTT, Merkle levels), a Metal backend through [[honeycrisp]] on Apple Silicon and a WebGPU backend through wgpu (crate `cyber-lens-gpu`), the CPU as the fallback. zheng picks one with `ZHENG_BACKEND=cpu|metal|webgpu|auto` in its examples and benches. every backend produces the same proof bytes (SHA-1 equal per fixture), and verifiers make no backend calls (`audit/proof-stack-review-2026-10.md`).
 
 measured on an Apple M4 Max, machine shared with other agents:
 
@@ -135,4 +135,4 @@ nebu and zheng GPU kernels should follow the same WGSL approach for portability.
 3. kernel launch overhead: a compute dispatch costs microseconds. minimize dispatch count by fusing pipeline stages into larger kernels
 4. mixed precision: GPU hardware has fast f16/f32 paths. Goldilocks is u64. no hardware acceleration for 64-bit field arithmetic on current GPUs. future GPU architectures (or GFP custom silicon) would change this
 
-see [[soft3/proposals/proof-system-repair|proof-system repair]] §5 phase P for the gate, lens `specs/backend.md` for the backend contract, and [[accumulation]] for the step workload
+see [[soft3/projects/proof-system-repair|proof-system repair]] §5 phase P for the gate, lens `specs/backend.md` for the backend contract, and [[accumulation]] for the step workload

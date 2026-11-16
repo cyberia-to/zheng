@@ -8,7 +8,7 @@ zheng (証 — proof, evidence) proves [[nox]] computations for [[cyber]]: hash-
 - one IOP: Spartan over CCS with sumcheck; the nox machine (profiles 4–6) is a uniform AIR proved by a sumcheck zerocheck. no FRI, no univariate quotient
 - one wire format: the `ZHENGPF1` envelope (magic, version, profile byte)
 
-the design record is soft3 [[soft3/proposals/proof-system-repair|proposals/proof-system-repair.md]]. the bits each component claims, and whether they are proven or conjectured, are in the [soundness ledger](specs/soundness.md).
+the design record is soft3 [[soft3/projects/proof-system-repair|proposals/proof-system-repair.md]]. the bits each component claims, and whether they are proven or conjectured, are in the [soundness ledger](specs/soundness.md).
 
 ## status — master, 2026-10-27
 

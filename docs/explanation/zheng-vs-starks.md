@@ -11,7 +11,7 @@ status: draft
 
 # zheng proofs and STARKs
 
-this page compares [[zheng]] proofs with [[STARKs]] as they stand after the [[soft3/proposals/proof-system-repair|proof-system repair]] (2026-10). an earlier version of this page described a design — expander-code commitments without Merkle trees, homomorphic folding over a hash, a tiny constant checkpoint — that was unsound and never shipped; its retirement is recorded in [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] and in the proposal's §2.
+this page compares [[zheng]] proofs with [[STARKs]] as they stand after the [[soft3/projects/proof-system-repair|proof-system repair]] (2026-10). an earlier version of this page described a design — expander-code commitments without Merkle trees, homomorphic folding over a hash, a tiny constant checkpoint — that was unsound and never shipped; its retirement is recorded in [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] and in the proposal's §2.
 
 zheng is not a STARK. it shares the STARK family's trust model — transparent, hash-only, post-quantum — and differs in arithmetization, IOP and commitment.
 

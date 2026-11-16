@@ -1,4 +1,4 @@
-> note: Whirlaway (SuperSpartan + WHIR) is the template of zheng's succinct profile as shipped after the [[soft3/proposals/proof-system-repair|proof-system repair]] (2026-10): Spartan over Fp3 plus one WHIR opening. the detour through "recursive Brakedown" is retired as unsound — see [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]].
+> note: Whirlaway (SuperSpartan + WHIR) is the template of zheng's succinct profile as shipped after the [[soft3/projects/proof-system-repair|proof-system repair]] (2026-10): Spartan over Fp3 plus one WHIR opening. the detour through "recursive Brakedown" is retired as unsound — see [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]].
 
 # Whirlaway
 

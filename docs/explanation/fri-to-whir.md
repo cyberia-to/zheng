@@ -1,4 +1,4 @@
-> note: this page tells the evolution from FRI to STIR to WHIR. WHIR is the shipped commitment of zheng's succinct profile (rate 1/64, lens `rspcs`), chosen in the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]]; the detour through "recursive Brakedown" is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the figures below are the papers' published ones, in their own fields and hashes; zheng's measured figures are in [[zheng/docs/explanation/performance|performance]].
+> note: this page tells the evolution from FRI to STIR to WHIR. WHIR is the shipped commitment of zheng's succinct profile (rate 1/64, lens `rspcs`), chosen in the phase-2 bake-off of the [[soft3/projects/proof-system-repair|proof-system repair]]; the detour through "recursive Brakedown" is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the figures below are the papers' published ones, in their own fields and hashes; zheng's measured figures are in [[zheng/docs/explanation/performance|performance]].
 
 # from FRI to WHIR
 

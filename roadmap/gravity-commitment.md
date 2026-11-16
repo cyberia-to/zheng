@@ -8,7 +8,7 @@ origin: proof-horizons.md horizon 4
 ---
 # gravity commitment — mass-weighted polynomial encoding
 
-> superseded: written for the retired expander-code ("recursive Brakedown") lens; its figures were never measured and are removed. the idea is restated below for the shipped Reed–Solomon/WHIR commitment ([[soft3/proposals/proof-system-repair|proof-system repair]]).
+> superseded: written for the retired expander-code ("recursive Brakedown") lens; its figures were never measured and are removed. the idea is restated below for the shipped Reed–Solomon/WHIR commitment ([[soft3/projects/proof-system-repair|proof-system repair]]).
 
 verification cost proportional to query importance, not data size. high-π particles verify faster. the proof system reflects the topology of attention.
 
@@ -73,4 +73,4 @@ the weight function is committed alongside the polynomial. weight changes (π up
 2. soundness per layer: each layer has different degree bounds. Schwartz-Zippel analysis must account for the weakest layer (highest degree). 2²⁰ degree over |F| ≈ 2⁶⁴ would leave only about 44 bits per round, so challenges must come from Fp3 (|F| ≈ 2^192), as in every zheng profile
 3. cross-layer queries: querying a position that moved between layers requires opening the new layer. the verifier must know which layer contains the position — committed in the weight map
 
-see [[soft3/proposals/proof-system-repair|proof-system repair]] for the shipped commitment and [[lens]] for the PCS trait
+see [[soft3/projects/proof-system-repair|proof-system repair]] for the shipped commitment and [[lens]] for the PCS trait

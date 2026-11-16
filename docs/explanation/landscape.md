@@ -66,7 +66,7 @@ zheng uses the multilinear route: the interactive oracle proof is
 commitment is [[WHIR]] — Reed–Solomon codes over Goldilocks committed
 with [[hemera]] Merkle trees and opened at one point of the cubic
 extension Fp3. WHIR won the phase-2 bake-off of the
-[[soft3/proposals/proof-system-repair|proof-system repair]]; the
+[[soft3/projects/proof-system-repair|proof-system repair]]; the
 expander-code ("recursive Brakedown") commitment it replaces had no real
 opening and is retired. a nox run of any length is one uniform AIR,
 proved by a sumcheck zerocheck rather than a quotient, then accumulated

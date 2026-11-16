@@ -19,7 +19,7 @@
 
 every succinct, zk and recursive proof carries ≥ 128 proven bits with grinding counted; the derivations are in [[zheng/specs/soundness|the soundness ledger]].
 
-the public certificate of one hash shrank from 294,861 B (before phase 0 of the [[soft3/proposals/proof-system-repair|proof-system repair]]) to 15,608 B (phase 0) to 6,463 B (certificate v3). it stays linear in the witness: it is the sound fallback, not a succinct proof.
+the public certificate of one hash shrank from 294,861 B (before phase 0 of the [[soft3/projects/proof-system-repair|proof-system repair]]) to 15,608 B (phase 0) to 6,463 B (certificate v3). it stays linear in the witness: it is the sound fallback, not a succinct proof.
 
 the succinct profile's opening is WHIR, which won the phase-2 bake-off against a Reed–Solomon tensor code (TensorRs) in both size classes at rate 1/64, folding factor 4, 24 grinding bits (`succinct::params_for`). the default prover now uses `succinct::device_params`: rate 1/64, folding factor 4 up to `2^16` committed variables and 5 above, 16 grinding bits up to `2^17`, 22 at `2^18`, 24 beyond — the least grinding that keeps the proof ≤ 64 KB.
 

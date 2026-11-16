@@ -3,7 +3,7 @@ tags: zheng, roadmap
 ---
 # zheng roadmap
 
-what is built is specified in [specs](../specs/README.md) and measured in [audit](../audit/README.md). this page holds the two things that are not: the status of the repair, phase by phase, and the open proposals. the design record is [[soft3/proposals/proof-system-repair|proof-system repair]]; its gates are fixtures and commands, so a phase below is closed only when its gate is green.
+what is built is specified in [specs](../specs/README.md) and measured in [audit](../audit/README.md). this page holds the two things that are not: the status of the repair, phase by phase, and the open proposals. the design record is [[soft3/projects/proof-system-repair|proof-system repair]]; its gates are fixtures and commands, so a phase below is closed only when its gate is green.
 
 ## status of the repair (master, 2026-10-27)
 

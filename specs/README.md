@@ -93,4 +93,4 @@ zheng
 
 the 0.3 folded trace API (`commit`, `open`, `verify_eval`, `verify`, `fold`, `decide`, the universal CCS, phi) compiles only with the cargo feature `legacy`. it is unsound — the fold is never checked, the statement is unbound, the constant wire is free, and the Brakedown code distance is unproven ([[decider]] §soundness). it folded with a homomorphic-commitment protocol that hemera, a hash, cannot support; accumulation replaces it. constant size comes from IVC — the accumulation verifier inside the step relation (profiles 5 and 6); the whole verifier as a nox program (the Trident second verifier, not built) is for composition, never for size.
 
-for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/). canonical design record: [[soft3/proposals/proof-system-repair|proof-system repair]].
+for intuition, motivation, and learning paths see [docs/explanation](../docs/explanation/). canonical design record: [[soft3/projects/proof-system-repair|proof-system repair]].

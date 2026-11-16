@@ -6,7 +6,7 @@ alias: Weights Help Improving Rate
 ---
 # WHIR
 
-WHIR (Weights Help Improving Rate) is the polynomial commitment of zheng's succinct profile (envelope profile 1): the winner of the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] for both size classes, shipped at rate 1/64 (parameters below). it is also the decider of the machine profile and, run field-natively, the opening inside the recursion circuit (profiles 4–6). it was zheng's first lens; the expander-code commitment that briefly replaced it is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the implementation lives in [[lens]] (`Whir`, PCS id 1; contract `lens/specs/whir.md`).
+WHIR (Weights Help Improving Rate) is the polynomial commitment of zheng's succinct profile (envelope profile 1): the winner of the phase-2 bake-off of the [[soft3/projects/proof-system-repair|proof-system repair]] for both size classes, shipped at rate 1/64 (parameters below). it is also the decider of the machine profile and, run field-natively, the opening inside the recursion circuit (profiles 4–6). it was zheng's first lens; the expander-code commitment that briefly replaced it is retired as unsound ([[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]]). the implementation lives in [[lens]] (`Whir`, PCS id 1; contract `lens/specs/whir.md`).
 
 Weights Help Improving Rate. an interactive oracle proof of proximity for constrained Reed-Solomon codes that simultaneously serves as a multilinear polynomial commitment scheme. Arnon, Chiesa, Fenzi, Yogev (EUROCRYPT 2025). ePrint 2024/1586.
 

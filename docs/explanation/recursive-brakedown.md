@@ -7,7 +7,7 @@ crystal-domain: cyber
 date: 2026-03-24
 ---
 
-> superseded: unsound — retired by the [[soft3/proposals/proof-system-repair|proof-system repair]] (2026-10-09); the shipped commitment is Reed–Solomon + hemera Merkle trees (WHIR for the succinct profile), see [[zheng/specs/soundness|soundness ledger]] and [[zheng/docs/explanation/whir|whir]].
+> superseded: unsound — retired by the [[soft3/projects/proof-system-repair|proof-system repair]] (2026-10-09); the shipped commitment is Reed–Solomon + hemera Merkle trees (WHIR for the succinct profile), see [[zheng/specs/soundness|soundness ledger]] and [[zheng/docs/explanation/whir|whir]].
 
 this page used to present "recursive Brakedown" as the polynomial commitment of [[zheng]]. it is kept as a research note so the links to it still resolve and so the reasoning error is recorded once. none of its size, time or soundness figures was ever true; they are not repeated here.
 
@@ -31,4 +31,4 @@ one code — Reed–Solomon over [[Goldilocks field|Goldilocks]] — committed w
 
 the legacy Brakedown code path in zheng stays behind cargo feature `legacy` (off by default, unsound) until it is deleted in phase 5. no version brings the design back.
 
-see [[soft3/proposals/proof-system-repair|proof-system repair]] §2 for the full list of holes, [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] for the commitment the profiles use, [[Brakedown]] for the base scheme as published.
+see [[soft3/projects/proof-system-repair|proof-system repair]] §2 for the full list of holes, [[zheng/docs/explanation/polynomial-commitments|polynomial-commitments]] for the commitment the profiles use, [[Brakedown]] for the base scheme as published.

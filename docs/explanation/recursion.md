@@ -1,6 +1,6 @@
 # accumulation, IVC and wrap
 
-how [[zheng]] turns a [[nox]] run of any length into one proof whose size does not depend on the length. three layers, each built and measured on the current code; the contracts are [[zheng/specs/accumulation|accumulation]], [[zheng/specs/machine|machine]] and [[zheng/specs/recursion|recursion]], the design record is [[soft3/proposals/proof-system-repair|proof-system repair]] §4.
+how [[zheng]] turns a [[nox]] run of any length into one proof whose size does not depend on the length. three layers, each built and measured on the current code; the contracts are [[zheng/specs/accumulation|accumulation]], [[zheng/specs/machine|machine]] and [[zheng/specs/recursion|recursion]], the design record is [[soft3/projects/proof-system-repair|proof-system repair]] §4.
 
 two words the retired 0.3 pages used as one:
 
