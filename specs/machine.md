@@ -8,7 +8,7 @@ alias: nox machine, uniform step relation
 
 `rs/src/machine/` (relation), `rs/src/air/` (protocol); proved alone as
 envelope profile 4 and inside the IVC of profiles 5 and 6 ([[recursion]]).
-Phase 3 of the proof-system repair (soft3 `proposals/proof-system-repair.md` §3,
+Phase 3 of the proof-system repair (soft3 `projects/proof-system-repair.md` §3,
 "unbounded programs"); the requirements it answers are
 `audit/general-nox-relation-review.md` § "complete computed-formula
 support".

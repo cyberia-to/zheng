@@ -122,7 +122,7 @@ hemera's GPU backend uses WGSL (WebGPU Shading Language) — runs on any GPU wit
 
 nebu and zheng GPU kernels should follow the same WGSL approach for portability.
 
-## relation to other proposals
+## relation to other projects
 
 - lens: WHIR won the phase-2 bake-off and ships, so the GPU prover is NTT- and hemera-heavy (Reed–Solomon encoding, Merkle trees). the expander-code (Brakedown) lens is retired; no SpMV-heavy commitment path remains
 - accumulation (phase 3): long computations are proven step by step, each step batching claims with a sumcheck, committing one combined word and opening a few positions. each step is itself an NTT + Merkle workload, so the GPU pipeline becomes a streaming one; whether GPU or CPU wins per step is to be measured

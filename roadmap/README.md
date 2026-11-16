@@ -3,7 +3,7 @@ tags: zheng, roadmap
 ---
 # zheng roadmap
 
-what is built is specified in [specs](../specs/README.md) and measured in [audit](../audit/README.md). this page holds the two things that are not: the status of the repair, phase by phase, and the open proposals. the design record is [[soft3/projects/proof-system-repair|proof-system repair]]; its gates are fixtures and commands, so a phase below is closed only when its gate is green.
+what is built is specified in [specs](../specs/README.md) and measured in [audit](../audit/README.md). this page holds the two things that are not: the status of the repair, phase by phase, and the open projects. the design record is [[soft3/projects/proof-system-repair|proof-system repair]]; its gates are fixtures and commands, so a phase below is closed only when its gate is green.
 
 ## status of the repair (master, 2026-10-27)
 
@@ -27,18 +27,18 @@ the crate is 0.4.0 on master, not published (crates.io stops at 0.3.1, the retir
 | #69, #73 | zheng on hemera 0.4: gadgets, node jet, machine and circuit layouts, goldens re-pinned; #73 is #69 under a CI stand (train row L3) | draft; one failing test, the 64 KiB final-proof bound, which waits for L3b |
 | #78, #79 | L3b, the owner's decision (due 2026-10-29 12:00 UTC): keep the 64 KiB gate with final level `10f:32:5` (#78), or raise it to 72 KiB with `9f:26:5` (#79) | draft, stacked on #73 |
 | #77 | `[profile.dev] opt-level = 3`, so `cargo test` fits the train's stack-zheng gate (G10b) | the change is already on master (taken with the promotion); the PR stays open only as part of the #73 stack |
-| #67 | veil-W (gate G1 of soft3 `proposals/privacy-frozen.md`): masked Spartan with a zero-knowledge WHIR opening, SPEND in ~46.5 KB, measured on hemera 0.3 | draft, research; needs an independent review and a re-measure on hemera 0.4 |
+| #67 | veil-W (gate G1 of soft3 `projects/privacy-frozen.md`): masked Spartan with a zero-knowledge WHIR opening, SPEND in ~46.5 KB, measured on hemera 0.3 | draft, research; needs an independent review and a re-measure on hemera 0.4 |
 | #70 | block aggregation (gate G2): one proof per block | draft, in flight |
 
-## proposals
+## projects
 
-| proposal | status | target |
+| project | status | target |
 |---|---|---|
 | [[gpu-prover]] | draft — the backends exist (Metal, WebGPU, CPU); the device-resident pipeline does not | one pipeline from trace to proof without CPU phases |
 | [[ring-aware-fhe]] | draft — the ring PCS is specified in lens ([[ring-pcs]]); zheng has no ring-structured CCS or FHE jets | TFHE bootstrapping as ring-structured CCS and dedicated jets |
 | [[gravity-commitment]] | draft — to be restated and measured on the shipped RS/WHIR commitment | mass-weighted polynomial encoding: hot positions open cheaper |
 
-the recursive-Brakedown opening (a constant-size opening that skipped the Merkle authentication of its queries) is not a proposal: it is unsound in a hash-only world and no version brings it back; its record is [[recursive-brakedown]] in docs/explanation.
+the recursive-Brakedown opening (a constant-size opening that skipped the Merkle authentication of its queries) is not a project: it is unsound in a hash-only world and no version brings it back; its record is [[recursive-brakedown]] in docs/explanation.
 
 ## lifecycle
 

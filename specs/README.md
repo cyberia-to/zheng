@@ -25,7 +25,7 @@ every profile below exists in `rs/src/envelope` and verifies through `Envelope::
 | 5 | recursive proof (IVC) | the last 2^15-row step natively (its circuit verified the step before), the final state against the run, three deferred claims, one WHIR decider; admitted parameter sets only (rate 1/16 or 1/64, 24 grinding bits) | constant in steps: hash.tri 407,947 B at rate 1/16 with 4-ary trees, decode + verify 9.5 ms (`audit/consistency-2026-10-27.md`); binary trees were 284,950 B (`audit/recursive-envelope-2026-10.md`) |
 | 6 | wrapped proof | the profile-5 proof's final verifier proved by three wrap levels (`wrap::SHIPPED` = `4i:16,7i:22,9f:26`, the IVC at rate 1/8 with 16 grinding bits); the deferred nox-public claim against the statement, the public digest, one final-mode wrap proof natively; the program given out of band, checked against the statement's digest first | final proof ≤ 64,213 B over every transcript; hash.tri envelope 62,687 B, decode + verify 5.4 ms, prove 66.8 s on CPU with keys (`audit/consistency-2026-10-27.md`); add.tri 63,029 B, verify 1.9–2.2 ms with keys loaded; wrap chain 18.9 s on Metal, whole process 21.9 s, 11.2 GB (`audit/ivc-speed-2026-10.md`, `audit/ivc-speed-2-2026-10.md`); hash.tri envelope 62,940 B (`audit/proof-stack-review-2026-10.md`) |
 
-the goal (owner, 2026-10-09; soft3 `proposals/proof-system-repair.md` §0): any nox computation → proof ≤ 64 KB, post-quantum (hash-only), verify ≤ 1 ms, constant in the number of steps. today profile 6 meets the size and the constancy and misses the verify time; profile 1 stays ≤ 64 KiB up to Merkle depth 32 (64,071 B) and misses the verify time; the second verifier in Trident and the phase-5 deletions are not done. figures re-measured on master at the 2026-10-27 promotion are in [the consistency receipt](../audit/consistency-2026-10-27.md).
+the goal (owner, 2026-10-09; soft3 `projects/proof-system-repair.md` §0): any nox computation → proof ≤ 64 KB, post-quantum (hash-only), verify ≤ 1 ms, constant in the number of steps. today profile 6 meets the size and the constancy and misses the verify time; profile 1 stays ≤ 64 KiB up to Merkle depth 32 (64,071 B) and misses the verify time; the second verifier in Trident and the phase-5 deletions are not done. figures re-measured on master at the 2026-10-27 promotion are in [the consistency receipt](../audit/consistency-2026-10-27.md).
 
 ## spec pages
 
@@ -54,7 +54,7 @@ Implementation reviews and validation evidence are indexed in
 - [[accumulator]] — superseded: the legacy universal accumulator
 - [[decider]] — superseded: the legacy decider, kept for its soundness residuals
 - [proto](proto/README.md) — zheng's IOP as zippel protocols (executable checks, never a runtime)
-- props: [dynamic noun memory](props/dynamic-noun-memory.md), [tagged symbolic relation](props/tagged-symbolic-relation.md) — draft proposals (not production contracts)
+- props: [dynamic noun memory](projects/dynamic-noun-memory.md), [tagged symbolic relation](projects/tagged-symbolic-relation.md) — draft projects (not production contracts)
 
 ## architecture
 

@@ -145,7 +145,7 @@ framing is deterministic, so one program encodes to one byte sequence.
 
 ## deferred
 
-the CLI is retired with the legacy API in phase 5 (soft3 `proposals/proof-system-repair.md` §5); a CLI over the shipped profiles is `joy prove` / `joy verify`. the items below are recorded, not planned:
+the CLI is retired with the legacy API in phase 5 (soft3 `projects/proof-system-repair.md` §5); a CLI over the shipped profiles is `joy prove` / `joy verify`. the items below are recorded, not planned:
 
 - offline proof serialization (`.proof` file, standalone `verify <file>`) — needs
   a canonical codec for `Proof` including the lens `Opening` (cross-repo).

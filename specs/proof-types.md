@@ -111,7 +111,7 @@ CONSEQUENCE:
    verifier inside the step relation, profiles 5 and 6 — not from this)
 ```
 
-built today: the step verifier and the final verifier as circuits of the recursion (profiles 5 and 6, [[recursion]]). the whole verifier as a nox program is roadmap (soft3 `proposals/proof-system-repair.md` §3–4).
+built today: the step verifier and the final verifier as circuits of the recursion (profiles 5 and 6, [[recursion]]). the whole verifier as a nox program is roadmap (soft3 `projects/proof-system-repair.md` §3–4).
 
 ### verifier complexity
 
@@ -217,7 +217,7 @@ state root update            │ ~9,600       │ ~1,000
 completeness (nothing hidden)│ impossible   │ ~10,000
 ```
 
-polynomial commitments use WHIR (Reed–Solomon codes, hemera Merkle trees; [[lens]]) as a multilinear PCS; bbg's `QueryProof` still rides the legacy Brakedown opening until it migrates (soft3 `proposals/proof-system-repair.md` §5, phase 2). PCS proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[zheng]] pipeline itself.
+polynomial commitments use WHIR (Reed–Solomon codes, hemera Merkle trees; [[lens]]) as a multilinear PCS; bbg's `QueryProof` still rides the legacy Brakedown opening until it migrates (soft3 `projects/proof-system-repair.md` §5, phase 2). PCS proofs demonstrate that a committed polynomial has bounded degree and open evaluations at specific points — the foundation for all [[BBG]] operations and for the [[zheng]] pipeline itself.
 
 ## storage and availability proofs
 

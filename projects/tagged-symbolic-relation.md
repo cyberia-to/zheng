@@ -5,7 +5,7 @@ implementation: under-review
 
 # Experimental tagged symbolic relation
 
-This proposal defines `execution::tagged`, an opt-in circuit kernel. It does not
+This project defines `execution::tagged`, an opt-in circuit kernel. It does not
 change `specs/execution.md`, existing execution relations, proof envelopes, or Joy
 verification. No production prover invokes it. It is not a general nox relation.
 

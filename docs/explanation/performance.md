@@ -51,7 +51,7 @@ the same hash builds every Merkle tree and drives every Fiat–Shamir challenge.
 | zheng succinct, one hash | 16,756 B | transparent | yes |
 | zheng wrapped, a run of any length | ≤ 64,213 B | transparent | yes |
 
-pairing-based systems win on size by two to three orders of magnitude and lose on trust assumptions and quantum resistance. hash-only systems share zheng's model; zheng's proofs are smaller than the production chains' published figures (soft3 `proposals/proof-system-repair.md` §1), and its verification is not yet faster than theirs.
+pairing-based systems win on size by two to three orders of magnitude and lose on trust assumptions and quantum resistance. hash-only systems share zheng's model; zheng's proofs are smaller than the production chains' published figures (soft3 `projects/proof-system-repair.md` §1), and its verification is not yet faster than theirs.
 
 ## the Goldilocks advantage
 

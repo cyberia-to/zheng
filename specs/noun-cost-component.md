@@ -2,7 +2,7 @@
 
 This experimental component implements local noun identity and cached Cost
 derivation inside `execution::tagged`. It is the first component of
-[dynamic noun memory](props/dynamic-noun-memory.md). It exposes internal builder
+[dynamic noun memory](projects/dynamic-noun-memory.md). It exposes internal builder
 primitives and unresolved read obligations. Production execution and Joy proof
 dispatch remain unchanged.
 
