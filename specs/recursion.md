@@ -315,7 +315,7 @@ is conjectured, as for every deployed recursive proof system.
   the final proof: `n + 37` Fp3).
 - the second verifier: the whole verifier as a nox program in Trident,
   agreeing with Rust on every fixture (soft3
-  `proposals/proof-system-repair.md` §3, phase 3; trident `lib/std/zheng`).
+  `projects/proof-system-repair.md` §3, phase 3; trident `lib/std/zheng`).
 - the verify goal: ≤ 1 ms; profile 6 verifies in 1.9–2.2 ms with its keys
   loaded (`audit/ivc-speed-2026-10.md`).
 

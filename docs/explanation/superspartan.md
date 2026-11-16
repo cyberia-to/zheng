@@ -46,7 +46,7 @@ this is why zheng can afford hemera rounds as degree-7 rows. the Poseidon2 round
 
 plugging in [[WHIR]] gives zheng's succinct profile; plugging in a hiding Ligero-style Reed–Solomon tensor commitment (with Libra-masked sumchecks) gives the zk profile "veil". KZG or Dory would give other instantiations with other trust assumptions. the IOP stays the same.
 
-for [[cyber]], the lens must be transparent, post-quantum and rest on [[hemera]] alone. the phase-2 bake-off of the [[soft3/proposals/proof-system-repair|proof-system repair]] ran two such lenses — TensorRs (RS tensor code, Ligero geometry) and WHIR — under the same Spartan transcript and fixtures; WHIR won both size classes and ships (rate 1/64; folding and grinding chosen per size by `succinct::device_params`). the swap needed no change to the constraint system or the sumcheck protocol.
+for [[cyber]], the lens must be transparent, post-quantum and rest on [[hemera]] alone. the phase-2 bake-off of the [[soft3/projects/proof-system-repair|proof-system repair]] ran two such lenses — TensorRs (RS tensor code, Ligero geometry) and WHIR — under the same Spartan transcript and fixtures; WHIR won both size classes and ships (rate 1/64; folding and grinding chosen per size by `succinct::device_params`). the swap needed no change to the constraint system or the sumcheck protocol.
 
 ## the composition
 

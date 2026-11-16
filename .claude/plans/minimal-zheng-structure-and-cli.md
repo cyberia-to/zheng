@@ -1,6 +1,6 @@
 # finishing minimal zheng: canonical structure + CLI
 
-> superseded: layout work done; the proof-system content of 0.1.0 (Brakedown + homomorphic folding) is now feature `legacy`, unsound, deleted in phase 5 — see soft3 `proposals/proof-system-repair.md`. status of the repair: `roadmap/README.md` (2026-10-27).
+> superseded: layout work done; the proof-system content of 0.1.0 (Brakedown + homomorphic folding) is now feature `legacy`, unsound, deleted in phase 5 — see soft3 `projects/proof-system-repair.md`. status of the repair: `roadmap/README.md` (2026-10-27).
 
 status: DONE (both parts implemented, all tests green).
 part 1 — canonical rs/ + cli/ workspace, 5 downstream path deps updated, nox

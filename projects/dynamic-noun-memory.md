@@ -5,7 +5,7 @@ implementation: planned
 
 # Dynamic noun memory for native execution
 
-This proposal extends the native Zheng execution relation toward computed
+This project extends the native Zheng execution relation toward computed
 continuations and compiler-sized noun data. The next component after bounded
 witness capture is algebraic noun/Cost derivation, followed by authenticated
 memory and transitions. Existing production proof contracts remain unchanged.
@@ -60,7 +60,7 @@ read its children, A/B read R's children where needed, and Y/N read B's children
 for branch metadata. Branch needs B's shape before activating its arm reads;
 call metadata uses A's Cost and excludes the check formula's Cost. Every
 activation and requested particle is constrained within the same fixed schema.
-This port count is a design proposal, without a measured gate-size claim.
+This port count is a design project, without a measured gate-size claim.
 
 Child Cost values are explicit read premises until the memory component
 authenticates their derivation. An execution relation cannot be finalized with

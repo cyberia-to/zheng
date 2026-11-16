@@ -11,7 +11,7 @@ status: draft
 
 # zheng proofs and STARKs
 
-this page compares [[zheng]] proofs with [[STARKs]] as they stand after the [[soft3/proposals/proof-system-repair|proof-system repair]] (2026-10). an earlier version of this page described a design — expander-code commitments without Merkle trees, homomorphic folding over a hash, a tiny constant checkpoint — that was unsound and never shipped; its retirement is recorded in [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] and in the proposal's §2.
+this page compares [[zheng]] proofs with [[STARKs]] as they stand after the [[soft3/projects/proof-system-repair|proof-system repair]] (2026-10). an earlier version of this page described a design — expander-code commitments without Merkle trees, homomorphic folding over a hash, a tiny constant checkpoint — that was unsound and never shipped; its retirement is recorded in [[zheng/docs/explanation/recursive-brakedown|recursive-brakedown]] and in the project's §2.
 
 zheng is not a STARK. it shares the STARK family's trust model — transparent, hash-only, post-quantum — and differs in arithmetization, IOP and commitment.
 
@@ -61,7 +61,7 @@ Apple M4 Max, shared machine; every figure names its audit (zheng `audit/`, unle
 | hash of a secret preimage | zk (veil) | 63.9 KB | 10.0 ms (4.1 ms with a cached verifying key) | `audit/zk-profile-2026-10.md` |
 | `add.tri`, a run of any length | wrapped (profile 6) | 63,029 B, at most 64,213 B over every transcript | 1.9–2.2 ms | `audit/ivc-speed-2026-10.md` |
 
-every succinct, zk and wrapped proof carries ≥ 128 proven bits. for scale, production STARK chains publish proofs of roughly 150 KB to 1 MB (soft3 `proposals/proof-system-repair.md` §1); the hash-only WHIR literature reports 56–87 KiB at `2^20` at rate 1/16.
+every succinct, zk and wrapped proof carries ≥ 128 proven bits. for scale, production STARK chains publish proofs of roughly 150 KB to 1 MB (soft3 `projects/proof-system-repair.md` §1); the hash-only WHIR literature reports 56–87 KiB at `2^20` at rate 1/16.
 
 the goal of the repair: any nox computation → a proof ≤ 64 KB, post-quantum, verify ≤ 1 ms, constant in the number of steps; small statements ≤ 16–20 KB. profile 6 meets the size for a run of any length; one-relation proofs meet it up to `2^18` committed variables. verification misses 1 ms in every profile — the causes are hemera inside the opening, an unstructured Spartan verifier, and recompiling the relation (a cached verifying key removes the last).
 

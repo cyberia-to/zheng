@@ -6,7 +6,7 @@ status: draft
 ---
 # ring-aware FHE proving
 
-> superseded: drafted against the retired homomorphic-folding composition and the expander-code lens; composition now means hash-based accumulation of Reed–Solomon claims (phase 3 of the [[soft3/proposals/proof-system-repair|proof-system repair]]), and its per-step costs are not measured yet.
+> superseded: drafted against the retired homomorphic-folding composition and the expander-code lens; composition now means hash-based accumulation of Reed–Solomon claims (phase 3 of the [[soft3/projects/proof-system-repair|proof-system repair]]), and its per-step costs are not measured yet.
 
 specialized constraint encoding and jet library for proving FHE bootstrapping operations. not a third prover — the IOP (SuperSpartan + sumcheck) and composition (hash-based accumulation, phase 3) are unchanged. the ring structure of R_q is exploited at the constraint level through ring-structured CCS encodings and dedicated jets.
 

@@ -10,7 +10,7 @@ or change any existing proof envelope/acceptance path.
 ## Contract and implementation ownership
 
 The draft contract was written before implementation:
-[`specs/props/tagged-symbolic-relation.md`](../specs/props/tagged-symbolic-relation.md).
+[`projects/tagged-symbolic-relation.md`](../projects/tagged-symbolic-relation.md).
 The new implementation is isolated in `rs/src/execution/tagged/`:
 
 - `mod.rs`: canonical input/output validation, exact public coordinates, complete

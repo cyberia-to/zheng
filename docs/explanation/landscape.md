@@ -53,7 +53,7 @@ further using small fields and FRI as the polynomial commitment
 scheme.
 
 the cost is proof size. production STARK chains publish proofs of
-roughly 150 KB to 1 MB (soft3 `proposals/proof-system-repair.md` §1),
+roughly 150 KB to 1 MB (soft3 `projects/proof-system-repair.md` §1),
 a thousand times or more larger than Groth16, and verification takes
 milliseconds to tens of milliseconds.
 for on-chain verification where every byte costs gas, this matters.
@@ -66,7 +66,7 @@ zheng uses the multilinear route: the interactive oracle proof is
 commitment is [[WHIR]] — Reed–Solomon codes over Goldilocks committed
 with [[hemera]] Merkle trees and opened at one point of the cubic
 extension Fp3. WHIR won the phase-2 bake-off of the
-[[soft3/proposals/proof-system-repair|proof-system repair]]; the
+[[soft3/projects/proof-system-repair|proof-system repair]]; the
 expander-code ("recursive Brakedown") commitment it replaces had no real
 opening and is retired. a nox run of any length is one uniform AIR,
 proved by a sumcheck zerocheck rather than a quotient, then accumulated

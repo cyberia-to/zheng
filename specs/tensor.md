@@ -6,7 +6,7 @@ alias: tensor trace compression, tensor compression, streaming sumcheck
 ---
 # tensor
 
-> proposal, not built: no code in `rs/src` implements tensor compression; the numbers below are estimates. the "hemera-native commitment" section is not a sound PCS (see there).
+> project, not built: no code in `rs/src` implements tensor compression; the numbers below are estimates. the "hemera-native commitment" section is not a sound PCS (see there).
 
 tensor decomposition of structured nox traces. target: prover memory O(N) → O(√N), prover time O(N log N) → O(N) streaming, so mobile devices prove long traces.
 
@@ -66,7 +66,7 @@ total: r × N ≈ 32N hashes (vs N log N for standard Merkle-based PCS)
 for N = 2²⁰: 32M vs 20M hashes — comparable, but streaming
 ```
 
-a flat hash of the factors cannot be opened at one position: an opening against `C` would need every factor, and a column check against a flat hash is satisfiable by a prover who never touches `C` (soft3 `proposals/proof-system-repair.md` §A). a sound tensor commitment keeps a Merkle tree per factor (a local opening costs Θ(log n) digests in a hash-only system) and opens through the shipped Reed–Solomon PCS ([[lens]] WHIR); the hash counts above are a lower bound, not the cost of that commitment.
+a flat hash of the factors cannot be opened at one position: an opening against `C` would need every factor, and a column check against a flat hash is satisfiable by a prover who never touches `C` (soft3 `projects/proof-system-repair.md` §A). a sound tensor commitment keeps a Merkle tree per factor (a local opening costs Θ(log n) digests in a hash-only system) and opens through the shipped Reed–Solomon PCS ([[lens]] WHIR); the hash counts above are a lower bound, not the cost of that commitment.
 
 ## mobile proving
 
